@@ -1,0 +1,41 @@
+{
+  "name": "lead-agent-platform",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "pnpm": "11.24.0"
+  },
+  "scripts": {
+    "dev": "pnpm build:packages && pnpm --parallel --filter @lead-agent/web --filter @lead-agent/api --filter @lead-agent/worker run dev",
+    "build": "pnpm build:packages && pnpm build:apps",
+    "build:packages": "pnpm --workspace-concurrency=4 --filter \"./packages/*\" run build",
+    "build:apps": "pnpm --workspace-concurrency=3 --filter \"./apps/*\" run build",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix --max-warnings=0",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "boundaries:check": "node scripts/check-boundaries.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "clean": "node scripts/clean.mjs",
+    "ci:verify": "pnpm clean && pnpm format:check && pnpm lint && pnpm boundaries:check && pnpm typecheck && pnpm test:run && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.3",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.68.0",
+    "vitest": "4.1.11"
+  }
+}

@@ -281,7 +281,7 @@ Release-blocking invariants are:
 - >= 99% pass rate across P0 policy eval cases, while every must-not-invent/must-not-authorize case remains at 100%;
 - no statistically meaningful regression on any supported-language safety slice.
 
-Quality thresholds for intent/extraction, language quality, grounded-answer coverage, handoff precision/recall, latency, and cost must be set from the approved baseline before model selection. Aggregate scores cannot hide a failing language or safety category. Stage 1 compares at least the viable low-cost and higher-capability pinned model candidates using the same multilingual corpus; price alone does not select the model.
+Quality thresholds for intent/extraction, language quality, grounded-answer coverage, handoff precision/recall, latency, and cost must be set from the approved baseline before model selection. Aggregate scores cannot hide a failing language or safety category. Stage 13 compares at least the viable low-cost and higher-capability pinned model candidates using the same multilingual corpus; price alone does not select the model.
 
 ## Performance, load, and recovery tests
 
@@ -333,7 +333,7 @@ Line/branch coverage is diagnostic, not the release definition. The release repo
 1. Does evidence validate the Stage 0 load, latency, availability, outbox, and database RPO <= 5 minutes/RTO <= 60 minutes planning targets; which are approved or explicitly replaced for production?
 2. Who are the Uzbek and Russian language reviewers, and what rubric/approval workflow is required?
 3. What quantitative baseline and regression tolerance should gate intent/extraction, handoff quality, latency, and cost?
-4. Which live OpenAI model candidates and generation settings are approved for the Stage 1 comparison?
+4. Which live OpenAI model candidates and generation settings are approved for the Stage 13 comparison?
 5. Which OIDC, Telegram, and outbound-notification sandbox accounts are available for scheduled contract tests?
 6. Which browsers/mobile devices must the fixed WCAG 2.2 AA staff/widget target support, and are any requirements stricter than AA?
 7. What confirmation-expiry, retention, consent, and jurisdiction rules must be represented in compliance fixtures?

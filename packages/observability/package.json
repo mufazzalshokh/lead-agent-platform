@@ -1,0 +1,21 @@
+{
+  "name": "@lead-agent/observability",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit false --declaration true --declarationMap true --outDir dist --rootDir src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
