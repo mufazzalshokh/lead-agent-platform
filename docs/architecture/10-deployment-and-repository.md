@@ -217,7 +217,7 @@ lead-agent-platform/
 │  │  └─ tests/
 │  ├─ api/                       # Fastify HTTP composition root
 │  │  ├─ src/routes/
-│  │  │  ├─ v1/private/          # OIDC staff APIs
+│  │  │  ├─ v1/staff/            # OIDC staff APIs
 │  │  │  ├─ v1/widget/           # anonymous capability-scoped APIs
 │  │  │  └─ v1/webhooks/         # raw verified provider ingress
 │  │  ├─ src/plugins/            # HTTP auth, validation, limits, telemetry wiring

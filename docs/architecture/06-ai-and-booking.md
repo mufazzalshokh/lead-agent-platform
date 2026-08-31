@@ -332,10 +332,11 @@ Returned JSON is always revalidated against the full canonical application
 schema, so the projection can never weaken mutation or send policy. The
 [official Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
 states that only a JSON Schema subset is supported and an unsupported strict
-schema causes an API error. Stage 1 must snapshot the projection and submit it
-with `strict: true` against the selected pinned model in an opt-in contract test
-before enabling that model/profile. Schema version `1` is immutable once
-deployed; backward-incompatible changes create a new schema and eval suite.
+schema causes an API error. S12 must snapshot and contract-test the
+provider-compatible schema projection. S13 must submit it with `strict: true`
+against the selected pinned live model before enabling that model/profile.
+Schema version `1` is immutable once deployed; backward-incompatible changes
+create a new schema and eval suite.
 
 ### Action semantics
 

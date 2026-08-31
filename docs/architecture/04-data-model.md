@@ -7,8 +7,7 @@ Database: PostgreSQL
 Identifier/time conventions: UUIDv7 and UTC `timestamptz`
 
 This document specifies the initial relational model. It is not a migration.
-Stage 1 must translate it into explicit, reviewed migrations without weakening
-keys, tenant constraints, row-level security, or status checks.
+Stages S4a–S4c must translate it into explicit, reviewed migrations.
 
 ## 1. Data-design rules
 
