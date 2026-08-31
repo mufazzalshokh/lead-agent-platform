@@ -256,6 +256,15 @@ Canonical status:
 **Conversation owns:** contact/lead/channel binding, status, detected/preferred
 language, current automation mode, last activity, version.
 
+Canonical automation mode is `ai|paused|staff`: `ai` means AI automation owns
+eligible response generation; `paused` means AI response generation is
+deliberately suspended while staff has not taken active response ownership, or
+the Conversation is not active for automation; `staff` means an assigned or
+in-progress Handoff owns response handling. Routing to a newly requested Handoff
+sets `awaiting_staff + paused`; assignment/start sets `awaiting_staff + staff`;
+an explicit permitted resume sets `open + ai`; resolved and closed Conversations
+use `paused`. No Handoff terminal transition implicitly resumes AI.
+
 Canonical status:
 
 `open | awaiting_lead | awaiting_staff | resolved | closed`
@@ -313,8 +322,10 @@ Canonical status:
   method, attestation/evidence metadata, reason, and audit event.
 - Direct confirmation sources are `customer_session` and `telegram`; all
   confirmation sources preserve actor/participant, offer version, and timestamp.
-- Confirmation is bound to the current, unexpired offer version. An old token or
-  response cannot confirm a replacement offer.
+- Confirmation requires both the command's expected current AppointmentRequest
+  aggregate version and evidence for the current, unexpired `offer_version`.
+  Both must match the locked request; an old aggregate/token/response cannot
+  confirm a replacement offer.
 - Offered start is before end and stored in UTC with IANA time zone and local
   representation. V1 does not claim calendar availability.
 - Terminal `rejected`/`expired` requests never reopen. A new attempt creates a
@@ -438,7 +449,7 @@ source IP/user-agent treatment where justified.
 | `IdempotencyKey` | Opaque bounded string plus tenant, operation, request hash, expiry |
 | `KnowledgeCitation` | Record type, record/version ID, allowed fields, context snapshot/hash |
 | `QualificationResult` | policy version, `qualified\|disqualified\|incomplete`, reason codes, validated evidence references |
-| `ConfirmationEvidence` | source `customer_session\|telegram\|staff_attested_external`, participant/actor, offer version, customer act time, recorded time, method and protected evidence reference |
+| `ConfirmationEvidence` | source `customer_session\|telegram\|staff_attested_external`, participant/actor, offer version distinct from the command's expected aggregate version, customer act time, recorded time, method and protected evidence reference |
 | `ConsentDecision` | tenant-local subject anchor, purpose, `granted\|declined\|withdrawn\|not_required`, notice/version, lawful basis, capture channel/time, withdrawal relation |
 | `CorrelationContext` | request, trace, causation, and correlation IDs propagated across jobs/events |
 | `AggregateVersion` | Monotonic integer checked on commands and stale AI results |
@@ -515,6 +526,29 @@ Names are stable, past-tense dotted contracts. Each event has `event_id`,
 `event_type`, `schema_version`, `organization_id` when tenant-owned,
 `aggregate_type`/`aggregate_id`/`aggregate_version`, `occurred_at`,
 `actor`, `correlation_id`, `causation_id`, and a minimal schema-valid payload.
+Consumers select a validator by `event_type` plus `schema_version`, verify the
+matching `schema_id`, and only then interpret the payload; an event type alone
+does not identify a wire schema version.
+
+`lead.reopened` keeps its accepted V1 event and payload schemas unchanged for
+historical validation and replay. New producers emit V2, still with
+`event_type=lead.reopened`, using exactly one closed payload variant:
+
+- `disqualified -> engaged`: `previous_lead_status=disqualified`,
+  `lead_status=engaged`, and `reason_code`;
+- `booking_requested -> qualified`:
+  `previous_lead_status=booking_requested`, `lead_status=qualified`, required
+  canonical `appointment_request_id`, and `reason_code`.
+
+V1 facts are never reinterpreted as V2, its legacy structural acceptance of
+`booking_requested -> engaged` does not authorize that domain transition, and
+new producers do not dual-emit V1 and V2.
+
+Conversation creation emits `conversation.started`, resolution emits
+`conversation.resolved`, and closure emits `conversation.closed`. For those
+edges the specialized event replaces `conversation.status_changed`; the generic
+event is emitted for other real Conversation-status changes. Independent
+Message and Handoff events remain separate facts and may coexist.
 
 ### 7.1 Core event catalog
 
@@ -595,9 +629,9 @@ existence, SQL, secrets, or internal stack details.
 | `new`, `engaged` | apply disqualification | Published policy deterministically returns disqualified, or authorized staff reason | `disqualified` | `lead.disqualified` + policy/reason |
 | `new`, `engaged`, `qualified`, `booking_requested` | close | Authorized actor/system retention-independent business reason | `closed` | `lead.closed` + reason |
 | `engaged` | qualify | All required validated facts satisfy published policy | `qualified` | `lead.qualified` + policy/evidence |
-| `disqualified` | reopen | Authorized staff or newly validated evidence explicitly invalidates prior result | `engaged` | `lead.reopened` + reason |
+| `disqualified` | reopen | Authorized staff or newly validated evidence explicitly invalidates prior result | `engaged` | `lead.reopened` V2 disqualified/engaged variant + reason |
 | `qualified` | appointment request created | Related request committed as `requested` in same workflow | `booking_requested` | `lead.booking_requested` + request ID |
-| `booking_requested` | request ends without confirmation | Related request `rejected\|cancelled\|expired` and policy permits retry | `qualified` | `lead.reopened` + request/reason |
+| `booking_requested` | request ends without confirmation | Related request `rejected\|cancelled\|expired` and policy permits retry | `qualified` | `lead.reopened` V2 booking-requested/qualified variant + required request ID/reason |
 | `booking_requested` | customer confirmation recorded | Related request committed as `confirmed` | `converted` | `lead.converted` + request ID |
 
 `converted` and `closed` are terminal for that lead record. A later commercial
@@ -615,18 +649,31 @@ transition is separately recorded; it cannot skip preconditions.
 | --- | --- | --- | --- |
 | (none) | first accepted message creates conversation | `open` | Channel/contact/lead share tenant |
 | `open` | safe automated or staff response queued | `awaiting_lead` | Outbound intent is durable; delivery status is separate |
-| `open`, `awaiting_lead` | handoff requested/required | `awaiting_staff` | Create/reuse active handoff in same workflow |
+| `open`, `awaiting_lead` | handoff requested/required | `awaiting_staff` | Create/reuse active handoff in same workflow; newly requested handoff sets mode `paused` |
 | `awaiting_lead` | new accepted customer message | `open` | Message is non-duplicate; stale AI run is invalidated |
 | `awaiting_staff` | staff sends customer-facing response | `awaiting_lead` | Actor authorized and active handoff is assigned/in progress |
-| `awaiting_staff` | handoff resolved without reply and automation explicitly resumes | `open` | Resolution code/policy permits automation |
-| `open`, `awaiting_lead`, `awaiting_staff` | resolve | `resolved` | Authorized staff or deterministic inactivity/workflow completion; from `awaiting_staff` the active handoff must resolve/cancel atomically or the command is rejected |
+| `awaiting_staff` | handoff resolved without reply and automation explicitly resumes | `open` | Resolution code/policy permits automation; mode becomes `ai` |
+| `open`, `awaiting_lead`, `awaiting_staff` | resolve | `resolved` | Authorized staff or deterministic inactivity/workflow completion; mode becomes `paused`; from `awaiting_staff` the active handoff must resolve/cancel atomically or the command is rejected |
 | `resolved` | customer sends within reopen policy | `open` | Same conversation only within configured reopen window |
-| `resolved` | archive/close | `closed` | Authorized/system policy and no active handoff |
+| `resolved` | archive/close | `closed` | Authorized/system policy, no active handoff, and mode remains `paused` |
 
 `closed` is terminal. A later inbound message creates a new conversation.
 Outbound delivery failure does not roll the status back; it creates a visible
 delivery failure/handoff according to policy. A conversation cannot be
 `awaiting_staff` without an active handoff.
+
+When resolution, cancellation, or expiry terminalizes an active Handoff, the
+cross-machine command must select exactly one disposition; there is no implicit
+default:
+
+- `resume_ai`: Conversation becomes `open` with mode `ai`;
+- `resolve_conversation`: Conversation becomes `resolved` with mode `paused`;
+- `successor_handoff`: a successor active Handoff is established atomically and
+  the Conversation remains `awaiting_staff`; mode is `paused` while the
+  successor is requested and `staff` once assigned/in progress.
+
+A cancellation/expiry command that would otherwise leave `awaiting_staff`
+without an active Handoff is rejected.
 
 ## 11. Appointment-request state machine
 
@@ -661,7 +708,7 @@ stateDiagram-v2
 | `staff_accepted -> awaiting_customer_confirmation` | System worker only | In a later transaction, a customer confirmation request/task and delivery intent are durably created with active offer version, expiry, and route/token reference; that record, transition, and event commit atomically |
 | `staff_accepted -> cancelled` | Authorized staff or bound customer | Explicit retraction/withdrawal; invalidate offer/token; reason required |
 | `staff_accepted -> expired` | System | Preparation deadline passed and no valid confirmation request could be made |
-| `awaiting_customer_confirmation -> confirmed` | Bound customer via `customer_session`/`telegram`, or authorized staff recording `staff_attested_external` | Evidence matches organization/request/contact/current offer, is not expired/replayed; transition + audit + event; lead to `converted` |
+| `awaiting_customer_confirmation -> confirmed` | Bound customer via `customer_session`/`telegram`, or authorized staff recording `staff_attested_external` | Expected aggregate version and evidence `offer_version` both match the locked current request; evidence matches organization/request/contact, is within `[issued_at, expires_at)`, and is not replayed; transition + audit + event; lead to `converted` |
 | `awaiting_customer_confirmation -> cancelled` | Bound customer decline/withdrawal or authorized staff retraction | Actor/source/reason; invalidate confirmation token; notify other party |
 | `awaiting_customer_confirmation -> expired` | System expiry job | Offer expiry passed under row lock/version check |
 | `confirmed -> cancelled` | Bound customer or authorized staff | Explicit post-confirmation reason/actor; preserve confirmed timestamp/event; no calendar side effect in V1 |
@@ -669,6 +716,11 @@ stateDiagram-v2
 All other transitions return `InvalidStateTransition`. Two racing decisions use
 expected aggregate version and a row lock/compare-and-swap; exactly one wins.
 The loser receives a conflict and the current representation.
+
+Confirmation grants use the half-open interval `[issued_at, expires_at)`: they
+are valid only while `now < expires_at` and are expired when
+`now >= expires_at`. Equality must fail with `OfferExpired`. Pure behavior
+receives `now` explicitly and never reads an implicit system clock.
 
 ### 11.1 Confirmation-source rules
 
@@ -697,7 +749,7 @@ No source lets the accepting staff action itself satisfy customer confirmation.
 | `requested` | claim and start atomically | `in_progress` | Record implicit assignment transition then start, or two transition rows in one command |
 | `requested` | cancel | `cancelled` | Customer withdraws or authorized policy/actor; reason |
 | `requested` | expire | `expired` | SLA/queue policy allows; create operational alert if still actionable |
-| `assigned` | reassign | `assigned` | Status unchanged; append assignment event/old-new assignee and bump version |
+| `assigned` | reassign | `assigned` | Real expected-version-checked transition: bump aggregate version; append `HandoffTransition` with old and new assignee; `handoff.assigned` carries the new assignee only |
 | `assigned` | begin work | `in_progress` | Only assignee or authorized queue manager |
 | `assigned` | cancel/expire | `cancelled` / `expired` | Reason and expected version |
 | `in_progress` | resolve | `resolved` | Resolution code and accountable actor |
@@ -708,9 +760,18 @@ a new handoff. Conversation coupling is enforced in the same application
 transaction/workflow:
 
 - create active handoff => conversation `awaiting_staff`;
+- newly requested handoff => mode `paused`;
+- assigned/in-progress handoff => mode `staff`;
 - staff customer-facing response => conversation `awaiting_lead`;
-- resolve with automation resume => conversation `open`;
-- resolve complete => conversation `resolved`.
+- terminalize with `resume_ai` => conversation `open`, mode `ai`;
+- terminalize with `resolve_conversation` => conversation `resolved`, mode
+  `paused`;
+- terminalize with `successor_handoff` => establish a successor atomically and
+  retain `awaiting_staff`, using mode `paused` until assignment and `staff`
+  after assignment/start;
+- resolve/cancel/expire an active handoff => require `resume_ai`,
+  `resolve_conversation`, or `successor_handoff` and apply the selected
+  disposition atomically; no default or implicit AI resume.
 
 ## 13. Attendance and revenue outcome facts
 
@@ -771,6 +832,14 @@ For each machine:
 11. conversation/handoff coupling tests prove `awaiting_staff -> resolved`
     atomically resolves/cancels the active handoff and rejects an orphaning
     transition.
+12. event tests preserve V1 `lead.reopened` decoding and require exactly the two
+    V2 variants for new facts.
+13. Conversation tests prove specialized creation/resolution/closure events are
+    mutually exclusive with `conversation.status_changed` for the same edge.
+14. Handoff tests cover all three terminal dispositions, exact automation modes,
+    and reassignment version/provenance while its status remains `assigned`.
+15. confirmation tests reject either stale aggregate or offer version and reject
+    `now == expires_at` using an explicitly supplied clock value.
 
 ## 16. Domain-model open questions
 

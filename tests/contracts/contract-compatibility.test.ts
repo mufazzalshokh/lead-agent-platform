@@ -146,8 +146,8 @@ describe("public contract inventory and snapshot", () => {
       ]),
     );
 
-    expect(snapshot.contracts).toHaveLength(201);
-    expect(counts).toEqual({ ai: 16, api: 8, channel: 24, event: 125, shared: 28 });
+    expect(snapshot.contracts).toHaveLength(203);
+    expect(counts).toEqual({ ai: 16, api: 8, channel: 24, event: 127, shared: 28 });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
     );
@@ -158,7 +158,9 @@ describe("public contract inventory and snapshot", () => {
     const nonSchemaExports = [
       "DOMAIN_EVENT_NAMES",
       "DomainEventPayloadSchemas",
+      "DomainEventPayloadSchemasByVersion",
       "DomainEventSchemas",
+      "DomainEventSchemasByVersion",
       "createCollectionEnvelopeSchema",
       "createSuccessEnvelopeSchema",
       "isSchemaValue",
@@ -171,6 +173,41 @@ describe("public contract inventory and snapshot", () => {
 
   it("matches the reviewed canonical snapshot byte-for-byte", async () => {
     await expect(checkContractSnapshot()).resolves.toEqual(buildContractSnapshot());
+  });
+
+  it("classifies the approved lead.reopened V2 schemas as additive only", () => {
+    const candidate = buildContractSnapshot();
+    const addedExportNames = new Set([
+      "LeadReopenedDomainEventPayloadV2Schema",
+      "LeadReopenedDomainEventV2Schema",
+    ]);
+    const baseline: ContractSnapshot = {
+      ...candidate,
+      contracts: candidate.contracts.filter(
+        (contract) => !addedExportNames.has(contract.export_name),
+      ),
+    };
+
+    expect(compareContractSnapshots(baseline, candidate)).toEqual([
+      {
+        classification: "additive",
+        contract: "LeadReopenedDomainEventPayloadV2Schema",
+        detail: "new independently identified public contract was added",
+      },
+      {
+        classification: "additive",
+        contract: "LeadReopenedDomainEventV2Schema",
+        detail: "new independently identified public contract was added",
+      },
+    ]);
+    expect(
+      candidate.contracts.find(
+        (contract) => contract.export_name === 'DomainEventSchemas["lead.reopened"]',
+      ),
+    ).toMatchObject({
+      schema_id: "LeadReopenedDomainEvent.v1",
+      schema_version: "1",
+    });
   });
 
   it("is deterministic regardless of input catalog order", () => {
@@ -446,6 +483,12 @@ describe("cross-contract security and drift audit", () => {
         "event variants",
       ),
     ).toHaveLength(Contracts.DOMAIN_EVENT_NAMES.length);
+    expect(
+      Object.values(Contracts.DomainEventSchemasByVersion).reduce(
+        (count, versions) => count + Object.keys(versions).length,
+        0,
+      ),
+    ).toBe(62);
   });
 
   it("keeps event payloads privacy-minimal and credential rotation version-only", () => {

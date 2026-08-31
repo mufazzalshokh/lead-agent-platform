@@ -5,13 +5,18 @@ import {
   DomainAggregateTypeSchema,
   DomainEventNameSchema,
   DomainEventPayloadSchemas,
+  DomainEventPayloadSchemasByVersion,
   DomainEventSchema,
   DomainEventSchemas,
+  DomainEventSchemasByVersion,
+  LeadReopenedDomainEventPayloadV2Schema,
+  LeadReopenedDomainEventV2Schema,
   SchemaIdSchema,
   isSchemaValue,
   type DomainEvent,
   type DomainEventFor,
   type DomainEventName,
+  type LeadReopenedDomainEventV2,
   type LeadId,
   type OrganizationId,
 } from "../../packages/contracts/src/index.js";
@@ -382,6 +387,12 @@ const createEvent = (
   schema_version: "1",
 });
 
+const createLeadReopenedV2Event = (payload: unknown): Record<string, unknown> => ({
+  ...createEvent("lead.reopened", payload),
+  schema_id: schemaIdentityOf(LeadReopenedDomainEventV2Schema, "lead.reopened V2"),
+  schema_version: "2",
+});
+
 const withoutMember = (candidate: Record<string, unknown>, member: string) => {
   const clone = structuredClone(candidate);
   Reflect.deleteProperty(clone, member);
@@ -393,6 +404,22 @@ describe("domain event catalog and source-of-truth strategy", () => {
     expect(DOMAIN_EVENT_NAMES).toEqual(EXPECTED_EVENT_NAMES);
     expect(DOMAIN_EVENT_NAMES).toHaveLength(61);
     expect(Object.keys(DomainEventPayloadSchemas)).toEqual(EXPECTED_EVENT_NAMES);
+    expect(Object.keys(DomainEventSchemasByVersion)).toEqual(EXPECTED_EVENT_NAMES);
+    expect(Object.keys(DomainEventPayloadSchemasByVersion)).toEqual(EXPECTED_EVENT_NAMES);
+    expect(Object.keys(DomainEventSchemasByVersion["lead.reopened"])).toEqual(["1", "2"]);
+    expect(Object.keys(DomainEventPayloadSchemasByVersion["lead.reopened"])).toEqual(["1", "2"]);
+    for (const eventName of EXPECTED_EVENT_NAMES) {
+      if (eventName !== "lead.reopened") {
+        expect(Object.keys(DomainEventSchemasByVersion[eventName])).toEqual(["1"]);
+        expect(Object.keys(DomainEventPayloadSchemasByVersion[eventName])).toEqual(["1"]);
+      }
+    }
+    expect(DomainEventSchemasByVersion["lead.reopened"]["1"]).toBe(
+      DomainEventSchemas["lead.reopened"],
+    );
+    expect(DomainEventPayloadSchemasByVersion["lead.reopened"]["1"]).toBe(
+      DomainEventPayloadSchemas["lead.reopened"],
+    );
   });
 
   it("publishes the exact aggregate-root provenance vocabulary", () => {
@@ -427,6 +454,8 @@ describe("domain event catalog and source-of-truth strategy", () => {
       schemaIdentityOf(DomainEventSchema, "domain event union"),
       ...eventSchemaIds,
       ...payloadSchemaIds,
+      schemaIdentityOf(LeadReopenedDomainEventV2Schema, "lead.reopened V2"),
+      schemaIdentityOf(LeadReopenedDomainEventPayloadV2Schema, "lead.reopened V2 payload"),
     ];
 
     expect(allSchemaIds).toHaveLength(new Set(allSchemaIds).size);
@@ -435,6 +464,17 @@ describe("domain event catalog and source-of-truth strategy", () => {
     expect(schemaIdFor("appointment.revenue_reversed")).toBe(
       "AppointmentRevenueReversedDomainEvent.v1",
     );
+    expect(schemaIdFor("lead.reopened")).toBe("LeadReopenedDomainEvent.v1");
+    expect(payloadSchemaIdFor("lead.reopened")).toBe("LeadReopenedDomainEventPayload.v1");
+    expect(schemaIdentityOf(LeadReopenedDomainEventV2Schema, "lead.reopened V2")).toBe(
+      "LeadReopenedDomainEvent.v2",
+    );
+    expect(
+      schemaIdentityOf(LeadReopenedDomainEventPayloadV2Schema, "lead.reopened V2 payload"),
+    ).toBe("LeadReopenedDomainEventPayload.v2");
+    expect(
+      Reflect.get(Reflect.get(LeadReopenedDomainEventV2Schema, "properties"), "schema_version"),
+    ).toMatchObject({ const: "2" });
     expect(() => JSON.stringify(DomainEventSchema)).not.toThrow();
   });
 
@@ -445,6 +485,116 @@ describe("domain event catalog and source-of-truth strategy", () => {
     expectTypeOf<
       DomainEventFor<"lead.created">["aggregate_id"]
     >().not.toEqualTypeOf<OrganizationId>();
+    expectTypeOf<LeadReopenedDomainEventV2["event_type"]>().toEqualTypeOf<"lead.reopened">();
+    expectTypeOf<LeadReopenedDomainEventV2["aggregate_id"]>().toEqualTypeOf<LeadId>();
+  });
+});
+
+describe("lead.reopened version compatibility", () => {
+  const disqualifiedToEngaged = {
+    lead_status: "engaged",
+    previous_lead_status: "disqualified",
+    reason_code: "new_evidence",
+  };
+  const bookingRequestedToQualified = {
+    appointment_request_id: ID,
+    lead_status: "qualified",
+    previous_lead_status: "booking_requested",
+    reason_code: "request_ended_retry_allowed",
+  };
+
+  it("preserves the exact V1 identity, version, and accepted wire behavior", () => {
+    const legacyBookingReopen = {
+      lead_status: "engaged",
+      previous_lead_status: "booking_requested",
+      reason_code: "request_ended",
+    };
+
+    expect(isSchemaValue(DomainEventSchemas["lead.reopened"], createEvent("lead.reopened"))).toBe(
+      true,
+    );
+    expect(
+      isSchemaValue(
+        DomainEventSchemasByVersion["lead.reopened"]["1"],
+        createEvent("lead.reopened", legacyBookingReopen),
+      ),
+    ).toBe(true);
+    expect(
+      Reflect.get(Reflect.get(DomainEventSchemas["lead.reopened"], "properties"), "schema_version"),
+    ).toMatchObject({ const: "1" });
+  });
+
+  it.each([disqualifiedToEngaged, bookingRequestedToQualified])(
+    "accepts an exact V2 transition variant %#",
+    (payload) => {
+      const event = createLeadReopenedV2Event(payload);
+
+      expect(isSchemaValue(LeadReopenedDomainEventPayloadV2Schema, payload)).toBe(true);
+      expect(isSchemaValue(LeadReopenedDomainEventV2Schema, event)).toBe(true);
+      expect(isSchemaValue(DomainEventSchemasByVersion["lead.reopened"]["2"], event)).toBe(true);
+      expect(isSchemaValue(DomainEventSchema, event)).toBe(false);
+    },
+  );
+
+  it.each([
+    {
+      lead_status: "qualified",
+      previous_lead_status: "disqualified",
+      reason_code: "invalid_pair",
+    },
+    {
+      lead_status: "engaged",
+      previous_lead_status: "booking_requested",
+      reason_code: "invalid_pair",
+    },
+    {
+      lead_status: "qualified",
+      previous_lead_status: "booking_requested",
+      reason_code: "missing_request",
+    },
+    {
+      appointment_request_id: "not-a-uuid",
+      lead_status: "qualified",
+      previous_lead_status: "booking_requested",
+      reason_code: "invalid_request",
+    },
+    {
+      ...disqualifiedToEngaged,
+      appointment_request_id: ID,
+    },
+    {
+      lead_status: "new",
+      previous_lead_status: "disqualified",
+      reason_code: "unknown_current_state",
+    },
+    {
+      lead_status: "engaged",
+      previous_lead_status: "closed",
+      reason_code: "unknown_previous_state",
+    },
+    {
+      ...bookingRequestedToQualified,
+      unexpected: true,
+    },
+  ])("rejects an invalid or ambiguous V2 payload %#", (payload) => {
+    expect(isSchemaValue(LeadReopenedDomainEventPayloadV2Schema, payload)).toBe(false);
+    expect(isSchemaValue(LeadReopenedDomainEventV2Schema, createLeadReopenedV2Event(payload))).toBe(
+      false,
+    );
+  });
+
+  it("rejects cross-version envelope identities", () => {
+    const v2Event = createLeadReopenedV2Event(bookingRequestedToQualified);
+
+    expect(
+      isSchemaValue(LeadReopenedDomainEventV2Schema, { ...v2Event, schema_version: "1" }),
+    ).toBe(false);
+    expect(
+      isSchemaValue(LeadReopenedDomainEventV2Schema, {
+        ...v2Event,
+        schema_id: "LeadReopenedDomainEvent.v1",
+      }),
+    ).toBe(false);
   });
 });
 

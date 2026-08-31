@@ -14,6 +14,8 @@ The following invariants apply to every channel and tenant:
 - One tenant's failure, traffic spike, or budget exhaustion must not corrupt or expose another tenant's state.
 - If AI is unavailable or unsafe, the system preserves the inbound message and moves to an approved fallback or human handoff; it never fabricates a successful answer.
 - `appointment_request.confirmed` means the customer has explicitly confirmed after staff acceptance. Confirmation evidence source is `customer_session`, `telegram`, or an authorized `staff_attested_external` record whose method is `phone` or `in_person`; durable notification alone is not customer confirmation.
+- Confirmation requires matching expected aggregate and current offer versions and an explicit clock instant in `[issued_at, expires_at)`; equality with `expires_at` is expired.
+- A terminal handoff never leaves conversation ownership implicit: the command/job records `resume_ai`, `resolve_conversation`, or `successor_handoff`. No terminal path resumes AI by default.
 
 ## Reliability model
 
@@ -99,8 +101,8 @@ The system assumes webhooks can arrive out of order. `provider_occurred_at` is u
 - Work is serialized per conversation using a transaction-scoped lock or optimistic aggregate version. It is not globally serialized.
 - Every worker re-loads current tenant-scoped state before applying a decision. A decision made against a stale version is discarded and re-evaluated, not force-applied.
 - A late message is always retained. If applying it would regress a terminal state, it is marked late and surfaced for staff review rather than replaying invalid transitions.
-- Independent conversations can run concurrently. Commands affecting the same appointment request use its version/state guard.
-- `staff_accepted` advances to `awaiting_customer_confirmation` only after the customer-confirmation request is durably queued. Only a valid customer action advances it to `confirmed`.
+- Independent conversations can run concurrently. Commands affecting the same appointment request use its aggregate-version/state guard; confirmation additionally matches the current `offer_version`.
+- `staff_accepted` advances to `awaiting_customer_confirmation` only after the customer-confirmation request is durably queued. Only a valid customer action within the capability's half-open validity interval and against both current versions advances it to `confirmed`.
 - A staff rejection/cancellation racing with AI output wins according to the state machine. The stale AI action fails policy validation.
 
 ### Transactional outbox and jobs
@@ -353,6 +355,14 @@ Scheduled, idempotent checks cover:
 - provider-accepted outbound attempt not reflected locally, where provider status can be queried;
 - `staff_accepted` request lacking a durable customer-confirmation intent;
 - `awaiting_customer_confirmation` request past its configured expiry;
+- confirmation evidence whose accepted command did not match both the locked
+  aggregate version and current `offer_version`, or whose explicit clock instant
+  was outside `[issued_at, expires_at)`;
+- `awaiting_staff` conversation without an active handoff, or with an automation
+  mode inconsistent with requested (`paused`) versus assigned/in-progress
+  (`staff`) ownership;
+- terminal handoff without an explicit conversation disposition, or any
+  terminal handoff that resumed AI without `resume_ai` being supplied;
 - terminal appointment state inconsistent with its transition history;
 - source domain events missing analytics facts;
 - `ai_run` usage with missing pricing-catalog mapping;

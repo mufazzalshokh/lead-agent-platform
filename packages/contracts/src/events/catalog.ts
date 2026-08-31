@@ -25,10 +25,46 @@ import {
   boundedCodeArraySchema,
   boundedCodeSchema,
   defineDomainEvent,
+  defineDomainEventVersion,
   embedSchema,
   embedSchemaAs,
   type JsonWire,
 } from "./internal.js";
+
+const LeadReopenedDomainEventPayloadV2Schema = Type.Union(
+  [
+    Type.Object(
+      {
+        lead_status: Type.Literal("engaged"),
+        previous_lead_status: Type.Literal("disqualified"),
+        reason_code: boundedCodeSchema(),
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        appointment_request_id: embedSchema(AppointmentRequestIdSchema),
+        lead_status: Type.Literal("qualified"),
+        previous_lead_status: Type.Literal("booking_requested"),
+        reason_code: boundedCodeSchema(),
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  {
+    $id: "LeadReopenedDomainEventPayload.v2",
+    description:
+      "Exact lead reopening facts for disqualification recovery or a retry after an ended appointment request.",
+  },
+);
+
+export const leadReopenedDomainEventV2Definition = defineDomainEventVersion(
+  "lead.reopened",
+  "lead",
+  LeadIdSchema,
+  "2",
+  LeadReopenedDomainEventPayloadV2Schema,
+);
 
 const organizationStatusSchema = () =>
   Type.Union([Type.Literal("active"), Type.Literal("suspended"), Type.Literal("closed")]);

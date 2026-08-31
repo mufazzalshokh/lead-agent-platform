@@ -55,7 +55,13 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "SendChannelMessageSchema",
     "ChannelCapabilitiesSchema",
   ],
-  event: ["DomainEventNameSchema", "DomainAggregateTypeSchema", "DomainEventSchema"],
+  event: [
+    "DomainEventNameSchema",
+    "DomainAggregateTypeSchema",
+    "DomainEventSchema",
+    "LeadReopenedDomainEventV2Schema",
+    "LeadReopenedDomainEventPayloadV2Schema",
+  ],
   shared: [
     "ActorRefSchema",
     "UuidV7Schema",

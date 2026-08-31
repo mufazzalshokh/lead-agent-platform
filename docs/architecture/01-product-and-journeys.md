@@ -470,6 +470,10 @@ version matches.
    `staff_attested_external` with the separate customer-act time, method, offer
    version, actor, and audit evidence. This attestation never treats staff
    acceptance itself as customer confirmation.
+   The confirmation command's expected AppointmentRequest aggregate version and
+   the evidence `offer_version` must both match the locked current request. The
+   grant is valid only in `[issued_at, expires_at)`; at `now == expires_at` it is
+   expired and cannot confirm.
 
 **Reject path:**
 
@@ -483,8 +487,10 @@ version matches.
 
 **Concurrency and safety:** A second accept/reject receives a conflict with the
 current resource. Customer confirmation tokens are single-purpose, hashed,
-expiring, and bound to organization, request, offer version, and participant.
-Staff acceptance and notification delivery are not final booking.
+expiring, and bound to organization, request aggregate version, offer version,
+participant, issuance time, and expiry. Both versions are checked; neither is a
+substitute for the other. Staff acceptance and notification delivery are not
+final booking.
 
 **Evidence:** actor, old/new state, version, reason code, offered slot,
 confirmation action, and separate outbound delivery.
@@ -495,17 +501,26 @@ confirmation action, and separate outbound delivery.
 
 1. Explicit human intent bypasses persuasion and creates or reuses an active
    handoff.
-2. The conversation moves to `awaiting_staff`; handoff starts `requested`.
+2. The conversation moves to `awaiting_staff`; handoff starts `requested`; its
+   automation mode is `paused`.
 3. Eligible staff are notified through the outbox.
 4. The lead receives an honest acknowledgement and expected response window
    from configured policy.
-5. Staff assigns/claims (`assigned`), begins handling (`in_progress`), replies,
-   and resolves (`resolved`).
+5. Staff assigns/claims (`assigned`) or begins handling (`in_progress`), so the
+   automation mode is `staff`; staff replies and resolves (`resolved`).
 
 **Exceptions and safety:** Duplicate requests reuse the active handoff.
 Unstaffed/out-of-hours policy provides configured expectations without claiming
 immediate availability. AI may continue only for explicitly safe acknowledgments
-and cannot impersonate staff.
+and cannot impersonate staff. Resolving, cancelling, or expiring the active
+handoff requires exactly one explicit disposition: `resume_ai`,
+`resolve_conversation`, or `successor_handoff`. There is no default. `resume_ai`
+produces Conversation `open` with mode `ai`; `resolve_conversation` produces
+`resolved` with mode `paused`; `successor_handoff` atomically creates the
+successor and keeps the Conversation `awaiting_staff`, using `paused` while the
+successor is requested and `staff` once it is assigned/in progress. Resolved or
+closed Conversations use `paused`; cancellation/expiry never resumes AI merely
+because the prior handoff became terminal.
 
 **Evidence:** trigger (`customer_requested`), queue/assignee, SLA timestamps,
 transition history, and response delivery.

@@ -43,10 +43,21 @@ Tests live next to modules for focused unit coverage and under `tests/` for cros
 At minimum, unit tests cover:
 
 - all allowed and rejected transitions for `lead`, `conversation`, `appointment_request`, and `handoff`;
+- `lead.reopened` V1 wire compatibility plus both exact V2 variants, including
+  rejection of mismatched status pairs, missing/foreign appointment IDs,
+  unknown states, and unknown fields;
+- specialized Conversation events for create, resolve, and close, proving those
+  commands do not also emit a generic status-change event;
 - terminal states and idempotent replay of a known command;
 - aggregate-version conflicts and stale AI decision rejection;
 - `requested -> staff_accepted -> awaiting_customer_confirmation -> confirmed`, proving that staff acceptance, notification enqueue/delivery, and timeout cannot directly produce `confirmed`;
+- confirmation against both expected aggregate version and current
+  `offer_version`, with an explicit clock covering before issuance, issuance,
+  immediately before expiry, equality at expiry, and after expiry;
 - rejection, cancellation, expiry, late confirmation, repeated confirmation, and staff/customer race cases;
+- handoff requested/assigned/in-progress automation modes, all three explicit
+  terminal conversation dispositions, no implicit AI resume on cancellation or
+  expiry, and versioned `assigned -> assigned` reassignment provenance;
 - qualification rules driven by tenant configuration without language-specific domain branches;
 - missing authoritative price/service/hour/availability information selecting refusal/handoff rather than a fact;
 - phone normalization/validation, absent/malformed contact information, and consent state;
@@ -68,7 +79,8 @@ Given any syntactically valid `AgentDecision`, deterministic policy tests prove:
 - tenant and actor/resource scope come from trusted context, not model fields;
 - AI cannot set authoritative price, service, availability, diagnosis, authorization, billing, or final booking state;
 - referenced service/FAQ/policy IDs exist for the same tenant and current revision;
-- a requested appointment is a preference until staff accepts and the customer confirms;
+- a requested appointment is a preference until staff accepts and the customer
+  confirms against both current versions inside `[issued_at, expires_at)`;
 - missing facts and medical/guarantee requests select a safe response/handoff;
 - no tool/action is executed after validation or policy failure;
 - replays and stale state cannot repeat protected side effects;
@@ -152,10 +164,10 @@ The production-like E2E harness starts web, API, worker, and PostgreSQL with det
 | Lead supplies phone | Valid normalized contact is scoped/consented; malformed value is not persisted as valid contact |
 | Lead requests appointment | Preference and location/service references create one `requested` item; no calendar write |
 | Staff receives request | Durable in-app inbox item is P0; optional outbound alert failure does not lose the request |
-| Staff accepts/rejects | Authorized role and valid state required; accept requests customer confirmation, reject remains terminal |
-| Customer confirms | Valid evidence source `customer_session` or `telegram` creates `confirmed`; duplicate confirmation is harmless |
+| Staff accepts/rejects | Authorized role and valid state required; accept requests customer confirmation, reject remains terminal and any `booking_requested -> qualified` lead reopen emits `lead.reopened` V2 with the appointment request ID |
+| Customer confirms | Valid evidence source `customer_session` or `telegram`, matching aggregate and offer versions, and explicit time in `[issued_at, expires_at)` create `confirmed`; equality at expiry is rejected and duplicate confirmation is harmless |
 | Lead confirmed offline | Authorized `staff_attested_external` evidence uses method `phone` or `in_person` and full audit; other sources/methods and all AI attempts are rejected |
-| Lead requests human | Handoff requested once, conversation becomes `awaiting_staff`, staff inbox shows it |
+| Lead requests human | Handoff requested once with `awaiting_staff + paused`; assignment/in-progress uses `awaiting_staff + staff`; terminal handling supplies an explicit disposition and cancellation/expiry never resumes AI implicitly |
 | AI cannot answer safely | No invented fact/action; reviewed message and handoff path |
 | AI provider unavailable | Inbound remains durable; safe localized fallback/handoff; failed AI telemetry and no false success |
 | Duplicate webhook arrives | Same acknowledgment/resource; one message, domain command, side effect, and analytics fact |
@@ -166,7 +178,7 @@ The production-like E2E harness starts web, API, worker, and PostgreSQL with det
 
 Run each customer-language journey in English, Russian, and Uzbek where presentation/interpretation is involved. Domain transition assertions are shared across languages.
 
-Cross-boundary E2E/regression scenarios additionally prove that a contact identity is never merged across tenants; widget and Telegram identities within one tenant link only through verified deterministic evidence (never AI inference); a knowledge revision changed during inference invalidates the stale decision; disabling a channel connection before a queued effect prevents delivery safely; confirmation after rejection/expiry/offer replacement is rejected; two staff decisions race without dual success; deletion/anonymization during active work cancels or tombstones pending effects under policy; and ambiguous local/DST time is clarified rather than silently shifted.
+Cross-boundary E2E/regression scenarios additionally prove that a contact identity is never merged across tenants; widget and Telegram identities within one tenant link only through verified deterministic evidence (never AI inference); a knowledge revision changed during inference invalidates the stale decision; disabling a channel connection before a queued effect prevents delivery safely; confirmation after rejection, expiry (including equality at `expires_at`), aggregate-version change, or offer replacement is rejected; two staff decisions race without dual success; deletion/anonymization during active work cancels or tombstones pending effects under policy; and ambiguous local/DST time is clarified rather than silently shifted.
 
 ## Tenant-isolation and security regression suite
 

@@ -257,10 +257,10 @@ request's tenant.
 | `POST /appointment-requests/{id}/revenue-attributions` | `outcome:write` | Add a staff-manual `charge` or `adjustment` for a confirmed request using positive integer minor units, ISO currency, category, recognized time, actor/source/audit; idempotency required. |
 | `POST /appointment-requests/{id}/revenue-attributions/{attribution_id}/reverse` | `outcome:write` | Append one same-currency reversal linked to an unreversed attribution; reason and idempotency required; original row remains immutable. |
 | `GET /handoffs` | `handoff:read` | Cursor list; state/assignee filters. |
-| `POST /handoffs/{id}/assign` | `handoff:write` | Assignee membership is checked in this organization. |
+| `POST /handoffs/{id}/assign` | `handoff:write` | Assignee membership is checked in this organization; `If-Match` and idempotency are required. Reassignment is a versioned `assigned -> assigned` transition whose history records old and new assignees while its event carries the new assignee only. |
 | `POST /handoffs/{id}/start` | `handoff:write` | Transition to `in_progress`. |
-| `POST /handoffs/{id}/resolve` | `handoff:write` | Resolution code; versioned/idempotent. |
-| `POST /handoffs/{id}/cancel` | `handoff:write` | Authorized actor, reason, `If-Match`, and idempotency; terminal transition only when policy permits. |
+| `POST /handoffs/{id}/resolve` | `handoff:write` | Resolution code plus explicit conversation disposition `resume_ai\|resolve_conversation\|successor_handoff`; versioned/idempotent. |
+| `POST /handoffs/{id}/cancel` | `handoff:write` | Authorized actor, reason, explicit conversation disposition, `If-Match`, and idempotency; terminal transition only when policy permits. |
 | `GET /notifications` | `notification:read` | Durable in-app staff inbox; cursor list filtered by assignment/type/read state and membership location scope. This is the P0 notification authority. |
 | `POST /notifications/{id}/mark-read` | `notification:read` | Idempotent actor-specific read acknowledgement; it never changes the referenced domain state. |
 | `GET /audit-events` | `audit:read` | Owner/admin; append-only event metadata, no unrestricted payload dumps. |
@@ -389,7 +389,7 @@ tenant budget.
 | `GET /conversations/{id}` | conversation-bound token | Returns only the lead-visible state. Cross-conversation IDs return `404`. |
 | `GET /conversations/{id}/messages` | conversation-bound token | Cursor/`after` retrieval; only customer-visible messages. |
 | `POST /conversations/{id}/messages` | conversation-bound token | Text only in V1; idempotency required. Returns `202` when orchestration is queued. |
-| `POST /appointment-requests/{id}/confirm` | conversation-bound token + one-time confirmation grant | Deterministically confirms only from `awaiting_customer_confirmation`; idempotent. |
+| `POST /appointment-requests/{id}/confirm` | conversation-bound token + one-time confirmation grant | Deterministically confirms only from `awaiting_customer_confirmation` when expected aggregate version and current `offer_version` both match and explicit `now` is in the grant's half-open validity interval; idempotent. |
 | `POST /appointment-requests/{id}/decline` | same | Deterministically cancels/declines according to policy; idempotent. |
 | `POST /handoffs` | conversation-bound token | Explicit human request; idempotent and safe if one active handoff already exists. |
 | `POST /consents/{purpose}/withdraw` | conversation-bound token | **P1 reserved:** withdraws only consent bound to this subject/session/tenant and appends evidence without exposing other contact data. |
@@ -420,13 +420,25 @@ text nor AI output is trusted HTML.
 
 A successful prepare-confirmation worker creates a short-lived, random,
 single-use confirmation grant bound to the appointment request, conversation,
-customer channel identity, intended action set, and current appointment version,
-then makes its channel delivery intent durable in the same transaction.
+customer channel identity, intended action set, current appointment aggregate
+version, current `offer_version`, `issued_at`, and `expires_at`, then makes its
+channel delivery intent durable in the same transaction.
 The grant is stored hashed. Telegram/other provider callback payloads contain an
 opaque lookup token, not PII or an organization ID. Expired/stale grants fail
-safely; replay returns the original result only for the same customer and action.
+safely. A confirmation is valid only when both versions still match and the
+application-supplied clock instant satisfies `issued_at <= now < expires_at`;
+`now == expires_at` is expired. Replay returns the original result only for the
+same customer and action.
 Natural-language confirmation may be interpreted by AI but still must produce a
 validated application action and pass the same binding and state policy.
+
+Every handoff terminal command or expiry job supplies one explicit conversation
+disposition: `resume_ai`, `resolve_conversation`, or `successor_handoff`. No
+endpoint or job derives a default. Requested handoffs produce
+`awaiting_staff + paused`, assigned/in-progress handoffs produce
+`awaiting_staff + staff`, explicit resume produces `open + ai`, and resolved or
+closed conversations use `paused`; cancellation/expiry never resumes AI
+implicitly.
 
 ## Integration/webhook API
 

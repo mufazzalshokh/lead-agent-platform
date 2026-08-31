@@ -2,7 +2,7 @@
 
 Stage 2 publishes one runtime JSON Schema source of truth from
 `packages/contracts`. The reviewed baseline is
-`packages/contracts/snapshots/public-contracts.v1.json`; it inventories 201
+`packages/contracts/snapshots/public-contracts.v1.json`; it inventories 203
 schemas across shared primitives, API contracts, domain events, channel
 contracts, and the AgentDecision contract.
 
@@ -39,6 +39,29 @@ fixtures. A snapshot update records intent; it does not make a breaking change
 safe. A version-requiring change still needs the API/event versioning decision
 and migration plan required by the architecture.
 
+## `lead.reopened` V1-to-V2 migration freeze
+
+`lead.reopened` remains one semantic event name, so the accepted semantic event
+inventory remains 61. Its deployed V1 envelope/payload schema identities and
+representations, V1 map entries, and `DomainEventSchema.v1` remain unchanged
+and preserve historical V1 wire validation behavior.
+
+V2 is an additive, independently identified envelope/payload pair with the same
+`event_type` and `schema_version: "2"`. Its closed payload accepts exactly one
+of:
+
+- `disqualified -> engaged` with `reason_code`; or
+- `booking_requested -> qualified` with canonical `appointment_request_id` and
+  `reason_code`.
+
+The version-aware event and payload registries expose V1 and V2 under
+`lead.reopened`; every other semantic event currently exposes V1 only.
+Consumers dispatch using `event_type` plus `schema_version` and verify the
+matching `schema_id`. Rollout is consumers-first. After the Stage 3 producer is
+implemented, new lead-reopen events use V2 only: producers do not dual-emit,
+rewrite history, or reinterpret a structurally valid legacy V1 payload as V2
+domain authority. V1 retention/read support is not removed by this migration.
+
 ## Audit boundaries
 
 The test suite locks the root runtime export surface, catalog completeness,
@@ -64,14 +87,14 @@ of this Stage 2 drift gate.
 
 ## Stage 0 to Stage 2 traceability
 
-| Stage 2 area        | Canonical runtime schemas and derived types                                                         | Verification                                                               |
-| ------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Shared primitives   | IDs, UTC timestamp, locale, money, actor, and version schemas/types                                 | `shared-primitives.test.ts` plus catalog identity/bounds audits            |
-| API contracts       | Problem/error, validation issue, pagination, metadata, and envelope factories                       | `api-contracts.test.ts` plus catalog/export audits                         |
-| Domain events       | 61 event envelopes, 61 payloads, event/aggregate vocabularies, and derived event types              | `domain-events.test.ts` plus schema-ID/union/catalog audits                |
-| Channels            | Channel vocabularies, bounded identifiers, inbound/outbound unions, capabilities, and derived types | `channel-contracts.test.ts` plus security/union/catalog audits             |
-| AgentDecision       | Intent/action vocabularies, facts, claims, message, safety, and `AgentDecisionV1`                   | `agent-decision-contract.test.ts` plus authority/vocabulary/catalog audits |
-| Compatibility/drift | Deterministic 201-schema snapshot and conservative compatibility classifier                         | `contract-compatibility.test.ts`, `contracts:check`, and `ci:verify`       |
+| Stage 2 area        | Canonical runtime schemas and derived types                                                                                 | Verification                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Shared primitives   | IDs, UTC timestamp, locale, money, actor, and version schemas/types                                                         | `shared-primitives.test.ts` plus catalog identity/bounds audits              |
+| API contracts       | Problem/error, validation issue, pagination, metadata, and envelope factories                                               | `api-contracts.test.ts` plus catalog/export audits                           |
+| Domain events       | 61 semantic event types; 62 versioned event envelopes and 62 payloads; event/aggregate vocabularies and derived event types | `domain-events.test.ts` plus schema-ID/version-registry/union/catalog audits |
+| Channels            | Channel vocabularies, bounded identifiers, inbound/outbound unions, capabilities, and derived types                         | `channel-contracts.test.ts` plus security/union/catalog audits               |
+| AgentDecision       | Intent/action vocabularies, facts, claims, message, safety, and `AgentDecisionV1`                                           | `agent-decision-contract.test.ts` plus authority/vocabulary/catalog audits   |
+| Compatibility/drift | Deterministic 203-schema snapshot and conservative compatibility classifier                                                 | `contract-compatibility.test.ts`, `contracts:check`, and `ci:verify`         |
 
 This mapping covers the accepted Stage 0 requirements assigned to Stage 2.
 Authentication, domain behavior, persistence, provider projection, and live

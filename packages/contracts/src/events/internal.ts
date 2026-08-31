@@ -167,3 +167,74 @@ export const defineDomainEvent = <
 
   return { eventSchema, payloadSchema };
 };
+
+/**
+ * Defines an additional schema version for an existing semantic event type.
+ * The caller supplies a closed, canonically identified payload schema so a
+ * version may use a discriminated union without changing the V1 helper.
+ */
+export const defineDomainEventVersion = <
+  const EventType extends string,
+  const AggregateType extends string,
+  AggregateIdSchema extends Type.TSchema,
+  PayloadSchema extends Type.TSchema,
+>(
+  eventType: EventType,
+  aggregateType: AggregateType,
+  aggregateIdSchema: AggregateIdSchema,
+  schemaVersion: string,
+  payloadSchema: PayloadSchema,
+): EventDefinition & {
+  readonly eventSchema: Type.TObject<{
+    actor: Type.TUnsafe<ActorRef>;
+    aggregate_id: Type.TUnsafe<Type.Static<AggregateIdSchema>>;
+    aggregate_type: Type.TLiteral<AggregateType>;
+    aggregate_version: Type.TUnsafe<AggregateVersion>;
+    causation_id: Type.TUnion<[Type.TUnsafe<CausationId>, Type.TNull]>;
+    correlation_id: Type.TUnsafe<CorrelationId>;
+    event_id: Type.TUnsafe<EventId>;
+    event_type: Type.TLiteral<EventType>;
+    occurred_at: Type.TUnsafe<UtcTimestamp>;
+    organization_id: Type.TUnsafe<OrganizationId>;
+    payload: Type.TUnsafe<Type.Static<PayloadSchema>>;
+    request_id: Type.TUnion<[Type.TUnsafe<RequestId>, Type.TNull]>;
+    schema_id: Type.TUnsafe<SchemaId>;
+    schema_version: Type.TUnsafe<SchemaVersion>;
+  }>;
+  readonly payloadSchema: PayloadSchema;
+} => {
+  const prefix = eventSchemaPrefix(eventType);
+  const schemaId = requireSchemaId(`${prefix}DomainEvent.v${schemaVersion}`);
+  const expectedPayloadSchemaId = requireSchemaId(`${prefix}DomainEventPayload.v${schemaVersion}`);
+
+  if (Reflect.get(payloadSchema, "$id") !== expectedPayloadSchemaId) {
+    throw new TypeError(`Domain event payload schema ID must be ${expectedPayloadSchemaId}`);
+  }
+
+  const eventSchema = Type.Object(
+    {
+      actor: embedSchema(ActorRefSchema),
+      aggregate_id: embedSchema(aggregateIdSchema),
+      aggregate_type: Type.Literal(aggregateType),
+      aggregate_version: embedSchema(AggregateVersionSchema),
+      causation_id: Type.Union([embedSchema(CausationIdSchema), Type.Null()]),
+      correlation_id: embedSchema(CorrelationIdSchema),
+      event_id: embedSchema(EventIdSchema),
+      event_type: Type.Literal(eventType),
+      occurred_at: embedSchema(UtcTimestampSchema),
+      organization_id: embedSchema(OrganizationIdSchema),
+      payload: embedSchema(payloadSchema),
+      request_id: Type.Union([embedSchema(RequestIdSchema), Type.Null()]),
+      schema_id: schemaIdLiteral(schemaId),
+      schema_version: schemaVersionLiteral(schemaVersion),
+    },
+    {
+      $id: schemaId,
+      additionalProperties: false,
+      description:
+        "Versioned committed domain fact. Provenance fields do not authenticate or authorize a consumer.",
+    },
+  );
+
+  return { eventSchema, payloadSchema };
+};

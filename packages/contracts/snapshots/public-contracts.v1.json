@@ -35043,6 +35043,344 @@
       "schema_version": "1"
     },
     {
+      "category": "event",
+      "export_name": "LeadReopenedDomainEventPayloadV2Schema",
+      "schema": {
+        "$id": "LeadReopenedDomainEventPayload.v2",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "lead_status": {
+                "const": "engaged",
+                "type": "string"
+              },
+              "previous_lead_status": {
+                "const": "disqualified",
+                "type": "string"
+              },
+              "reason_code": {
+                "description": "Bounded stable code; never free-form diagnostics or customer content.",
+                "maxLength": 100,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "lead_status",
+              "previous_lead_status",
+              "reason_code"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "appointment_request_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "lead_status": {
+                "const": "qualified",
+                "type": "string"
+              },
+              "previous_lead_status": {
+                "const": "booking_requested",
+                "type": "string"
+              },
+              "reason_code": {
+                "description": "Bounded stable code; never free-form diagnostics or customer content.",
+                "maxLength": 100,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "appointment_request_id",
+              "lead_status",
+              "previous_lead_status",
+              "reason_code"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Exact lead reopening facts for disqualification recovery or a retry after an ended appointment request."
+      },
+      "schema_id": "LeadReopenedDomainEventPayload.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "event",
+      "export_name": "LeadReopenedDomainEventV2Schema",
+      "schema": {
+        "$id": "LeadReopenedDomainEvent.v2",
+        "additionalProperties": false,
+        "description": "Versioned committed domain fact. Provenance fields do not authenticate or authorize a consumer.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "customer",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "member",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "type": "null"
+                  },
+                  "actor_type": {
+                    "const": "system",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "platform_operator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Event attribution only. Runtime validation does not authenticate or authorize the actor."
+          },
+          "aggregate_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "const": "lead",
+            "type": "string"
+          },
+          "aggregate_version": {
+            "description": "Monotonic positive safe integer aggregate version.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "correlation_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "lead.reopened",
+            "type": "string"
+          },
+          "occurred_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "organization_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "lead_status": {
+                    "const": "engaged",
+                    "type": "string"
+                  },
+                  "previous_lead_status": {
+                    "const": "disqualified",
+                    "type": "string"
+                  },
+                  "reason_code": {
+                    "description": "Bounded stable code; never free-form diagnostics or customer content.",
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "lead_status",
+                  "previous_lead_status",
+                  "reason_code"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "appointment_request_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "lead_status": {
+                    "const": "qualified",
+                    "type": "string"
+                  },
+                  "previous_lead_status": {
+                    "const": "booking_requested",
+                    "type": "string"
+                  },
+                  "reason_code": {
+                    "description": "Bounded stable code; never free-form diagnostics or customer content.",
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "appointment_request_id",
+                  "lead_status",
+                  "previous_lead_status",
+                  "reason_code"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Exact lead reopening facts for disqualification recovery or a retry after an ended appointment request."
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_id": {
+            "const": "LeadReopenedDomainEvent.v2",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "2",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor",
+          "aggregate_id",
+          "aggregate_type",
+          "aggregate_version",
+          "causation_id",
+          "correlation_id",
+          "event_id",
+          "event_type",
+          "occurred_at",
+          "organization_id",
+          "payload",
+          "request_id",
+          "schema_id",
+          "schema_version"
+        ],
+        "type": "object"
+      },
+      "schema_id": "LeadReopenedDomainEvent.v2",
+      "schema_version": "2"
+    },
+    {
       "category": "shared",
       "export_name": "LocaleSchema",
       "schema": {

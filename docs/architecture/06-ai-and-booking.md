@@ -345,7 +345,7 @@ create a new schema and eval suite.
 | `none` | Reply without a protected action, or intentionally suppress. | Every factual statement has applicable source evidence; output safety and length checks pass. |
 | `request_information` | Ask for one missing field. | Field is actually missing and permitted; do not repeatedly request optional data. |
 | `create_appointment_request` | Customer has requested an appointment. | Conversation identity, service/location policy, contact/consent requirements, valid preference, no duplicate active request, and state transition all pass. No availability claim. |
-| `confirm_appointment` | Customer language appears to accept the staff-approved proposal. | Customer identity/grant or bound channel provenance, exactly one matching `awaiting_customer_confirmation` request, version, and unambiguous intent. Otherwise ask explicitly or hand off. |
+| `confirm_appointment` | Customer language appears to accept the staff-approved proposal. | Customer identity/grant or bound channel provenance, exactly one matching `awaiting_customer_confirmation` request, matching aggregate version and current `offer_version`, explicit `now` in `[issued_at, expires_at)`, and unambiguous intent. Otherwise ask explicitly or hand off. |
 | `decline_appointment` | Customer declines the proposal. | Same binding and unambiguous-intent checks; apply configured decline/cancel transition. |
 | `request_handoff` | A human is required. | Reason is normalized; active handoff is reused; staff inbox notification is transactional. |
 
@@ -586,8 +586,11 @@ slot; it does not mean an external calendar event exists.
    original widget customer is offline/unreachable, the staff inbox shows an
    external-contact task instead of assuming delivery.
 4. **Customer confirms**: a bound widget customer session or verified Telegram
-   callback/message confirms the exact appointment ID/version, or staff records
-   an external confirmation they actually obtained. The domain transitions
+   callback/message confirms the exact appointment ID, expected aggregate
+   version, and current `offer_version`, or staff records an external
+   confirmation they actually obtained. The command receives `now` from the
+   application clock and succeeds only for `issued_at <= now < expires_at`;
+   equality with `expires_at` is expired. The domain transitions
    `awaiting_customer_confirmation -> confirmed`, records provenance, actor,
    channel/source and time, and queues customer/staff updates.
 5. **Expiry/cancellation**: versioned jobs expire undecided/unconfirmed requests
@@ -600,8 +603,8 @@ slot; it does not mean an external calendar event exists.
 
 | Source | Proof and actor |
 |---|---|
-| `customer_session` | Widget token bound to the conversation/customer plus either a valid single-use request/version grant or an unambiguous message for exactly one current offer; actor is the contact/channel identity. |
-| `telegram` | Verified Telegram webhook and matching channel connection/sender; an explicit callback uses an opaque single-use grant, while an unambiguous message must identify exactly one current offer; actor is the Telegram contact identity. |
+| `customer_session` | Widget token bound to the conversation/customer plus either a valid single-use grant bound to request, aggregate version, and current `offer_version`, or an unambiguous message for exactly one current offer; actor is the contact/channel identity. |
+| `telegram` | Verified Telegram webhook and matching channel connection/sender; an explicit callback uses an opaque single-use grant bound to request, aggregate version, and current `offer_version`, while an unambiguous message must identify exactly one current offer; actor is the Telegram contact identity. |
 | `staff_attested_external` | Authorized staff states they contacted the customer outside a reachable V1 channel; requires source method (`phone` or `in_person`), confirmation timestamp, actor membership, optional non-sensitive note, recent authentication, and audit event. |
 
 Staff attestation is not silent staff confirmation: the API/UI must label it as
@@ -655,7 +658,10 @@ application-validated fact with timestamp/source—not a model invention.
   context, transaction conflict, and channel failure and assert one safe reply,
   one handoff/request, and no duplicate protected action.
 - Booking state-machine tests cover every allowed edge and reject every other
-  pair; concurrency tests prove two staff/customer decisions cannot both win.
+  pair; confirmation tests require both aggregate and offer versions and cover
+  before-issued, just-issued, just-before-expiry, equal-expiry, and stale-offer
+  cases with an explicit clock. Concurrency tests prove two staff/customer
+  decisions cannot both win.
 - E2E tests prove widget and Telegram confirmation binding, expired/replayed
   tokens, offline `staff_attested_external` audit, tenant/location permission,
   notification outbox, and absence of any external calendar write.

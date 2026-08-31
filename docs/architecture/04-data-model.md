@@ -693,6 +693,13 @@ IDNA ambiguity, and wildcard ports fail validation.
 - **Deletion/RLS:** forced RLS; resolve/close for lifecycle. Payload deletion
   occurs through messages; conversation shell may remain for funnel/audit.
 
+Conversation/handoff coupling is explicit and transactional. A requested
+handoff sets `awaiting_staff + paused`; assignment or work in progress sets
+`awaiting_staff + staff`; an explicit AI-resume disposition sets `open + ai`;
+conversation resolution sets `resolved + paused`; and conversation closure
+sets `closed + paused`. Cancelling, expiring, or resolving a handoff never
+selects a conversation outcome by default and never implicitly resumes AI.
+
 ### 5.8 `messages`
 
 - **Purpose:** Canonical immutable inbound/outbound/staff-internal message and
@@ -747,14 +754,20 @@ the same physical message unique key, not a second field or dedupe system.
   `staff_decision_reason_code nullable`,
   offered `start_at`/`end_at` nullable, `offered_time_zone nullable`,
   `offered_local_start nullable`, `offer_version integer default 0`,
-  `offer_expires_at nullable`, `confirmation_token_hash nullable`,
+  `confirmation_issued_at nullable`, `offer_expires_at nullable`,
+  `confirmation_token_hash nullable`,
   `confirmation_token_consumed_at nullable`, `confirmed_at nullable`,
   `confirmation_source nullable`,
   `rejection_reason_code`, `cancellation_reason_code`,
   `cancelled_by_type nullable`, `expired_at`, common mutable columns.
 - **PK/FKs/tenant:** PK; composite FKs to every tenant-owned lead/contact/
   conversation/message/service/version/location/version/policy/member
-  reference. Database checks ensure `start_at < end_at`.
+  reference. Database checks ensure `start_at < end_at` and, when a
+  confirmation capability exists, `confirmation_issued_at < offer_expires_at`.
+  A confirmation command must match both the locked request aggregate version
+  and its current `offer_version`. Its explicit clock instant is valid only in
+  the half-open interval `[confirmation_issued_at, offer_expires_at)`; equality
+  with `offer_expires_at` is expired.
 - **Uniqueness:** (`organization_id`, `request_dedupe_key`);
   partial unique (`organization_id`, `source_message_id`) when one source
   message is the submission; partial unique `confirmation_token_hash` when
@@ -826,8 +839,10 @@ the same physical message unique key, not a second field or dedupe system.
   non-null; (`organization_id`, `id`).
 - **Checks:** staff-attested source requires member, method, reason, and no claim
   that staff acceptance was customer confirmation; direct sources prohibit
-  attestation fields. Evidence offer version must equal the locked current
-  request during the confirmation transaction.
+  attestation fields. The command's expected aggregate version and offer
+  version must both equal the locked current request during the confirmation
+  transaction. Evidence persists the accepted offer version; the transition
+  ledger persists the resulting aggregate version.
 - **Indexes:** (`organization_id`, `appointment_request_id`,
   `recorded_at desc`); (`organization_id`, `source`, `recorded_at`).
 - **Sensitive:** S2 evidence and S1 actor metadata.
@@ -909,12 +924,21 @@ the same physical message unique key, not a second field or dedupe system.
   `from_status nullable`, `to_status`, `aggregate_version`,
   `actor_type customer|member|system`, optional actor contact/member,
   `from_assignee_id nullable`, `to_assignee_id nullable`,
+  `conversation_disposition resume_ai|resolve_conversation|successor_handoff nullable`,
   `reason_code nullable`, `correlation_id`, `occurred_at`.
 - **PK/FKs/tenant:** PK; composite FKs to handoff and optional actors/assignees.
 - **Uniqueness:** (`organization_id`, `handoff_id`, `aggregate_version`);
   (`organization_id`, `id`).
 - **Indexes:** (`organization_id`, `handoff_id`, `occurred_at`);
   (`organization_id`, `to_assignee_id`, `occurred_at desc`).
+- **Checks:** reassignment is a real `assigned -> assigned` transition that
+  increments `aggregate_version` and requires distinct non-null
+  `from_assignee_id` and `to_assignee_id`. Its domain event carries the new
+  assignee only; this transition row preserves both old and new assignee
+  provenance. A terminal handoff transition records exactly one explicit
+  conversation disposition: `resume_ai`, `resolve_conversation`, or
+  `successor_handoff`; there is no default disposition. Non-terminal transition
+  rows require `conversation_disposition` to be null.
 - **Sensitive:** S1.
 - **Deletion/RLS:** forced RLS; immutable; retained with handoff/audit.
 
