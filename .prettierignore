@@ -5,3 +5,4 @@ dist/
 .next/
 coverage/
 pnpm-lock.yaml
+packages/contracts/snapshots/public-contracts.v1.json

@@ -4,6 +4,6 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "vitest.config.ts"],
+  "include": ["scripts/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],
   "exclude": ["tests/fixtures/**"]
 }

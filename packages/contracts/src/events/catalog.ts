@@ -1,5 +1,6 @@
 import Type from "typebox";
 
+import { AgentActionTypeSchema } from "../ai/vocabulary.js";
 import {
   AiRunIdSchema,
   AppointmentRequestIdSchema,
@@ -98,15 +99,15 @@ const consentPurposeSchema = () =>
     Type.Literal("marketing"),
   ]);
 
-const actionTypeSchema = () =>
-  Type.Union([
-    Type.Literal("none"),
-    Type.Literal("request_information"),
-    Type.Literal("create_appointment_request"),
-    Type.Literal("confirm_appointment"),
-    Type.Literal("decline_appointment"),
-    Type.Literal("request_handoff"),
-  ]);
+const actionTypeSchema = () => {
+  const schema = { ...embedSchema(AgentActionTypeSchema) };
+
+  // Preserve the accepted embedded event schema byte-for-byte while deriving
+  // its values from the canonical AI action vocabulary.
+  Reflect.deleteProperty(schema, "description");
+
+  return schema;
+};
 
 export const domainEventDefinitions = {
   "organization.created": defineDomainEvent(

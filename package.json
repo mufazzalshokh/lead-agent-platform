@@ -18,11 +18,13 @@
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
     "boundaries:check": "node scripts/check-boundaries.mjs",
+    "contracts:check": "tsx scripts/contracts/snapshot.ts --check",
+    "contracts:snapshot": "tsx scripts/contracts/snapshot.ts --write",
     "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck",
     "test": "vitest",
     "test:run": "vitest run",
     "clean": "node scripts/clean.mjs",
-    "ci:verify": "pnpm clean && pnpm format:check && pnpm lint && pnpm boundaries:check && pnpm typecheck && pnpm test:run && pnpm build"
+    "ci:verify": "pnpm clean && pnpm format:check && pnpm lint && pnpm boundaries:check && pnpm contracts:check && pnpm typecheck && pnpm test:run && pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
