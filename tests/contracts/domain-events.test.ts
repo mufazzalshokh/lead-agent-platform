@@ -62,6 +62,7 @@ const EXPECTED_EVENT_NAMES = [
   "message.sent",
   "conversation.status_changed",
   "conversation.automation_mode_changed",
+  "conversation.active_handoff_changed",
   "conversation.resolved",
   "conversation.closed",
   "appointment_request.created",
@@ -200,6 +201,13 @@ const PAYLOAD_FIXTURES = {
     conversation_status: "awaiting_staff",
     handoff_id: ID,
     previous_automation_mode: "paused",
+  },
+  "conversation.active_handoff_changed": {
+    automation_mode: "paused",
+    conversation_status: "awaiting_staff",
+    handoff_id: OTHER_ID,
+    previous_handoff_id: ID,
+    reason: "successor_handoff",
   },
   "conversation.resolved": {
     conversation_status: "resolved",
@@ -409,7 +417,7 @@ const withoutMember = (candidate: Record<string, unknown>, member: string) => {
 describe("domain event catalog and source-of-truth strategy", () => {
   it("matches the complete accepted Stage 0 event vocabulary", () => {
     expect(DOMAIN_EVENT_NAMES).toEqual(EXPECTED_EVENT_NAMES);
-    expect(DOMAIN_EVENT_NAMES).toHaveLength(62);
+    expect(DOMAIN_EVENT_NAMES).toHaveLength(63);
     expect(Object.keys(DomainEventPayloadSchemas)).toEqual(EXPECTED_EVENT_NAMES);
     expect(Object.keys(DomainEventSchemasByVersion)).toEqual(EXPECTED_EVENT_NAMES);
     expect(Object.keys(DomainEventPayloadSchemasByVersion)).toEqual(EXPECTED_EVENT_NAMES);
@@ -478,6 +486,12 @@ describe("domain event catalog and source-of-truth strategy", () => {
     );
     expect(payloadSchemaIdFor("conversation.automation_mode_changed")).toBe(
       "ConversationAutomationModeChangedDomainEventPayload.v1",
+    );
+    expect(schemaIdFor("conversation.active_handoff_changed")).toBe(
+      "ConversationActiveHandoffChangedDomainEvent.v1",
+    );
+    expect(payloadSchemaIdFor("conversation.active_handoff_changed")).toBe(
+      "ConversationActiveHandoffChangedDomainEventPayload.v1",
     );
     expect(schemaIdentityOf(LeadReopenedDomainEventV2Schema, "lead.reopened V2")).toBe(
       "LeadReopenedDomainEvent.v2",
@@ -563,6 +577,66 @@ describe("conversation automation-mode event", () => {
     );
     expect(
       isSchemaValue(DomainEventPayloadSchemas["conversation.status_changed"], pausedToStaff),
+    ).toBe(false);
+  });
+});
+
+describe("conversation active-Handoff event", () => {
+  const activeHandoffChanged = {
+    automation_mode: "paused",
+    conversation_status: "awaiting_staff",
+    handoff_id: OTHER_ID,
+    previous_handoff_id: ID,
+    reason: "successor_handoff",
+  };
+
+  it("accepts exact paused successor replacement provenance through every registry", () => {
+    const event = createEvent("conversation.active_handoff_changed", activeHandoffChanged);
+
+    expect(
+      isSchemaValue(
+        DomainEventPayloadSchemas["conversation.active_handoff_changed"],
+        activeHandoffChanged,
+      ),
+    ).toBe(true);
+    expect(isSchemaValue(DomainEventSchemas["conversation.active_handoff_changed"], event)).toBe(
+      true,
+    );
+    expect(isSchemaValue(DomainEventSchema, event)).toBe(true);
+  });
+
+  it.each([
+    { ...activeHandoffChanged, handoff_id: ID },
+    { ...activeHandoffChanged, conversation_status: "awaiting_lead" },
+    { ...activeHandoffChanged, automation_mode: "staff" },
+    withoutMember(activeHandoffChanged, "previous_handoff_id"),
+    withoutMember(activeHandoffChanged, "handoff_id"),
+    { ...activeHandoffChanged, previous_handoff_id: "not-a-uuid" },
+    { ...activeHandoffChanged, handoff_id: "not-a-uuid" },
+    { ...activeHandoffChanged, unexpected: true },
+    { ...activeHandoffChanged, organization_id: ID },
+    { ...activeHandoffChanged, actor: { actor_id: null, actor_type: "system" } },
+  ])("rejects an untruthful, malformed, or authority-smuggling replacement %#", (payload) => {
+    const event = createEvent("conversation.active_handoff_changed", payload);
+
+    expect(
+      isSchemaValue(DomainEventPayloadSchemas["conversation.active_handoff_changed"], payload),
+    ).toBe(false);
+    expect(isSchemaValue(DomainEventSchemas["conversation.active_handoff_changed"], event)).toBe(
+      false,
+    );
+    expect(isSchemaValue(DomainEventSchema, event)).toBe(false);
+  });
+
+  it("does not repurpose the existing status or automation-mode contracts", () => {
+    expect(
+      isSchemaValue(DomainEventPayloadSchemas["conversation.status_changed"], activeHandoffChanged),
+    ).toBe(false);
+    expect(
+      isSchemaValue(
+        DomainEventPayloadSchemas["conversation.automation_mode_changed"],
+        activeHandoffChanged,
+      ),
     ).toBe(false);
   });
 });

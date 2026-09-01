@@ -66,6 +66,31 @@ export const leadReopenedDomainEventV2Definition = defineDomainEventVersion(
   LeadReopenedDomainEventPayloadV2Schema,
 );
 
+const ConversationActiveHandoffChangedDomainEventPayloadV1Schema = Type.Object(
+  {
+    automation_mode: Type.Literal("paused"),
+    conversation_status: Type.Literal("awaiting_staff"),
+    handoff_id: embedSchema(HandoffIdSchema),
+    previous_handoff_id: embedSchema(HandoffIdSchema),
+    reason: Type.Literal("successor_handoff"),
+  },
+  {
+    $id: "ConversationActiveHandoffChangedDomainEventPayload.v1",
+    additionalProperties: false,
+    description:
+      "Exact active-Handoff replacement while Conversation status and automation mode remain unchanged.",
+    "x-not-equal-properties": [["previous_handoff_id", "handoff_id"]],
+  },
+);
+
+const conversationActiveHandoffChangedDomainEventV1Definition = defineDomainEventVersion(
+  "conversation.active_handoff_changed",
+  "conversation",
+  ConversationIdSchema,
+  "1",
+  ConversationActiveHandoffChangedDomainEventPayloadV1Schema,
+);
+
 const ConversationAutomationModeChangedDomainEventPayloadV1Schema = Type.Union(
   [
     Type.Object(
@@ -426,6 +451,7 @@ export const domainEventDefinitions = {
     },
   ),
   "conversation.automation_mode_changed": conversationAutomationModeChangedDomainEventV1Definition,
+  "conversation.active_handoff_changed": conversationActiveHandoffChangedDomainEventV1Definition,
   "conversation.resolved": defineDomainEvent(
     "conversation.resolved",
     "conversation",

@@ -147,8 +147,8 @@ describe("public contract inventory and snapshot", () => {
       ]),
     );
 
-    expect(snapshot.contracts).toHaveLength(205);
-    expect(counts).toEqual({ ai: 16, api: 8, channel: 24, event: 129, shared: 28 });
+    expect(snapshot.contracts).toHaveLength(207);
+    expect(counts).toEqual({ ai: 16, api: 8, channel: 24, event: 131, shared: 28 });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
     );
@@ -242,6 +242,42 @@ describe("public contract inventory and snapshot", () => {
       ),
     ).toMatchObject({
       schema_id: "ConversationStatusChangedDomainEvent.v1",
+      schema_version: "1",
+    });
+  });
+
+  it("classifies the approved Conversation active-Handoff schemas as additive only", () => {
+    const candidate = buildContractSnapshot();
+    const addedExportNames = new Set([
+      'DomainEventPayloadSchemas["conversation.active_handoff_changed"]',
+      'DomainEventSchemas["conversation.active_handoff_changed"]',
+    ]);
+    const baseline: ContractSnapshot = {
+      ...candidate,
+      contracts: candidate.contracts.filter(
+        (contract) => !addedExportNames.has(contract.export_name),
+      ),
+    };
+
+    expect(compareContractSnapshots(baseline, candidate)).toEqual([
+      {
+        classification: "additive",
+        contract: 'DomainEventPayloadSchemas["conversation.active_handoff_changed"]',
+        detail: "new independently identified public contract was added",
+      },
+      {
+        classification: "additive",
+        contract: 'DomainEventSchemas["conversation.active_handoff_changed"]',
+        detail: "new independently identified public contract was added",
+      },
+    ]);
+    expect(
+      candidate.contracts.find(
+        (contract) =>
+          contract.export_name === 'DomainEventSchemas["conversation.automation_mode_changed"]',
+      ),
+    ).toMatchObject({
+      schema_id: "ConversationAutomationModeChangedDomainEvent.v1",
       schema_version: "1",
     });
   });
@@ -524,7 +560,7 @@ describe("cross-contract security and drift audit", () => {
         (count, versions) => count + Object.keys(versions).length,
         0,
       ),
-    ).toBe(63);
+    ).toBe(64);
   });
 
   it("keeps event payloads privacy-minimal and credential rotation version-only", () => {

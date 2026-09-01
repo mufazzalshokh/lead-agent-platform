@@ -366,6 +366,10 @@ Scheduled, idempotent checks cover:
   or `closed + paused`;
 - mode-only `awaiting_staff` ownership change without the matching
   `conversation.automation_mode_changed` provenance event;
+- requested-to-requested active-Handoff replacement while Conversation remains
+  `awaiting_staff + paused` without the matching
+  `conversation.active_handoff_changed` event carrying distinct previous and
+  successor Handoff IDs;
 - terminal handoff without an explicit conversation disposition, or any
   terminal handoff that resumed AI without `resume_ai` being supplied;
 - terminal appointment state inconsistent with its transition history;

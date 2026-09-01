@@ -2,7 +2,7 @@
 
 Stage 2 publishes one runtime JSON Schema source of truth from
 `packages/contracts`. The reviewed baseline is
-`packages/contracts/snapshots/public-contracts.v1.json`; it inventories 205
+`packages/contracts/snapshots/public-contracts.v1.json`; it inventories 207
 schemas across shared primitives, API contracts, domain events, channel
 contracts, and the AgentDecision contract.
 
@@ -77,13 +77,36 @@ Same-mode transitions, AI-mode variants, other Conversation statuses, missing or
 malformed Handoff IDs, and unknown fields are rejected. The Handoff ID is
 provenance, never authorization. Existing event envelope/payload identities and
 wire representations—including `conversation.status_changed`—remain unchanged.
-The closed event-name vocabulary and root DomainEvent union intentionally gain
-this one new discriminant as the approved registry consequence. The semantic
-event inventory is therefore 62. Under the conservative same-ID policy, a
-comparison with the prior snapshot reports those two registry expansions as
-`version-requiring`, while the independently identified new envelope and payload
-are `additive`. This blocker-resolution authorization accepts exactly those four
-findings; it does not change any existing individual event schema.
+The closed event-name vocabulary and root DomainEvent union intentionally gained
+this discriminant as the approved registry consequence. At that blocker
+resolution the semantic event inventory became 62. Under the conservative
+same-ID policy, its snapshot comparison reported those two registry expansions
+as `version-requiring`, while the independently identified new envelope and
+payload were `additive`. It did not change any existing individual event schema.
+
+## Conversation active-Handoff provenance freeze
+
+`conversation.active_handoff_changed` is an additive V1 semantic event with
+independent `ConversationActiveHandoffChangedDomainEvent.v1` and
+`ConversationActiveHandoffChangedDomainEventPayload.v1` identities. Its closed
+payload accepts only `awaiting_staff + paused` requested-successor replacement,
+with canonical distinct `previous_handoff_id` and `handoff_id` values and literal
+`reason: successor_handoff`. Missing, malformed, or equal Handoff IDs, other
+statuses/modes/reasons, unknown fields, and tenant/authorization smuggling are
+rejected. The Handoff IDs are provenance and never authority.
+
+This event does not change `conversation.status_changed` or
+`conversation.automation_mode_changed`. Staff-owned successor replacement still
+uses only `conversation.automation_mode_changed` for `staff -> paused`.
+Requested-to-requested replacement uses only
+`conversation.active_handoff_changed`; the atomic workflow order is the current
+Handoff terminal event, successor `handoff.requested`, then the Conversation
+reference event. No active-Handoff mutation may rely on transition history alone.
+
+The semantic event inventory is now 63. The new envelope and payload are
+additive; the closed event-name vocabulary and root DomainEvent union have the
+necessary intentional same-ID registry expansions. No prior individual event
+schema identity, version, or meaning changes.
 
 ## Audit boundaries
 
@@ -114,10 +137,10 @@ of this Stage 2 drift gate.
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Shared primitives   | IDs, UTC timestamp, locale, money, actor, and version schemas/types                                                         | `shared-primitives.test.ts` plus catalog identity/bounds audits              |
 | API contracts       | Problem/error, validation issue, pagination, metadata, and envelope factories                                               | `api-contracts.test.ts` plus catalog/export audits                           |
-| Domain events       | 62 semantic event types; 63 versioned event envelopes and 63 payloads; event/aggregate vocabularies and derived event types | `domain-events.test.ts` plus schema-ID/version-registry/union/catalog audits |
+| Domain events       | 63 semantic event types; 64 versioned event envelopes and 64 payloads; event/aggregate vocabularies and derived event types | `domain-events.test.ts` plus schema-ID/version-registry/union/catalog audits |
 | Channels            | Channel vocabularies, bounded identifiers, inbound/outbound unions, capabilities, and derived types                         | `channel-contracts.test.ts` plus security/union/catalog audits               |
 | AgentDecision       | Intent/action vocabularies, facts, claims, message, safety, and `AgentDecisionV1`                                           | `agent-decision-contract.test.ts` plus authority/vocabulary/catalog audits   |
-| Compatibility/drift | Deterministic 205-schema snapshot and conservative compatibility classifier                                                 | `contract-compatibility.test.ts`, `contracts:check`, and `ci:verify`         |
+| Compatibility/drift | Deterministic 207-schema snapshot and conservative compatibility classifier                                                 | `contract-compatibility.test.ts`, `contracts:check`, and `ci:verify`         |
 
 This mapping covers the accepted Stage 0 requirements assigned to Stage 2.
 Authentication, domain behavior, persistence, provider projection, and live

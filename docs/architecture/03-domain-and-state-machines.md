@@ -571,8 +571,12 @@ event while status remains `awaiting_staff`. V1 permits exactly `paused -> staff
 for assignment/start of the referenced Handoff and `staff -> paused` when a
 requested successor replaces prior staff ownership. A status-changing command
 does not additionally emit this mode event because its target mode is fixed by
-the status transition. Independent Message and Handoff events remain separate
-facts and may coexist.
+the status transition. `conversation.active_handoff_changed` is the distinct
+reference-only provenance event when a requested successor replaces a requested
+Handoff while status remains `awaiting_staff` and mode remains `paused`; its V1
+payload carries the previous and successor Handoff IDs and literal reason
+`successor_handoff`, and rejects equal IDs. Independent Message and Handoff
+events remain separate facts and may coexist.
 
 ### 7.1 Core event catalog
 
@@ -583,7 +587,7 @@ facts and may coexist.
 | Channels | `channel_connection.activated`, `channel_connection.disabled`, `channel_connection.credential_rotated` |
 | Contacts/consent | `contact.created`, `contact.identity_added`, `contact.anonymized`, `consent.granted`, `consent.declined`, `consent.withdrawn`, `consent.not_required_recorded` |
 | Leads | `lead.created`, `lead.engaged`, `lead.qualified`, `lead.disqualified`, `lead.booking_requested`, `lead.converted`, `lead.closed`, `lead.reopened` |
-| Conversations | `conversation.started`, `message.received`, `message.response_queued`, `message.sent`, `conversation.status_changed`, `conversation.automation_mode_changed`, `conversation.resolved`, `conversation.closed` |
+| Conversations | `conversation.started`, `message.received`, `message.response_queued`, `message.sent`, `conversation.status_changed`, `conversation.automation_mode_changed`, `conversation.active_handoff_changed`, `conversation.resolved`, `conversation.closed` |
 | Booking | `appointment_request.created`, `appointment_request.staff_accepted`, `appointment_request.customer_confirmation_requested`, `appointment_request.confirmed`, `appointment_request.rejected`, `appointment_request.cancelled`, `appointment_request.expired` |
 | Handoff | `handoff.requested`, `handoff.assigned`, `handoff.started`, `handoff.resolved`, `handoff.cancelled`, `handoff.expired` |
 | Delivery | `notification.created`, `notification.delivered`, `notification.failed`, `notification.dead_lettered` |
@@ -679,6 +683,7 @@ transition is separately recorded; it cannot skip preconditions.
 | `awaiting_staff + staff` | staff-owned customer response queued | `awaiting_lead + staff` | Same assigned/in-progress Handoff remains active; emit `message.response_queued` and `conversation.status_changed` |
 | `awaiting_lead + staff` | accepted customer message | `awaiting_staff + staff` | Same assigned/in-progress Handoff remains active; emit `message.received` and `conversation.status_changed` |
 | `awaiting_staff + staff` | requested successor replaces terminalized Handoff | `awaiting_staff + paused` | Atomic higher-level workflow installs the new requested Handoff; emit `conversation.automation_mode_changed` (`staff -> paused`) |
+| `awaiting_staff + paused` | requested successor replaces terminalized requested Handoff | `awaiting_staff + paused` | Atomic higher-level workflow installs a different requested Handoff; increment Conversation version once and emit `conversation.active_handoff_changed` with old/new Handoff IDs and reason `successor_handoff` |
 | `awaiting_staff + paused`, `awaiting_staff + staff` | explicit `resume_ai` disposition | `open + ai` | Higher-level workflow leaves no active Handoff; emit `conversation.status_changed` |
 | `open + ai`, `awaiting_lead + ai`, `awaiting_lead + staff`, `awaiting_staff + paused`, `awaiting_staff + staff` | resolve | `resolved + paused` | Emit only `conversation.resolved`; any active Handoff is terminalized atomically by the higher-level workflow |
 | `resolved + paused` | accepted customer message within reopen policy | `open + ai` | No active Handoff; emit `message.received` and `conversation.status_changed` |
@@ -698,14 +703,19 @@ default:
 - `resume_ai`: Conversation becomes `open` with mode `ai`;
 - `resolve_conversation`: Conversation becomes `resolved` with mode `paused`;
 - `successor_handoff`: a successor active Handoff is established atomically and
-  the Conversation remains `awaiting_staff`; a requested successor changes
-  `staff -> paused`, and its later assignment/start changes `paused -> staff`.
+  the Conversation remains `awaiting_staff`; replacing staff ownership changes
+  `staff -> paused`, while replacing a requested Handoff keeps mode `paused` and
+  emits `conversation.active_handoff_changed`; later assignment/start changes
+  `paused -> staff`.
 
 The two mode-only ownership changes emit
 `conversation.automation_mode_changed` with the applicable Handoff ID. They do
 not misuse `conversation.status_changed` with identical status values. Resume,
 resolution, and other genuine status changes use only their applicable status
-or specialized Conversation event.
+or specialized Conversation event. A requested-to-requested successor
+replacement emits only `conversation.active_handoff_changed` for the
+Conversation. Its atomic event order is: current Handoff terminal event,
+successor `handoff.requested`, then `conversation.active_handoff_changed`.
 
 A cancellation/expiry command that would otherwise leave `awaiting_staff`
 without an active Handoff is rejected.
@@ -804,8 +814,9 @@ transaction/workflow:
 - terminalize with `resolve_conversation` => conversation `resolved`, mode
   `paused`;
 - terminalize with `successor_handoff` => establish a successor atomically and
-  retain `awaiting_staff`, emit `staff -> paused` for the requested successor,
-  then emit `paused -> staff` after its assignment/start;
+  retain `awaiting_staff`; emit `staff -> paused` for a staff-owned predecessor,
+  or `conversation.active_handoff_changed` for a requested predecessor while
+  remaining paused, then emit `paused -> staff` after successor assignment/start;
 - resolve/cancel/expire an active handoff => require `resume_ai`,
   `resolve_conversation`, or `successor_handoff` and apply the selected
   disposition atomically; no default or implicit AI resume.
@@ -877,6 +888,9 @@ For each machine:
     and reassignment version/provenance while its status remains `assigned`.
 15. confirmation tests reject either stale aggregate or offer version and reject
     `now == expires_at` using an explicitly supplied clock value.
+16. successor-Handoff tests distinguish `staff -> paused` mode provenance from
+    requested-to-requested active-reference provenance, reject equal Handoff IDs,
+    and preserve terminal-current, successor-requested, Conversation-event order.
 
 ## 16. Domain-model open questions
 

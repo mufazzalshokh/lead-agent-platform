@@ -51,6 +51,10 @@ At minimum, unit tests cover:
 - both exact `conversation.automation_mode_changed` variants (`paused -> staff`
   and `staff -> paused`) plus rejection of same-mode, AI-mode, wrong-status,
   missing/malformed-Handoff, and unknown-field payloads;
+- exact `conversation.active_handoff_changed` requested-successor provenance for
+  `awaiting_staff + paused`, including distinct previous/successor Handoff IDs,
+  literal `successor_handoff` reason, and rejection of equal/missing/malformed
+  IDs, wrong state/mode, unknown fields, and authority smuggling;
 - terminal states and idempotent replay of a known command;
 - aggregate-version conflicts and stale AI decision rejection;
 - `requested -> staff_accepted -> awaiting_customer_confirmation -> confirmed`, proving that staff acceptance, notification enqueue/delivery, and timeout cannot directly produce `confirmed`;

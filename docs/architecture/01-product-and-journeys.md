@@ -527,8 +527,11 @@ closed Conversations use `paused`; cancellation/expiry never resumes AI merely
 because the prior handoff became terminal. Assignment/start emits
 `conversation.automation_mode_changed` for `paused -> staff`; replacing active
 staff ownership with a requested successor emits the same event for
-`staff -> paused`. Real Conversation status changes continue to use their
-status/specialized events instead.
+`staff -> paused`. Replacing a still-requested Handoff with another requested
+successor leaves mode `paused` and instead emits
+`conversation.active_handoff_changed` with both Handoff IDs; no protected
+active-Handoff reference change is transition-history-only. Real Conversation
+status changes continue to use their status/specialized events instead.
 
 **Evidence:** trigger (`customer_requested`), queue/assignee, SLA timestamps,
 transition history, and response delivery.

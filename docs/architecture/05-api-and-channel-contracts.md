@@ -443,6 +443,11 @@ active; the customer's next reply returns to `awaiting_staff + staff`. AI-owned
 responses instead use `awaiting_lead + ai`, whose customer reply returns to
 `open + ai`. Explicit resume produces `open + ai`; resolved or closed
 conversations use `paused`; cancellation/expiry never resumes AI implicitly.
+When a terminal command replaces a requested Handoff with another requested
+Handoff while the Conversation remains `awaiting_staff + paused`, it emits
+`conversation.active_handoff_changed` with the distinct previous and successor
+Handoff IDs. That reference change is never silent and does not misuse either
+status- or automation-mode provenance.
 
 ## Integration/webhook API
 
