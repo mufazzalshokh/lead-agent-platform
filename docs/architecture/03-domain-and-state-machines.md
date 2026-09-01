@@ -269,6 +269,24 @@ Canonical status:
 
 `open | awaiting_lead | awaiting_staff | resolved | closed`
 
+The only valid status/mode/Handoff combinations are:
+
+| Status + mode | Required active Handoff |
+| --- | --- |
+| `open + ai` | none |
+| `awaiting_lead + ai` | none |
+| `awaiting_lead + staff` | exactly one `assigned` or `in_progress` Handoff |
+| `awaiting_staff + paused` | exactly one `requested` Handoff |
+| `awaiting_staff + staff` | exactly one `assigned` or `in_progress` Handoff |
+| `resolved + paused` | none |
+| `closed + paused` | none |
+
+Every other status/mode combination is invalid. An active Handoff is likewise
+invalid outside the three combinations that require one. `awaiting_lead + ai`
+waits for a customer after an AI-owned response; `awaiting_lead + staff` waits
+after a staff-owned response while the same assigned/in-progress Handoff retains
+response ownership.
+
 **Message owns:** direction (`inbound|outbound|staff_internal`), sender type,
 canonical sequence, external IDs, content reference/protected body, language,
 delivery status, reply relation, source timestamps, provenance, moderation and
@@ -547,8 +565,14 @@ new producers do not dual-emit V1 and V2.
 Conversation creation emits `conversation.started`, resolution emits
 `conversation.resolved`, and closure emits `conversation.closed`. For those
 edges the specialized event replaces `conversation.status_changed`; the generic
-event is emitted for other real Conversation-status changes. Independent
-Message and Handoff events remain separate facts and may coexist.
+event is emitted for other real Conversation-status changes.
+`conversation.automation_mode_changed` is the separate mode-only provenance
+event while status remains `awaiting_staff`. V1 permits exactly `paused -> staff`
+for assignment/start of the referenced Handoff and `staff -> paused` when a
+requested successor replaces prior staff ownership. A status-changing command
+does not additionally emit this mode event because its target mode is fixed by
+the status transition. Independent Message and Handoff events remain separate
+facts and may coexist.
 
 ### 7.1 Core event catalog
 
@@ -559,7 +583,7 @@ Message and Handoff events remain separate facts and may coexist.
 | Channels | `channel_connection.activated`, `channel_connection.disabled`, `channel_connection.credential_rotated` |
 | Contacts/consent | `contact.created`, `contact.identity_added`, `contact.anonymized`, `consent.granted`, `consent.declined`, `consent.withdrawn`, `consent.not_required_recorded` |
 | Leads | `lead.created`, `lead.engaged`, `lead.qualified`, `lead.disqualified`, `lead.booking_requested`, `lead.converted`, `lead.closed`, `lead.reopened` |
-| Conversations | `conversation.started`, `message.received`, `message.response_queued`, `message.sent`, `conversation.status_changed`, `conversation.resolved`, `conversation.closed` |
+| Conversations | `conversation.started`, `message.received`, `message.response_queued`, `message.sent`, `conversation.status_changed`, `conversation.automation_mode_changed`, `conversation.resolved`, `conversation.closed` |
 | Booking | `appointment_request.created`, `appointment_request.staff_accepted`, `appointment_request.customer_confirmation_requested`, `appointment_request.confirmed`, `appointment_request.rejected`, `appointment_request.cancelled`, `appointment_request.expired` |
 | Handoff | `handoff.requested`, `handoff.assigned`, `handoff.started`, `handoff.resolved`, `handoff.cancelled`, `handoff.expired` |
 | Delivery | `notification.created`, `notification.delivered`, `notification.failed`, `notification.dead_lettered` |
@@ -647,20 +671,25 @@ transition is separately recorded; it cannot skip preconditions.
 
 | From | Command/event | To | Rules |
 | --- | --- | --- | --- |
-| (none) | first accepted message creates conversation | `open` | Channel/contact/lead share tenant |
-| `open` | safe automated or staff response queued | `awaiting_lead` | Outbound intent is durable; delivery status is separate |
-| `open`, `awaiting_lead` | handoff requested/required | `awaiting_staff` | Create/reuse active handoff in same workflow; newly requested handoff sets mode `paused` |
-| `awaiting_lead` | new accepted customer message | `open` | Message is non-duplicate; stale AI run is invalidated |
-| `awaiting_staff` | staff sends customer-facing response | `awaiting_lead` | Actor authorized and active handoff is assigned/in progress |
-| `awaiting_staff` | handoff resolved without reply and automation explicitly resumes | `open` | Resolution code/policy permits automation; mode becomes `ai` |
-| `open`, `awaiting_lead`, `awaiting_staff` | resolve | `resolved` | Authorized staff or deterministic inactivity/workflow completion; mode becomes `paused`; from `awaiting_staff` the active handoff must resolve/cancel atomically or the command is rejected |
-| `resolved` | customer sends within reopen policy | `open` | Same conversation only within configured reopen window |
-| `resolved` | archive/close | `closed` | Authorized/system policy, no active handoff, and mode remains `paused` |
+| (none) | first accepted message creates conversation | `open + ai` | Channel/contact/lead share tenant; no active Handoff |
+| `open + ai` | safe AI-owned response queued | `awaiting_lead + ai` | Emit `message.response_queued` and `conversation.status_changed`; outbound intent is durable |
+| `awaiting_lead + ai` | accepted customer message | `open + ai` | Emit `message.received` and `conversation.status_changed`; no active Handoff; stale AI run is invalidated |
+| `open + ai`, `awaiting_lead + ai` | requested Handoff established | `awaiting_staff + paused` | Exactly one requested Handoff is established by the atomic workflow; emit `conversation.status_changed` |
+| `awaiting_staff + paused` | referenced Handoff assigned/started | `awaiting_staff + staff` | Same Handoff is validated as assigned/in progress; emit `conversation.automation_mode_changed` (`paused -> staff`) |
+| `awaiting_staff + staff` | staff-owned customer response queued | `awaiting_lead + staff` | Same assigned/in-progress Handoff remains active; emit `message.response_queued` and `conversation.status_changed` |
+| `awaiting_lead + staff` | accepted customer message | `awaiting_staff + staff` | Same assigned/in-progress Handoff remains active; emit `message.received` and `conversation.status_changed` |
+| `awaiting_staff + staff` | requested successor replaces terminalized Handoff | `awaiting_staff + paused` | Atomic higher-level workflow installs the new requested Handoff; emit `conversation.automation_mode_changed` (`staff -> paused`) |
+| `awaiting_staff + paused`, `awaiting_staff + staff` | explicit `resume_ai` disposition | `open + ai` | Higher-level workflow leaves no active Handoff; emit `conversation.status_changed` |
+| `open + ai`, `awaiting_lead + ai`, `awaiting_lead + staff`, `awaiting_staff + paused`, `awaiting_staff + staff` | resolve | `resolved + paused` | Emit only `conversation.resolved`; any active Handoff is terminalized atomically by the higher-level workflow |
+| `resolved + paused` | accepted customer message within reopen policy | `open + ai` | No active Handoff; emit `message.received` and `conversation.status_changed` |
+| `resolved + paused` | archive/close | `closed + paused` | Authorized/system policy, no active Handoff; emit only `conversation.closed` |
 
 `closed` is terminal. A later inbound message creates a new conversation.
 Outbound delivery failure does not roll the status back; it creates a visible
 delivery failure/handoff according to policy. A conversation cannot be
-`awaiting_staff` without an active handoff.
+`awaiting_staff` without an active Handoff. `awaiting_lead + staff` also requires
+the same assigned/in-progress Handoff; all other valid combinations prohibit an
+active Handoff.
 
 When resolution, cancellation, or expiry terminalizes an active Handoff, the
 cross-machine command must select exactly one disposition; there is no implicit
@@ -669,8 +698,14 @@ default:
 - `resume_ai`: Conversation becomes `open` with mode `ai`;
 - `resolve_conversation`: Conversation becomes `resolved` with mode `paused`;
 - `successor_handoff`: a successor active Handoff is established atomically and
-  the Conversation remains `awaiting_staff`; mode is `paused` while the
-  successor is requested and `staff` once assigned/in progress.
+  the Conversation remains `awaiting_staff`; a requested successor changes
+  `staff -> paused`, and its later assignment/start changes `paused -> staff`.
+
+The two mode-only ownership changes emit
+`conversation.automation_mode_changed` with the applicable Handoff ID. They do
+not misuse `conversation.status_changed` with identical status values. Resume,
+resolution, and other genuine status changes use only their applicable status
+or specialized Conversation event.
 
 A cancellation/expiry command that would otherwise leave `awaiting_staff`
 without an active Handoff is rejected.
@@ -761,14 +796,16 @@ transaction/workflow:
 
 - create active handoff => conversation `awaiting_staff`;
 - newly requested handoff => mode `paused`;
-- assigned/in-progress handoff => mode `staff`;
-- staff customer-facing response => conversation `awaiting_lead`;
+- assigned/in-progress handoff => mode `staff` and mode-only Conversation event;
+- staff customer-facing response => conversation `awaiting_lead + staff`, with
+  the same assigned/in-progress Handoff still active;
+- customer reply under staff ownership => conversation `awaiting_staff + staff`;
 - terminalize with `resume_ai` => conversation `open`, mode `ai`;
 - terminalize with `resolve_conversation` => conversation `resolved`, mode
   `paused`;
 - terminalize with `successor_handoff` => establish a successor atomically and
-  retain `awaiting_staff`, using mode `paused` until assignment and `staff`
-  after assignment/start;
+  retain `awaiting_staff`, emit `staff -> paused` for the requested successor,
+  then emit `paused -> staff` after its assignment/start;
 - resolve/cancel/expire an active handoff => require `resume_ai`,
   `resolve_conversation`, or `successor_handoff` and apply the selected
   disposition atomically; no default or implicit AI resume.

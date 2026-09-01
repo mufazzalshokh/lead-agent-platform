@@ -2,7 +2,7 @@
 
 Stage 2 publishes one runtime JSON Schema source of truth from
 `packages/contracts`. The reviewed baseline is
-`packages/contracts/snapshots/public-contracts.v1.json`; it inventories 203
+`packages/contracts/snapshots/public-contracts.v1.json`; it inventories 205
 schemas across shared primitives, API contracts, domain events, channel
 contracts, and the AgentDecision contract.
 
@@ -41,10 +41,9 @@ and migration plan required by the architecture.
 
 ## `lead.reopened` V1-to-V2 migration freeze
 
-`lead.reopened` remains one semantic event name, so the accepted semantic event
-inventory remains 61. Its deployed V1 envelope/payload schema identities and
-representations, V1 map entries, and `DomainEventSchema.v1` remain unchanged
-and preserve historical V1 wire validation behavior.
+`lead.reopened` remains one semantic event name. Its deployed V1 envelope/payload
+schema identities, representations, and V1 map entries remain unchanged and
+preserve historical V1 wire validation behavior.
 
 V2 is an additive, independently identified envelope/payload pair with the same
 `event_type` and `schema_version: "2"`. Its closed payload accepts exactly one
@@ -61,6 +60,30 @@ matching `schema_id`. Rollout is consumers-first. After the Stage 3 producer is
 implemented, new lead-reopen events use V2 only: producers do not dual-emit,
 rewrite history, or reinterpret a structurally valid legacy V1 payload as V2
 domain authority. V1 retention/read support is not removed by this migration.
+
+## Conversation automation-mode provenance freeze
+
+`conversation.automation_mode_changed` is an additive V1 semantic event with
+independent `ConversationAutomationModeChangedDomainEvent.v1` and
+`ConversationAutomationModeChangedDomainEventPayload.v1` identities. Its closed
+payload accepts exactly:
+
+- `awaiting_staff`, `paused -> staff`, and the canonical Handoff ID whose
+  assignment/start began human response ownership; or
+- `awaiting_staff`, `staff -> paused`, and the canonical requested successor
+  Handoff ID that replaced prior active staff ownership.
+
+Same-mode transitions, AI-mode variants, other Conversation statuses, missing or
+malformed Handoff IDs, and unknown fields are rejected. The Handoff ID is
+provenance, never authorization. Existing event envelope/payload identities and
+wire representations—including `conversation.status_changed`—remain unchanged.
+The closed event-name vocabulary and root DomainEvent union intentionally gain
+this one new discriminant as the approved registry consequence. The semantic
+event inventory is therefore 62. Under the conservative same-ID policy, a
+comparison with the prior snapshot reports those two registry expansions as
+`version-requiring`, while the independently identified new envelope and payload
+are `additive`. This blocker-resolution authorization accepts exactly those four
+findings; it does not change any existing individual event schema.
 
 ## Audit boundaries
 
@@ -91,10 +114,10 @@ of this Stage 2 drift gate.
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Shared primitives   | IDs, UTC timestamp, locale, money, actor, and version schemas/types                                                         | `shared-primitives.test.ts` plus catalog identity/bounds audits              |
 | API contracts       | Problem/error, validation issue, pagination, metadata, and envelope factories                                               | `api-contracts.test.ts` plus catalog/export audits                           |
-| Domain events       | 61 semantic event types; 62 versioned event envelopes and 62 payloads; event/aggregate vocabularies and derived event types | `domain-events.test.ts` plus schema-ID/version-registry/union/catalog audits |
+| Domain events       | 62 semantic event types; 63 versioned event envelopes and 63 payloads; event/aggregate vocabularies and derived event types | `domain-events.test.ts` plus schema-ID/version-registry/union/catalog audits |
 | Channels            | Channel vocabularies, bounded identifiers, inbound/outbound unions, capabilities, and derived types                         | `channel-contracts.test.ts` plus security/union/catalog audits               |
 | AgentDecision       | Intent/action vocabularies, facts, claims, message, safety, and `AgentDecisionV1`                                           | `agent-decision-contract.test.ts` plus authority/vocabulary/catalog audits   |
-| Compatibility/drift | Deterministic 203-schema snapshot and conservative compatibility classifier                                                 | `contract-compatibility.test.ts`, `contracts:check`, and `ci:verify`         |
+| Compatibility/drift | Deterministic 205-schema snapshot and conservative compatibility classifier                                                 | `contract-compatibility.test.ts`, `contracts:check`, and `ci:verify`         |
 
 This mapping covers the accepted Stage 0 requirements assigned to Stage 2.
 Authentication, domain behavior, persistence, provider projection, and live

@@ -507,7 +507,11 @@ confirmation action, and separate outbound delivery.
 4. The lead receives an honest acknowledgement and expected response window
    from configured policy.
 5. Staff assigns/claims (`assigned`) or begins handling (`in_progress`), so the
-   automation mode is `staff`; staff replies and resolves (`resolved`).
+   Conversation remains `awaiting_staff` and its automation mode becomes
+   `staff`. A staff reply moves it to `awaiting_lead + staff` while the same
+   assigned/in-progress handoff remains active; a customer reply returns it to
+   `awaiting_staff + staff`. Staff later resolves the handoff with one explicit
+   Conversation disposition.
 
 **Exceptions and safety:** Duplicate requests reuse the active handoff.
 Unstaffed/out-of-hours policy provides configured expectations without claiming
@@ -520,7 +524,11 @@ produces Conversation `open` with mode `ai`; `resolve_conversation` produces
 successor and keeps the Conversation `awaiting_staff`, using `paused` while the
 successor is requested and `staff` once it is assigned/in progress. Resolved or
 closed Conversations use `paused`; cancellation/expiry never resumes AI merely
-because the prior handoff became terminal.
+because the prior handoff became terminal. Assignment/start emits
+`conversation.automation_mode_changed` for `paused -> staff`; replacing active
+staff ownership with a requested successor emits the same event for
+`staff -> paused`. Real Conversation status changes continue to use their
+status/specialized events instead.
 
 **Evidence:** trigger (`customer_requested`), queue/assignee, SLA timestamps,
 transition history, and response delivery.

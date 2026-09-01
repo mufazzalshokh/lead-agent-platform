@@ -48,6 +48,9 @@ At minimum, unit tests cover:
   unknown states, and unknown fields;
 - specialized Conversation events for create, resolve, and close, proving those
   commands do not also emit a generic status-change event;
+- both exact `conversation.automation_mode_changed` variants (`paused -> staff`
+  and `staff -> paused`) plus rejection of same-mode, AI-mode, wrong-status,
+  missing/malformed-Handoff, and unknown-field payloads;
 - terminal states and idempotent replay of a known command;
 - aggregate-version conflicts and stale AI decision rejection;
 - `requested -> staff_accepted -> awaiting_customer_confirmation -> confirmed`, proving that staff acceptance, notification enqueue/delivery, and timeout cannot directly produce `confirmed`;
@@ -58,6 +61,10 @@ At minimum, unit tests cover:
 - handoff requested/assigned/in-progress automation modes, all three explicit
   terminal conversation dispositions, no implicit AI resume on cancellation or
   expiry, and versioned `assigned -> assigned` reassignment provenance;
+- every valid Conversation status/mode/Handoff combination; AI-owned response
+  and customer-reply flow; staff-owned response retaining the active Handoff;
+  customer reply returning to `awaiting_staff + staff`; and rejection of every
+  orphaned or forbidden combination;
 - qualification rules driven by tenant configuration without language-specific domain branches;
 - missing authoritative price/service/hour/availability information selecting refusal/handoff rather than a fact;
 - phone normalization/validation, absent/malformed contact information, and consent state;
@@ -167,7 +174,7 @@ The production-like E2E harness starts web, API, worker, and PostgreSQL with det
 | Staff accepts/rejects | Authorized role and valid state required; accept requests customer confirmation, reject remains terminal and any `booking_requested -> qualified` lead reopen emits `lead.reopened` V2 with the appointment request ID |
 | Customer confirms | Valid evidence source `customer_session` or `telegram`, matching aggregate and offer versions, and explicit time in `[issued_at, expires_at)` create `confirmed`; equality at expiry is rejected and duplicate confirmation is harmless |
 | Lead confirmed offline | Authorized `staff_attested_external` evidence uses method `phone` or `in_person` and full audit; other sources/methods and all AI attempts are rejected |
-| Lead requests human | Handoff requested once with `awaiting_staff + paused`; assignment/in-progress uses `awaiting_staff + staff`; terminal handling supplies an explicit disposition and cancellation/expiry never resumes AI implicitly |
+| Lead requests human | Handoff requested once with `awaiting_staff + paused`; assignment/in-progress uses `awaiting_staff + staff` with mode-only provenance; a staff reply waits in `awaiting_lead + staff`, a customer reply returns to `awaiting_staff + staff`, and terminal handling supplies an explicit disposition without implicit AI resume |
 | AI cannot answer safely | No invented fact/action; reviewed message and handoff path |
 | AI provider unavailable | Inbound remains durable; safe localized fallback/handoff; failed AI telemetry and no false success |
 | Duplicate webhook arrives | Same acknowledgment/resource; one message, domain command, side effect, and analytics fact |

@@ -66,6 +66,42 @@ export const leadReopenedDomainEventV2Definition = defineDomainEventVersion(
   LeadReopenedDomainEventPayloadV2Schema,
 );
 
+const ConversationAutomationModeChangedDomainEventPayloadV1Schema = Type.Union(
+  [
+    Type.Object(
+      {
+        automation_mode: Type.Literal("staff"),
+        conversation_status: Type.Literal("awaiting_staff"),
+        handoff_id: embedSchema(HandoffIdSchema),
+        previous_automation_mode: Type.Literal("paused"),
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        automation_mode: Type.Literal("paused"),
+        conversation_status: Type.Literal("awaiting_staff"),
+        handoff_id: embedSchema(HandoffIdSchema),
+        previous_automation_mode: Type.Literal("staff"),
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  {
+    $id: "ConversationAutomationModeChangedDomainEventPayload.v1",
+    description:
+      "Exact Conversation response-ownership change while status remains awaiting_staff.",
+  },
+);
+
+const conversationAutomationModeChangedDomainEventV1Definition = defineDomainEventVersion(
+  "conversation.automation_mode_changed",
+  "conversation",
+  ConversationIdSchema,
+  "1",
+  ConversationAutomationModeChangedDomainEventPayloadV1Schema,
+);
+
 const organizationStatusSchema = () =>
   Type.Union([Type.Literal("active"), Type.Literal("suspended"), Type.Literal("closed")]);
 
@@ -389,6 +425,7 @@ export const domainEventDefinitions = {
       previous_conversation_status: conversationStatusSchema(),
     },
   ),
+  "conversation.automation_mode_changed": conversationAutomationModeChangedDomainEventV1Definition,
   "conversation.resolved": defineDomainEvent(
     "conversation.resolved",
     "conversation",

@@ -436,9 +436,13 @@ Every handoff terminal command or expiry job supplies one explicit conversation
 disposition: `resume_ai`, `resolve_conversation`, or `successor_handoff`. No
 endpoint or job derives a default. Requested handoffs produce
 `awaiting_staff + paused`, assigned/in-progress handoffs produce
-`awaiting_staff + staff`, explicit resume produces `open + ai`, and resolved or
-closed conversations use `paused`; cancellation/expiry never resumes AI
-implicitly.
+`awaiting_staff + staff`, and those two mode-only ownership changes use
+`conversation.automation_mode_changed`. A staff-owned response produces
+`awaiting_lead + staff` while the same assigned/in-progress Handoff remains
+active; the customer's next reply returns to `awaiting_staff + staff`. AI-owned
+responses instead use `awaiting_lead + ai`, whose customer reply returns to
+`open + ai`. Explicit resume produces `open + ai`; resolved or closed
+conversations use `paused`; cancellation/expiry never resumes AI implicitly.
 
 ## Integration/webhook API
 

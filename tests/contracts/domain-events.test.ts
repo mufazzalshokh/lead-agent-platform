@@ -61,6 +61,7 @@ const EXPECTED_EVENT_NAMES = [
   "message.response_queued",
   "message.sent",
   "conversation.status_changed",
+  "conversation.automation_mode_changed",
   "conversation.resolved",
   "conversation.closed",
   "appointment_request.created",
@@ -193,6 +194,12 @@ const PAYLOAD_FIXTURES = {
   "conversation.status_changed": {
     conversation_status: "awaiting_lead",
     previous_conversation_status: "open",
+  },
+  "conversation.automation_mode_changed": {
+    automation_mode: "staff",
+    conversation_status: "awaiting_staff",
+    handoff_id: ID,
+    previous_automation_mode: "paused",
   },
   "conversation.resolved": {
     conversation_status: "resolved",
@@ -402,7 +409,7 @@ const withoutMember = (candidate: Record<string, unknown>, member: string) => {
 describe("domain event catalog and source-of-truth strategy", () => {
   it("matches the complete accepted Stage 0 event vocabulary", () => {
     expect(DOMAIN_EVENT_NAMES).toEqual(EXPECTED_EVENT_NAMES);
-    expect(DOMAIN_EVENT_NAMES).toHaveLength(61);
+    expect(DOMAIN_EVENT_NAMES).toHaveLength(62);
     expect(Object.keys(DomainEventPayloadSchemas)).toEqual(EXPECTED_EVENT_NAMES);
     expect(Object.keys(DomainEventSchemasByVersion)).toEqual(EXPECTED_EVENT_NAMES);
     expect(Object.keys(DomainEventPayloadSchemasByVersion)).toEqual(EXPECTED_EVENT_NAMES);
@@ -466,6 +473,12 @@ describe("domain event catalog and source-of-truth strategy", () => {
     );
     expect(schemaIdFor("lead.reopened")).toBe("LeadReopenedDomainEvent.v1");
     expect(payloadSchemaIdFor("lead.reopened")).toBe("LeadReopenedDomainEventPayload.v1");
+    expect(schemaIdFor("conversation.automation_mode_changed")).toBe(
+      "ConversationAutomationModeChangedDomainEvent.v1",
+    );
+    expect(payloadSchemaIdFor("conversation.automation_mode_changed")).toBe(
+      "ConversationAutomationModeChangedDomainEventPayload.v1",
+    );
     expect(schemaIdentityOf(LeadReopenedDomainEventV2Schema, "lead.reopened V2")).toBe(
       "LeadReopenedDomainEvent.v2",
     );
@@ -487,6 +500,70 @@ describe("domain event catalog and source-of-truth strategy", () => {
     >().not.toEqualTypeOf<OrganizationId>();
     expectTypeOf<LeadReopenedDomainEventV2["event_type"]>().toEqualTypeOf<"lead.reopened">();
     expectTypeOf<LeadReopenedDomainEventV2["aggregate_id"]>().toEqualTypeOf<LeadId>();
+  });
+});
+
+describe("conversation automation-mode event", () => {
+  const pausedToStaff = {
+    automation_mode: "staff",
+    conversation_status: "awaiting_staff",
+    handoff_id: ID,
+    previous_automation_mode: "paused",
+  };
+  const staffToPaused = {
+    automation_mode: "paused",
+    conversation_status: "awaiting_staff",
+    handoff_id: OTHER_ID,
+    previous_automation_mode: "staff",
+  };
+
+  it.each([pausedToStaff, staffToPaused])(
+    "accepts an exact mode-only ownership transition %#",
+    (payload) => {
+      const event = createEvent("conversation.automation_mode_changed", payload);
+
+      expect(
+        isSchemaValue(DomainEventPayloadSchemas["conversation.automation_mode_changed"], payload),
+      ).toBe(true);
+      expect(isSchemaValue(DomainEventSchemas["conversation.automation_mode_changed"], event)).toBe(
+        true,
+      );
+      expect(isSchemaValue(DomainEventSchema, event)).toBe(true);
+    },
+  );
+
+  it.each([
+    { ...pausedToStaff, automation_mode: "paused" },
+    { ...staffToPaused, automation_mode: "staff" },
+    { ...pausedToStaff, previous_automation_mode: "ai" },
+    { ...pausedToStaff, automation_mode: "ai" },
+    { ...staffToPaused, automation_mode: "ai" },
+    { ...pausedToStaff, conversation_status: "awaiting_lead" },
+    withoutMember(pausedToStaff, "handoff_id"),
+    { ...pausedToStaff, handoff_id: "not-a-uuid" },
+    { ...pausedToStaff, unexpected: true },
+  ])("rejects an unapproved or malformed mode-only transition %#", (payload) => {
+    expect(
+      isSchemaValue(DomainEventPayloadSchemas["conversation.automation_mode_changed"], payload),
+    ).toBe(false);
+    expect(
+      isSchemaValue(
+        DomainEventSchemas["conversation.automation_mode_changed"],
+        createEvent("conversation.automation_mode_changed", payload),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not repurpose the status-change contract for mode-only provenance", () => {
+    expect(schemaIdFor("conversation.status_changed")).toBe(
+      "ConversationStatusChangedDomainEvent.v1",
+    );
+    expect(payloadSchemaIdFor("conversation.status_changed")).toBe(
+      "ConversationStatusChangedDomainEventPayload.v1",
+    );
+    expect(
+      isSchemaValue(DomainEventPayloadSchemas["conversation.status_changed"], pausedToStaff),
+    ).toBe(false);
   });
 });
 
