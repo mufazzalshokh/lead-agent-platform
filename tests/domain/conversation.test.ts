@@ -509,6 +509,12 @@ const COMMAND_CASES = [
         },
       }),
     successes: {
+      awaiting_staff_paused: {
+        activeHandoff: "successor",
+        eventTypes: ["conversation.active_handoff_changed"],
+        toAutomationMode: "paused",
+        toStatus: "awaiting_staff",
+      },
       awaiting_staff_staff: {
         activeHandoff: "successor",
         eventTypes: ["conversation.automation_mode_changed"],
@@ -719,12 +725,12 @@ describe("Conversation creation", () => {
 });
 
 describe("exhaustive Conversation state/ownership by command matrix", () => {
-  it("covers seven valid combinations, ten commands, seventeen legal edges, and fifty-three invalid pairs", () => {
+  it("covers seven valid combinations, ten commands, eighteen legal edges, and fifty-two invalid pairs", () => {
     expect(CONVERSATION_STATES).toHaveLength(7);
     expect(COMMAND_CASES).toHaveLength(10);
     expect(MATRIX_CASES).toHaveLength(70);
-    expect(LEGAL_CASES).toHaveLength(17);
-    expect(INVALID_CASES).toHaveLength(53);
+    expect(LEGAL_CASES).toHaveLength(18);
+    expect(INVALID_CASES).toHaveLength(52);
   });
 
   it.each(MATRIX_CASES)(
@@ -888,6 +894,45 @@ describe("Conversation event and ownership semantics", () => {
         activeHandoffId: SUCCESSOR_HANDOFF_ID,
         fromHandoffId: HANDOFF_ID,
         handoffDisposition: "successor_handoff",
+      });
+    }
+  });
+
+  it("uses only active-Handoff provenance for a paused-to-paused successor", () => {
+    const conversation = stateFixtures().awaiting_staff_paused;
+    const result = recordSuccessorHandoff(conversation, {
+      ...commandContext(conversation),
+      handoffDisposition: {
+        disposition: "successor_handoff",
+        organizationId: ORGANIZATION_A,
+        successorHandoff: SUCCESSOR_HANDOFF,
+        terminalizedHandoffId: HANDOFF_ID,
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.events).toEqual([
+        {
+          aggregate_version: conversation.version + 1,
+          event_type: "conversation.active_handoff_changed",
+          payload: {
+            automation_mode: "paused",
+            conversation_status: "awaiting_staff",
+            handoff_id: SUCCESSOR_HANDOFF_ID,
+            previous_handoff_id: HANDOFF_ID,
+            reason: "successor_handoff",
+          },
+          schema_id: "ConversationActiveHandoffChangedDomainEvent.v1",
+          schema_version: "1",
+        },
+      ]);
+      expect(result.value.transitionRecords[0]).toMatchObject({
+        activeHandoffId: SUCCESSOR_HANDOFF_ID,
+        fromAutomationMode: "paused",
+        fromHandoffId: HANDOFF_ID,
+        handoffDisposition: "successor_handoff",
+        toAutomationMode: "paused",
       });
     }
   });

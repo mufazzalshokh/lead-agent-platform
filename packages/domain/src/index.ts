@@ -111,3 +111,4 @@ export * from "./appointments/index.js";
 export * from "./conversations/index.js";
 export * from "./handoffs/index.js";
 export * from "./leads/index.js";
+export * from "./workflows/index.js";

@@ -46,15 +46,14 @@ const forbiddenRuntimeIdentifiers = new Set([
   "require",
 ]);
 
-const laterAggregateModulePattern =
+const crossMachineModulePattern =
   /(?:^|\/)(?:cross[-_]?machine|orchestration|workflows?)(?:[./_-]|$)/i;
 
-const laterAggregateMachineIdentifierPatterns = [
-  /^(?:Appointment|Booking|CrossMachine)(?:Consistency)?Workflow$/,
-  /^(?:apply|compose|execute|run)(?:Appointment|Booking|CrossMachine)Workflow$/,
-] as const;
-
-const laterAggregateEventPrefixes = [] as const;
+const approvedWorkflowModules = new Set([
+  "workflows/appointments.ts",
+  "workflows/handoffs.ts",
+  "workflows/index.ts",
+]);
 
 const toPosixPath = (filePath: string) => filePath.split(path.sep).join("/");
 
@@ -223,38 +222,22 @@ describe("domain package purity", () => {
     expect(declaredProhibitedSections).toEqual([]);
   });
 
-  it("contains no Unit 6 or later cross-machine workflow modules", () => {
+  it("contains only the approved Unit 6 cross-machine workflow modules", () => {
     const violations = new Set<string>();
+    const discoveredWorkflowModules = new Set<string>();
 
     for (const filePath of sourceFiles) {
       const relativeFile = toPosixPath(path.relative(sourceRoot, filePath));
-      const sourceFile = parseSource(filePath);
 
-      if (laterAggregateModulePattern.test(relativeFile)) {
-        violations.add(`${relativeFile}: later aggregate module path`);
+      if (crossMachineModulePattern.test(relativeFile)) {
+        discoveredWorkflowModules.add(relativeFile);
+        if (!approvedWorkflowModules.has(relativeFile)) {
+          violations.add(`${relativeFile}: unapproved cross-machine module path`);
+        }
       }
-
-      const visit = (node: ts.Node) => {
-        if (
-          ts.isIdentifier(node) &&
-          laterAggregateMachineIdentifierPatterns.some((pattern) => pattern.test(node.text))
-        ) {
-          violations.add(`${relativeFile}: later aggregate identifier ${node.text}`);
-        }
-
-        if (
-          ts.isStringLiteralLike(node) &&
-          laterAggregateEventPrefixes.some((prefix) => node.text.startsWith(prefix))
-        ) {
-          violations.add(`${relativeFile}: later aggregate event literal ${node.text}`);
-        }
-
-        ts.forEachChild(node, visit);
-      };
-
-      visit(sourceFile);
     }
 
     expect([...violations].sort()).toEqual([]);
+    expect([...discoveredWorkflowModules].sort()).toEqual([...approvedWorkflowModules].sort());
   });
 });

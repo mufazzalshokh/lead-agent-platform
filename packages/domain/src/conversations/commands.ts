@@ -103,6 +103,7 @@ type ConversationEvent =
   | DomainEventFor<"message.response_queued">
   | DomainEventFor<"conversation.status_changed">
   | DomainEventFor<"conversation.automation_mode_changed">
+  | DomainEventFor<"conversation.active_handoff_changed">
   | DomainEventFor<"conversation.resolved">
   | DomainEventFor<"conversation.closed">;
 
@@ -302,6 +303,9 @@ const eventIdentity = (schema: object): EventIdentity => {
 };
 
 const EVENT_IDENTITIES = Object.freeze({
+  "conversation.active_handoff_changed": eventIdentity(
+    DomainEventSchemas["conversation.active_handoff_changed"],
+  ),
   "conversation.automation_mode_changed": eventIdentity(
     DomainEventSchemas["conversation.automation_mode_changed"],
   ),
@@ -796,6 +800,31 @@ const automationModeChangedEvent = (
   );
 };
 
+const activeHandoffChangedEvent = (
+  version: AggregateVersion,
+  previousHandoffId: HandoffId,
+  handoffId: HandoffId,
+): ConversationEventDraft => {
+  const payload = {
+    automation_mode: "paused",
+    conversation_status: "awaiting_staff",
+    handoff_id: handoffId,
+    previous_handoff_id: previousHandoffId,
+    reason: "successor_handoff",
+  };
+
+  if (!isSchemaValue(DomainEventPayloadSchemas["conversation.active_handoff_changed"], payload)) {
+    throw new TypeError("Invalid canonical Conversation active-Handoff replacement");
+  }
+
+  return createEventDraft<DomainEventFor<"conversation.active_handoff_changed">>(
+    "conversation.active_handoff_changed",
+    version,
+    payload,
+    EVENT_IDENTITIES["conversation.active_handoff_changed"],
+  );
+};
+
 export const createConversation = (
   command: CreateConversationCommand,
 ): ConversationCreationResult => {
@@ -1214,6 +1243,7 @@ export const recordSuccessorHandoff = (
   command: RecordSuccessorHandoffCommand,
 ): ConversationCommandResult => {
   const context = beginTransition(conversation, command, "record_successor_handoff", [
+    "awaiting_staff_paused",
     "awaiting_staff_staff",
   ]);
   if (!context.ok) {
@@ -1233,12 +1263,18 @@ export const recordSuccessorHandoff = (
     "paused",
     disposition.value.successorHandoff,
     [
-      automationModeChangedEvent(
-        context.value.nextVersion,
-        disposition.value.successorHandoff.handoffId,
-        "staff",
-        "paused",
-      ),
+      conversation.automationMode === "paused"
+        ? activeHandoffChangedEvent(
+            context.value.nextVersion,
+            disposition.value.terminalizedHandoffId,
+            disposition.value.successorHandoff.handoffId,
+          )
+        : automationModeChangedEvent(
+            context.value.nextVersion,
+            disposition.value.successorHandoff.handoffId,
+            "staff",
+            "paused",
+          ),
     ],
     { handoffDisposition: "successor_handoff" },
   );
