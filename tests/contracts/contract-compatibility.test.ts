@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import * as Contracts from "../../packages/contracts/src/index.js";
@@ -532,19 +533,45 @@ describe("cross-contract security and drift audit", () => {
 
   it("finds no duplicate public DTO declarations outside the contracts package", () => {
     const workspaceRoot = process.cwd();
-    const contractTypeNames = buildContractSnapshot().contracts.map((contract) =>
-      contract.schema_id.replace(/\.v[1-9][0-9]*$/, ""),
-    );
-    const declarationPattern = new RegExp(
-      `\\b(?:interface|type|enum)\\s+(?:${[...new Set(contractTypeNames)].join("|")})\\b`,
-      "g",
+    const contractTypeNames = new Set(
+      buildContractSnapshot().contracts.map((contract) =>
+        contract.schema_id.replace(/\.v[1-9][0-9]*$/, ""),
+      ),
     );
     const files = [join(workspaceRoot, "apps"), join(workspaceRoot, "packages")]
       .flatMap(productionTypeScriptFiles)
       .filter((file) => !file.startsWith(join(workspaceRoot, "packages", "contracts")));
     const duplicates = files.flatMap((file) => {
-      const matches = [...readFileSync(file, "utf8").matchAll(declarationPattern)];
-      return matches.map((match) => `${relative(workspaceRoot, file)}: ${match[0]}`);
+      const sourceFile = ts.createSourceFile(
+        file,
+        readFileSync(file, "utf8"),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      const declarations: string[] = [];
+
+      const visit = (node: ts.Node) => {
+        if (
+          (ts.isInterfaceDeclaration(node) ||
+            ts.isTypeAliasDeclaration(node) ||
+            ts.isEnumDeclaration(node)) &&
+          contractTypeNames.has(node.name.text)
+        ) {
+          const declarationKind = ts.isInterfaceDeclaration(node)
+            ? "interface"
+            : ts.isTypeAliasDeclaration(node)
+              ? "type"
+              : "enum";
+          declarations.push(
+            `${relative(workspaceRoot, file)}: ${declarationKind} ${node.name.text}`,
+          );
+        }
+
+        ts.forEachChild(node, visit);
+      };
+
+      visit(sourceFile);
+      return declarations;
     });
 
     expect(duplicates).toEqual([]);

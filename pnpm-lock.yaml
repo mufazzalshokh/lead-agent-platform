@@ -79,7 +79,11 @@ importers:
 
   packages/database: {}
 
-  packages/domain: {}
+  packages/domain:
+    dependencies:
+      '@lead-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/integrations: {}
 

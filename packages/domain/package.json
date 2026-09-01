@@ -14,8 +14,11 @@
       "import": "./dist/index.js"
     }
   },
+  "dependencies": {
+    "@lead-agent/contracts": "workspace:*"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit false --declaration true --declarationMap true --outDir dist --rootDir src",
+    "build": "tsc -p tsconfig.build.json --noEmit false --declaration true --declarationMap true --outDir dist --rootDir src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }
