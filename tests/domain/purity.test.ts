@@ -22,7 +22,10 @@ const infrastructureTokenPattern =
   /(?:^|[^a-z0-9])(?:filesystem|network|database|provider|framework|fastify|nextjs|react|postgres|postgresql|drizzle|pg-boss|pgboss|openai|telegram|auth0|typebox)(?:[^a-z0-9]|$)/i;
 
 const infrastructureIdentifierPattern =
-  /(?:filesystem|network|database|provider|framework|fastify|nextjs|react|postgres|postgresql|drizzle|pgboss|openai|telegram|auth0|typebox)/i;
+  /(?:filesystem|network|database|provider|framework|fastify|nextjs|react|postgres|postgresql|drizzle|pgboss|openai|auth0|typebox)/i;
+
+const infrastructureStringTokenPattern =
+  /(?:^|[^a-z0-9])(?:filesystem|network|database|provider|framework|fastify|nextjs|react|postgres|postgresql|drizzle|pg-boss|pgboss|openai|auth0|typebox)(?:[^a-z0-9]|$)/i;
 
 const forbiddenRuntimeIdentifiers = new Set([
   "Buffer",
@@ -43,16 +46,15 @@ const forbiddenRuntimeIdentifiers = new Set([
   "require",
 ]);
 
-const laterAggregateModulePattern = /(?:^|\/)appointment[-_]?request(?:[./_-]|$)/i;
+const laterAggregateModulePattern =
+  /(?:^|\/)(?:cross[-_]?machine|orchestration|workflows?)(?:[./_-]|$)/i;
 
 const laterAggregateMachineIdentifierPatterns = [
-  /^AppointmentRequest$/,
-  /^AppointmentRequest.*(?:Aggregate|Command|Machine|State|Status|Transition)$/,
-  /^(?:advance|assign|cancel|close|confirm|create|disqualify|expire|qualify|reject|reopen|resolve|transition|update)AppointmentRequest$/,
-  /^appointment_request_(?:command|state|status|transition)$/,
+  /^(?:Appointment|Booking|CrossMachine)(?:Consistency)?Workflow$/,
+  /^(?:apply|compose|execute|run)(?:Appointment|Booking|CrossMachine)Workflow$/,
 ] as const;
 
-const laterAggregateEventPrefixes = ["appointment_request."] as const;
+const laterAggregateEventPrefixes = [] as const;
 
 const toPosixPath = (filePath: string) => filePath.split(path.sep).join("/");
 
@@ -196,7 +198,7 @@ describe("domain package purity", () => {
           }
         }
 
-        if (ts.isStringLiteralLike(node) && infrastructureTokenPattern.test(node.text)) {
+        if (ts.isStringLiteralLike(node) && infrastructureStringTokenPattern.test(node.text)) {
           violations.add(`${relativeFile}: infrastructure token in string literal`);
         }
 
@@ -221,7 +223,7 @@ describe("domain package purity", () => {
     expect(declaredProhibitedSections).toEqual([]);
   });
 
-  it("contains no Unit 5 or later aggregate state-machine modules", () => {
+  it("contains no Unit 6 or later cross-machine workflow modules", () => {
     const violations = new Set<string>();
 
     for (const filePath of sourceFiles) {

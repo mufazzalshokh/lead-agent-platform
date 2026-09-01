@@ -1,5 +1,7 @@
 export type InvariantViolationReason =
+  | "appointment_request_not_due"
   | "currency_mismatch"
+  | "invalid_appointment_request"
   | "invalid_contact"
   | "invalid_conversation"
   | "invalid_handoff"
@@ -57,6 +59,10 @@ export type OfferExpired = Readonly<{
   code: "offer_expired";
 }>;
 
+export type ConfirmationEvidenceInvalid = Readonly<{
+  code: "confirmation_evidence_invalid";
+}>;
+
 export type DomainFoundationError =
   | InvariantViolation
   | ConcurrencyConflict
@@ -64,7 +70,8 @@ export type DomainFoundationError =
   | InvalidStateTransition
   | QualificationIncomplete
   | InvalidTimePreference
-  | OfferExpired;
+  | OfferExpired
+  | ConfirmationEvidenceInvalid;
 
 export const invariantViolation = <const Reason extends InvariantViolationReason>(
   reason: Reason,
@@ -113,4 +120,9 @@ export const invalidTimePreference = <const Reason extends InvalidTimePreference
 export const offerExpired = (): OfferExpired =>
   Object.freeze({
     code: "offer_expired",
+  });
+
+export const confirmationEvidenceInvalid = (): ConfirmationEvidenceInvalid =>
+  Object.freeze({
+    code: "confirmation_evidence_invalid",
   });

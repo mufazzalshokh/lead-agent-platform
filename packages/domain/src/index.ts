@@ -1,4 +1,5 @@
 export {
+  confirmationEvidenceInvalid,
   concurrencyConflict,
   invalidTimePreference,
   invalidStateTransition,
@@ -7,6 +8,7 @@ export {
   qualificationIncomplete,
   tenantScopeViolation,
   type ConcurrencyConflict,
+  type ConfirmationEvidenceInvalid,
   type DomainFoundationError,
   type InvalidTimePreference,
   type InvalidTimePreferenceReason,
@@ -105,6 +107,7 @@ export {
   type TimestampComparison,
   type UtcTimestampValidationError,
 } from "./values/time.js";
+export * from "./appointments/index.js";
 export * from "./conversations/index.js";
 export * from "./handoffs/index.js";
 export * from "./leads/index.js";
