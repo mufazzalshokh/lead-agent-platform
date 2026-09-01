@@ -105,4 +105,5 @@ export {
   type TimestampComparison,
   type UtcTimestampValidationError,
 } from "./values/time.js";
+export * from "./conversations/index.js";
 export * from "./leads/index.js";

@@ -1,6 +1,7 @@
 export type InvariantViolationReason =
   | "currency_mismatch"
   | "invalid_contact"
+  | "invalid_conversation"
   | "invalid_lead"
   | "invalid_money"
   | "invalid_organization"

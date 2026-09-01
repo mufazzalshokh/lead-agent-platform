@@ -43,17 +43,16 @@ const forbiddenRuntimeIdentifiers = new Set([
   "require",
 ]);
 
-const laterAggregateModulePattern =
-  /(?:^|\/)(?:conversation|handoff|appointment[-_]?request)(?:[./_-]|$)/i;
+const laterAggregateModulePattern = /(?:^|\/)(?:handoff|appointment[-_]?request)(?:[./_-]|$)/i;
 
 const laterAggregateMachineIdentifierPatterns = [
-  /^(?:Conversation|Handoff|AppointmentRequest)$/,
-  /^(?:Conversation|Handoff|AppointmentRequest).*(?:Aggregate|Command|Machine|State|Status|Transition)$/,
-  /^(?:advance|assign|cancel|close|confirm|create|disqualify|expire|qualify|reject|reopen|resolve|transition|update)(?:Conversation|Handoff|AppointmentRequest)$/,
-  /^(?:conversation|handoff|appointment_request)_(?:command|state|status|transition)$/,
+  /^(?:Handoff|AppointmentRequest)$/,
+  /^(?:Handoff|AppointmentRequest).*(?:Aggregate|Command|Machine|State|Status|Transition)$/,
+  /^(?:advance|assign|cancel|close|confirm|create|disqualify|expire|qualify|reject|reopen|resolve|transition|update)(?:Handoff|AppointmentRequest)$/,
+  /^(?:handoff|appointment_request)_(?:command|state|status|transition)$/,
 ] as const;
 
-const laterAggregateEventPrefixes = ["appointment_request.", "conversation.", "handoff."] as const;
+const laterAggregateEventPrefixes = ["appointment_request.", "handoff."] as const;
 
 const toPosixPath = (filePath: string) => filePath.split(path.sep).join("/");
 
@@ -222,7 +221,7 @@ describe("domain package purity", () => {
     expect(declaredProhibitedSections).toEqual([]);
   });
 
-  it("contains no Unit 3 or later aggregate state-machine modules", () => {
+  it("contains no Unit 4 or later aggregate state-machine modules", () => {
     const violations = new Set<string>();
 
     for (const filePath of sourceFiles) {
