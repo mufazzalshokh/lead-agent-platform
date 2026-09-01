@@ -1,8 +1,11 @@
 export type InvariantViolationReason =
   | "currency_mismatch"
   | "invalid_contact"
+  | "invalid_lead"
   | "invalid_money"
   | "invalid_organization"
+  | "invalid_reference"
+  | "invalid_reason_code"
   | "invalid_service_price"
   | "invalid_version"
   | "money_must_be_positive"
@@ -27,6 +30,19 @@ export type TenantScopeViolation = Readonly<{
   code: "tenant_scope_violation";
 }>;
 
+export type InvalidStateTransition<
+  State extends string = string,
+  Command extends string = string,
+> = Readonly<{
+  code: "invalid_state_transition";
+  command: Command;
+  currentState: State;
+}>;
+
+export type QualificationIncomplete = Readonly<{
+  code: "qualification_incomplete";
+}>;
+
 export type InvalidTimePreference<
   Reason extends InvalidTimePreferenceReason = InvalidTimePreferenceReason,
 > = Readonly<{
@@ -42,6 +58,8 @@ export type DomainFoundationError =
   | InvariantViolation
   | ConcurrencyConflict
   | TenantScopeViolation
+  | InvalidStateTransition
+  | QualificationIncomplete
   | InvalidTimePreference
   | OfferExpired;
 
@@ -64,6 +82,21 @@ export const concurrencyConflict = <Version extends number>(
 export const tenantScopeViolation = (): TenantScopeViolation =>
   Object.freeze({
     code: "tenant_scope_violation",
+  });
+
+export const invalidStateTransition = <const State extends string, const Command extends string>(
+  currentState: State,
+  command: Command,
+): InvalidStateTransition<State, Command> =>
+  Object.freeze({
+    code: "invalid_state_transition",
+    command,
+    currentState,
+  });
+
+export const qualificationIncomplete = (): QualificationIncomplete =>
+  Object.freeze({
+    code: "qualification_incomplete",
   });
 
 export const invalidTimePreference = <const Reason extends InvalidTimePreferenceReason>(

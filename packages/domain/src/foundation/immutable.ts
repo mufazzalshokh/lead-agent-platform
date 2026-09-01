@@ -1,8 +1,12 @@
-export type DeepReadonly<T> = T extends readonly unknown[]
-  ? { readonly [Index in keyof T]: DeepReadonly<T[Index]> }
-  : T extends object
-    ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
-    : T;
+type Primitive = bigint | boolean | null | number | string | symbol | undefined;
+
+export type DeepReadonly<T> = T extends Primitive
+  ? T
+  : T extends readonly unknown[]
+    ? { readonly [Index in keyof T]: DeepReadonly<T[Index]> }
+    : T extends object
+      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+      : T;
 
 const cloneValue = (value: unknown, clones: WeakMap<object, object>): unknown => {
   if (value === null || typeof value !== "object") {

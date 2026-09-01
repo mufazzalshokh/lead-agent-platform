@@ -43,22 +43,17 @@ const forbiddenRuntimeIdentifiers = new Set([
   "require",
 ]);
 
-const aggregateModulePattern =
-  /(?:^|\/)(?:lead|conversation|handoff|appointment[-_]?request)(?:[./_-]|$)/i;
+const laterAggregateModulePattern =
+  /(?:^|\/)(?:conversation|handoff|appointment[-_]?request)(?:[./_-]|$)/i;
 
-const aggregateMachineIdentifierPatterns = [
-  /^(?:Lead|Conversation|Handoff|AppointmentRequest)$/,
-  /^(?:Lead|Conversation|Handoff|AppointmentRequest).*(?:Aggregate|Command|Machine|State|Status|Transition)$/,
-  /^(?:advance|assign|cancel|close|confirm|create|disqualify|expire|qualify|reject|reopen|resolve|transition|update)(?:Lead|Conversation|Handoff|AppointmentRequest)$/,
-  /^(?:lead|conversation|handoff|appointment_request)_(?:command|state|status|transition)$/,
+const laterAggregateMachineIdentifierPatterns = [
+  /^(?:Conversation|Handoff|AppointmentRequest)$/,
+  /^(?:Conversation|Handoff|AppointmentRequest).*(?:Aggregate|Command|Machine|State|Status|Transition)$/,
+  /^(?:advance|assign|cancel|close|confirm|create|disqualify|expire|qualify|reject|reopen|resolve|transition|update)(?:Conversation|Handoff|AppointmentRequest)$/,
+  /^(?:conversation|handoff|appointment_request)_(?:command|state|status|transition)$/,
 ] as const;
 
-const aggregateEventPrefixes = [
-  "appointment_request.",
-  "conversation.",
-  "handoff.",
-  "lead.",
-] as const;
+const laterAggregateEventPrefixes = ["appointment_request.", "conversation.", "handoff."] as const;
 
 const toPosixPath = (filePath: string) => filePath.split(path.sep).join("/");
 
@@ -227,30 +222,30 @@ describe("domain package purity", () => {
     expect(declaredProhibitedSections).toEqual([]);
   });
 
-  it("contains no aggregate-specific state-machine or transition modules", () => {
+  it("contains no Unit 3 or later aggregate state-machine modules", () => {
     const violations = new Set<string>();
 
     for (const filePath of sourceFiles) {
       const relativeFile = toPosixPath(path.relative(sourceRoot, filePath));
       const sourceFile = parseSource(filePath);
 
-      if (aggregateModulePattern.test(relativeFile)) {
-        violations.add(`${relativeFile}: aggregate-specific module path`);
+      if (laterAggregateModulePattern.test(relativeFile)) {
+        violations.add(`${relativeFile}: later aggregate module path`);
       }
 
       const visit = (node: ts.Node) => {
         if (
           ts.isIdentifier(node) &&
-          aggregateMachineIdentifierPatterns.some((pattern) => pattern.test(node.text))
+          laterAggregateMachineIdentifierPatterns.some((pattern) => pattern.test(node.text))
         ) {
-          violations.add(`${relativeFile}: aggregate-specific identifier ${node.text}`);
+          violations.add(`${relativeFile}: later aggregate identifier ${node.text}`);
         }
 
         if (
           ts.isStringLiteralLike(node) &&
-          aggregateEventPrefixes.some((prefix) => node.text.startsWith(prefix))
+          laterAggregateEventPrefixes.some((prefix) => node.text.startsWith(prefix))
         ) {
-          violations.add(`${relativeFile}: aggregate-specific event literal ${node.text}`);
+          violations.add(`${relativeFile}: later aggregate event literal ${node.text}`);
         }
 
         ts.forEachChild(node, visit);

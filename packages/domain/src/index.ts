@@ -1,16 +1,20 @@
 export {
   concurrencyConflict,
   invalidTimePreference,
+  invalidStateTransition,
   invariantViolation,
   offerExpired,
+  qualificationIncomplete,
   tenantScopeViolation,
   type ConcurrencyConflict,
   type DomainFoundationError,
   type InvalidTimePreference,
   type InvalidTimePreferenceReason,
+  type InvalidStateTransition,
   type InvariantViolation,
   type InvariantViolationReason,
   type OfferExpired,
+  type QualificationIncomplete,
   type TenantScopeViolation,
 } from "./foundation/errors.js";
 export { type CanonicalDomainEvent, type DomainEventDraft } from "./foundation/event-draft.js";
@@ -101,3 +105,4 @@ export {
   type TimestampComparison,
   type UtcTimestampValidationError,
 } from "./values/time.js";
+export * from "./leads/index.js";
