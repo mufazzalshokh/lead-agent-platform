@@ -2,6 +2,7 @@ export type InvariantViolationReason =
   | "currency_mismatch"
   | "invalid_contact"
   | "invalid_conversation"
+  | "invalid_handoff"
   | "invalid_lead"
   | "invalid_money"
   | "invalid_organization"
@@ -9,6 +10,7 @@ export type InvariantViolationReason =
   | "invalid_reason_code"
   | "invalid_service_price"
   | "invalid_version"
+  | "handoff_not_due"
   | "money_must_be_positive"
   | "money_overflow"
   | "version_overflow";

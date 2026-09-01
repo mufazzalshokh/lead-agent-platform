@@ -106,4 +106,5 @@ export {
   type UtcTimestampValidationError,
 } from "./values/time.js";
 export * from "./conversations/index.js";
+export * from "./handoffs/index.js";
 export * from "./leads/index.js";
