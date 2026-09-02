@@ -5,7 +5,26 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { migrationsFolder, runMigrations } from "../../packages/database/src/index.js";
+import {
+  businessPolicies,
+  faqs,
+  inboundRoutes,
+  locationBusinessHours,
+  locationClosures,
+  locations,
+  locationVersions,
+  memberships,
+  migrationsFolder,
+  organizations,
+  retentionPolicies,
+  retentionPolicyRules,
+  runMigrations,
+  serviceLocations,
+  servicePrices,
+  services,
+  serviceVersions,
+  users,
+} from "../../packages/database/src/index.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -24,6 +43,17 @@ const CHANNEL_CONNECTION_B = "0193f1a8-7f65-7c28-a434-a10796c41c37";
 const TEST_ID_1 = "0193f1a8-7f65-7c28-a434-a10796c41c39";
 const TEST_ID_2 = "0193f1a8-7f65-7c28-a434-a10796c41c3a";
 const TEST_ID_3 = "0193f1a8-7f65-7c28-a434-a10796c41c3b";
+const LOCATION_VERSION_A = "0193f1a8-7f65-7c28-a434-a10796c41c40";
+const LOCATION_VERSION_B = "0193f1a8-7f65-7c28-a434-a10796c41c41";
+const BUSINESS_HOUR_A = "0193f1a8-7f65-7c28-a434-a10796c41c42";
+const CLOSURE_A = "0193f1a8-7f65-7c28-a434-a10796c41c43";
+const SERVICE_A = "0193f1a8-7f65-7c28-a434-a10796c41c44";
+const SERVICE_B = "0193f1a8-7f65-7c28-a434-a10796c41c45";
+const SERVICE_VERSION_A = "0193f1a8-7f65-7c28-a434-a10796c41c46";
+const SERVICE_VERSION_B = "0193f1a8-7f65-7c28-a434-a10796c41c47";
+const PRICE_A = "0193f1a8-7f65-7c28-a434-a10796c41c48";
+const FAQ_A = "0193f1a8-7f65-7c28-a434-a10796c41c49";
+const POLICY_A = "0193f1a8-7f65-7c28-a434-a10796c41c4a";
 const UNKNOWN_ORGANIZATION = "0193f1a8-7f65-7c28-a434-a10796c41cff";
 const UUID_V4 = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -37,11 +67,54 @@ const S4B1_TABLES = [
   "retention_policy_rules",
   "users",
 ];
+const S4B2_TABLES = [
+  "business_policies",
+  "faqs",
+  "inbound_routes",
+  "location_business_hours",
+  "location_closures",
+  "location_versions",
+  "locations",
+  "memberships",
+  "organizations",
+  "retention_policies",
+  "retention_policy_rules",
+  "service_locations",
+  "service_prices",
+  "service_versions",
+  "services",
+  "users",
+];
+const SCHEMA_TABLES = {
+  business_policies: businessPolicies,
+  faqs,
+  inbound_routes: inboundRoutes,
+  location_business_hours: locationBusinessHours,
+  location_closures: locationClosures,
+  location_versions: locationVersions,
+  locations,
+  memberships,
+  organizations,
+  retention_policies: retentionPolicies,
+  retention_policy_rules: retentionPolicyRules,
+  service_locations: serviceLocations,
+  service_prices: servicePrices,
+  service_versions: serviceVersions,
+  services,
+  users,
+} as const;
+
+const isDrizzleColumn = (value: unknown): value is { name: string; table: unknown } =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof Reflect.get(value, "name") === "string" &&
+  Reflect.get(value, "table") !== undefined;
 
 let container: StartedPostgreSqlContainer | undefined;
 let pool: Pool | undefined;
 let upgradeTablesAfterS4a: string[] = [];
 let upgradeTablesAfterS4b1: string[] = [];
+let upgradeTablesAfterS4b2: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -127,12 +200,17 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0001_slippery_grim_reaper.sql");
   upgradeTablesAfterS4b1 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0002_unique_bucky.sql");
+  upgradeTablesAfterS4b2 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table inbound_routes, retention_policy_rules, retention_policies,
+    `drop table business_policies, faqs, service_prices, service_locations,
+      service_versions, services, location_closures, location_business_hours,
+      location_versions, inbound_routes, retention_policy_rules, retention_policies,
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4b.1 upgrade verification failed to restore the disposable database");
+    throw new Error("S4b.2 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -181,6 +259,69 @@ const insertLocation = async (id: string, organizationId: string, code: string):
     `insert into locations (id, organization_id, code, status)
      values ($1, $2, $3, 'active')`,
     [id, organizationId, code],
+  );
+};
+
+const insertLocationVersion = async (
+  id: string,
+  organizationId: string,
+  locationId: string,
+  versionNo: number,
+  publisherUserId: string,
+  timeZone = "Asia/Tashkent",
+): Promise<void> => {
+  await database().query(
+    `insert into location_versions
+      (id, organization_id, location_id, version_no, name_i18n, address_i18n,
+       public_contact_jsonb, time_zone, published_at, published_by_user_id, content_hash)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, now(), $9, $10)`,
+    [
+      id,
+      organizationId,
+      locationId,
+      versionNo,
+      JSON.stringify({ en: "Synthetic Clinic", ru: "Тестовая клиника", uz: "Sinov klinikasi" }),
+      JSON.stringify({ en: "1 Test Street" }),
+      JSON.stringify({ phone: "+00000000000" }),
+      timeZone,
+      publisherUserId,
+      Buffer.from("synthetic-location-content-hash"),
+    ],
+  );
+};
+
+const insertService = async (id: string, organizationId: string, code: string): Promise<void> => {
+  await database().query(
+    `insert into services (id, organization_id, code, status)
+     values ($1, $2, $3, 'active')`,
+    [id, organizationId, code],
+  );
+};
+
+const insertServiceVersion = async (
+  id: string,
+  organizationId: string,
+  serviceId: string,
+  versionNo: number,
+  publisherUserId: string,
+): Promise<void> => {
+  await database().query(
+    `insert into service_versions
+      (id, organization_id, service_id, version_no, name_i18n, description_i18n,
+       duration_guidance_minutes, disclaimer_i18n, content_hash, published_at,
+       published_by_user_id)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 30, $7::jsonb, $8, now(), $9)`,
+    [
+      id,
+      organizationId,
+      serviceId,
+      versionNo,
+      JSON.stringify({ en: "Synthetic Consultation", uz: "Sinov konsultatsiyasi" }),
+      JSON.stringify({ en: "A deterministic synthetic service description" }),
+      JSON.stringify({ en: "Guidance only" }),
+      Buffer.from("synthetic-service-content-hash"),
+      publisherUserId,
+    ],
   );
 };
 
@@ -239,7 +380,7 @@ beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4b1_test")
+      .withDatabase("lead_agent_s4b2_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -257,20 +398,23 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table inbound_routes, retention_policy_rules, retention_policies,
+    `truncate table business_policies, faqs, service_prices, service_locations,
+      service_versions, services, location_closures, location_business_hours,
+      location_versions, inbound_routes, retention_policy_rules, retention_policies,
       memberships, locations, users, organizations`,
   );
-});
+}, 60_000);
 
 afterAll(async () => {
   await pool?.end();
   await container?.stop();
 }, 60_000);
 
-describe("S4b.1 PostgreSQL 17 migration", () => {
-  it("upgrades S4a to S4b.1, migrates an empty database to head, and reruns safely", async () => {
+describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+  it("upgrades S4a through S4b.1 to S4b.2, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
+    expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -278,12 +422,12 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4B1_TABLES);
+    expect(await productionTables(database())).toEqual(S4B2_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(2);
+    expect(migrationCount.rows[0]?.count).toBe(3);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -383,6 +527,131 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
       "rotated_at",
       "created_at",
     ]);
+    expect(namesByTable["location_versions"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "location_id",
+      "version_no",
+      "name_i18n",
+      "address_i18n",
+      "public_contact_jsonb",
+      "time_zone",
+      "published_at",
+      "published_by_user_id",
+      "content_hash",
+      "created_at",
+    ]);
+    expect(namesByTable["location_business_hours"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "location_version_id",
+      "day_of_week",
+      "opens_at_local",
+      "closes_at_local",
+      "sequence_no",
+      "created_at",
+    ]);
+    expect(namesByTable["location_closures"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "location_id",
+      "local_date",
+      "kind",
+      "opens_at_local",
+      "closes_at_local",
+      "reason_i18n",
+      "status",
+      "supersedes_id",
+      "created_by_user_id",
+      "created_at",
+    ]);
+    expect(namesByTable["services"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "code",
+      "status",
+      "current_version_id",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["service_versions"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "service_id",
+      "version_no",
+      "name_i18n",
+      "description_i18n",
+      "duration_guidance_minutes",
+      "disclaimer_i18n",
+      "search_vector_uz",
+      "search_vector_ru",
+      "search_vector_en",
+      "content_hash",
+      "published_at",
+      "published_by_user_id",
+      "created_at",
+    ]);
+    expect(namesByTable["service_locations"]?.map(({ column_name }) => column_name)).toEqual([
+      "organization_id",
+      "service_id",
+      "location_id",
+      "status",
+      "effective_from",
+      "effective_to",
+      "created_at",
+    ]);
+    expect(namesByTable["service_prices"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "service_id",
+      "location_id",
+      "price_type",
+      "currency",
+      "min_amount_minor",
+      "max_amount_minor",
+      "display_text_i18n",
+      "effective_from",
+      "effective_to",
+      "status",
+      "version_no",
+      "published_by_user_id",
+      "created_at",
+    ]);
+    expect(namesByTable["faqs"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "faq_key",
+      "version_no",
+      "service_id",
+      "location_id",
+      "question_i18n",
+      "answer_i18n",
+      "search_vector_uz",
+      "search_vector_ru",
+      "search_vector_en",
+      "status",
+      "effective_from",
+      "effective_to",
+      "content_hash",
+      "published_by_user_id",
+      "created_at",
+    ]);
+    expect(namesByTable["business_policies"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "policy_key",
+      "version_no",
+      "policy_type",
+      "schema_version",
+      "rules_jsonb",
+      "status",
+      "effective_from",
+      "effective_to",
+      "content_hash",
+      "published_by_user_id",
+      "created_at",
+    ]);
 
     const userBinaryColumns = namesByTable["users"]?.filter(({ column_name }) =>
       ["email_ciphertext", "email_lookup_hash", "display_name_ciphertext"].includes(column_name),
@@ -396,7 +665,7 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
     expect(userBinaryColumns).toHaveLength(3);
     expect(userBinaryColumns?.every(({ data_type }) => data_type === "bytea")).toBe(true);
     expect(routeKeyHash).toMatchObject({ data_type: "bytea", is_nullable: "NO" });
-    expect(utcTimestamps).toHaveLength(11);
+    expect(utcTimestamps).toHaveLength(21);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
@@ -405,6 +674,30 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
     expect(columns.rows.some(({ column_name }) => column_name.includes("password"))).toBe(false);
     expect(columns.rows.some(({ column_name }) => column_name.includes("secret"))).toBe(false);
     expect(columns.rows.some(({ column_name }) => column_name === "route_key")).toBe(false);
+  });
+
+  it("keeps the Drizzle table declarations in exact column parity with the migrated database", async () => {
+    const migratedColumns = await database().query<{ column_name: string; table_name: string }>(
+      `select table_name, column_name
+         from information_schema.columns
+        where table_schema = 'public'
+        order by table_name, ordinal_position`,
+    );
+    const migratedNamesByTable = Object.groupBy(
+      migratedColumns.rows,
+      ({ table_name }) => table_name,
+    );
+    const declaredNames = Object.keys(SCHEMA_TABLES).sort();
+
+    expect(declaredNames).toEqual(S4B2_TABLES);
+    for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
+      const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
+        .filter(isDrizzleColumn)
+        .map(({ name }) => name);
+      expect(migratedNamesByTable[tableName]?.map(({ column_name }) => column_name)).toEqual(
+        declaredColumns,
+      );
+    }
   });
 
   it("creates the accepted uniqueness, foreign-key, check, and tenant-leading index structures", async () => {
@@ -439,6 +732,27 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
         "inbound_routes_organization_id_id_unique",
         "inbound_routes_route_type_route_key_hash_unique",
         "inbound_routes_organization_id_organizations_id_fk",
+        "locations_current_version_fk",
+        "location_versions_location_fk",
+        "location_versions_publisher_membership_fk",
+        "location_business_hours_location_version_fk",
+        "location_closures_location_fk",
+        "location_closures_superseded_record_fk",
+        "location_closures_creator_membership_fk",
+        "services_organization_id_organizations_id_fk",
+        "services_current_version_fk",
+        "service_versions_service_fk",
+        "service_versions_publisher_membership_fk",
+        "service_locations_service_fk",
+        "service_locations_location_fk",
+        "service_prices_service_fk",
+        "service_prices_location_fk",
+        "service_prices_publisher_membership_fk",
+        "faqs_service_fk",
+        "faqs_location_fk",
+        "faqs_publisher_membership_fk",
+        "business_policies_organization_id_organizations_id_fk",
+        "business_policies_publisher_membership_fk",
       ]),
     );
 
@@ -476,6 +790,47 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
     expect(indexDefinitions.get("inbound_routes_one_active_per_connection_type_unique")).toContain(
       "(organization_id, channel_connection_id, route_type)",
     );
+    expect(indexDefinitions.get("location_versions_organization_location_version_idx")).toContain(
+      "(organization_id, location_id, version_no DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("location_business_hours_organization_version_day_idx")).toContain(
+      "(organization_id, location_version_id, day_of_week)",
+    );
+    expect(indexDefinitions.get("service_locations_organization_location_status_idx")).toContain(
+      "(organization_id, location_id, status)",
+    );
+    expect(
+      indexDefinitions.get("service_prices_org_service_location_status_effective_idx"),
+    ).toContain(
+      "(organization_id, service_id, location_id, status, effective_from DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("faqs_search_vector_uz_idx")).toContain("USING gin");
+    expect(indexDefinitions.get("faqs_search_vector_ru_idx")).toContain("USING gin");
+    expect(indexDefinitions.get("faqs_search_vector_en_idx")).toContain("USING gin");
+    expect(indexDefinitions.get("service_versions_search_vector_uz_idx")).toContain("USING gin");
+    expect(indexDefinitions.get("service_versions_search_vector_ru_idx")).toContain("USING gin");
+    expect(indexDefinitions.get("service_versions_search_vector_en_idx")).toContain("USING gin");
+
+    const exclusions = await database().query<{ conname: string }>(
+      `select conname
+         from pg_constraint
+        where contype = 'x'
+          and connamespace = 'public'::regnamespace
+        order by conname`,
+    );
+    expect(exclusions.rows.map(({ conname }) => conname)).toEqual([
+      "location_business_hours_no_overlap_excl",
+      "service_locations_no_active_overlap_excl",
+      "service_prices_no_published_overlap_excl",
+    ]);
+
+    const localeValidator = await database().query<{ provolatile: string }>(
+      `select provolatile
+         from pg_proc
+        where pronamespace = 'public'::regnamespace
+          and proname = 'is_bounded_locale_map'`,
+    );
+    expect(localeValidator.rows).toEqual([{ provolatile: "i" }]);
   });
 
   it("persists valid tenant/configuration records with UTC-aware timestamps and optimistic versions", async () => {
@@ -816,7 +1171,434 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
     });
   });
 
-  it("keeps RLS and later S4b channel/location relationships explicitly deferred", async () => {
+  it("persists local schedules and DST-aware location versions while rejecting invalid locale and closure shapes", async () => {
+    await insertOrganization(ORGANIZATION_A, "location-config-a");
+    await insertOrganization(ORGANIZATION_B, "location-config-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertLocation(LOCATION_A, ORGANIZATION_A, "new-york-office");
+    await insertLocation(LOCATION_B, ORGANIZATION_B, "other-tenant-office");
+    await insertLocationVersion(
+      LOCATION_VERSION_A,
+      ORGANIZATION_A,
+      LOCATION_A,
+      1,
+      USER_A,
+      "America/New_York",
+    );
+    await database().query("update locations set current_version_id = $2 where id = $1", [
+      LOCATION_A,
+      LOCATION_VERSION_A,
+    ]);
+    await database().query(
+      `insert into location_business_hours
+        (id, organization_id, location_version_id, day_of_week,
+         opens_at_local, closes_at_local, sequence_no)
+       values ($1, $2, $3, 1, time '09:00', time '17:00', 1)`,
+      [BUSINESS_HOUR_A, ORGANIZATION_A, LOCATION_VERSION_A],
+    );
+
+    const localSchedule = await database().query<{
+      closes_at_local: string;
+      opens_at_local: string;
+      time_zone: string;
+    }>(
+      `select h.opens_at_local::text, h.closes_at_local::text, v.time_zone
+         from location_business_hours h
+         join location_versions v
+           on v.organization_id = h.organization_id and v.id = h.location_version_id`,
+    );
+    expect(localSchedule.rows[0]).toEqual({
+      closes_at_local: "17:00:00",
+      opens_at_local: "09:00:00",
+      time_zone: "America/New_York",
+    });
+
+    const dstSemantics = await database().query<{ summer: string; winter: string }>(
+      `select timezone('America/New_York', timestamptz '2026-01-15 14:00:00+00')::time::text as winter,
+              timezone('America/New_York', timestamptz '2026-07-15 13:00:00+00')::time::text as summer`,
+    );
+    expect(dstSemantics.rows[0]).toEqual({ summer: "09:00:00", winter: "09:00:00" });
+
+    await expect(
+      database().query(
+        `insert into location_business_hours
+          (id, organization_id, location_version_id, day_of_week,
+           opens_at_local, closes_at_local, sequence_no)
+         values ($1, $2, $3, 1, time '16:00', time '18:00', 2)`,
+        [TEST_ID_1, ORGANIZATION_A, LOCATION_VERSION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23P01",
+      constraint: "location_business_hours_no_overlap_excl",
+    });
+    await expect(
+      database().query(
+        `insert into location_versions
+          (id, organization_id, location_id, version_no, name_i18n, address_i18n,
+           public_contact_jsonb, time_zone, published_at, published_by_user_id, content_hash)
+         values ($1, $2, $3, 2, $4::jsonb, '{"en":"Synthetic"}'::jsonb,
+           '{}'::jsonb, 'UTC', now(), $5, $6)`,
+        [
+          TEST_ID_1,
+          ORGANIZATION_A,
+          LOCATION_A,
+          JSON.stringify({ en: "Valid", fr: "Not supported" }),
+          USER_A,
+          Buffer.from("invalid-locale-map-hash"),
+        ],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "location_versions_name_i18n_check",
+    });
+
+    await database().query(
+      `insert into location_closures
+        (id, organization_id, location_id, local_date, kind, reason_i18n,
+         status, created_by_user_id)
+       values ($1, $2, $3, date '2026-12-25', 'closed', '{"en":"Public holiday"}'::jsonb,
+         'active', $4)`,
+      [CLOSURE_A, ORGANIZATION_A, LOCATION_A, USER_A],
+    );
+    await expect(
+      database().query(
+        `insert into location_closures
+          (id, organization_id, location_id, local_date, kind, reason_i18n,
+           status, created_by_user_id)
+         values ($1, $2, $3, date '2026-12-25', 'closed', '{"en":"Duplicate"}'::jsonb,
+           'active', $4)`,
+        [TEST_ID_2, ORGANIZATION_A, LOCATION_A, USER_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "location_closures_one_active_per_local_date_unique",
+    });
+    await expect(
+      database().query(
+        `insert into location_closures
+          (id, organization_id, location_id, local_date, kind, opens_at_local,
+           closes_at_local, reason_i18n, status, created_by_user_id)
+         values ($1, $2, $3, date '2026-12-26', 'closed', time '09:00', time '12:00',
+           '{"en":"Invalid closed interval"}'::jsonb, 'active', $4)`,
+        [TEST_ID_3, ORGANIZATION_A, LOCATION_A, USER_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "location_closures_interval_shape_check",
+    });
+
+    await insertLocationVersion(
+      LOCATION_VERSION_B,
+      ORGANIZATION_B,
+      LOCATION_B,
+      1,
+      USER_B,
+      "Europe/London",
+    );
+    await expect(
+      database().query("update locations set current_version_id = $2 where id = $1", [
+        LOCATION_A,
+        LOCATION_VERSION_B,
+      ]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "locations_current_version_fk" });
+    await expect(
+      database().query(
+        `insert into location_closures
+          (id, organization_id, location_id, local_date, kind, reason_i18n,
+           status, created_by_user_id)
+         values ($1, $2, $3, date '2026-12-27', 'closed', '{"en":"Invalid actor"}'::jsonb,
+           'active', $4)`,
+        [TEST_ID_1, ORGANIZATION_A, LOCATION_A, USER_B],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "location_closures_creator_membership_fk",
+    });
+  });
+
+  it("enforces service version ownership, current pointers, location scope, and active interval exclusion", async () => {
+    await insertOrganization(ORGANIZATION_A, "service-config-a");
+    await insertOrganization(ORGANIZATION_B, "service-config-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertLocation(LOCATION_A, ORGANIZATION_A, "service-location-a");
+    await insertLocation(LOCATION_B, ORGANIZATION_B, "service-location-b");
+    await insertService(SERVICE_A, ORGANIZATION_A, "synthetic-consultation");
+    await insertService(SERVICE_B, ORGANIZATION_B, "other-tenant-service");
+    await insertServiceVersion(SERVICE_VERSION_A, ORGANIZATION_A, SERVICE_A, 1, USER_A);
+    await insertServiceVersion(SERVICE_VERSION_B, ORGANIZATION_B, SERVICE_B, 1, USER_B);
+    await database().query("update services set current_version_id = $2 where id = $1", [
+      SERVICE_A,
+      SERVICE_VERSION_A,
+    ]);
+
+    const searchVectors = await database().query<{ search_vector_en: string }>(
+      "select search_vector_en::text from service_versions where id = $1",
+      [SERVICE_VERSION_A],
+    );
+    expect(searchVectors.rows[0]?.search_vector_en).toContain("synthet");
+
+    await expect(
+      insertServiceVersion(TEST_ID_1, ORGANIZATION_A, SERVICE_B, 2, USER_A),
+    ).rejects.toMatchObject({ code: "23503", constraint: "service_versions_service_fk" });
+    await expect(
+      database().query("update services set current_version_id = $2 where id = $1", [
+        SERVICE_A,
+        SERVICE_VERSION_B,
+      ]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "services_current_version_fk" });
+
+    await database().query(
+      `insert into service_locations
+        (organization_id, service_id, location_id, status, effective_from)
+       values ($1, $2, $3, 'active', timestamptz '2026-01-01 00:00:00+00')`,
+      [ORGANIZATION_A, SERVICE_A, LOCATION_A],
+    );
+    await expect(
+      database().query(
+        `insert into service_locations
+          (organization_id, service_id, location_id, status, effective_from)
+         values ($1, $2, $3, 'active', timestamptz '2026-02-01 00:00:00+00')`,
+        [ORGANIZATION_A, SERVICE_A, LOCATION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23P01",
+      constraint: "service_locations_no_active_overlap_excl",
+    });
+    await expect(
+      database().query(
+        `insert into service_locations
+          (organization_id, service_id, location_id, status, effective_from)
+         values ($1, $2, $3, 'active', timestamptz '2027-01-01 00:00:00+00')`,
+        [ORGANIZATION_A, SERVICE_A, LOCATION_B],
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "service_locations_location_fk" });
+    await expect(
+      database().query(
+        `insert into service_locations
+          (organization_id, service_id, location_id, status, effective_from)
+         values ($1, $2, $3, 'inactive', timestamptz '2026-02-01 00:00:00+00')`,
+        [ORGANIZATION_A, SERVICE_A, LOCATION_A],
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("enforces integer price shapes, canonical currency, tenant scope, publisher provenance, and interval exclusion", async () => {
+    await insertOrganization(ORGANIZATION_A, "price-config-a");
+    await insertOrganization(ORGANIZATION_B, "price-config-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertLocation(LOCATION_A, ORGANIZATION_A, "price-location-a");
+    await insertLocation(LOCATION_B, ORGANIZATION_B, "price-location-b");
+    await insertService(SERVICE_A, ORGANIZATION_A, "priced-service");
+
+    await database().query(
+      `insert into service_prices
+        (id, organization_id, service_id, location_id, price_type, currency,
+         min_amount_minor, max_amount_minor, display_text_i18n, effective_from,
+         status, version_no, published_by_user_id)
+       values ($1, $2, $3, $4, 'fixed', 'USD', 12500, 12500,
+         '{"en":"Synthetic fixed price"}'::jsonb, timestamptz '2026-01-01 00:00:00+00',
+         'published', 1, $5)`,
+      [PRICE_A, ORGANIZATION_A, SERVICE_A, LOCATION_A, USER_A],
+    );
+    const storedPrice = await database().query<{
+      currency: string;
+      max_amount_minor: string;
+      min_amount_minor: string;
+    }>(
+      `select currency, min_amount_minor, max_amount_minor
+         from service_prices where id = $1`,
+      [PRICE_A],
+    );
+    expect(storedPrice.rows[0]).toEqual({
+      currency: "USD",
+      max_amount_minor: "12500",
+      min_amount_minor: "12500",
+    });
+
+    await expect(
+      database().query(
+        `insert into service_prices
+          (id, organization_id, service_id, price_type, currency,
+           min_amount_minor, display_text_i18n, status, version_no)
+         values ($1, $2, $3, 'from', 'USD', -1, '{"en":"Invalid"}'::jsonb, 'draft', 2)`,
+        [TEST_ID_1, ORGANIZATION_A, SERVICE_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "service_prices_amount_shape_check" });
+    await expect(
+      database().query(
+        `insert into service_prices
+          (id, organization_id, service_id, price_type, currency,
+           min_amount_minor, max_amount_minor, display_text_i18n, status, version_no)
+         values ($1, $2, $3, 'fixed', 'usd', 1, 1, '{"en":"Invalid"}'::jsonb, 'draft', 2)`,
+        [TEST_ID_1, ORGANIZATION_A, SERVICE_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "service_prices_currency_check" });
+    await expect(
+      database().query(
+        `insert into service_prices
+          (id, organization_id, service_id, location_id, price_type, currency,
+           min_amount_minor, max_amount_minor, display_text_i18n, status, version_no)
+         values ($1, $2, $3, $4, 'fixed', 'USD', 1, 1,
+           '{"en":"Invalid tenant"}'::jsonb, 'draft', 2)`,
+        [TEST_ID_1, ORGANIZATION_A, SERVICE_A, LOCATION_B],
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "service_prices_location_fk" });
+    await expect(
+      database().query(
+        `insert into service_prices
+          (id, organization_id, service_id, location_id, price_type, currency,
+           min_amount_minor, max_amount_minor, display_text_i18n, effective_from,
+           status, version_no, published_by_user_id)
+         values ($1, $2, $3, $4, 'fixed', 'USD', 13000, 13000,
+           '{"en":"Overlapping"}'::jsonb, timestamptz '2026-06-01 00:00:00+00',
+           'published', 2, $5)`,
+        [TEST_ID_2, ORGANIZATION_A, SERVICE_A, LOCATION_A, USER_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23P01",
+      constraint: "service_prices_no_published_overlap_excl",
+    });
+    await expect(
+      database().query(
+        `insert into service_prices
+          (id, organization_id, service_id, price_type, currency,
+           display_text_i18n, effective_from, status, version_no, published_by_user_id)
+         values ($1, $2, $3, 'quote_required', 'USD', '{"en":"Ask staff"}'::jsonb,
+           timestamptz '2027-01-01 00:00:00+00', 'published', 3, $4)`,
+        [TEST_ID_3, ORGANIZATION_A, SERVICE_A, USER_B],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "service_prices_publisher_membership_fk",
+    });
+  });
+
+  it("enforces FAQ and business-policy publication, tenant references, bounded content, and current uniqueness", async () => {
+    await insertOrganization(ORGANIZATION_A, "knowledge-config-a");
+    await insertOrganization(ORGANIZATION_B, "knowledge-config-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertLocation(LOCATION_A, ORGANIZATION_A, "knowledge-location-a");
+    await insertService(SERVICE_A, ORGANIZATION_A, "knowledge-service-a");
+    await insertService(SERVICE_B, ORGANIZATION_B, "knowledge-service-b");
+
+    await database().query(
+      `insert into faqs
+        (id, organization_id, faq_key, version_no, service_id, location_id,
+         question_i18n, answer_i18n, status, effective_from, content_hash,
+         published_by_user_id)
+       values ($1, $2, 'preparation', 1, $3, $4,
+         '{"en":"How should I prepare?"}'::jsonb,
+         '{"en":"Follow the approved instructions."}'::jsonb,
+         'published', timestamptz '2026-01-01 00:00:00+00', $5, $6)`,
+      [
+        FAQ_A,
+        ORGANIZATION_A,
+        SERVICE_A,
+        LOCATION_A,
+        Buffer.from("synthetic-faq-content-hash"),
+        USER_A,
+      ],
+    );
+    const faqSearch = await database().query<{ search_vector_en: string }>(
+      "select search_vector_en::text from faqs where id = $1",
+      [FAQ_A],
+    );
+    expect(faqSearch.rows[0]?.search_vector_en).toContain("prepar");
+
+    await expect(
+      database().query(
+        `insert into faqs
+          (id, organization_id, faq_key, version_no, service_id, question_i18n,
+           answer_i18n, status, content_hash)
+         values ($1, $2, 'cross-tenant', 1, $3, '{"en":"Question"}'::jsonb,
+           '{"en":"Answer"}'::jsonb, 'draft', $4)`,
+        [TEST_ID_1, ORGANIZATION_A, SERVICE_B, Buffer.from("cross-tenant-faq-hash")],
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "faqs_service_fk" });
+    await expect(
+      database().query(
+        `insert into faqs
+          (id, organization_id, faq_key, version_no, service_id, location_id,
+           question_i18n, answer_i18n, status, effective_from, content_hash,
+           published_by_user_id)
+         values ($1, $2, 'preparation', 2, $3, $4, '{"en":"New question"}'::jsonb,
+           '{"en":"New answer"}'::jsonb, 'published',
+           timestamptz '2027-01-01 00:00:00+00', $5, $6)`,
+        [
+          TEST_ID_2,
+          ORGANIZATION_A,
+          SERVICE_A,
+          LOCATION_A,
+          Buffer.from("duplicate-current-faq-hash"),
+          USER_A,
+        ],
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "faqs_one_published_per_key_scope_unique",
+    });
+
+    await database().query(
+      `insert into business_policies
+        (id, organization_id, policy_key, version_no, policy_type, schema_version,
+         rules_jsonb, status, effective_from, content_hash, published_by_user_id)
+       values ($1, $2, 'qualification-default', 1, 'qualification', 1,
+         '{"required_fields":["service_id"]}'::jsonb, 'published',
+         timestamptz '2026-01-01 00:00:00+00', $3, $4)`,
+      [POLICY_A, ORGANIZATION_A, Buffer.from("synthetic-policy-content-hash"), USER_A],
+    );
+    await expect(
+      database().query(
+        `insert into business_policies
+          (id, organization_id, policy_key, version_no, policy_type, schema_version,
+           rules_jsonb, status, content_hash)
+         values ($1, $2, 'empty-rules', 1, 'safety', 1, '{}'::jsonb, 'draft', $3)`,
+        [TEST_ID_1, ORGANIZATION_A, Buffer.from("empty-policy-content-hash")],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "business_policies_rules_check" });
+    await expect(
+      database().query(
+        `insert into business_policies
+          (id, organization_id, policy_key, version_no, policy_type, schema_version,
+           rules_jsonb, status, effective_from, content_hash, published_by_user_id)
+         values ($1, $2, 'qualification-default', 2, 'qualification', 1,
+           '{"required_fields":[]}'::jsonb, 'published',
+           timestamptz '2027-01-01 00:00:00+00', $3, $4)`,
+        [TEST_ID_2, ORGANIZATION_A, Buffer.from("duplicate-policy-content-hash"), USER_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "business_policies_one_published_per_key_type_unique",
+    });
+    await expect(
+      database().query(
+        `insert into business_policies
+          (id, organization_id, policy_key, version_no, policy_type, schema_version,
+           rules_jsonb, status, effective_from, content_hash, published_by_user_id)
+         values ($1, $2, 'handoff-default', 1, 'handoff', 1,
+           '{"queue":"staff"}'::jsonb, 'published',
+           timestamptz '2026-01-01 00:00:00+00', $3, $4)`,
+        [TEST_ID_3, ORGANIZATION_A, Buffer.from("cross-actor-policy-hash"), USER_B],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "business_policies_publisher_membership_fk",
+    });
+  });
+
+  it("keeps RLS and the S4b.3 channel relationship deferred while activating current pointers", async () => {
     const rls = await database().query<{ relname: string; relrowsecurity: boolean }>(
       `select relname, relrowsecurity
          from pg_class
@@ -825,23 +1607,41 @@ describe("S4b.1 PostgreSQL 17 migration", () => {
         order by relname`,
     );
     expect(rls.rows).toEqual([
+      { relname: "business_policies", relrowsecurity: false },
+      { relname: "faqs", relrowsecurity: false },
       { relname: "inbound_routes", relrowsecurity: false },
+      { relname: "location_business_hours", relrowsecurity: false },
+      { relname: "location_closures", relrowsecurity: false },
+      { relname: "location_versions", relrowsecurity: false },
       { relname: "locations", relrowsecurity: false },
       { relname: "memberships", relrowsecurity: false },
       { relname: "organizations", relrowsecurity: false },
       { relname: "retention_policies", relrowsecurity: false },
       { relname: "retention_policy_rules", relrowsecurity: false },
+      { relname: "service_locations", relrowsecurity: false },
+      { relname: "service_prices", relrowsecurity: false },
+      { relname: "service_versions", relrowsecurity: false },
+      { relname: "services", relrowsecurity: false },
       { relname: "users", relrowsecurity: false },
     ]);
 
-    const deferredForeignKeys = await database().query<{ count: number }>(
+    const deferredChannelForeignKeys = await database().query<{ count: number }>(
       `select count(*)::integer as count
          from information_schema.key_column_usage
         where table_schema = 'public'
-          and column_name in ('channel_connection_id', 'current_version_id')
+          and column_name = 'channel_connection_id'
           and position_in_unique_constraint is not null`,
     );
-    expect(deferredForeignKeys.rows[0]?.count).toBe(0);
+    expect(deferredChannelForeignKeys.rows[0]?.count).toBe(0);
+
+    const activatedCurrentVersionForeignKeys = await database().query<{ count: number }>(
+      `select count(*)::integer as count
+         from information_schema.key_column_usage
+        where table_schema = 'public'
+          and column_name = 'current_version_id'
+          and position_in_unique_constraint is not null`,
+    );
+    expect(activatedCurrentVersionForeignKeys.rows[0]?.count).toBe(2);
 
     const activatedRetentionForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count

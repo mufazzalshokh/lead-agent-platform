@@ -15,6 +15,13 @@
       "when": 1788366467206,
       "tag": "0001_slippery_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788370301768,
+      "tag": "0002_unique_bucky",
+      "breakpoints": true
     }
   ]
 }
