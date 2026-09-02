@@ -2,7 +2,7 @@
 
 Status: Stage 0 normative logical schema
 
-Database: PostgreSQL
+Database: PostgreSQL 17 (latest supported 17.x minor in each environment)
 
 Identifier/time conventions: UUIDv7 and UTC `timestamptz`
 
@@ -106,8 +106,10 @@ tenants starts a new transaction and resets context for every claimed item.
 
 ### 2.2 Policy form
 
-Every tenant table enables and forces RLS. The normal runtime role is not the
-owner and has no `BYPASSRLS`:
+Every tenant table ultimately enables and forces RLS. S4a-S4c create the
+RLS-ready structural schema; S5 adds the policies, transaction-local context,
+and runtime-role separation. The normal runtime role is not the owner and has
+no `BYPASSRLS`:
 
 ~~~sql
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
@@ -160,22 +162,53 @@ payload `organization_id` values never use it.
 
 ### 3.2 `users`
 
-- **Purpose:** Platform principal corresponding to the chosen authentication
-  provider; organization access comes only through membership.
-- **Columns:** `id`, `auth_issuer`, `auth_subject_hash`, protected
-  `email_ciphertext`/`email_lookup_hash` where needed, `display_name_ciphertext`,
-  `status active|suspended|deleted`, `last_authenticated_at`, common columns.
+- **Purpose:** Provider-neutral global application principal; organization
+  access comes only through membership.
+- **Columns:** `id`, protected `email_ciphertext`/`email_lookup_hash` where
+  needed, `display_name_ciphertext`, `status active|suspended|deleted`,
+  `last_authenticated_at`, common columns. Provider issuer/subject fields and
+  session fields never live on this table.
 - **PK/FKs/tenant:** PK `id`; global control-plane table, no
   `organization_id`.
-- **Uniqueness:** (`auth_issuer`, `auth_subject_hash`); optional unique
-  `email_lookup_hash` only if account policy requires it.
-- **Indexes:** auth-subject unique index; `(status, last_authenticated_at)`.
-- **Sensitive:** S2; auth subject hashes are stable pseudonymous identifiers.
+- **Uniqueness:** optional unique `email_lookup_hash` only if account policy
+  requires it; email is never an authentication identity primary key and is
+  never used for automatic external-identity linking.
+- **Indexes:** `(status, last_authenticated_at)`; optional email lookup index
+  only under the approved account policy above.
+- **Sensitive:** S2 profile/contact fields.
 - **Deletion/RLS:** no tenant RLS or tenant-visible list. Exact-principal
   lookup is exposed through a restricted auth function/repository. Deletion
   tombstones PII but audit actor IDs may remain.
 
-### 3.2.1 `auth_sessions`
+### 3.2.1 `external_identities` (S6)
+
+- **Purpose:** Provider-neutral 1:N mapping from an exact external identity to
+  one global application user.
+- **Columns:** `id`, `user_id`, exact `issuer`, exact `subject`, provider-neutral
+  lifecycle/provenance timestamps defined with the S6 authentication flow.
+- **PK/FKs/tenant:** PK; `user_id -> users(id) RESTRICT`; global authentication
+  control table with no `organization_id`.
+- **Uniqueness:** (`issuer`, `subject`). Email is not an identity key and never
+  causes automatic linking.
+- **Sensitive/deletion:** S2 stable pseudonymous identity. Linking another
+  identity requires explicit trusted S6 logic; provider claims never establish
+  tenant membership. Disable/unlink through an audited authentication workflow.
+
+This table is allocated to S6 and is not created by S4a.
+
+### 3.2.2 `membership_invitations` (S6)
+
+- **Purpose:** Persist a pre-user invitation independently from membership and
+  authentication identity.
+- **Identity rule:** an invitation does not require `user_id`, does not
+  auto-link by email, and becomes a membership only through explicit,
+  security-reviewed S6 acceptance logic.
+- **Secret rule:** no raw invitation token/secret is persisted if S6 uses a
+  token scheme.
+
+This table is allocated to S6 and is not created by S4a.
+
+### 3.2.3 `auth_sessions` (S6)
 
 - **Purpose:** Opaque, revocable server-side staff login session used by the
   private API; organization authorization is still reloaded from memberships.
@@ -199,7 +232,8 @@ payload `organization_id` values never use it.
 
 ### 3.3 `memberships`
 
-- **Purpose:** Bind a user to an organization with product role and lifecycle.
+- **Purpose:** Bind an existing user to an existing organization with product
+  role and lifecycle. A pre-user invitation is a separate S6 record.
 - **Columns:** `id`, `organization_id`, `user_id`, `role owner|admin|staff|analyst`,
   `status invited|active|suspended|revoked`,
   `location_scope all|restricted`, `invited_by_user_id`,
@@ -211,12 +245,17 @@ payload `organization_id` values never use it.
 - **Indexes:** (`organization_id`, `status`, `role`);
   (`user_id`, `status`) for login membership discovery.
 - **Sensitive:** S1; membership is confidential.
-- **Deletion/RLS:** forced RLS. Revoke rather than delete; hard delete only
-  abandoned invitations with no audit dependency.
+- **Deletion/RLS:** forced RLS when S5 is applied. Revoke rather than delete;
+  hard delete only an unactivated membership for an existing user when it has
+  no audit dependency.
 
 A restricted membership with zero `membership_location_scopes` rows has access
 to no location. Owners normally require `location_scope=all`; permission policy
 still controls organization-wide resources.
+
+`membership_location_scopes` persistence and all role/location authorization
+evaluation are allocated to S6. S4a stores only the membership's structural
+role/status/location-scope value; it implements no authorization behavior.
 
 ### 3.4 `membership_location_scopes`
 
@@ -1496,17 +1535,24 @@ and never delivered through a public stable URL.
 - Restore tests confirm RLS is still forced and runtime roles still lack bypass
   after recovery.
 
-## 18. Schema inventory and ownership audit
+## 18. Schema inventory, stage allocation, and ownership audit
 
-| Category | Tables |
+The initial schema is implemented in these explicit reviewed slices. A table is
+created only in its assigned slice; later slices add their own forward
+migrations rather than rewriting an earlier migration.
+
+| Stage | Exact table manifest |
 | --- | --- |
-| Control/tenancy | `organizations`, `users`, `auth_sessions`, `memberships`, `membership_location_scopes`, `retention_policies`, `retention_policy_rules`, `inbound_routes` |
-| Knowledge/channels | `locations`, `location_versions`, `location_business_hours`, `location_closures`, `services`, `service_versions`, `service_locations`, `service_prices`, `faqs`, `business_policies`, `channel_connections`, `widget_allowed_origins`, `widget_sessions` |
-| Customer workflow | `contacts`, `contact_identities`, `consent_records`, `leads`, `lead_qualification_evaluations`, `lead_qualification_evidence`, `conversations`, `messages` |
-| Booking/outcomes | `appointment_requests`, `appointment_request_preferences`, `appointment_request_transitions`, `appointment_confirmation_evidence`, `appointment_request_attendance`, `appointment_revenue_attributions` |
-| Handoff/delivery | `handoffs`, `handoff_transitions`, `notifications`, `notification_attempts` |
-| AI/reliability | `ai_runs`, `ai_action_evaluations`, `webhook_receipts`, `idempotency_keys`, `outbox_events` |
-| Governance | `audit_events`, `platform_audit_events`, `privacy_requests`, `legal_holds`, `analytics_events` |
+| S4a tenant/configuration foundation | `organizations`, `users`, `memberships`, `locations` |
+| S4b business configuration and customer/workflow foundation | `retention_policies`, `retention_policy_rules`, `inbound_routes`, `location_versions`, `location_business_hours`, `location_closures`, `services`, `service_versions`, `service_locations`, `service_prices`, `faqs`, `business_policies`, `channel_connections`, `widget_allowed_origins`, `widget_sessions`, `contacts`, `contact_identities`, `consent_records`, `leads`, `lead_qualification_evaluations`, `lead_qualification_evidence`, `conversations`, `messages`, `appointment_requests`, `appointment_request_preferences`, `appointment_request_transitions`, `appointment_confirmation_evidence`, `appointment_request_attendance`, `appointment_revenue_attributions`, `handoffs`, `handoff_transitions`, `notifications`, `notification_attempts` |
+| S4c reliability/governance foundation | `ai_runs`, `ai_action_evaluations`, `webhook_receipts`, `idempotency_keys`, `outbox_events`, `audit_events`, `platform_audit_events`, `privacy_requests`, `legal_holds`, `analytics_events` |
+| S6 staff identity/RBAC persistence and implementation | `external_identities`, `membership_invitations`, `auth_sessions`, `membership_location_scopes` |
+
+S4a contains exactly its four listed production tables. In particular it does
+not create external identities, invitations, sessions, location grants,
+knowledge/content, channels, customer workflows, reliability/governance, RLS,
+or support/impersonation persistence. S5 owns RLS for the tables available at
+that stage; S6 applies the corresponding security controls to its later tables.
 
 All listed tables have an explicit purpose, ownership category, key strategy,
 uniqueness/index plan, sensitivity class, deletion behavior, and RLS/grant
@@ -1515,26 +1561,24 @@ channel-participant identity is permitted.
 
 ## 19. Data-model open questions
 
-1. Authentication provider and whether `users` needs protected email/name at
-   all, rather than only an external subject and display data supplied on demand.
-2. The active-lead uniqueness scope (contact only, service, campaign, or a
+1. The active-lead uniqueness scope (contact only, service, campaign, or a
    configurable combination).
-3. Exact Telegram thread grouping and widget conversation reopen/session
+2. Exact Telegram thread grouping and widget conversation reopen/session
    windows, needed before partial active-conversation uniqueness is finalized.
-4. Jurisdiction-specific retention day values, legal basis, legal-hold
+3. Jurisdiction-specific retention day values, legal basis, legal-hold
    authority, and whether audit/outcome records must be physically segregated.
-5. Whether each fixed V1 external-attestation method (`phone|in_person`) is
+4. Whether each fixed V1 external-attestation method (`phone|in_person`) is
    legally acceptable and which evidence fields/retention it requires; any new
    method needs a versioned contract and architecture review.
-6. Whether external imports are P0 for attendance/revenue; the schema supports
+5. Whether external imports are P0 for attendance/revenue; the schema supports
    `approved_import`, while the product requires only manual P0 entry.
-7. Base currency/reporting rules for organizations operating in multiple
+6. Base currency/reporting rules for organizations operating in multiple
    currencies; raw facts remain currency-specific regardless.
-8. Whether provider payloads/message bodies remain in PostgreSQL or move to
+7. Whether provider payloads/message bodies remain in PostgreSQL or move to
    encrypted object storage at launch volume.
-9. Measured volume thresholds for partitioning and whether a read replica is
+8. Measured volume thresholds for partitioning and whether a read replica is
    justified.
-10. Whether the selected ORM/migration stack safely supports range exclusion
+9. Whether the selected ORM/migration stack safely supports range exclusion
     constraints, partial/expression indexes, generated search vectors,
     security-definer functions, and forced RLS; migrations must use explicit SQL
     where it does not.

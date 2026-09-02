@@ -8,7 +8,14 @@ The system is a TypeScript modular monolith delivered as three independently sca
 - `api`: Fastify REST endpoints for staff, widget, and verified integrations;
 - `worker`: pg-boss/outbox processing, AI orchestration, outbound delivery, analytics projection, and maintenance.
 
-All use Node.js 24 LTS as the implementation baseline and a single `pnpm` lockfile. PostgreSQL is the only required stateful platform component in V1. Images are cloud-neutral OCI containers. A managed PostgreSQL service, TLS ingress/load balancer, secret manager, and OTLP-compatible telemetry backend are deployment capabilities, not dependencies embedded in domain code.
+All use Node.js 24 LTS as the implementation baseline and a single `pnpm`
+lockfile. PostgreSQL 17 is the only required stateful platform component in V1.
+Local, test, staging, and production target major 17 and use the latest supported
+17.x security/bugfix minor available in that environment. Moving to another
+major requires an explicit reviewed migration and compatibility decision. Images
+are cloud-neutral OCI containers. A managed PostgreSQL service, TLS
+ingress/load balancer, secret manager, and OTLP-compatible telemetry backend are
+deployment capabilities, not dependencies embedded in domain code.
 
 ## Deployment topology
 
@@ -54,7 +61,7 @@ Preview deployments may be added for the web UI, but they use isolated synthetic
 The intended local workflow provides:
 
 - a repository-pinned Node major and `pnpm` package manager declaration;
-- a compose file for the supported PostgreSQL major and an optional local telemetry collector;
+- a compose file pinned to PostgreSQL major 17 and an optional local telemetry collector;
 - one command to install, one to migrate/seed synthetic fixtures, one to run the three apps, and one to execute checks;
 - deterministic OpenAI, OIDC, Telegram, notification, clock, and ID adapters by default;
 - opt-in sandbox/live adapters only when explicitly configured with local secret references;
