@@ -7,6 +7,14 @@ export const binary = customType<{ data: Uint8Array }>({
   },
 });
 
+export const immutableCreatedAt = () =>
+  timestamp("created_at", {
+    mode: "date",
+    withTimezone: true,
+  })
+    .defaultNow()
+    .notNull();
+
 export const mutableColumns = () => ({
   createdAt: timestamp("created_at", {
     mode: "date",
