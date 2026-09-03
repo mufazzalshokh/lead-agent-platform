@@ -18,6 +18,7 @@ import {
 import { channelConnections } from "./channels.js";
 import { binary, immutableCreatedAt, mutableColumns } from "./common.js";
 import { contacts } from "./contacts.js";
+import { conversations, messages } from "./conversation-records.js";
 import { locations } from "./locations.js";
 import { memberships } from "./memberships.js";
 import { organizations } from "./organizations.js";
@@ -277,6 +278,34 @@ export const consentRecords = pgTable(
       .onDelete("restrict")
       .onUpdate("restrict"),
     foreignKey({
+      columns: [table.organizationId, table.conversationId],
+      foreignColumns: [conversations.organizationId, conversations.id],
+      name: "consent_records_conversation_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.contactId, table.conversationId],
+      foreignColumns: [conversations.organizationId, conversations.contactId, conversations.id],
+      name: "consent_records_conversation_contact_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.sourceMessageId],
+      foreignColumns: [messages.organizationId, messages.id],
+      name: "consent_records_source_message_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.conversationId, table.sourceMessageId],
+      foreignColumns: [messages.organizationId, messages.conversationId, messages.id],
+      name: "consent_records_conversation_message_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
       columns: [table.organizationId, table.supersedesConsentId],
       foreignColumns: [table.organizationId, table.id],
       name: "consent_records_superseded_record_fk",
@@ -419,6 +448,11 @@ export const leads = pgTable(
       .onDelete("restrict")
       .onUpdate("restrict"),
     unique("leads_organization_id_id_unique").on(table.organizationId, table.id),
+    unique("leads_organization_contact_id_unique").on(
+      table.organizationId,
+      table.contactId,
+      table.id,
+    ),
     index("leads_organization_status_updated_idx").on(
       table.organizationId,
       table.status,
@@ -572,6 +606,13 @@ export const leadQualificationEvidence = pgTable(
         leadQualificationEvaluations.id,
       ],
       name: "lead_qualification_evidence_evaluation_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.messageId],
+      foreignColumns: [messages.organizationId, messages.id],
+      name: "lead_qualification_evidence_message_fk",
     })
       .onDelete("restrict")
       .onUpdate("restrict"),

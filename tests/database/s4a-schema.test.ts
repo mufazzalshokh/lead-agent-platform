@@ -6,11 +6,18 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  appointmentConfirmationEvidence,
+  appointmentRequestAttendance,
+  appointmentRequestPreferences,
+  appointmentRequestTransitions,
+  appointmentRequests,
+  appointmentRevenueAttributions,
   businessPolicies,
   channelConnections,
   consentRecords,
   contactIdentities,
   contacts,
+  conversations,
   faqs,
   inboundRoutes,
   locationBusinessHours,
@@ -21,6 +28,7 @@ import {
   leadQualificationEvidence,
   leads,
   memberships,
+  messages,
   migrationsFolder,
   organizations,
   retentionPolicies,
@@ -34,6 +42,16 @@ import {
   widgetAllowedOrigins,
   widgetSessions,
 } from "../../packages/database/src/index.js";
+import {
+  isAppointmentConfirmationSource,
+  isAppointmentRequestStatus,
+  isConversationAutomationMode,
+  isConversationStatus,
+  type AppointmentConfirmationSource,
+  type AppointmentRequestStatus,
+  type ConversationAutomationMode,
+  type ConversationStatus,
+} from "../../packages/domain/src/index.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -81,8 +99,23 @@ const EVALUATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c59";
 const EVALUATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c5a";
 const MESSAGE_A = "0193f1a8-7f65-7c28-a434-a10796c41c5b";
 const MESSAGE_B = "0193f1a8-7f65-7c28-a434-a10796c41c5c";
+const CONVERSATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c5d";
+const CONVERSATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c5e";
+const APPOINTMENT_REQUEST_A = "0193f1a8-7f65-7c28-a434-a10796c41c5f";
+const APPOINTMENT_PREFERENCE_A = "0193f1a8-7f65-7c28-a434-a10796c41c61";
+const APPOINTMENT_TRANSITION_A = "0193f1a8-7f65-7c28-a434-a10796c41c62";
+const CONFIRMATION_EVIDENCE_A = "0193f1a8-7f65-7c28-a434-a10796c41c63";
+const ATTENDANCE_A = "0193f1a8-7f65-7c28-a434-a10796c41c64";
+const ATTENDANCE_B = "0193f1a8-7f65-7c28-a434-a10796c41c65";
+const REVENUE_ATTRIBUTION_A = "0193f1a8-7f65-7c28-a434-a10796c41c66";
+const REVENUE_ATTRIBUTION_B = "0193f1a8-7f65-7c28-a434-a10796c41c67";
+const CORRELATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c68";
+const ACTIVE_HANDOFF_A = "0193f1a8-7f65-7c28-a434-a10796c41c69";
 const UNKNOWN_ORGANIZATION = "0193f1a8-7f65-7c28-a434-a10796c41cff";
 const UUID_V4 = "550e8400-e29b-41d4-a716-446655440000";
+
+const syntheticUuid = (suffix: number): string =>
+  `0193f1a8-7f65-7c28-a434-${suffix.toString(16).padStart(12, "0")}`;
 
 const S4A_TABLES = ["locations", "memberships", "organizations", "users"];
 const S4B1_TABLES = [
@@ -160,12 +193,54 @@ const S4B4_TABLES = [
   "widget_allowed_origins",
   "widget_sessions",
 ];
+const S4B5_TABLES = [
+  "appointment_confirmation_evidence",
+  "appointment_request_attendance",
+  "appointment_request_preferences",
+  "appointment_request_transitions",
+  "appointment_requests",
+  "appointment_revenue_attributions",
+  "business_policies",
+  "channel_connections",
+  "consent_records",
+  "contact_identities",
+  "contacts",
+  "conversations",
+  "faqs",
+  "inbound_routes",
+  "lead_qualification_evaluations",
+  "lead_qualification_evidence",
+  "leads",
+  "location_business_hours",
+  "location_closures",
+  "location_versions",
+  "locations",
+  "memberships",
+  "messages",
+  "organizations",
+  "retention_policies",
+  "retention_policy_rules",
+  "service_locations",
+  "service_prices",
+  "service_versions",
+  "services",
+  "users",
+  "widget_allowed_origins",
+  "widget_sessions",
+];
 const SCHEMA_TABLES = {
+  appointment_confirmation_evidence: appointmentConfirmationEvidence,
+  appointment_request_attendance: appointmentRequestAttendance,
+  appointment_request_preferences: appointmentRequestPreferences,
+  appointment_request_transitions: appointmentRequestTransitions,
+  appointment_requests: appointmentRequests,
+  appointment_revenue_attributions: appointmentRevenueAttributions,
   business_policies: businessPolicies,
   channel_connections: channelConnections,
   consent_records: consentRecords,
   contact_identities: contactIdentities,
   contacts,
+  conversations,
   faqs,
   inbound_routes: inboundRoutes,
   lead_qualification_evaluations: leadQualificationEvaluations,
@@ -176,6 +251,7 @@ const SCHEMA_TABLES = {
   location_versions: locationVersions,
   locations,
   memberships,
+  messages,
   organizations,
   retention_policies: retentionPolicies,
   retention_policy_rules: retentionPolicyRules,
@@ -201,6 +277,7 @@ let upgradeTablesAfterS4b1: string[] = [];
 let upgradeTablesAfterS4b2: string[] = [];
 let upgradeTablesAfterS4b3: string[] = [];
 let upgradeTablesAfterS4b4: string[] = [];
+let upgradeTablesAfterS4b5: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -295,9 +372,16 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0004_tired_jubilee.sql");
   upgradeTablesAfterS4b4 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0005_past_dorian_gray.sql");
+  upgradeTablesAfterS4b5 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table lead_qualification_evidence, lead_qualification_evaluations,
-      consent_records, leads, contact_identities, widget_sessions, contacts,
+    `drop table appointment_confirmation_evidence, appointment_request_attendance,
+      appointment_request_preferences, appointment_request_transitions,
+      appointment_revenue_attributions, appointment_requests,
+      lead_qualification_evidence, consent_records, messages,
+      lead_qualification_evaluations, widget_sessions, conversations,
+      leads, contact_identities, contacts,
       widget_allowed_origins, channel_connections,
       business_policies, faqs, service_prices, service_locations,
       service_versions, services, location_closures, location_business_hours,
@@ -305,7 +389,7 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4b.4 upgrade verification failed to restore the disposable database");
+    throw new Error("S4b.5 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -587,14 +671,15 @@ const insertBusinessPolicy = async (
   id: string,
   organizationId: string,
   policyKey: string,
+  policyType: "booking" | "consent" | "handoff" | "qualification" | "safety" = "qualification",
 ): Promise<void> => {
   await database().query(
     `insert into business_policies
       (id, organization_id, policy_key, version_no, policy_type, schema_version,
        rules_jsonb, status, content_hash)
-     values ($1, $2, $3, 1, 'qualification', 1,
-       '{"required_fields":["service"]}'::jsonb, 'draft', $4)`,
-    [id, organizationId, policyKey, Buffer.from("synthetic-policy-content-hash")],
+     values ($1, $2, $3, 1, $4, 1,
+       '{"required_fields":["service"]}'::jsonb, 'draft', $5)`,
+    [id, organizationId, policyKey, policyType, Buffer.from("synthetic-policy-content-hash")],
   );
 };
 
@@ -633,11 +718,271 @@ const insertLeadQualificationEvaluation = async (
   );
 };
 
+const insertConversation = async (
+  id: string,
+  organizationId: string,
+  contactId: string,
+  leadId: string,
+  channelConnectionId: string,
+  status: "awaiting_lead" | "awaiting_staff" | "closed" | "open" | "resolved" = "open",
+  automationMode: "ai" | "paused" | "staff" = "ai",
+  activeHandoffId: string | null = null,
+): Promise<void> => {
+  await database().query(
+    `insert into conversations
+      (id, organization_id, contact_id, lead_id, channel_connection_id,
+       external_thread_hash, status, preferred_locale, automation_mode,
+       active_handoff_id, started_at, last_activity_at, resolved_at, closed_at)
+     values ($1, $2, $3, $4, $5, $6, $7, 'en', $8, $9,
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-01 00:01:00+00',
+       case when $7::varchar in ('resolved', 'closed')
+         then timestamptz '2026-01-01 00:02:00+00' else null end,
+       case when $7::varchar = 'closed'
+         then timestamptz '2026-01-01 00:03:00+00' else null end)`,
+    [
+      id,
+      organizationId,
+      contactId,
+      leadId,
+      channelConnectionId,
+      Buffer.from(`synthetic-thread-hash-${id}`),
+      status,
+      automationMode,
+      activeHandoffId,
+    ],
+  );
+};
+
+const insertInboundMessage = async (
+  id: string,
+  organizationId: string,
+  conversationId: string,
+  channelConnectionId: string,
+  senderContactId: string,
+  sequenceNo: number,
+  externalMessageId = `provider-message-${id}`,
+): Promise<void> => {
+  await database().query(
+    `insert into messages
+      (id, organization_id, conversation_id, channel_connection_id,
+       direction, sender_type, sender_contact_id, sequence_no,
+       external_event_id, external_message_id, external_sent_at,
+       content_type, body_ciphertext, body_hash, locale,
+       processing_status, delivery_status)
+     values ($1, $2, $3, $4, 'inbound', 'customer', $5, $6,
+       $7, $8, timestamptz '2026-01-01 00:01:00+00',
+       'text', $9, $10, 'en', 'accepted', 'not_applicable')`,
+    [
+      id,
+      organizationId,
+      conversationId,
+      channelConnectionId,
+      senderContactId,
+      sequenceNo,
+      `provider-event-${id}`,
+      externalMessageId,
+      Buffer.from("synthetic-message-ciphertext"),
+      Buffer.from(`synthetic-message-body-hash-${id}`),
+    ],
+  );
+};
+
+type AppointmentFixture = Readonly<{
+  businessPolicyId: string;
+  contactId: string;
+  conversationId: string;
+  leadId: string;
+  locationId: string;
+  locationVersionId: string;
+  messageId: string;
+  organizationId: string;
+  serviceId: string;
+  serviceVersionId: string;
+  staffMembershipId: string;
+}>;
+
+const insertAppointmentRequest = async (
+  id: string,
+  fixture: AppointmentFixture,
+  status:
+    | "awaiting_customer_confirmation"
+    | "cancelled"
+    | "confirmed"
+    | "expired"
+    | "rejected"
+    | "requested"
+    | "staff_accepted" = "requested",
+  dedupeKey = `request-${id}`,
+): Promise<void> => {
+  await database().query(
+    `insert into appointment_requests
+      (id, organization_id, lead_id, contact_id, conversation_id,
+       source_message_id, service_id, service_version_id, location_id,
+       location_version_id, business_policy_id, status, request_dedupe_key,
+       customer_notes_ciphertext, staff_decided_by_membership_id,
+       staff_decided_at, staff_decision_reason_code, start_at, end_at,
+       offered_time_zone, offered_local_start, offer_version,
+       confirmation_issued_at, offer_expires_at, confirmation_token_hash,
+       confirmed_at, confirmation_source, rejection_reason_code,
+       cancellation_reason_code, cancelled_by_type, expired_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+       $14,
+       case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed', 'rejected')
+         then $15::uuid else null end,
+       case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed', 'rejected')
+         then statement_timestamp() + interval '1 minute' else null end,
+       case when $12::varchar = 'rejected' then 'service_unavailable' else null end,
+       case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed')
+         then statement_timestamp() + interval '1 day' else null end,
+       case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed')
+         then statement_timestamp() + interval '1 day 30 minutes' else null end,
+       case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed')
+         then 'Asia/Tashkent' else null end,
+       case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed')
+         then timestamp '2026-10-01 09:00:00' else null end,
+       case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed')
+         then 1 else 0 end,
+       case when $12::varchar in ('awaiting_customer_confirmation', 'confirmed')
+         then statement_timestamp() + interval '2 minutes' else null end,
+       case when $12::varchar in ('awaiting_customer_confirmation', 'confirmed')
+         then statement_timestamp() + interval '1 hour' else null end,
+       case when $12::varchar in ('awaiting_customer_confirmation', 'confirmed')
+         then $16::bytea else null end,
+       case when $12::varchar = 'confirmed'
+         then statement_timestamp() + interval '3 minutes' else null end,
+       case when $12::varchar = 'confirmed' then 'customer_session' else null end,
+       case when $12::varchar = 'rejected' then 'service_unavailable' else null end,
+       case when $12::varchar = 'cancelled' then 'customer_declined' else null end,
+       case when $12::varchar = 'cancelled' then 'customer' else null end,
+       case when $12::varchar = 'expired'
+         then statement_timestamp() + interval '1 hour' else null end)`,
+    [
+      id,
+      fixture.organizationId,
+      fixture.leadId,
+      fixture.contactId,
+      fixture.conversationId,
+      fixture.messageId,
+      fixture.serviceId,
+      fixture.serviceVersionId,
+      fixture.locationId,
+      fixture.locationVersionId,
+      fixture.businessPolicyId,
+      status,
+      dedupeKey,
+      Buffer.from("synthetic-customer-notes-ciphertext"),
+      fixture.staffMembershipId,
+      Buffer.from(`synthetic-confirmation-token-hash-${id}`),
+    ],
+  );
+};
+
+type WorkflowTenantSeed = AppointmentFixture &
+  Readonly<{
+    channelConnectionId: string;
+    userId: string;
+  }>;
+
+const seedWorkflowTenant = async (
+  seed: WorkflowTenantSeed,
+  slug: string,
+  locationCode: string,
+  serviceCode: string,
+): Promise<void> => {
+  await insertOrganization(seed.organizationId, slug);
+  await insertUser(seed.userId);
+  await insertActiveMembership(seed.staffMembershipId, seed.organizationId, seed.userId);
+  await insertLocation(seed.locationId, seed.organizationId, locationCode);
+  await insertLocationVersion(
+    seed.locationVersionId,
+    seed.organizationId,
+    seed.locationId,
+    1,
+    seed.userId,
+  );
+  await insertService(seed.serviceId, seed.organizationId, serviceCode);
+  await insertServiceVersion(
+    seed.serviceVersionId,
+    seed.organizationId,
+    seed.serviceId,
+    1,
+    seed.userId,
+  );
+  await insertBusinessPolicy(
+    seed.businessPolicyId,
+    seed.organizationId,
+    "appointment-booking",
+    "booking",
+  );
+  await insertContact(seed.contactId, seed.organizationId);
+  await insertChannelConnection(
+    seed.channelConnectionId,
+    seed.organizationId,
+    "widget",
+    `Widget ${slug}`,
+  );
+  await insertLead(
+    seed.leadId,
+    seed.organizationId,
+    seed.contactId,
+    seed.channelConnectionId,
+    "qualified",
+  );
+  await insertConversation(
+    seed.conversationId,
+    seed.organizationId,
+    seed.contactId,
+    seed.leadId,
+    seed.channelConnectionId,
+  );
+  await insertInboundMessage(
+    seed.messageId,
+    seed.organizationId,
+    seed.conversationId,
+    seed.channelConnectionId,
+    seed.contactId,
+    1,
+  );
+};
+
+const WORKFLOW_A: WorkflowTenantSeed = {
+  businessPolicyId: POLICY_A,
+  channelConnectionId: CHANNEL_CONNECTION_A,
+  contactId: CONTACT_A,
+  conversationId: CONVERSATION_A,
+  leadId: LEAD_A,
+  locationId: LOCATION_A,
+  locationVersionId: LOCATION_VERSION_A,
+  messageId: MESSAGE_A,
+  organizationId: ORGANIZATION_A,
+  serviceId: SERVICE_A,
+  serviceVersionId: SERVICE_VERSION_A,
+  staffMembershipId: MEMBERSHIP_A,
+  userId: USER_A,
+};
+
+const WORKFLOW_B: WorkflowTenantSeed = {
+  businessPolicyId: TEST_ID_3,
+  channelConnectionId: CHANNEL_CONNECTION_B,
+  contactId: CONTACT_B,
+  conversationId: CONVERSATION_B,
+  leadId: LEAD_B,
+  locationId: LOCATION_B,
+  locationVersionId: LOCATION_VERSION_B,
+  messageId: MESSAGE_B,
+  organizationId: ORGANIZATION_B,
+  serviceId: SERVICE_B,
+  serviceVersionId: SERVICE_VERSION_B,
+  staffMembershipId: MEMBERSHIP_B,
+  userId: USER_B,
+};
+
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4b4_test")
+      .withDatabase("lead_agent_s4b5_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -655,8 +1000,12 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table lead_qualification_evidence, lead_qualification_evaluations,
-      consent_records, leads, contact_identities, widget_sessions, contacts,
+    `truncate table appointment_confirmation_evidence, appointment_request_attendance,
+      appointment_request_preferences, appointment_request_transitions,
+      appointment_revenue_attributions, appointment_requests,
+      lead_qualification_evidence, consent_records, messages,
+      lead_qualification_evaluations, widget_sessions, conversations,
+      leads, contact_identities, contacts,
       widget_allowed_origins, channel_connections,
       business_policies, faqs, service_prices, service_locations,
       service_versions, services, location_closures, location_business_hours,
@@ -670,13 +1019,52 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
-  it("upgrades S4a through S4b.3 to S4b.4, bootstraps head, and reruns safely", async () => {
+describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+  it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
+    const conversationStatuses = [
+      "open",
+      "awaiting_lead",
+      "awaiting_staff",
+      "resolved",
+      "closed",
+    ] as const satisfies readonly ConversationStatus[];
+    const automationModes = [
+      "ai",
+      "paused",
+      "staff",
+    ] as const satisfies readonly ConversationAutomationMode[];
+    const appointmentStatuses = [
+      "requested",
+      "staff_accepted",
+      "awaiting_customer_confirmation",
+      "confirmed",
+      "rejected",
+      "cancelled",
+      "expired",
+    ] as const satisfies readonly AppointmentRequestStatus[];
+    const confirmationSources = [
+      "customer_session",
+      "telegram",
+      "staff_attested_external",
+    ] as const satisfies readonly AppointmentConfirmationSource[];
+
+    expect(conversationStatuses.every(isConversationStatus)).toBe(true);
+    expect(automationModes.every(isConversationAutomationMode)).toBe(true);
+    expect(appointmentStatuses.every(isAppointmentRequestStatus)).toBe(true);
+    expect(confirmationSources.every(isAppointmentConfirmationSource)).toBe(true);
+    expect(isConversationStatus("handed_off")).toBe(false);
+    expect(isConversationAutomationMode("human")).toBe(false);
+    expect(isAppointmentRequestStatus("completed")).toBe(false);
+    expect(isAppointmentConfirmationSource("staff_acceptance")).toBe(false);
+  });
+
+  it("upgrades S4a through S4b.4 to S4b.5, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
     expect(upgradeTablesAfterS4b3).toEqual(S4B3_TABLES);
     expect(upgradeTablesAfterS4b4).toEqual(S4B4_TABLES);
+    expect(upgradeTablesAfterS4b5).toEqual(S4B5_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -684,12 +1072,12 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4B4_TABLES);
+    expect(await productionTables(database())).toEqual(S4B5_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(5);
+    expect(migrationCount.rows[0]?.count).toBe(6);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -1063,6 +1451,178 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "published_by_user_id",
       "created_at",
     ]);
+    expect(namesByTable["conversations"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "contact_id",
+      "lead_id",
+      "channel_connection_id",
+      "external_thread_hash",
+      "status",
+      "preferred_locale",
+      "automation_mode",
+      "active_handoff_id",
+      "next_sequence_no",
+      "started_at",
+      "last_activity_at",
+      "resolved_at",
+      "closed_at",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["messages"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "conversation_id",
+      "channel_connection_id",
+      "direction",
+      "sender_type",
+      "sender_contact_id",
+      "sender_membership_id",
+      "sequence_no",
+      "external_event_id",
+      "external_message_id",
+      "external_sent_at",
+      "external_sequence",
+      "content_type",
+      "body_ciphertext",
+      "body_hash",
+      "locale",
+      "processing_status",
+      "delivery_status",
+      "reply_to_message_id",
+      "ai_run_id",
+      "knowledge_manifest_jsonb",
+      "redacted_at",
+      "created_at",
+    ]);
+    expect(namesByTable["appointment_requests"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "lead_id",
+      "contact_id",
+      "conversation_id",
+      "source_message_id",
+      "service_id",
+      "service_version_id",
+      "location_id",
+      "location_version_id",
+      "business_policy_id",
+      "status",
+      "request_dedupe_key",
+      "customer_notes_ciphertext",
+      "staff_decided_by_membership_id",
+      "staff_decided_at",
+      "staff_decision_reason_code",
+      "start_at",
+      "end_at",
+      "offered_time_zone",
+      "offered_local_start",
+      "offer_version",
+      "confirmation_issued_at",
+      "offer_expires_at",
+      "confirmation_token_hash",
+      "confirmation_token_consumed_at",
+      "confirmed_at",
+      "confirmation_source",
+      "rejection_reason_code",
+      "cancellation_reason_code",
+      "cancelled_by_type",
+      "expired_at",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(
+      namesByTable["appointment_request_preferences"]?.map(({ column_name }) => column_name),
+    ).toEqual([
+      "id",
+      "organization_id",
+      "appointment_request_id",
+      "preference_order",
+      "start_at",
+      "end_at",
+      "time_zone",
+      "original_local_text_ciphertext",
+      "local_start",
+      "local_end",
+      "precision",
+      "created_at",
+    ]);
+    expect(
+      namesByTable["appointment_request_transitions"]?.map(({ column_name }) => column_name),
+    ).toEqual([
+      "id",
+      "organization_id",
+      "appointment_request_id",
+      "from_status",
+      "to_status",
+      "aggregate_version",
+      "command",
+      "offer_version",
+      "actor_type",
+      "actor_contact_id",
+      "actor_membership_id",
+      "reason_code",
+      "source_message_id",
+      "correlation_id",
+      "occurred_at",
+      "metadata_jsonb",
+    ]);
+    expect(
+      namesByTable["appointment_confirmation_evidence"]?.map(({ column_name }) => column_name),
+    ).toEqual([
+      "id",
+      "organization_id",
+      "appointment_request_id",
+      "offer_version",
+      "outcome",
+      "source",
+      "customer_contact_id",
+      "recorded_by_membership_id",
+      "source_message_id",
+      "external_reference_hash",
+      "customer_acted_at",
+      "recorded_at",
+      "attestation_method",
+      "attestation_reason_code",
+      "evidence_ciphertext",
+      "correlation_id",
+    ]);
+    expect(
+      namesByTable["appointment_request_attendance"]?.map(({ column_name }) => column_name),
+    ).toEqual([
+      "id",
+      "organization_id",
+      "appointment_request_id",
+      "outcome",
+      "occurred_at",
+      "recorded_by_membership_id",
+      "recorded_at",
+      "source",
+      "is_current",
+      "supersedes_id",
+      "reason_code",
+    ]);
+    expect(
+      namesByTable["appointment_revenue_attributions"]?.map(({ column_name }) => column_name),
+    ).toEqual([
+      "id",
+      "organization_id",
+      "appointment_request_id",
+      "amount_minor",
+      "currency",
+      "entry_type",
+      "category_code",
+      "recognized_at",
+      "recorded_by_membership_id",
+      "recorded_at",
+      "source",
+      "reverses_attribution_id",
+      "external_reference_hash",
+      "reason_code",
+    ]);
 
     const userBinaryColumns = namesByTable["users"]?.filter(({ column_name }) =>
       ["email_ciphertext", "email_lookup_hash", "display_name_ciphertext"].includes(column_name),
@@ -1086,7 +1646,7 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         ?.filter(({ column_name }) => ["value_ciphertext", "lookup_hash"].includes(column_name))
         .every(({ data_type }) => data_type === "bytea"),
     ).toBe(true);
-    expect(utcTimestamps).toHaveLength(34);
+    expect(utcTimestamps).toHaveLength(40);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
@@ -1096,11 +1656,14 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(
       columns.rows
         .filter(
-          ({ column_name }) => column_name.includes("secret") || column_name.includes("token"),
+          ({ column_name }) =>
+            column_name.includes("secret") ||
+            (column_name.includes("token") && !column_name.endsWith("_at")),
         )
         .map(({ column_name, table_name }) => `${table_name}.${column_name}`)
         .sort(),
     ).toEqual([
+      "appointment_requests.confirmation_token_hash",
       "channel_connections.credential_secret_ref",
       "channel_connections.webhook_secret_hash",
       "widget_sessions.session_token_jti_hash",
@@ -1134,7 +1697,7 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4B4_TABLES);
+    expect(declaredNames).toEqual(S4B5_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -1237,6 +1800,28 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         "lead_qualification_evaluations_member_fk",
         "lead_qualification_evidence_pk",
         "lead_qualification_evidence_evaluation_fk",
+        "lead_qualification_evidence_message_fk",
+        "consent_records_conversation_fk",
+        "consent_records_source_message_fk",
+        "widget_sessions_conversation_fk",
+        "conversations_organization_id_id_unique",
+        "conversations_lead_contact_fk",
+        "conversations_channel_connection_fk",
+        "messages_organization_conversation_sequence_unique",
+        "messages_conversation_channel_fk",
+        "messages_reply_to_message_fk",
+        "appointment_requests_organization_id_id_unique",
+        "appointment_requests_conversation_context_fk",
+        "appointment_requests_source_message_fk",
+        "appointment_requests_service_version_fk",
+        "appointment_requests_location_version_fk",
+        "appointment_request_preferences_request_fk",
+        "appointment_request_transitions_request_fk",
+        "appointment_confirmation_evidence_request_fk",
+        "appointment_request_attendance_request_fk",
+        "appointment_request_attendance_superseded_fk",
+        "appointment_revenue_attributions_request_fk",
+        "appointment_revenue_attributions_reversed_entry_fk",
       ]),
     );
 
@@ -1333,6 +1918,34 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "(organization_id, message_id, evaluation_id)",
     );
     expect(indexDefinitions.has("leads_one_active_per_contact_unique")).toBe(false);
+    expect(indexDefinitions.get("conversations_organization_status_activity_idx")).toContain(
+      "(organization_id, status, last_activity_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("messages_external_message_dedupe_unique")).toContain(
+      "(organization_id, channel_connection_id, external_message_id)",
+    );
+    expect(indexDefinitions.get("messages_external_message_dedupe_unique")).toContain("UNIQUE");
+    expect(indexDefinitions.get("appointment_requests_organization_status_created_idx")).toContain(
+      "(organization_id, status, created_at)",
+    );
+    expect(indexDefinitions.get("appointment_requests_organization_offer_expiry_idx")).toContain(
+      "(organization_id, offer_expires_at)",
+    );
+    expect(indexDefinitions.get("appointment_request_transitions_request_occurred_idx")).toContain(
+      "(organization_id, appointment_request_id, occurred_at)",
+    );
+    expect(indexDefinitions.get("appointment_confirmation_evidence_offer_unique")).toContain(
+      "UNIQUE",
+    );
+    expect(indexDefinitions.get("appointment_confirmation_evidence_offer_unique")).toContain(
+      "WHERE",
+    );
+    expect(indexDefinitions.get("appointment_request_attendance_one_current_unique")).toContain(
+      "UNIQUE",
+    );
+    expect(indexDefinitions.get("appointment_revenue_attributions_one_reversal_unique")).toContain(
+      "UNIQUE",
+    );
 
     const exclusions = await database().query<{ conname: string }>(
       `select conname
@@ -2211,6 +2824,14 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(anonymousSession.rows[0]?.expires_at).toBeInstanceOf(Date);
 
     await insertContact(FUTURE_CONTACT_A, ORGANIZATION_A);
+    await insertLead(LEAD_A, ORGANIZATION_A, FUTURE_CONTACT_A, CHANNEL_CONNECTION_A);
+    await insertConversation(
+      FUTURE_CONVERSATION_A,
+      ORGANIZATION_A,
+      FUTURE_CONTACT_A,
+      LEAD_A,
+      CHANNEL_CONNECTION_A,
+    );
     await expect(
       database().query(
         `update widget_sessions
@@ -2693,7 +3314,7 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ code: "23503" });
   });
 
-  it("keeps RLS deferred, activates current FKs, and preserves future conversation seams", async () => {
+  it("keeps RLS deferred and activates only the current reviewed relationship seams", async () => {
     const rls = await database().query<{ relname: string; relrowsecurity: boolean }>(
       `select relname, relrowsecurity
          from pg_class
@@ -2701,33 +3322,7 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and relkind = 'r'
         order by relname`,
     );
-    expect(rls.rows).toEqual([
-      { relname: "business_policies", relrowsecurity: false },
-      { relname: "channel_connections", relrowsecurity: false },
-      { relname: "consent_records", relrowsecurity: false },
-      { relname: "contact_identities", relrowsecurity: false },
-      { relname: "contacts", relrowsecurity: false },
-      { relname: "faqs", relrowsecurity: false },
-      { relname: "inbound_routes", relrowsecurity: false },
-      { relname: "lead_qualification_evaluations", relrowsecurity: false },
-      { relname: "lead_qualification_evidence", relrowsecurity: false },
-      { relname: "leads", relrowsecurity: false },
-      { relname: "location_business_hours", relrowsecurity: false },
-      { relname: "location_closures", relrowsecurity: false },
-      { relname: "location_versions", relrowsecurity: false },
-      { relname: "locations", relrowsecurity: false },
-      { relname: "memberships", relrowsecurity: false },
-      { relname: "organizations", relrowsecurity: false },
-      { relname: "retention_policies", relrowsecurity: false },
-      { relname: "retention_policy_rules", relrowsecurity: false },
-      { relname: "service_locations", relrowsecurity: false },
-      { relname: "service_prices", relrowsecurity: false },
-      { relname: "service_versions", relrowsecurity: false },
-      { relname: "services", relrowsecurity: false },
-      { relname: "users", relrowsecurity: false },
-      { relname: "widget_allowed_origins", relrowsecurity: false },
-      { relname: "widget_sessions", relrowsecurity: false },
-    ]);
+    expect(rls.rows).toEqual(S4B5_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
 
     const activatedRouteForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -2753,7 +3348,10 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and kcu.column_name in ('contact_id', 'conversation_id')
         order by kcu.column_name`,
     );
-    expect(widgetContactAndConversationForeignKeys.rows).toEqual([{ column_name: "contact_id" }]);
+    expect(widgetContactAndConversationForeignKeys.rows).toEqual([
+      { column_name: "contact_id" },
+      { column_name: "conversation_id" },
+    ]);
 
     const activatedCurrentVersionForeignKeys = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -3229,6 +3827,36 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     await insertBusinessPolicy(TEST_ID_3, ORGANIZATION_B, "lead-qualification");
     await insertLead(LEAD_A, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A);
     await insertLead(LEAD_B, ORGANIZATION_B, CONTACT_B, CHANNEL_CONNECTION_B);
+    await insertConversation(
+      CONVERSATION_A,
+      ORGANIZATION_A,
+      CONTACT_A,
+      LEAD_A,
+      CHANNEL_CONNECTION_A,
+    );
+    await insertConversation(
+      CONVERSATION_B,
+      ORGANIZATION_B,
+      CONTACT_B,
+      LEAD_B,
+      CHANNEL_CONNECTION_B,
+    );
+    await insertInboundMessage(
+      MESSAGE_A,
+      ORGANIZATION_A,
+      CONVERSATION_A,
+      CHANNEL_CONNECTION_A,
+      CONTACT_A,
+      1,
+    );
+    await insertInboundMessage(
+      MESSAGE_B,
+      ORGANIZATION_B,
+      CONVERSATION_B,
+      CHANNEL_CONNECTION_B,
+      CONTACT_B,
+      1,
+    );
     await insertLeadQualificationEvaluation(EVALUATION_A, ORGANIZATION_A, LEAD_A, POLICY_A);
     await expect(
       database().query(
@@ -3347,6 +3975,724 @@ describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({
       code: "23503",
       constraint: "lead_qualification_evidence_evaluation_fk",
+    });
+  });
+
+  it("persists only the canonical Conversation status, mode, and active-Handoff shapes", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "conversation-a", "conversation-a", "conversation-a");
+    await seedWorkflowTenant(WORKFLOW_B, "conversation-b", "conversation-b", "conversation-b");
+
+    const validShapes = [
+      ["open", "ai", null],
+      ["awaiting_lead", "ai", null],
+      ["awaiting_lead", "staff", ACTIVE_HANDOFF_A],
+      ["awaiting_staff", "paused", ACTIVE_HANDOFF_A],
+      ["awaiting_staff", "staff", ACTIVE_HANDOFF_A],
+      ["resolved", "paused", null],
+      ["closed", "paused", null],
+    ] as const;
+
+    for (const [index, [status, mode, activeHandoffId]] of validShapes.entries()) {
+      await expect(
+        insertConversation(
+          syntheticUuid(0x500 + index),
+          ORGANIZATION_A,
+          CONTACT_A,
+          LEAD_A,
+          CHANNEL_CONNECTION_A,
+          status,
+          mode,
+          activeHandoffId,
+        ),
+      ).resolves.toBeUndefined();
+    }
+
+    await expect(
+      insertConversation(
+        syntheticUuid(0x510),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "open",
+        "staff",
+        ACTIVE_HANDOFF_A,
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "conversations_state_ownership_shape_check",
+    });
+    await expect(
+      insertConversation(
+        syntheticUuid(0x511),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "awaiting_staff",
+        "paused",
+        UUID_V4,
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "conversations_active_handoff_uuid_v7_check",
+    });
+    await expect(
+      insertConversation(
+        syntheticUuid(0x512),
+        ORGANIZATION_A,
+        CONTACT_B,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "conversations_contact_fk" });
+    await expect(
+      insertConversation(
+        syntheticUuid(0x513),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_B,
+        CHANNEL_CONNECTION_A,
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "conversations_lead_fk" });
+    await expect(
+      insertConversation(
+        syntheticUuid(0x514),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_B,
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "conversations_channel_connection_fk",
+    });
+
+    const handoffTables = await database().query<{ table_name: string }>(
+      `select table_name
+         from information_schema.tables
+        where table_schema = 'public'
+          and table_name in ('handoffs', 'handoff_transitions')`,
+    );
+    expect(handoffTables.rows).toEqual([]);
+  });
+
+  it("stores immutable protected Messages with tenant/channel-scoped deduplication", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "messages-a", "messages-a", "messages-a");
+    await seedWorkflowTenant(WORKFLOW_B, "messages-b", "messages-b", "messages-b");
+
+    await expect(
+      insertInboundMessage(
+        syntheticUuid(0x520),
+        ORGANIZATION_A,
+        CONVERSATION_A,
+        CHANNEL_CONNECTION_A,
+        CONTACT_A,
+        2,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertInboundMessage(
+        syntheticUuid(0x521),
+        ORGANIZATION_A,
+        CONVERSATION_A,
+        CHANNEL_CONNECTION_A,
+        CONTACT_A,
+        2,
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "messages_organization_conversation_sequence_unique",
+    });
+    await expect(
+      insertInboundMessage(
+        syntheticUuid(0x522),
+        ORGANIZATION_A,
+        CONVERSATION_A,
+        CHANNEL_CONNECTION_A,
+        CONTACT_A,
+        3,
+        `provider-message-${MESSAGE_A}`,
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "messages_external_message_dedupe_unique",
+    });
+    await expect(
+      insertInboundMessage(
+        syntheticUuid(0x523),
+        ORGANIZATION_B,
+        CONVERSATION_B,
+        CHANNEL_CONNECTION_B,
+        CONTACT_B,
+        2,
+        `provider-message-${MESSAGE_A}`,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertInboundMessage(
+        syntheticUuid(0x524),
+        ORGANIZATION_A,
+        CONVERSATION_B,
+        CHANNEL_CONNECTION_A,
+        CONTACT_A,
+        4,
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "messages_conversation_channel_fk" });
+    await expect(
+      insertInboundMessage(
+        syntheticUuid(0x525),
+        ORGANIZATION_A,
+        CONVERSATION_A,
+        CHANNEL_CONNECTION_B,
+        CONTACT_A,
+        4,
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "messages_channel_connection_fk" });
+    await expect(
+      database().query(
+        `insert into messages
+          (id, organization_id, conversation_id, channel_connection_id,
+           direction, sender_type, sequence_no, content_type, body_hash,
+           processing_status, delivery_status)
+         values ($1, $2, $3, $4, 'inbound', 'system', 4, 'text', $5,
+           'accepted', 'not_applicable')`,
+        [
+          syntheticUuid(0x526),
+          ORGANIZATION_A,
+          CONVERSATION_A,
+          CHANNEL_CONNECTION_A,
+          Buffer.from("synthetic-message-body-hash"),
+        ],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "messages_sender_shape_check" });
+
+    const bodyColumns = await database().query<{ column_name: string; data_type: string }>(
+      `select column_name, data_type
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'messages'
+          and column_name like 'body%'
+        order by column_name`,
+    );
+    expect(bodyColumns.rows).toEqual([
+      { column_name: "body_ciphertext", data_type: "bytea" },
+      { column_name: "body_hash", data_type: "bytea" },
+    ]);
+    await expect(
+      database().query("delete from conversations where id = $1", [CONVERSATION_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "messages_conversation_channel_fk" });
+  });
+
+  it("activates widget, consent, and qualification Message relationships with tenant integrity", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "deferred-a", "deferred-a", "deferred-a");
+    await seedWorkflowTenant(WORKFLOW_B, "deferred-b", "deferred-b", "deferred-b");
+    await insertWidgetOrigin(WIDGET_ORIGIN_A, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A);
+    await insertWidgetSession(
+      WIDGET_SESSION_A,
+      ORGANIZATION_A,
+      CHANNEL_CONNECTION_A,
+      WIDGET_ORIGIN_A,
+      "deferred-session-token-hash",
+      "deferred-participant-hash",
+    );
+
+    await expect(
+      database().query("update widget_sessions set conversation_id = $2 where id = $1", [
+        WIDGET_SESSION_A,
+        CONVERSATION_A,
+      ]),
+    ).resolves.toBeDefined();
+    await expect(
+      database().query("update widget_sessions set conversation_id = $2 where id = $1", [
+        WIDGET_SESSION_A,
+        CONVERSATION_B,
+      ]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "widget_sessions_conversation_fk" });
+    await expect(
+      database().query("update widget_sessions set conversation_id = null where id = $1", [
+        WIDGET_SESSION_A,
+      ]),
+    ).resolves.toBeDefined();
+
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, conversation_id, purpose, status,
+           notice_key, notice_version, locale, capture_channel,
+           channel_connection_id, source_message_id, captured_by_type,
+           captured_at, evidence_hash)
+         values ($1, $2, $3, $4, 'service_messages', 'granted',
+           'privacy.service', 1, 'en', 'widget', $5, $6, 'customer', now(), $7)`,
+        [
+          CONSENT_A,
+          ORGANIZATION_A,
+          CONTACT_A,
+          CONVERSATION_A,
+          CHANNEL_CONNECTION_A,
+          MESSAGE_A,
+          Buffer.from("synthetic-consent-evidence-hash"),
+        ],
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, conversation_id, purpose, status,
+           notice_key, notice_version, locale, capture_channel,
+           channel_connection_id, source_message_id, captured_by_type,
+           captured_at, evidence_hash)
+         values ($1, $2, $3, $4, 'service_messages', 'granted',
+           'privacy.service', 1, 'en', 'widget', $5, $6, 'customer', now(), $7)`,
+        [
+          CONSENT_B,
+          ORGANIZATION_A,
+          CONTACT_A,
+          CONVERSATION_A,
+          CHANNEL_CONNECTION_A,
+          MESSAGE_B,
+          Buffer.from("synthetic-consent-evidence-hash-b"),
+        ],
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "consent_records_source_message_fk" });
+
+    await insertLeadQualificationEvaluation(EVALUATION_A, ORGANIZATION_A, LEAD_A, POLICY_A);
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'service.requested', 'customer_statement')`,
+        [ORGANIZATION_A, EVALUATION_A, MESSAGE_A],
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'service.other', 'customer_statement')`,
+        [ORGANIZATION_A, EVALUATION_A, MESSAGE_B],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "lead_qualification_evidence_message_fk",
+    });
+  });
+
+  it("persists exactly the seven AppointmentRequest states and rejects cross-tenant references", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "appointments-a", "appointments-a", "appointments-a");
+    await seedWorkflowTenant(WORKFLOW_B, "appointments-b", "appointments-b", "appointments-b");
+
+    const statuses = [
+      "requested",
+      "staff_accepted",
+      "awaiting_customer_confirmation",
+      "confirmed",
+      "rejected",
+      "cancelled",
+      "expired",
+    ] as const;
+    for (const [index, status] of statuses.entries()) {
+      const requestId = syntheticUuid(0x540 + index);
+      const messageId = index === 0 ? MESSAGE_A : syntheticUuid(0x550 + index);
+      if (index > 0) {
+        await insertInboundMessage(
+          messageId,
+          ORGANIZATION_A,
+          CONVERSATION_A,
+          CHANNEL_CONNECTION_A,
+          CONTACT_A,
+          index + 1,
+        );
+      }
+      await expect(
+        insertAppointmentRequest(requestId, { ...WORKFLOW_A, messageId }, status),
+      ).resolves.toBeUndefined();
+    }
+
+    await expect(
+      database().query("update appointment_requests set status = 'pending' where id = $1", [
+        syntheticUuid(0x540),
+      ]),
+    ).rejects.toMatchObject({ code: "23514" });
+
+    const hostileMessageIds = Array.from({ length: 5 }, (_, index) => syntheticUuid(0x565 + index));
+    for (const [index, messageId] of hostileMessageIds.entries()) {
+      await insertInboundMessage(
+        messageId,
+        ORGANIZATION_A,
+        CONVERSATION_A,
+        CHANNEL_CONNECTION_A,
+        CONTACT_A,
+        index + 8,
+      );
+    }
+
+    await expect(
+      insertAppointmentRequest(
+        syntheticUuid(0x560),
+        { ...WORKFLOW_A, leadId: LEAD_B, messageId: hostileMessageIds[0]! },
+        "requested",
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "appointment_requests_lead_fk" });
+    await expect(
+      insertAppointmentRequest(
+        syntheticUuid(0x561),
+        { ...WORKFLOW_A, contactId: CONTACT_B, messageId: hostileMessageIds[1]! },
+        "requested",
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "appointment_requests_contact_fk" });
+    await expect(
+      insertAppointmentRequest(
+        syntheticUuid(0x562),
+        { ...WORKFLOW_A, conversationId: CONVERSATION_B, messageId: hostileMessageIds[2]! },
+        "requested",
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "appointment_requests_conversation_fk",
+    });
+    await expect(
+      insertAppointmentRequest(
+        syntheticUuid(0x563),
+        { ...WORKFLOW_A, locationId: LOCATION_B, messageId: hostileMessageIds[3]! },
+        "requested",
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "appointment_requests_location_fk" });
+    await expect(
+      insertAppointmentRequest(
+        syntheticUuid(0x564),
+        { ...WORKFLOW_A, messageId: hostileMessageIds[4]!, serviceId: SERVICE_B },
+        "requested",
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "appointment_requests_service_fk" });
+    await expect(
+      database().query("update appointment_requests set version = 0 where id = $1", [
+        syntheticUuid(0x540),
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "appointment_requests_version_check" });
+    await expect(
+      database().query(
+        `update appointment_requests
+            set confirmed_at = offer_expires_at,
+                confirmation_source = 'customer_session'
+          where id = $1`,
+        [syntheticUuid(0x542)],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "appointment_requests_confirmation_result_check",
+    });
+  });
+
+  it("preserves preference windows and deterministic append-only transition versions", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "history-a", "history-a", "history-a");
+    await seedWorkflowTenant(WORKFLOW_B, "history-b", "history-b", "history-b");
+    await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A);
+
+    await expect(
+      database().query(
+        `insert into appointment_request_preferences
+          (id, organization_id, appointment_request_id, preference_order,
+           start_at, end_at, time_zone, local_start, local_end, precision)
+         values ($1, $2, $3, 1,
+           timestamptz '2026-10-01 04:00:00+00',
+           timestamptz '2026-10-01 05:00:00+00', 'Asia/Tashkent',
+           timestamp '2026-10-01 09:00:00', timestamp '2026-10-01 10:00:00', 'exact')`,
+        [APPOINTMENT_PREFERENCE_A, ORGANIZATION_A, APPOINTMENT_REQUEST_A],
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      database().query(
+        `insert into appointment_request_preferences
+          (id, organization_id, appointment_request_id, preference_order,
+           time_zone, precision)
+         values ($1, $2, $3, 2, 'Asia/Tashkent', 'free_text')`,
+        [syntheticUuid(0x570), ORGANIZATION_A, APPOINTMENT_REQUEST_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "appointment_request_preferences_shape_check",
+    });
+    await expect(
+      database().query(
+        `insert into appointment_request_preferences
+          (id, organization_id, appointment_request_id, preference_order,
+           original_local_text_ciphertext, time_zone, precision)
+         values ($1, $2, $3, 1, $4, 'Asia/Tashkent', 'free_text')`,
+        [
+          syntheticUuid(0x571),
+          ORGANIZATION_B,
+          APPOINTMENT_REQUEST_A,
+          Buffer.from("synthetic-local-text-ciphertext"),
+        ],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "appointment_request_preferences_request_fk",
+    });
+
+    const insertTransition = (
+      id: string,
+      aggregateVersion: number,
+      organizationId = ORGANIZATION_A,
+    ) =>
+      database().query(
+        `insert into appointment_request_transitions
+          (id, organization_id, appointment_request_id, from_status, to_status,
+           aggregate_version, command, actor_type, actor_contact_id,
+           source_message_id, correlation_id, occurred_at)
+         values ($1, $2, $3, null, 'requested', $4,
+           'create_appointment_request', 'customer', $5, $6, $7, now())`,
+        [
+          id,
+          organizationId,
+          APPOINTMENT_REQUEST_A,
+          aggregateVersion,
+          CONTACT_A,
+          MESSAGE_A,
+          CORRELATION_A,
+        ],
+      );
+
+    await expect(insertTransition(APPOINTMENT_TRANSITION_A, 1)).resolves.toBeDefined();
+    await expect(insertTransition(syntheticUuid(0x572), 1)).rejects.toMatchObject({
+      code: "23505",
+      constraint: "appointment_request_transitions_request_version_unique",
+    });
+    await expect(insertTransition(syntheticUuid(0x573), 2, ORGANIZATION_B)).rejects.toMatchObject({
+      code: "23503",
+      constraint: "appointment_request_transitions_request_fk",
+    });
+    await expect(
+      database().query("delete from appointment_requests where id = $1", [APPOINTMENT_REQUEST_A]),
+    ).rejects.toMatchObject({ code: "23503" });
+  });
+
+  it("stores confirmation evidence for an exact offer and preserves dual-version history", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "confirmation-a", "confirmation-a", "confirmation-a");
+    await insertAppointmentRequest(
+      APPOINTMENT_REQUEST_A,
+      WORKFLOW_A,
+      "awaiting_customer_confirmation",
+    );
+    await database().query(
+      `insert into appointment_request_transitions
+        (id, organization_id, appointment_request_id, from_status, to_status,
+         aggregate_version, command, offer_version, actor_type,
+         correlation_id, occurred_at)
+       values ($1, $2, $3, 'staff_accepted', 'awaiting_customer_confirmation',
+         3, 'prepare_customer_confirmation', 1, 'system', $4, now())`,
+      [APPOINTMENT_TRANSITION_A, ORGANIZATION_A, APPOINTMENT_REQUEST_A, CORRELATION_A],
+    );
+
+    await expect(
+      database().query(
+        `insert into appointment_confirmation_evidence
+          (id, organization_id, appointment_request_id, offer_version, outcome,
+           source, customer_contact_id, external_reference_hash,
+           customer_acted_at, recorded_at, evidence_ciphertext, correlation_id)
+         values ($1, $2, $3, 1, 'confirmed', 'customer_session', $4, $5,
+           now(), now(), $6, $7)`,
+        [
+          CONFIRMATION_EVIDENCE_A,
+          ORGANIZATION_A,
+          APPOINTMENT_REQUEST_A,
+          CONTACT_A,
+          Buffer.from("synthetic-confirmation-reference-hash"),
+          Buffer.from("synthetic-confirmation-evidence-ciphertext"),
+          CORRELATION_A,
+        ],
+      ),
+    ).resolves.toBeDefined();
+    const versionEvidence = await database().query<{
+      aggregate_version: string;
+      evidence_offer_version: number;
+      transition_offer_version: number;
+    }>(
+      `select t.aggregate_version,
+              t.offer_version as transition_offer_version,
+              e.offer_version as evidence_offer_version
+         from appointment_request_transitions t
+         join appointment_confirmation_evidence e
+           on (e.organization_id, e.appointment_request_id) =
+              (t.organization_id, t.appointment_request_id)
+        where e.id = $1`,
+      [CONFIRMATION_EVIDENCE_A],
+    );
+    expect(versionEvidence.rows[0]).toEqual({
+      aggregate_version: "3",
+      evidence_offer_version: 1,
+      transition_offer_version: 1,
+    });
+    await expect(
+      database().query(
+        `insert into appointment_confirmation_evidence
+          (id, organization_id, appointment_request_id, offer_version, outcome,
+           source, customer_contact_id, customer_acted_at, recorded_at,
+           correlation_id)
+         values ($1, $2, $3, 1, 'confirmed', 'staff_attested_external', $4,
+           now(), now(), $5)`,
+        [syntheticUuid(0x580), ORGANIZATION_A, APPOINTMENT_REQUEST_A, CONTACT_A, CORRELATION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "appointment_confirmation_evidence_source_shape_check",
+    });
+    await expect(
+      database().query(
+        `update appointment_confirmation_evidence
+            set recorded_at = customer_acted_at - interval '1 second'
+          where id = $1`,
+        [CONFIRMATION_EVIDENCE_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "appointment_confirmation_evidence_timestamps_check",
+    });
+  }, 60_000);
+
+  it("records attendance corrections without adding medical or AppointmentRequest states", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "attendance-a", "attendance-a", "attendance-a");
+    await seedWorkflowTenant(WORKFLOW_B, "attendance-b", "attendance-b", "attendance-b");
+    await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A, "confirmed");
+
+    const insertAttendance = (
+      id: string,
+      organizationId: string,
+      membershipId: string,
+      supersedesId: string | null,
+      isCurrent: boolean,
+    ) =>
+      database().query(
+        `insert into appointment_request_attendance
+          (id, organization_id, appointment_request_id, outcome, occurred_at,
+           recorded_by_membership_id, recorded_at, source, is_current,
+           supersedes_id, reason_code)
+         values ($1, $2, $3, 'attended', now(), $4, now(), 'staff_manual',
+           $5, $6, 'staff_verified')`,
+        [id, organizationId, APPOINTMENT_REQUEST_A, membershipId, isCurrent, supersedesId],
+      );
+
+    await expect(
+      insertAttendance(ATTENDANCE_A, ORGANIZATION_A, MEMBERSHIP_A, null, true),
+    ).resolves.toBeDefined();
+    await expect(
+      insertAttendance(ATTENDANCE_B, ORGANIZATION_A, MEMBERSHIP_A, null, true),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "appointment_request_attendance_one_current_unique",
+    });
+    await database().query(
+      "update appointment_request_attendance set is_current = false where id = $1",
+      [ATTENDANCE_A],
+    );
+    await expect(
+      insertAttendance(ATTENDANCE_B, ORGANIZATION_A, MEMBERSHIP_A, ATTENDANCE_A, true),
+    ).resolves.toBeDefined();
+    await expect(
+      insertAttendance(syntheticUuid(0x590), ORGANIZATION_A, MEMBERSHIP_B, null, false),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "appointment_request_attendance_member_fk",
+    });
+
+    const medicalColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'appointment_request_attendance'
+          and (column_name like '%diagnos%'
+            or column_name like '%medical%'
+            or column_name like '%procedure%'
+            or column_name like '%note%')`,
+    );
+    expect(medicalColumns.rows).toEqual([]);
+  });
+
+  it("stores trustworthy integer-minor-unit revenue attribution and append-only reversals", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "revenue-a", "revenue-a", "revenue-a");
+    await seedWorkflowTenant(WORKFLOW_B, "revenue-b", "revenue-b", "revenue-b");
+    await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A, "confirmed");
+
+    const insertRevenue = (
+      id: string,
+      amountMinor: number,
+      currency: string,
+      entryType: "adjustment" | "charge" | "reversal",
+      reversesAttributionId: string | null,
+      membershipId = MEMBERSHIP_A,
+    ) =>
+      database().query(
+        `insert into appointment_revenue_attributions
+          (id, organization_id, appointment_request_id, amount_minor, currency,
+           entry_type, category_code, recognized_at,
+           recorded_by_membership_id, recorded_at, source,
+           reverses_attribution_id, reason_code)
+         values ($1, $2, $3, $4, $5, $6, 'treatment_revenue', now(),
+           $7, now(), 'staff_manual', $8, 'staff_recorded')`,
+        [
+          id,
+          ORGANIZATION_A,
+          APPOINTMENT_REQUEST_A,
+          amountMinor,
+          currency,
+          entryType,
+          membershipId,
+          reversesAttributionId,
+        ],
+      );
+
+    await expect(
+      insertRevenue(REVENUE_ATTRIBUTION_A, 250_000, "UZS", "charge", null),
+    ).resolves.toBeDefined();
+    const amount = await database().query<{ amount_minor: string; data_type: string }>(
+      `select r.amount_minor,
+              (select data_type
+                 from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'appointment_revenue_attributions'
+                  and column_name = 'amount_minor') as data_type
+         from appointment_revenue_attributions r
+        where r.id = $1`,
+      [REVENUE_ATTRIBUTION_A],
+    );
+    expect(amount.rows[0]).toEqual({ amount_minor: "250000", data_type: "bigint" });
+    await expect(
+      insertRevenue(REVENUE_ATTRIBUTION_B, 250_000, "UZS", "reversal", REVENUE_ATTRIBUTION_A),
+    ).resolves.toBeDefined();
+    await expect(
+      insertRevenue(syntheticUuid(0x5a0), 1, "UZS", "reversal", REVENUE_ATTRIBUTION_A),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "appointment_revenue_attributions_one_reversal_unique",
+    });
+    const unreversedRevenueId = syntheticUuid(0x5a5);
+    await expect(
+      insertRevenue(unreversedRevenueId, 1, "UZS", "charge", null),
+    ).resolves.toBeDefined();
+    await expect(
+      insertRevenue(syntheticUuid(0x5a1), 1, "USD", "reversal", unreversedRevenueId),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "appointment_revenue_attributions_reversed_entry_fk",
+    });
+    await expect(
+      insertRevenue(syntheticUuid(0x5a2), 0, "UZS", "charge", null),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "appointment_revenue_attributions_amount_check",
+    });
+    await expect(
+      insertRevenue(syntheticUuid(0x5a3), 1, "uzs", "charge", null),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "appointment_revenue_attributions_currency_check",
+    });
+    await expect(
+      insertRevenue(syntheticUuid(0x5a4), 1, "UZS", "charge", null, MEMBERSHIP_B),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "appointment_revenue_attributions_member_fk",
     });
   });
 });

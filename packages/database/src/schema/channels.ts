@@ -16,6 +16,7 @@ import {
 
 import { binary, immutableCreatedAt, mutableColumns } from "./common.js";
 import { contacts } from "./contacts.js";
+import { conversations } from "./conversation-records.js";
 import { memberships } from "./memberships.js";
 import { organizations } from "./organizations.js";
 
@@ -270,6 +271,17 @@ export const widgetSessions = pgTable(
       columns: [table.organizationId, table.contactId],
       foreignColumns: [contacts.organizationId, contacts.id],
       name: "widget_sessions_contact_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.channelConnectionId, table.conversationId],
+      foreignColumns: [
+        conversations.organizationId,
+        conversations.channelConnectionId,
+        conversations.id,
+      ],
+      name: "widget_sessions_conversation_fk",
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
