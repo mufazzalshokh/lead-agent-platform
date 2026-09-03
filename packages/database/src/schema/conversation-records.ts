@@ -14,10 +14,11 @@ import {
   type PgTableExtraConfigValue,
 } from "drizzle-orm/pg-core";
 
-import { channelConnections } from "./channels.js";
+import { channelConnections } from "./channel-connections.js";
 import { binary, immutableCreatedAt, mutableColumns } from "./common.js";
 import { contacts } from "./contacts.js";
-import { leads } from "./customer-records.js";
+import { leads } from "./leads.js";
+import { locations } from "./locations.js";
 import { memberships } from "./memberships.js";
 import { organizations } from "./organizations.js";
 
@@ -138,7 +139,19 @@ export const conversations = pgTable(
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.id, table.activeHandoffId],
+      foreignColumns: [handoffs.organizationId, handoffs.conversationId, handoffs.id],
+      name: "conversations_active_handoff_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
     unique("conversations_organization_id_id_unique").on(table.organizationId, table.id),
+    unique("conversations_organization_lead_id_unique").on(
+      table.organizationId,
+      table.leadId,
+      table.id,
+    ),
     unique("conversations_organization_channel_id_unique").on(
       table.organizationId,
       table.channelConnectionId,
@@ -174,6 +187,170 @@ export const conversations = pgTable(
       table.organizationId,
       table.channelConnectionId,
       table.lastActivityAt.desc(),
+    ),
+  ],
+);
+
+export const handoffs = pgTable(
+  "handoffs",
+  {
+    id: uuid("id").primaryKey(),
+    organizationId: uuid("organization_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    leadId: uuid("lead_id").notNull(),
+    locationId: uuid("location_id"),
+    status: varchar("status", { length: 24 }).notNull(),
+    triggerReason: varchar("trigger_reason", { length: 48 }).notNull(),
+    queueKey: varchar("queue_key", { length: 100 }).notNull(),
+    assignedMembershipId: uuid("assigned_membership_id"),
+    requestedAt: timestamp("requested_at", { mode: "date", withTimezone: true }).notNull(),
+    assignedAt: timestamp("assigned_at", { mode: "date", withTimezone: true }),
+    startedAt: timestamp("started_at", { mode: "date", withTimezone: true }),
+    slaDueAt: timestamp("sla_due_at", { mode: "date", withTimezone: true }).notNull(),
+    resolvedAt: timestamp("resolved_at", { mode: "date", withTimezone: true }),
+    resolutionCode: varchar("resolution_code", { length: 100 }),
+    ...mutableColumns(),
+  },
+  (table): PgTableExtraConfigValue[] => [
+    check(
+      "handoffs_id_uuid_v7_check",
+      sql`${table.id}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "handoffs_status_check",
+      sql`${table.status} in ('requested', 'assigned', 'in_progress', 'resolved', 'cancelled', 'expired')`,
+    ),
+    check(
+      "handoffs_trigger_reason_check",
+      sql`${table.triggerReason} in ('customer_requested', 'missing_authoritative_information', 'medical_or_safety', 'low_confidence', 'policy_blocked', 'ai_unavailable', 'delivery_problem', 'staff_created', 'other')`,
+    ),
+    check(
+      "handoffs_queue_key_check",
+      sql`${table.queueKey} = lower(btrim(${table.queueKey}))
+        and ${table.queueKey} ~ '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$'`,
+    ),
+    check(
+      "handoffs_resolution_code_check",
+      sql`${table.resolutionCode} is null
+        or ${table.resolutionCode} ~ '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$'`,
+    ),
+    check(
+      "handoffs_lifecycle_shape_check",
+      sql`(${table.status} = 'requested'
+          and ${table.assignedMembershipId} is null
+          and ${table.assignedAt} is null
+          and ${table.startedAt} is null
+          and ${table.resolvedAt} is null
+          and ${table.resolutionCode} is null)
+        or (${table.status} = 'assigned'
+          and ${table.assignedMembershipId} is not null
+          and ${table.assignedAt} is not null
+          and ${table.startedAt} is null
+          and ${table.resolvedAt} is null
+          and ${table.resolutionCode} is null)
+        or (${table.status} = 'in_progress'
+          and ${table.assignedMembershipId} is not null
+          and ${table.assignedAt} is not null
+          and ${table.startedAt} is not null
+          and ${table.resolvedAt} is null
+          and ${table.resolutionCode} is null)
+        or (${table.status} = 'resolved'
+          and ${table.assignedMembershipId} is not null
+          and ${table.assignedAt} is not null
+          and ${table.startedAt} is not null
+          and ${table.resolvedAt} is not null
+          and ${table.resolutionCode} is not null)
+        or (${table.status} in ('cancelled', 'expired')
+          and ${table.resolvedAt} is null
+          and ${table.resolutionCode} is null
+          and ((${table.assignedMembershipId} is null
+              and ${table.assignedAt} is null
+              and ${table.startedAt} is null)
+            or (${table.assignedMembershipId} is not null
+              and ${table.assignedAt} is not null)))`,
+    ),
+    check(
+      "handoffs_lifecycle_timestamps_check",
+      sql`${table.slaDueAt} > ${table.requestedAt}
+        and (${table.assignedAt} is null or ${table.assignedAt} >= ${table.requestedAt})
+        and (${table.startedAt} is null
+          or (${table.assignedAt} is not null and ${table.startedAt} >= ${table.assignedAt}))
+        and (${table.resolvedAt} is null
+          or (${table.startedAt} is not null and ${table.resolvedAt} >= ${table.startedAt}))`,
+    ),
+    check("handoffs_version_check", sql`${table.version} > 0`),
+    check("handoffs_timestamps_check", sql`${table.updatedAt} >= ${table.createdAt}`),
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organizations.id],
+      name: "handoffs_organization_id_organizations_id_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.conversationId],
+      foreignColumns: [conversations.organizationId, conversations.id],
+      name: "handoffs_conversation_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.leadId],
+      foreignColumns: [leads.organizationId, leads.id],
+      name: "handoffs_lead_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.leadId, table.conversationId],
+      foreignColumns: [conversations.organizationId, conversations.leadId, conversations.id],
+      name: "handoffs_conversation_lead_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.locationId],
+      foreignColumns: [locations.organizationId, locations.id],
+      name: "handoffs_location_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.assignedMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "handoffs_assigned_membership_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    unique("handoffs_organization_id_id_unique").on(table.organizationId, table.id),
+    unique("handoffs_organization_conversation_id_unique").on(
+      table.organizationId,
+      table.conversationId,
+      table.id,
+    ),
+    uniqueIndex("handoffs_one_active_per_conversation_unique")
+      .on(table.organizationId, table.conversationId)
+      .where(sql`${table.status} in ('requested', 'assigned', 'in_progress')`),
+    index("handoffs_organization_status_sla_due_idx").on(
+      table.organizationId,
+      table.status,
+      table.slaDueAt,
+    ),
+    index("handoffs_organization_queue_status_requested_idx").on(
+      table.organizationId,
+      table.queueKey,
+      table.status,
+      table.requestedAt,
+    ),
+    index("handoffs_organization_assignee_status_idx").on(
+      table.organizationId,
+      table.assignedMembershipId,
+      table.status,
+    ),
+    index("handoffs_organization_lead_requested_idx").on(
+      table.organizationId,
+      table.leadId,
+      table.requestedAt.desc(),
     ),
   ],
 );

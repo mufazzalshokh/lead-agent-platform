@@ -5,6 +5,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import type { DomainEventPayloadByName } from "../../packages/contracts/src/index.js";
 import {
   appointmentConfirmationEvidence,
   appointmentRequestAttendance,
@@ -19,6 +20,8 @@ import {
   contacts,
   conversations,
   faqs,
+  handoffs,
+  handoffTransitions,
   inboundRoutes,
   locationBusinessHours,
   locationClosures,
@@ -30,6 +33,8 @@ import {
   memberships,
   messages,
   migrationsFolder,
+  notificationAttempts,
+  notifications,
   organizations,
   retentionPolicies,
   retentionPolicyRules,
@@ -47,10 +52,14 @@ import {
   isAppointmentRequestStatus,
   isConversationAutomationMode,
   isConversationStatus,
+  isHandoffStatus,
+  isHandoffTriggerReason,
   type AppointmentConfirmationSource,
   type AppointmentRequestStatus,
   type ConversationAutomationMode,
   type ConversationStatus,
+  type HandoffStatus,
+  type HandoffTriggerReason,
 } from "../../packages/domain/src/index.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
@@ -111,11 +120,28 @@ const REVENUE_ATTRIBUTION_A = "0193f1a8-7f65-7c28-a434-a10796c41c66";
 const REVENUE_ATTRIBUTION_B = "0193f1a8-7f65-7c28-a434-a10796c41c67";
 const CORRELATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c68";
 const ACTIVE_HANDOFF_A = "0193f1a8-7f65-7c28-a434-a10796c41c69";
+const HANDOFF_A = "0193f1a8-7f65-7c28-a434-a10796c41c6a";
+const HANDOFF_B = "0193f1a8-7f65-7c28-a434-a10796c41c6b";
+const NOTIFICATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c6c";
+const NOTIFICATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c6d";
+const OUTBOX_EVENT_A = "0193f1a8-7f65-7c28-a434-a10796c41c6e";
+const OUTBOX_EVENT_B = "0193f1a8-7f65-7c28-a434-a10796c41c6f";
 const UNKNOWN_ORGANIZATION = "0193f1a8-7f65-7c28-a434-a10796c41cff";
 const UUID_V4 = "550e8400-e29b-41d4-a716-446655440000";
 
 const syntheticUuid = (suffix: number): string =>
   `0193f1a8-7f65-7c28-a434-${suffix.toString(16).padStart(12, "0")}`;
+
+type CanonicalNotificationType =
+  DomainEventPayloadByName["notification.created"]["notification_type"];
+type CanonicalNotificationResourceType =
+  DomainEventPayloadByName["notification.created"]["related_resource_type"];
+type CanonicalNotificationEventStatus =
+  | DomainEventPayloadByName["notification.created"]["notification_status"]
+  | DomainEventPayloadByName["notification.dead_lettered"]["notification_status"]
+  | DomainEventPayloadByName["notification.delivered"]["notification_status"]
+  | DomainEventPayloadByName["notification.failed"]["notification_status"];
+type PersistedNotificationStatus = CanonicalNotificationEventStatus | "cancelled" | "processing";
 
 const S4A_TABLES = ["locations", "memberships", "organizations", "users"];
 const S4B1_TABLES = [
@@ -228,6 +254,45 @@ const S4B5_TABLES = [
   "widget_allowed_origins",
   "widget_sessions",
 ];
+const S4B6_TABLES = [
+  "appointment_confirmation_evidence",
+  "appointment_request_attendance",
+  "appointment_request_preferences",
+  "appointment_request_transitions",
+  "appointment_requests",
+  "appointment_revenue_attributions",
+  "business_policies",
+  "channel_connections",
+  "consent_records",
+  "contact_identities",
+  "contacts",
+  "conversations",
+  "faqs",
+  "handoff_transitions",
+  "handoffs",
+  "inbound_routes",
+  "lead_qualification_evaluations",
+  "lead_qualification_evidence",
+  "leads",
+  "location_business_hours",
+  "location_closures",
+  "location_versions",
+  "locations",
+  "memberships",
+  "messages",
+  "notification_attempts",
+  "notifications",
+  "organizations",
+  "retention_policies",
+  "retention_policy_rules",
+  "service_locations",
+  "service_prices",
+  "service_versions",
+  "services",
+  "users",
+  "widget_allowed_origins",
+  "widget_sessions",
+];
 const SCHEMA_TABLES = {
   appointment_confirmation_evidence: appointmentConfirmationEvidence,
   appointment_request_attendance: appointmentRequestAttendance,
@@ -242,6 +307,8 @@ const SCHEMA_TABLES = {
   contacts,
   conversations,
   faqs,
+  handoff_transitions: handoffTransitions,
+  handoffs,
   inbound_routes: inboundRoutes,
   lead_qualification_evaluations: leadQualificationEvaluations,
   lead_qualification_evidence: leadQualificationEvidence,
@@ -252,6 +319,8 @@ const SCHEMA_TABLES = {
   locations,
   memberships,
   messages,
+  notification_attempts: notificationAttempts,
+  notifications,
   organizations,
   retention_policies: retentionPolicies,
   retention_policy_rules: retentionPolicyRules,
@@ -278,6 +347,7 @@ let upgradeTablesAfterS4b2: string[] = [];
 let upgradeTablesAfterS4b3: string[] = [];
 let upgradeTablesAfterS4b4: string[] = [];
 let upgradeTablesAfterS4b5: string[] = [];
+let upgradeTablesAfterS4b6: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -375,8 +445,12 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0005_past_dorian_gray.sql");
   upgradeTablesAfterS4b5 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0006_mighty_molly_hayes.sql");
+  upgradeTablesAfterS4b6 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table appointment_confirmation_evidence, appointment_request_attendance,
+    `drop table notification_attempts, handoff_transitions, notifications, handoffs,
+      appointment_confirmation_evidence, appointment_request_attendance,
       appointment_request_preferences, appointment_request_transitions,
       appointment_revenue_attributions, appointment_requests,
       lead_qualification_evidence, consent_records, messages,
@@ -389,7 +463,7 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4b.5 upgrade verification failed to restore the disposable database");
+    throw new Error("S4b.6 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -978,11 +1052,195 @@ const WORKFLOW_B: WorkflowTenantSeed = {
   userId: USER_B,
 };
 
+type HandoffInsertOverrides = Readonly<{
+  assignedMembershipId?: string | null;
+  conversationId?: string;
+  leadId?: string;
+  locationId?: string | null;
+  organizationId?: string;
+  queueKey?: string;
+  triggerReason?: HandoffTriggerReason;
+}>;
+
+const insertHandoff = async (
+  id: string,
+  fixture: WorkflowTenantSeed,
+  status: HandoffStatus = "requested",
+  overrides: HandoffInsertOverrides = {},
+): Promise<void> => {
+  const organizationId = overrides.organizationId ?? fixture.organizationId;
+  const conversationId = overrides.conversationId ?? fixture.conversationId;
+  const leadId = overrides.leadId ?? fixture.leadId;
+  const locationId = overrides.locationId === undefined ? fixture.locationId : overrides.locationId;
+  const defaultAssignee = ["assigned", "in_progress", "resolved"].includes(status)
+    ? fixture.staffMembershipId
+    : null;
+  const assignedMembershipId = overrides.assignedMembershipId ?? defaultAssignee;
+
+  await database().query(
+    `insert into handoffs
+      (id, organization_id, conversation_id, lead_id, location_id, status,
+       trigger_reason, queue_key, assigned_membership_id, requested_at,
+       assigned_at, started_at, sla_due_at, resolved_at, resolution_code)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+       timestamptz '2026-01-01 00:02:00+00',
+       case when $6::varchar in ('assigned', 'in_progress', 'resolved')
+         then timestamptz '2026-01-01 00:03:00+00' else null end,
+       case when $6::varchar in ('in_progress', 'resolved')
+         then timestamptz '2026-01-01 00:04:00+00' else null end,
+       timestamptz '2026-01-01 01:02:00+00',
+       case when $6::varchar = 'resolved'
+         then timestamptz '2026-01-01 00:05:00+00' else null end,
+       case when $6::varchar = 'resolved' then 'handled' else null end)`,
+    [
+      id,
+      organizationId,
+      conversationId,
+      leadId,
+      locationId,
+      status,
+      overrides.triggerReason ?? "customer_requested",
+      overrides.queueKey ?? "front_desk",
+      assignedMembershipId,
+    ],
+  );
+};
+
+type HandoffTransitionInsert = Readonly<{
+  actorContactId?: string | null;
+  actorMembershipId?: string | null;
+  actorType?: "customer" | "member" | "system";
+  conversationDisposition?: "resume_ai" | "resolve_conversation" | "successor_handoff" | null;
+  fromAssigneeId?: string | null;
+  fromStatus: HandoffStatus | null;
+  handoffId: string;
+  id: string;
+  organizationId: string;
+  reasonCode?: string | null;
+  toAssigneeId?: string | null;
+  toStatus: HandoffStatus;
+  version: number;
+}>;
+
+const insertHandoffTransition = async (transition: HandoffTransitionInsert): Promise<void> => {
+  await database().query(
+    `insert into handoff_transitions
+      (id, organization_id, handoff_id, from_status, to_status,
+       aggregate_version, actor_type, actor_contact_id, actor_membership_id,
+       from_assignee_id, to_assignee_id, conversation_disposition,
+       reason_code, correlation_id, occurred_at)
+     values ($1, $2, $3, $4, $5, $6::bigint, $7, $8, $9, $10, $11, $12,
+       $13, $14, timestamptz '2026-01-01 00:10:00+00' + ($6::bigint * interval '1 minute'))`,
+    [
+      transition.id,
+      transition.organizationId,
+      transition.handoffId,
+      transition.fromStatus,
+      transition.toStatus,
+      transition.version,
+      transition.actorType ?? "system",
+      transition.actorContactId ?? null,
+      transition.actorMembershipId ?? null,
+      transition.fromAssigneeId ?? null,
+      transition.toAssigneeId ?? null,
+      transition.conversationDisposition ?? null,
+      transition.reasonCode ?? null,
+      syntheticUuid(0x800 + transition.version),
+    ],
+  );
+};
+
+type NotificationInsertOverrides = Readonly<{
+  audienceType?: "contact" | "membership" | "queue";
+  claimedByMembershipId?: string | null;
+  dedupeKey?: string;
+  notificationType?: CanonicalNotificationType;
+  originatingOutboxEventId?: string;
+  queueKey?: string | null;
+  recipientContactId?: string | null;
+  recipientMembershipId?: string | null;
+  relatedResourceId?: string;
+  relatedResourceType?: CanonicalNotificationResourceType;
+  status?: PersistedNotificationStatus;
+}>;
+
+const insertNotification = async (
+  id: string,
+  organizationId: string,
+  overrides: NotificationInsertOverrides = {},
+): Promise<void> => {
+  const audienceType = overrides.audienceType ?? "membership";
+  const status = overrides.status ?? "pending";
+  await database().query(
+    `insert into notifications
+      (id, organization_id, notification_type, audience_type,
+       recipient_membership_id, recipient_contact_id, queue_key,
+       related_resource_type, related_resource_id, originating_outbox_event_id,
+       template_key, template_version, payload_ciphertext, status, dedupe_key,
+       available_at, attempt_count, next_attempt_at, delivered_at,
+       claimed_by_membership_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+       'handoff.created', 1, $11, $12, $13,
+       timestamptz '2026-01-01 00:20:00+00', 0, null,
+       case when $12::varchar = 'delivered'
+         then timestamptz '2026-01-01 00:21:00+00' else null end,
+       $14)`,
+    [
+      id,
+      organizationId,
+      overrides.notificationType ?? "staff_task",
+      audienceType,
+      overrides.recipientMembershipId ?? (audienceType === "membership" ? MEMBERSHIP_A : null),
+      overrides.recipientContactId ?? (audienceType === "contact" ? CONTACT_A : null),
+      overrides.queueKey ?? (audienceType === "queue" ? "front_desk" : null),
+      overrides.relatedResourceType ?? "handoff",
+      overrides.relatedResourceId ?? HANDOFF_A,
+      overrides.originatingOutboxEventId ?? OUTBOX_EVENT_A,
+      Buffer.from("synthetic-notification-ciphertext"),
+      status,
+      overrides.dedupeKey ?? `notification-${id}`,
+      overrides.claimedByMembershipId ?? null,
+    ],
+  );
+};
+
+const insertNotificationAttempt = async (
+  id: string,
+  organizationId: string,
+  notificationId: string,
+  attemptNo: number,
+  adapter: "email" | "in_app" | "push" | "sms" | "telegram" | "widget" = "in_app",
+  outcome: "delivered" | "permanent_failure" | "retryable_failure" = "delivered",
+  providerRequestKey = `provider-request-${id}`,
+): Promise<void> => {
+  await database().query(
+    `insert into notification_attempts
+      (id, organization_id, notification_id, adapter, attempt_no,
+       provider_request_key, started_at, finished_at, outcome,
+       provider_status_code, error_category, provider_message_id_hash, latency_ms)
+     values ($1, $2, $3, $4, $5, $6,
+       timestamptz '2026-01-01 00:30:00+00',
+       timestamptz '2026-01-01 00:30:01+00', $7, 200,
+       case when $7::varchar = 'delivered' then null else 'provider_unavailable' end,
+       $8, 1000)`,
+    [
+      id,
+      organizationId,
+      notificationId,
+      adapter,
+      attemptNo,
+      providerRequestKey,
+      outcome,
+      Buffer.from(`synthetic-provider-message-hash-${id}`),
+    ],
+  );
+};
+
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4b5_test")
+      .withDatabase("lead_agent_s4b6_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -1000,7 +1258,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table appointment_confirmation_evidence, appointment_request_attendance,
+    `truncate table notification_attempts, handoff_transitions, notifications, handoffs,
+      appointment_confirmation_evidence, appointment_request_attendance,
       appointment_request_preferences, appointment_request_transitions,
       appointment_revenue_attributions, appointment_requests,
       lead_qualification_evidence, consent_records, messages,
@@ -1019,7 +1278,7 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
   it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
     const conversationStatuses = [
       "open",
@@ -1047,24 +1306,72 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "telegram",
       "staff_attested_external",
     ] as const satisfies readonly AppointmentConfirmationSource[];
+    const handoffStatuses = [
+      "requested",
+      "assigned",
+      "in_progress",
+      "resolved",
+      "cancelled",
+      "expired",
+    ] as const satisfies readonly HandoffStatus[];
+    const handoffTriggerReasons = [
+      "customer_requested",
+      "missing_authoritative_information",
+      "medical_or_safety",
+      "low_confidence",
+      "policy_blocked",
+      "ai_unavailable",
+      "delivery_problem",
+      "staff_created",
+      "other",
+    ] as const satisfies readonly HandoffTriggerReason[];
+    const notificationTypes = [
+      "staff_task",
+      "customer_message",
+      "staff_alert",
+    ] as const satisfies readonly CanonicalNotificationType[];
+    const notificationResourceTypes = [
+      "appointment_request",
+      "handoff",
+      "conversation",
+      "lead",
+      "channel_connection",
+      "ai_run",
+    ] as const satisfies readonly CanonicalNotificationResourceType[];
+    const notificationStatuses = [
+      "pending",
+      "processing",
+      "delivered",
+      "failed",
+      "dead_lettered",
+      "cancelled",
+    ] as const satisfies readonly PersistedNotificationStatus[];
 
     expect(conversationStatuses.every(isConversationStatus)).toBe(true);
     expect(automationModes.every(isConversationAutomationMode)).toBe(true);
     expect(appointmentStatuses.every(isAppointmentRequestStatus)).toBe(true);
     expect(confirmationSources.every(isAppointmentConfirmationSource)).toBe(true);
+    expect(handoffStatuses.every(isHandoffStatus)).toBe(true);
+    expect(handoffTriggerReasons.every(isHandoffTriggerReason)).toBe(true);
+    expect(notificationTypes).toHaveLength(3);
+    expect(notificationResourceTypes).toHaveLength(6);
+    expect(notificationStatuses).toHaveLength(6);
     expect(isConversationStatus("handed_off")).toBe(false);
     expect(isConversationAutomationMode("human")).toBe(false);
     expect(isAppointmentRequestStatus("completed")).toBe(false);
     expect(isAppointmentConfirmationSource("staff_acceptance")).toBe(false);
+    expect(isHandoffStatus("queued")).toBe(false);
+    expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4a through S4b.4 to S4b.5, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4a through S4b.5 to S4b.6, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
     expect(upgradeTablesAfterS4b3).toEqual(S4B3_TABLES);
     expect(upgradeTablesAfterS4b4).toEqual(S4B4_TABLES);
     expect(upgradeTablesAfterS4b5).toEqual(S4B5_TABLES);
+    expect(upgradeTablesAfterS4b6).toEqual(S4B6_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -1072,12 +1379,12 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4B5_TABLES);
+    expect(await productionTables(database())).toEqual(S4B6_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(6);
+    expect(migrationCount.rows[0]?.count).toBe(7);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -1623,6 +1930,85 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "external_reference_hash",
       "reason_code",
     ]);
+    expect(namesByTable["handoffs"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "conversation_id",
+      "lead_id",
+      "location_id",
+      "status",
+      "trigger_reason",
+      "queue_key",
+      "assigned_membership_id",
+      "requested_at",
+      "assigned_at",
+      "started_at",
+      "sla_due_at",
+      "resolved_at",
+      "resolution_code",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["handoff_transitions"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "handoff_id",
+      "from_status",
+      "to_status",
+      "aggregate_version",
+      "actor_type",
+      "actor_contact_id",
+      "actor_membership_id",
+      "from_assignee_id",
+      "to_assignee_id",
+      "conversation_disposition",
+      "reason_code",
+      "correlation_id",
+      "occurred_at",
+    ]);
+    expect(namesByTable["notifications"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "notification_type",
+      "audience_type",
+      "recipient_membership_id",
+      "recipient_contact_id",
+      "queue_key",
+      "related_resource_type",
+      "related_resource_id",
+      "originating_outbox_event_id",
+      "template_key",
+      "template_version",
+      "payload_ciphertext",
+      "status",
+      "dedupe_key",
+      "available_at",
+      "attempt_count",
+      "next_attempt_at",
+      "delivered_at",
+      "read_at",
+      "claimed_by_membership_id",
+      "last_error_category",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["notification_attempts"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "notification_id",
+      "adapter",
+      "attempt_no",
+      "provider_request_key",
+      "started_at",
+      "finished_at",
+      "outcome",
+      "provider_status_code",
+      "error_category",
+      "provider_message_id_hash",
+      "latency_ms",
+    ]);
 
     const userBinaryColumns = namesByTable["users"]?.filter(({ column_name }) =>
       ["email_ciphertext", "email_lookup_hash", "display_name_ciphertext"].includes(column_name),
@@ -1646,7 +2032,7 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         ?.filter(({ column_name }) => ["value_ciphertext", "lookup_hash"].includes(column_name))
         .every(({ data_type }) => data_type === "bytea"),
     ).toBe(true);
-    expect(utcTimestamps).toHaveLength(40);
+    expect(utcTimestamps).toHaveLength(44);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
@@ -1682,6 +2068,16 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       ),
     ).toBe(false);
     expect(columns.rows.some(({ column_name }) => column_name === "route_key")).toBe(false);
+    expect(
+      namesByTable["notifications"]
+        ?.filter(({ column_name }) => column_name === "payload_ciphertext")
+        .every(({ data_type }) => data_type === "bytea"),
+    ).toBe(true);
+    expect(
+      namesByTable["notification_attempts"]?.some(({ column_name }) =>
+        ["provider_response", "provider_response_body", "provider_secret"].includes(column_name),
+      ),
+    ).toBe(false);
   });
 
   it("keeps the Drizzle table declarations in exact column parity with the migrated database", async () => {
@@ -1697,7 +2093,7 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4B5_TABLES);
+    expect(declaredNames).toEqual(S4B6_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -1805,8 +2201,10 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         "consent_records_source_message_fk",
         "widget_sessions_conversation_fk",
         "conversations_organization_id_id_unique",
+        "conversations_organization_lead_id_unique",
         "conversations_lead_contact_fk",
         "conversations_channel_connection_fk",
+        "conversations_active_handoff_fk",
         "messages_organization_conversation_sequence_unique",
         "messages_conversation_channel_fk",
         "messages_reply_to_message_fk",
@@ -1822,6 +2220,24 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         "appointment_request_attendance_superseded_fk",
         "appointment_revenue_attributions_request_fk",
         "appointment_revenue_attributions_reversed_entry_fk",
+        "handoffs_organization_id_id_unique",
+        "handoffs_organization_conversation_id_unique",
+        "handoffs_conversation_fk",
+        "handoffs_conversation_lead_fk",
+        "handoffs_lead_fk",
+        "handoffs_location_fk",
+        "handoffs_assigned_membership_fk",
+        "handoff_transitions_handoff_version_unique",
+        "handoff_transitions_handoff_fk",
+        "handoff_transitions_actor_contact_fk",
+        "handoff_transitions_actor_membership_fk",
+        "notifications_organization_dedupe_key_unique",
+        "notifications_recipient_membership_fk",
+        "notifications_recipient_contact_fk",
+        "notifications_claimer_membership_fk",
+        "notification_attempts_notification_adapter_attempt_unique",
+        "notification_attempts_provider_request_key_unique",
+        "notification_attempts_notification_fk",
       ]),
     );
 
@@ -1945,6 +2361,38 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     expect(indexDefinitions.get("appointment_revenue_attributions_one_reversal_unique")).toContain(
       "UNIQUE",
+    );
+    expect(indexDefinitions.get("handoffs_one_active_per_conversation_unique")).toContain("UNIQUE");
+    expect(indexDefinitions.get("handoffs_one_active_per_conversation_unique")).toContain("WHERE");
+    expect(indexDefinitions.get("handoffs_organization_status_sla_due_idx")).toContain(
+      "(organization_id, status, sla_due_at)",
+    );
+    expect(indexDefinitions.get("handoffs_organization_queue_status_requested_idx")).toContain(
+      "(organization_id, queue_key, status, requested_at)",
+    );
+    expect(indexDefinitions.get("handoffs_organization_assignee_status_idx")).toContain(
+      "(organization_id, assigned_membership_id, status)",
+    );
+    expect(indexDefinitions.get("handoffs_organization_lead_requested_idx")).toContain(
+      "(organization_id, lead_id, requested_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("handoff_transitions_handoff_occurred_idx")).toContain(
+      "(organization_id, handoff_id, occurred_at)",
+    );
+    expect(indexDefinitions.get("notifications_organization_status_available_idx")).toContain(
+      "(organization_id, status, available_at)",
+    );
+    expect(indexDefinitions.get("notifications_organization_queue_status_created_idx")).toContain(
+      "(organization_id, queue_key, status, created_at)",
+    );
+    expect(indexDefinitions.get("notifications_organization_resource_created_idx")).toContain(
+      "(organization_id, related_resource_type, related_resource_id, created_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("notification_attempts_notification_attempt_idx")).toContain(
+      "(organization_id, notification_id, attempt_no)",
+    );
+    expect(indexDefinitions.get("notification_attempts_outcome_finished_idx")).toContain(
+      "(organization_id, outcome, finished_at)",
     );
 
     const exclusions = await database().query<{ conname: string }>(
@@ -3322,7 +3770,7 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and relkind = 'r'
         order by relname`,
     );
-    expect(rls.rows).toEqual(S4B5_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
+    expect(rls.rows).toEqual(S4B6_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
 
     const activatedRouteForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -3983,28 +4431,48 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     await seedWorkflowTenant(WORKFLOW_B, "conversation-b", "conversation-b", "conversation-b");
 
     const validShapes = [
-      ["open", "ai", null],
-      ["awaiting_lead", "ai", null],
-      ["awaiting_lead", "staff", ACTIVE_HANDOFF_A],
-      ["awaiting_staff", "paused", ACTIVE_HANDOFF_A],
-      ["awaiting_staff", "staff", ACTIVE_HANDOFF_A],
-      ["resolved", "paused", null],
-      ["closed", "paused", null],
+      ["open", "ai", null, null],
+      ["awaiting_lead", "ai", null, null],
+      ["awaiting_lead", "staff", syntheticUuid(0x610), "assigned"],
+      ["awaiting_staff", "paused", syntheticUuid(0x611), "requested"],
+      ["awaiting_staff", "staff", syntheticUuid(0x612), "assigned"],
+      ["resolved", "paused", null, null],
+      ["closed", "paused", null, null],
     ] as const;
 
-    for (const [index, [status, mode, activeHandoffId]] of validShapes.entries()) {
+    for (const [index, [status, mode, activeHandoffId, handoffStatus]] of validShapes.entries()) {
+      const conversationId = syntheticUuid(0x500 + index);
+      if (activeHandoffId === null || handoffStatus === null) {
+        await expect(
+          insertConversation(
+            conversationId,
+            ORGANIZATION_A,
+            CONTACT_A,
+            LEAD_A,
+            CHANNEL_CONNECTION_A,
+            status,
+            mode,
+          ),
+        ).resolves.toBeUndefined();
+        continue;
+      }
+
+      await insertConversation(
+        conversationId,
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+      );
+      await insertHandoff(activeHandoffId, { ...WORKFLOW_A, conversationId }, handoffStatus);
       await expect(
-        insertConversation(
-          syntheticUuid(0x500 + index),
-          ORGANIZATION_A,
-          CONTACT_A,
-          LEAD_A,
-          CHANNEL_CONNECTION_A,
-          status,
-          mode,
-          activeHandoffId,
+        database().query(
+          `update conversations
+              set status = $2, automation_mode = $3, active_handoff_id = $4
+            where id = $1`,
+          [conversationId, status, mode, activeHandoffId],
         ),
-      ).resolves.toBeUndefined();
+      ).resolves.toBeDefined();
     }
 
     await expect(
@@ -4072,9 +4540,518 @@ describe("S4b.5 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       `select table_name
          from information_schema.tables
         where table_schema = 'public'
-          and table_name in ('handoffs', 'handoff_transitions')`,
+          and table_name in ('handoffs', 'handoff_transitions')
+        order by table_name`,
     );
-    expect(handoffTables.rows).toEqual([]);
+    expect(handoffTables.rows).toEqual([
+      { table_name: "handoff_transitions" },
+      { table_name: "handoffs" },
+    ]);
+  });
+
+  it("enforces Handoff tenant integrity, lifecycle shape, active uniqueness, and exact Conversation identity", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "handoff-a", "handoff-a", "handoff-a");
+    await seedWorkflowTenant(WORKFLOW_B, "handoff-b", "handoff-b", "handoff-b");
+
+    await expect(
+      insertHandoff(syntheticUuid(0x620), WORKFLOW_A, "requested", {
+        conversationId: CONVERSATION_B,
+      }),
+    ).rejects.toMatchObject({ code: "23503", constraint: "handoffs_conversation_fk" });
+    await expect(
+      insertHandoff(syntheticUuid(0x621), WORKFLOW_A, "requested", { leadId: LEAD_B }),
+    ).rejects.toMatchObject({ code: "23503", constraint: "handoffs_lead_fk" });
+    await expect(
+      insertHandoff(syntheticUuid(0x622), WORKFLOW_A, "requested", { locationId: LOCATION_B }),
+    ).rejects.toMatchObject({ code: "23503", constraint: "handoffs_location_fk" });
+    await expect(
+      insertHandoff(syntheticUuid(0x623), WORKFLOW_A, "assigned", {
+        assignedMembershipId: MEMBERSHIP_B,
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "handoffs_assigned_membership_fk",
+    });
+
+    const secondLeadId = syntheticUuid(0x624);
+    await insertLead(secondLeadId, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "qualified");
+    await expect(
+      insertHandoff(syntheticUuid(0x625), WORKFLOW_A, "requested", { leadId: secondLeadId }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "handoffs_conversation_lead_fk",
+    });
+
+    await expect(insertHandoff(HANDOFF_A, WORKFLOW_A)).resolves.toBeUndefined();
+    await expect(
+      database().query(
+        `update conversations
+            set status = 'awaiting_staff', automation_mode = 'paused', active_handoff_id = $2
+          where id = $1`,
+        [CONVERSATION_A, HANDOFF_A],
+      ),
+    ).resolves.toBeDefined();
+
+    await expect(
+      database().query(
+        `update conversations
+            set status = 'awaiting_staff', automation_mode = 'paused', active_handoff_id = $2
+          where id = $1`,
+        [CONVERSATION_B, HANDOFF_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "conversations_active_handoff_fk",
+    });
+
+    const secondConversationId = syntheticUuid(0x626);
+    await insertConversation(
+      secondConversationId,
+      ORGANIZATION_A,
+      CONTACT_A,
+      LEAD_A,
+      CHANNEL_CONNECTION_A,
+    );
+    await expect(
+      database().query(
+        `update conversations
+            set status = 'awaiting_lead', automation_mode = 'staff', active_handoff_id = $2
+          where id = $1`,
+        [secondConversationId, HANDOFF_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "conversations_active_handoff_fk",
+    });
+
+    await expect(insertHandoff(syntheticUuid(0x627), WORKFLOW_A)).rejects.toMatchObject({
+      code: "23505",
+      constraint: "handoffs_one_active_per_conversation_unique",
+    });
+    await expect(
+      database().query("update handoffs set status = 'queued' where id = $1", [HANDOFF_A]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      database().query("update handoffs set version = 0 where id = $1", [HANDOFF_A]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "handoffs_version_check" });
+    await expect(
+      insertHandoff(UUID_V4, { ...WORKFLOW_A, conversationId: secondConversationId }),
+    ).rejects.toMatchObject({ code: "23514", constraint: "handoffs_id_uuid_v7_check" });
+
+    const deletionConversationId = syntheticUuid(0x628);
+    await insertConversation(
+      deletionConversationId,
+      ORGANIZATION_A,
+      CONTACT_A,
+      LEAD_A,
+      CHANNEL_CONNECTION_A,
+    );
+    await insertHandoff(syntheticUuid(0x629), {
+      ...WORKFLOW_A,
+      conversationId: deletionConversationId,
+    });
+    await expect(
+      database().query("delete from conversations where id = $1", [deletionConversationId]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "handoffs_conversation_fk" });
+  });
+
+  it("preserves versioned Handoff creation, claim/start, reassignment, and terminal history", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "handoff-history-a", "history-a", "history-a");
+    await seedWorkflowTenant(WORKFLOW_B, "handoff-history-b", "history-b", "history-b");
+    await insertHandoff(HANDOFF_A, WORKFLOW_A);
+
+    const secondUserId = syntheticUuid(0x630);
+    const secondMembershipId = syntheticUuid(0x631);
+    await insertUser(secondUserId);
+    await insertActiveMembership(secondMembershipId, ORGANIZATION_A, secondUserId);
+
+    await insertHandoffTransition({
+      fromStatus: null,
+      handoffId: HANDOFF_A,
+      id: syntheticUuid(0x632),
+      organizationId: ORGANIZATION_A,
+      toStatus: "requested",
+      version: 1,
+    });
+    await insertHandoffTransition({
+      actorMembershipId: MEMBERSHIP_A,
+      actorType: "member",
+      fromStatus: "requested",
+      handoffId: HANDOFF_A,
+      id: syntheticUuid(0x633),
+      organizationId: ORGANIZATION_A,
+      toAssigneeId: MEMBERSHIP_A,
+      toStatus: "assigned",
+      version: 2,
+    });
+    await insertHandoffTransition({
+      actorMembershipId: MEMBERSHIP_A,
+      actorType: "member",
+      fromAssigneeId: MEMBERSHIP_A,
+      fromStatus: "assigned",
+      handoffId: HANDOFF_A,
+      id: syntheticUuid(0x634),
+      organizationId: ORGANIZATION_A,
+      toAssigneeId: MEMBERSHIP_A,
+      toStatus: "in_progress",
+      version: 3,
+    });
+    await insertHandoffTransition({
+      actorMembershipId: MEMBERSHIP_A,
+      actorType: "member",
+      fromAssigneeId: MEMBERSHIP_A,
+      fromStatus: "assigned",
+      handoffId: HANDOFF_A,
+      id: syntheticUuid(0x635),
+      organizationId: ORGANIZATION_A,
+      toAssigneeId: secondMembershipId,
+      toStatus: "assigned",
+      version: 4,
+    });
+    await insertHandoffTransition({
+      actorMembershipId: secondMembershipId,
+      actorType: "member",
+      conversationDisposition: "successor_handoff",
+      fromAssigneeId: secondMembershipId,
+      fromStatus: "assigned",
+      handoffId: HANDOFF_A,
+      id: syntheticUuid(0x636),
+      organizationId: ORGANIZATION_A,
+      reasonCode: "replacement_required",
+      toStatus: "cancelled",
+      version: 5,
+    });
+
+    const transitions = await database().query<{
+      aggregate_version: string;
+      conversation_disposition: string | null;
+      from_status: string | null;
+      to_status: string;
+    }>(
+      `select aggregate_version, from_status, to_status, conversation_disposition
+         from handoff_transitions
+        where handoff_id = $1
+        order by aggregate_version`,
+      [HANDOFF_A],
+    );
+    expect(transitions.rows).toEqual([
+      {
+        aggregate_version: "1",
+        conversation_disposition: null,
+        from_status: null,
+        to_status: "requested",
+      },
+      {
+        aggregate_version: "2",
+        conversation_disposition: null,
+        from_status: "requested",
+        to_status: "assigned",
+      },
+      {
+        aggregate_version: "3",
+        conversation_disposition: null,
+        from_status: "assigned",
+        to_status: "in_progress",
+      },
+      {
+        aggregate_version: "4",
+        conversation_disposition: null,
+        from_status: "assigned",
+        to_status: "assigned",
+      },
+      {
+        aggregate_version: "5",
+        conversation_disposition: "successor_handoff",
+        from_status: "assigned",
+        to_status: "cancelled",
+      },
+    ]);
+
+    await expect(
+      insertHandoffTransition({
+        fromStatus: "requested",
+        handoffId: HANDOFF_A,
+        id: syntheticUuid(0x637),
+        organizationId: ORGANIZATION_A,
+        toStatus: "assigned",
+        version: 2,
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "handoff_transitions_handoff_version_unique",
+    });
+    await expect(
+      insertHandoffTransition({
+        actorMembershipId: MEMBERSHIP_A,
+        actorType: "member",
+        fromAssigneeId: MEMBERSHIP_A,
+        fromStatus: "assigned",
+        handoffId: HANDOFF_A,
+        id: syntheticUuid(0x638),
+        organizationId: ORGANIZATION_A,
+        toAssigneeId: MEMBERSHIP_A,
+        toStatus: "assigned",
+        version: 6,
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "handoff_transitions_reassignment_check",
+    });
+    await expect(
+      insertHandoffTransition({
+        fromStatus: "in_progress",
+        handoffId: HANDOFF_A,
+        id: syntheticUuid(0x639),
+        organizationId: ORGANIZATION_A,
+        toStatus: "resolved",
+        version: 6,
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "handoff_transitions_disposition_check",
+    });
+    await expect(
+      insertHandoffTransition({
+        actorMembershipId: MEMBERSHIP_B,
+        actorType: "member",
+        fromStatus: "requested",
+        handoffId: HANDOFF_A,
+        id: syntheticUuid(0x63a),
+        organizationId: ORGANIZATION_A,
+        toAssigneeId: MEMBERSHIP_B,
+        toStatus: "assigned",
+        version: 6,
+      }),
+    ).rejects.toMatchObject({ code: "23503" });
+    await expect(
+      insertHandoffTransition({
+        fromStatus: null,
+        handoffId: HANDOFF_A,
+        id: syntheticUuid(0x63b),
+        organizationId: ORGANIZATION_B,
+        toStatus: "requested",
+        version: 1,
+      }),
+    ).rejects.toMatchObject({ code: "23503", constraint: "handoff_transitions_handoff_fk" });
+    await expect(
+      database().query("delete from handoffs where id = $1", [HANDOFF_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "handoff_transitions_handoff_fk" });
+  });
+
+  it("enforces Notification audiences, tenant-scoped destinations, idempotency, and protected content", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "notifications-a", "notifications-a", "notifications-a");
+    await seedWorkflowTenant(WORKFLOW_B, "notifications-b", "notifications-b", "notifications-b");
+    await insertHandoff(HANDOFF_A, WORKFLOW_A);
+    const recipientUserId = syntheticUuid(0x647);
+    const recipientMembershipId = syntheticUuid(0x648);
+    const recipientContactId = syntheticUuid(0x649);
+    await insertUser(recipientUserId);
+    await insertActiveMembership(recipientMembershipId, ORGANIZATION_A, recipientUserId);
+    await insertContact(recipientContactId, ORGANIZATION_A);
+
+    await expect(
+      insertNotification(NOTIFICATION_A, ORGANIZATION_A, {
+        recipientMembershipId,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertNotification(syntheticUuid(0x640), ORGANIZATION_A, {
+        dedupeKey: `notification-${NOTIFICATION_A}`,
+        recipientMembershipId,
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "notifications_organization_dedupe_key_unique",
+    });
+    await expect(
+      insertNotification(NOTIFICATION_B, ORGANIZATION_B, {
+        dedupeKey: `notification-${NOTIFICATION_A}`,
+        originatingOutboxEventId: OUTBOX_EVENT_B,
+        recipientMembershipId: MEMBERSHIP_B,
+        relatedResourceId: HANDOFF_B,
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      insertNotification(syntheticUuid(0x641), ORGANIZATION_A, {
+        dedupeKey: "cross-tenant-member",
+        recipientMembershipId: MEMBERSHIP_B,
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notifications_recipient_membership_fk",
+    });
+    await expect(
+      insertNotification(syntheticUuid(0x642), ORGANIZATION_A, {
+        audienceType: "contact",
+        dedupeKey: "cross-tenant-contact",
+        notificationType: "customer_message",
+        recipientContactId: CONTACT_B,
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notifications_recipient_contact_fk",
+    });
+    await expect(
+      insertNotification(syntheticUuid(0x643), ORGANIZATION_A, {
+        claimedByMembershipId: MEMBERSHIP_B,
+        dedupeKey: "cross-tenant-claimer",
+        recipientMembershipId: MEMBERSHIP_A,
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notifications_claimer_membership_fk",
+    });
+    await expect(
+      insertNotification(syntheticUuid(0x644), ORGANIZATION_A, {
+        audienceType: "queue",
+        dedupeKey: "invalid-queue-audience",
+        recipientMembershipId: MEMBERSHIP_A,
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "notifications_audience_shape_check",
+    });
+
+    await expect(
+      insertNotification(syntheticUuid(0x645), ORGANIZATION_A, {
+        audienceType: "contact",
+        dedupeKey: "customer-message-contact",
+        notificationType: "customer_message",
+        recipientContactId,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertNotification(syntheticUuid(0x646), ORGANIZATION_A, {
+        audienceType: "queue",
+        dedupeKey: "front-desk-alert",
+        notificationType: "staff_alert",
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      database().query("update notifications set status = 'sent' where id = $1", [NOTIFICATION_A]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "notifications_status_check" });
+    await expect(
+      database().query("update notifications set notification_type = 'marketing' where id = $1", [
+        NOTIFICATION_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "notifications_type_check" });
+    await expect(
+      database().query("delete from memberships where id = $1", [recipientMembershipId]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notifications_recipient_membership_fk",
+    });
+    await expect(
+      database().query("delete from contacts where id = $1", [recipientContactId]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notifications_recipient_contact_fk",
+    });
+
+    const content = await database().query<{
+      payload_ciphertext: Buffer;
+      related_resource_id: string;
+      related_resource_type: string;
+    }>(
+      `select payload_ciphertext, related_resource_type, related_resource_id
+         from notifications
+        where id = $1`,
+      [NOTIFICATION_A],
+    );
+    expect(content.rows[0]).toMatchObject({
+      related_resource_id: HANDOFF_A,
+      related_resource_type: "handoff",
+    });
+    expect(content.rows[0]?.payload_ciphertext).toEqual(
+      Buffer.from("synthetic-notification-ciphertext"),
+    );
+  });
+
+  it("enforces NotificationAttempt ordering, per-adapter identity, tenant scope, and safe telemetry", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "attempts-a", "attempts-a", "attempts-a");
+    await seedWorkflowTenant(WORKFLOW_B, "attempts-b", "attempts-b", "attempts-b");
+    await insertHandoff(HANDOFF_A, WORKFLOW_A);
+    await insertNotification(NOTIFICATION_A, ORGANIZATION_A, {
+      recipientMembershipId: MEMBERSHIP_A,
+    });
+    await insertNotification(NOTIFICATION_B, ORGANIZATION_B, {
+      originatingOutboxEventId: OUTBOX_EVENT_B,
+      recipientMembershipId: MEMBERSHIP_B,
+      relatedResourceId: HANDOFF_B,
+    });
+
+    await insertNotificationAttempt(syntheticUuid(0x650), ORGANIZATION_A, NOTIFICATION_A, 1);
+    await insertNotificationAttempt(
+      syntheticUuid(0x651),
+      ORGANIZATION_A,
+      NOTIFICATION_A,
+      2,
+      "in_app",
+      "retryable_failure",
+    );
+    await expect(
+      insertNotificationAttempt(syntheticUuid(0x652), ORGANIZATION_A, NOTIFICATION_A, 1, "email"),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      insertNotificationAttempt(syntheticUuid(0x653), ORGANIZATION_A, NOTIFICATION_A, 1),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "notification_attempts_notification_adapter_attempt_unique",
+    });
+    await expect(
+      insertNotificationAttempt(
+        syntheticUuid(0x654),
+        ORGANIZATION_A,
+        NOTIFICATION_A,
+        3,
+        "in_app",
+        "delivered",
+        `provider-request-${syntheticUuid(0x650)}`,
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "notification_attempts_provider_request_key_unique",
+    });
+    await expect(
+      insertNotificationAttempt(syntheticUuid(0x655), ORGANIZATION_A, NOTIFICATION_B, 1),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notification_attempts_notification_fk",
+    });
+    await expect(
+      insertNotificationAttempt(syntheticUuid(0x656), ORGANIZATION_A, NOTIFICATION_A, 0),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "notification_attempts_attempt_no_check",
+    });
+    await expect(
+      database().query(
+        `update notification_attempts
+            set finished_at = started_at - interval '1 second'
+          where id = $1`,
+        [syntheticUuid(0x650)],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "notification_attempts_timing_check",
+    });
+    await expect(
+      database().query("update notification_attempts set adapter = 'fax' where id = $1", [
+        syntheticUuid(0x650),
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "notification_attempts_adapter_check",
+    });
+    await expect(
+      database().query("delete from notifications where id = $1", [NOTIFICATION_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notification_attempts_notification_fk",
+    });
   });
 
   it("stores immutable protected Messages with tenant/channel-scoped deduplication", async () => {

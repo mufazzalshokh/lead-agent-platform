@@ -43,6 +43,13 @@
       "when": 1788442670973,
       "tag": "0005_past_dorian_gray",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788451433045,
+      "tag": "0006_mighty_molly_hayes",
+      "breakpoints": true
     }
   ]
 }

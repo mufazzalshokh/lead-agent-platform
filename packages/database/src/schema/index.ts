@@ -16,6 +16,12 @@ export {
   leadQualificationEvidence,
   leads,
 } from "./customer-records.js";
+export {
+  handoffs,
+  handoffTransitions,
+  notifications,
+  notificationAttempts,
+} from "./handoff-notification-records.js";
 export { inboundRoutes } from "./inbound-routes.js";
 export {
   locationBusinessHours,
