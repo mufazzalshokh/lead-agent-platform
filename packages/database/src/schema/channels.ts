@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { binary, immutableCreatedAt, mutableColumns } from "./common.js";
+import { contacts } from "./contacts.js";
 import { memberships } from "./memberships.js";
 import { organizations } from "./organizations.js";
 
@@ -262,6 +263,13 @@ export const widgetSessions = pgTable(
       columns: [table.organizationId, table.channelConnectionId],
       foreignColumns: [channelConnections.organizationId, channelConnections.id],
       name: "widget_sessions_channel_connection_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.contactId],
+      foreignColumns: [contacts.organizationId, contacts.id],
+      name: "widget_sessions_contact_fk",
     })
       .onDelete("restrict")
       .onUpdate("restrict"),

@@ -8,12 +8,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   businessPolicies,
   channelConnections,
+  consentRecords,
+  contactIdentities,
+  contacts,
   faqs,
   inboundRoutes,
   locationBusinessHours,
   locationClosures,
   locations,
   locationVersions,
+  leadQualificationEvaluations,
+  leadQualificationEvidence,
+  leads,
   memberships,
   migrationsFolder,
   organizations,
@@ -63,6 +69,18 @@ const WIDGET_SESSION_A = "0193f1a8-7f65-7c28-a434-a10796c41c4d";
 const WIDGET_SESSION_B = "0193f1a8-7f65-7c28-a434-a10796c41c4e";
 const FUTURE_CONTACT_A = "0193f1a8-7f65-7c28-a434-a10796c41c4f";
 const FUTURE_CONVERSATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c50";
+const CONTACT_A = "0193f1a8-7f65-7c28-a434-a10796c41c51";
+const CONTACT_B = "0193f1a8-7f65-7c28-a434-a10796c41c52";
+const CONTACT_IDENTITY_A = "0193f1a8-7f65-7c28-a434-a10796c41c53";
+const CONTACT_IDENTITY_B = "0193f1a8-7f65-7c28-a434-a10796c41c54";
+const CONSENT_A = "0193f1a8-7f65-7c28-a434-a10796c41c55";
+const CONSENT_B = "0193f1a8-7f65-7c28-a434-a10796c41c56";
+const LEAD_A = "0193f1a8-7f65-7c28-a434-a10796c41c57";
+const LEAD_B = "0193f1a8-7f65-7c28-a434-a10796c41c58";
+const EVALUATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c59";
+const EVALUATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c5a";
+const MESSAGE_A = "0193f1a8-7f65-7c28-a434-a10796c41c5b";
+const MESSAGE_B = "0193f1a8-7f65-7c28-a434-a10796c41c5c";
 const UNKNOWN_ORGANIZATION = "0193f1a8-7f65-7c28-a434-a10796c41cff";
 const UUID_V4 = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -115,11 +133,44 @@ const S4B3_TABLES = [
   "widget_allowed_origins",
   "widget_sessions",
 ];
+const S4B4_TABLES = [
+  "business_policies",
+  "channel_connections",
+  "consent_records",
+  "contact_identities",
+  "contacts",
+  "faqs",
+  "inbound_routes",
+  "lead_qualification_evaluations",
+  "lead_qualification_evidence",
+  "leads",
+  "location_business_hours",
+  "location_closures",
+  "location_versions",
+  "locations",
+  "memberships",
+  "organizations",
+  "retention_policies",
+  "retention_policy_rules",
+  "service_locations",
+  "service_prices",
+  "service_versions",
+  "services",
+  "users",
+  "widget_allowed_origins",
+  "widget_sessions",
+];
 const SCHEMA_TABLES = {
   business_policies: businessPolicies,
   channel_connections: channelConnections,
+  consent_records: consentRecords,
+  contact_identities: contactIdentities,
+  contacts,
   faqs,
   inbound_routes: inboundRoutes,
+  lead_qualification_evaluations: leadQualificationEvaluations,
+  lead_qualification_evidence: leadQualificationEvidence,
+  leads,
   location_business_hours: locationBusinessHours,
   location_closures: locationClosures,
   location_versions: locationVersions,
@@ -149,6 +200,7 @@ let upgradeTablesAfterS4a: string[] = [];
 let upgradeTablesAfterS4b1: string[] = [];
 let upgradeTablesAfterS4b2: string[] = [];
 let upgradeTablesAfterS4b3: string[] = [];
+let upgradeTablesAfterS4b4: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -240,15 +292,20 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0003_happy_lilith.sql");
   upgradeTablesAfterS4b3 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0004_tired_jubilee.sql");
+  upgradeTablesAfterS4b4 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table widget_sessions, widget_allowed_origins, channel_connections,
+    `drop table lead_qualification_evidence, lead_qualification_evaluations,
+      consent_records, leads, contact_identities, widget_sessions, contacts,
+      widget_allowed_origins, channel_connections,
       business_policies, faqs, service_prices, service_locations,
       service_versions, services, location_closures, location_business_hours,
       location_versions, inbound_routes, retention_policy_rules, retention_policies,
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4b.3 upgrade verification failed to restore the disposable database");
+    throw new Error("S4b.4 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -484,11 +541,103 @@ const insertWidgetSession = async (
   );
 };
 
+const insertContact = async (
+  id: string,
+  organizationId: string,
+  status: "active" | "anonymized" | "blocked" = "active",
+): Promise<void> => {
+  await database().query(
+    `insert into contacts
+      (id, organization_id, display_name_ciphertext, preferred_locale, status,
+       first_seen_at, last_seen_at, anonymized_at)
+     values ($1, $2, case when $3 = 'anonymized' then null else $4::bytea end, 'en', $3,
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-01 00:01:00+00',
+       case when $3 = 'anonymized' then timestamptz '2026-01-01 00:02:00+00' else null end)`,
+    [id, organizationId, status, Buffer.from("synthetic-display-name-ciphertext")],
+  );
+};
+
+const insertContactIdentity = async (
+  id: string,
+  organizationId: string,
+  contactId: string,
+  identityType: "email" | "phone" | "telegram_user" | "widget_participant",
+  lookupHash: string,
+  channelConnectionId: string | null = null,
+): Promise<void> => {
+  await database().query(
+    `insert into contact_identities
+      (id, organization_id, contact_id, identity_type, channel_connection_id,
+       value_ciphertext, lookup_hash, display_redacted, validation_status, status)
+     values ($1, $2, $3, $4, $5, $6, $7, '***redacted', 'valid', 'active')`,
+    [
+      id,
+      organizationId,
+      contactId,
+      identityType,
+      channelConnectionId,
+      Buffer.from("synthetic-identity-ciphertext"),
+      Buffer.from(lookupHash),
+    ],
+  );
+};
+
+const insertBusinessPolicy = async (
+  id: string,
+  organizationId: string,
+  policyKey: string,
+): Promise<void> => {
+  await database().query(
+    `insert into business_policies
+      (id, organization_id, policy_key, version_no, policy_type, schema_version,
+       rules_jsonb, status, content_hash)
+     values ($1, $2, $3, 1, 'qualification', 1,
+       '{"required_fields":["service"]}'::jsonb, 'draft', $4)`,
+    [id, organizationId, policyKey, Buffer.from("synthetic-policy-content-hash")],
+  );
+};
+
+const insertLead = async (
+  id: string,
+  organizationId: string,
+  contactId: string,
+  sourceChannelConnectionId: string,
+  status = "new",
+): Promise<void> => {
+  await database().query(
+    `insert into leads
+      (id, organization_id, contact_id, status, source_channel_connection_id,
+       closed_at, closed_reason)
+     values ($1, $2, $3, $4::varchar, $5,
+       case when $4::varchar = 'closed' then now() else null end,
+       case when $4::varchar = 'closed' then 'completed' else null end)`,
+    [id, organizationId, contactId, status, sourceChannelConnectionId],
+  );
+};
+
+const insertLeadQualificationEvaluation = async (
+  id: string,
+  organizationId: string,
+  leadId: string,
+  businessPolicyId: string,
+  result: "disqualified" | "incomplete" | "qualified" = "qualified",
+): Promise<void> => {
+  await database().query(
+    `insert into lead_qualification_evaluations
+      (id, organization_id, lead_id, business_policy_id, result, reason_codes,
+       facts_jsonb, evaluated_by, occurred_at)
+     values ($1, $2, $3, $4, $5, array['service_confirmed'],
+       '{"service_confirmed":true}'::jsonb, 'system', now())`,
+    [id, organizationId, leadId, businessPolicyId, result],
+  );
+};
+
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4b3_test")
+      .withDatabase("lead_agent_s4b4_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -506,7 +655,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table widget_sessions, widget_allowed_origins, channel_connections,
+    `truncate table lead_qualification_evidence, lead_qualification_evaluations,
+      consent_records, leads, contact_identities, widget_sessions, contacts,
+      widget_allowed_origins, channel_connections,
       business_policies, faqs, service_prices, service_locations,
       service_versions, services, location_closures, location_business_hours,
       location_versions, inbound_routes, retention_policy_rules, retention_policies,
@@ -519,12 +670,13 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
-  it("upgrades S4a through S4b.2 to S4b.3, bootstraps head, and reruns safely", async () => {
+describe("S4b.4 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+  it("upgrades S4a through S4b.3 to S4b.4, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
     expect(upgradeTablesAfterS4b3).toEqual(S4B3_TABLES);
+    expect(upgradeTablesAfterS4b4).toEqual(S4B4_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -532,12 +684,12 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4B3_TABLES);
+    expect(await productionTables(database())).toEqual(S4B4_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(4);
+    expect(migrationCount.rows[0]?.count).toBe(5);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -685,6 +837,107 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "updated_at",
       "version",
     ]);
+    expect(namesByTable["contacts"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "display_name_ciphertext",
+      "preferred_locale",
+      "status",
+      "first_seen_at",
+      "last_seen_at",
+      "anonymized_at",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["contact_identities"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "contact_id",
+      "identity_type",
+      "channel_connection_id",
+      "value_ciphertext",
+      "lookup_hash",
+      "hash_key_version",
+      "display_redacted",
+      "validation_status",
+      "verified_at",
+      "status",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["consent_records"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "contact_id",
+      "conversation_id",
+      "contact_identity_id",
+      "purpose",
+      "status",
+      "lawful_basis_code",
+      "notice_key",
+      "notice_version",
+      "policy_url",
+      "locale",
+      "capture_channel",
+      "channel_connection_id",
+      "source_message_id",
+      "captured_by_type",
+      "captured_by_id",
+      "captured_at",
+      "withdrawn_at",
+      "supersedes_consent_id",
+      "evidence_hash",
+      "evidence_ciphertext",
+      "created_at",
+    ]);
+    expect(namesByTable["leads"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "contact_id",
+      "status",
+      "source_channel_connection_id",
+      "campaign_key",
+      "service_id",
+      "location_id",
+      "assigned_membership_id",
+      "qualification_policy_id",
+      "qualification_reason_codes",
+      "engaged_at",
+      "qualified_at",
+      "booking_requested_at",
+      "converted_at",
+      "closed_at",
+      "closed_reason",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(
+      namesByTable["lead_qualification_evaluations"]?.map(({ column_name }) => column_name),
+    ).toEqual([
+      "id",
+      "organization_id",
+      "lead_id",
+      "business_policy_id",
+      "result",
+      "reason_codes",
+      "facts_jsonb",
+      "evaluated_by",
+      "member_id",
+      "occurred_at",
+    ]);
+    expect(
+      namesByTable["lead_qualification_evidence"]?.map(({ column_name }) => column_name),
+    ).toEqual([
+      "organization_id",
+      "evaluation_id",
+      "message_id",
+      "field_key",
+      "evidence_kind",
+      "created_at",
+    ]);
     expect(namesByTable["location_versions"]?.map(({ column_name }) => column_name)).toEqual([
       "id",
       "organization_id",
@@ -823,7 +1076,17 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(userBinaryColumns).toHaveLength(3);
     expect(userBinaryColumns?.every(({ data_type }) => data_type === "bytea")).toBe(true);
     expect(routeKeyHash).toMatchObject({ data_type: "bytea", is_nullable: "NO" });
-    expect(utcTimestamps).toHaveLength(26);
+    expect(
+      namesByTable["contacts"]
+        ?.filter(({ column_name }) => column_name === "display_name_ciphertext")
+        .every(({ data_type }) => data_type === "bytea"),
+    ).toBe(true);
+    expect(
+      namesByTable["contact_identities"]
+        ?.filter(({ column_name }) => ["value_ciphertext", "lookup_hash"].includes(column_name))
+        .every(({ data_type }) => data_type === "bytea"),
+    ).toBe(true);
+    expect(utcTimestamps).toHaveLength(34);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
@@ -871,7 +1134,7 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4B3_TABLES);
+    expect(declaredNames).toEqual(S4B4_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -949,6 +1212,31 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         "widget_sessions_organization_id_organizations_id_fk",
         "widget_sessions_channel_connection_fk",
         "widget_sessions_allowed_origin_fk",
+        "widget_sessions_contact_fk",
+        "contacts_organization_id_id_unique",
+        "contacts_organization_id_organizations_id_fk",
+        "contact_identities_organization_id_id_unique",
+        "contact_identities_contact_id_id_unique",
+        "contact_identities_contact_fk",
+        "contact_identities_channel_connection_fk",
+        "consent_records_organization_id_id_unique",
+        "consent_records_contact_fk",
+        "consent_records_contact_identity_fk",
+        "consent_records_contact_identity_subject_fk",
+        "consent_records_channel_connection_fk",
+        "consent_records_superseded_record_fk",
+        "leads_organization_id_id_unique",
+        "leads_contact_fk",
+        "leads_source_channel_connection_fk",
+        "leads_service_fk",
+        "leads_location_fk",
+        "leads_assigned_membership_fk",
+        "leads_qualification_policy_fk",
+        "lead_qualification_evaluations_lead_fk",
+        "lead_qualification_evaluations_policy_fk",
+        "lead_qualification_evaluations_member_fk",
+        "lead_qualification_evidence_pk",
+        "lead_qualification_evidence_evaluation_fk",
       ]),
     );
 
@@ -1027,6 +1315,24 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(indexDefinitions.get("widget_sessions_organization_conversation_idx")).toContain(
       "(organization_id, conversation_id)",
     );
+    expect(indexDefinitions.get("contacts_organization_status_last_seen_idx")).toContain(
+      "(organization_id, status, last_seen_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("contact_identities_active_lookup_unique")).toContain("UNIQUE");
+    expect(indexDefinitions.get("contact_identities_active_lookup_unique")).toContain(
+      "WHERE ((status)::text = 'active'::text)",
+    );
+    expect(indexDefinitions.get("consent_records_source_event_dedupe_unique")).toContain("UNIQUE");
+    expect(indexDefinitions.get("leads_organization_status_updated_idx")).toContain(
+      "(organization_id, status, updated_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("lead_qualification_evaluations_lead_occurred_idx")).toContain(
+      "(organization_id, lead_id, occurred_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("lead_qualification_evidence_message_evaluation_idx")).toContain(
+      "(organization_id, message_id, evaluation_id)",
+    );
+    expect(indexDefinitions.has("leads_one_active_per_contact_unique")).toBe(false);
 
     const exclusions = await database().query<{ conname: string }>(
       `select conname
@@ -1904,6 +2210,7 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(anonymousSession.rows[0]?.issued_at).toBeInstanceOf(Date);
     expect(anonymousSession.rows[0]?.expires_at).toBeInstanceOf(Date);
 
+    await insertContact(FUTURE_CONTACT_A, ORGANIZATION_A);
     await expect(
       database().query(
         `update widget_sessions
@@ -2386,7 +2693,7 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ code: "23503" });
   });
 
-  it("keeps RLS deferred, activates the route FK, and preserves future contact/conversation seams", async () => {
+  it("keeps RLS deferred, activates current FKs, and preserves future conversation seams", async () => {
     const rls = await database().query<{ relname: string; relrowsecurity: boolean }>(
       `select relname, relrowsecurity
          from pg_class
@@ -2397,8 +2704,14 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(rls.rows).toEqual([
       { relname: "business_policies", relrowsecurity: false },
       { relname: "channel_connections", relrowsecurity: false },
+      { relname: "consent_records", relrowsecurity: false },
+      { relname: "contact_identities", relrowsecurity: false },
+      { relname: "contacts", relrowsecurity: false },
       { relname: "faqs", relrowsecurity: false },
       { relname: "inbound_routes", relrowsecurity: false },
+      { relname: "lead_qualification_evaluations", relrowsecurity: false },
+      { relname: "lead_qualification_evidence", relrowsecurity: false },
+      { relname: "leads", relrowsecurity: false },
       { relname: "location_business_hours", relrowsecurity: false },
       { relname: "location_closures", relrowsecurity: false },
       { relname: "location_versions", relrowsecurity: false },
@@ -2426,7 +2739,9 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     expect(activatedRouteForeignKey.rows[0]?.count).toBe(1);
 
-    const deferredFutureForeignKeys = await database().query<{ column_name: string }>(
+    const widgetContactAndConversationForeignKeys = await database().query<{
+      column_name: string;
+    }>(
       `select kcu.column_name
          from information_schema.table_constraints tc
          join information_schema.key_column_usage kcu
@@ -2438,7 +2753,7 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and kcu.column_name in ('contact_id', 'conversation_id')
         order by kcu.column_name`,
     );
-    expect(deferredFutureForeignKeys.rows).toEqual([]);
+    expect(widgetContactAndConversationForeignKeys.rows).toEqual([{ column_name: "contact_id" }]);
 
     const activatedCurrentVersionForeignKeys = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -2458,5 +2773,580 @@ describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and constraint_type = 'FOREIGN KEY'`,
     );
     expect(activatedRetentionForeignKey.rows[0]?.count).toBe(1);
+  });
+
+  it("protects contact PII and enforces identity lifecycle, uniqueness, and tenant ownership", async () => {
+    await insertOrganization(ORGANIZATION_A, "contacts-a");
+    await insertOrganization(ORGANIZATION_B, "contacts-b");
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+    await insertContactIdentity(
+      CONTACT_IDENTITY_A,
+      ORGANIZATION_A,
+      CONTACT_A,
+      "email",
+      "same-synthetic-lookup-hash",
+    );
+    await expect(
+      insertContactIdentity(
+        CONTACT_IDENTITY_B,
+        ORGANIZATION_B,
+        CONTACT_B,
+        "email",
+        "same-synthetic-lookup-hash",
+      ),
+    ).resolves.toBeUndefined();
+
+    const protectedValues = await database().query<{
+      display_name_ciphertext: Buffer;
+      lookup_hash: Buffer;
+      value_ciphertext: Buffer;
+    }>(
+      `select c.display_name_ciphertext, i.value_ciphertext, i.lookup_hash
+         from contacts c
+         join contact_identities i
+           on i.organization_id = c.organization_id and i.contact_id = c.id
+        where c.organization_id = $1 and c.id = $2`,
+      [ORGANIZATION_A, CONTACT_A],
+    );
+    expect(protectedValues.rows[0]).toMatchObject({
+      display_name_ciphertext: Buffer.from("synthetic-display-name-ciphertext"),
+      lookup_hash: Buffer.from("same-synthetic-lookup-hash"),
+      value_ciphertext: Buffer.from("synthetic-identity-ciphertext"),
+    });
+
+    await expect(
+      insertContactIdentity(
+        TEST_ID_1,
+        ORGANIZATION_A,
+        CONTACT_A,
+        "email",
+        "same-synthetic-lookup-hash",
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "contact_identities_active_lookup_unique",
+    });
+    await expect(
+      insertContactIdentity(
+        TEST_ID_1,
+        ORGANIZATION_A,
+        CONTACT_B,
+        "phone",
+        "different-synthetic-lookup-hash",
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "contact_identities_contact_fk" });
+    await expect(
+      database().query(
+        `insert into contact_identities
+          (id, organization_id, contact_id, identity_type, lookup_hash,
+           validation_status, status)
+         values ($1, $2, $3, 'social_handle', $4, 'valid', 'active')`,
+        [TEST_ID_1, ORGANIZATION_A, CONTACT_A, Buffer.from("valid-length-lookup-hash")],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "contact_identities_identity_type_check",
+    });
+    await expect(
+      database().query(
+        `insert into contact_identities
+          (id, organization_id, contact_id, identity_type, lookup_hash,
+           validation_status, status)
+         values ($1, $2, $3, 'phone', $4, 'valid', 'active')`,
+        [TEST_ID_1, ORGANIZATION_A, CONTACT_A, Buffer.from("short")],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "contact_identities_lookup_hash_check",
+    });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, preferred_locale, status, first_seen_at, last_seen_at)
+         values ($1, $2, 'de', 'active', now(), now())`,
+        [TEST_ID_1, ORGANIZATION_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "contacts_preferred_locale_check" });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, display_name_ciphertext, status,
+           first_seen_at, last_seen_at, anonymized_at)
+         values ($1, $2, $3, 'anonymized', now(), now(), now())`,
+        [TEST_ID_1, ORGANIZATION_A, Buffer.from("must-not-survive-anonymization")],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "contacts_anonymized_shape_check" });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, status, first_seen_at, last_seen_at)
+         values ($1, $2, 'active', now(), now() - interval '1 minute')`,
+        [TEST_ID_1, ORGANIZATION_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "contacts_seen_at_check" });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, status, first_seen_at, last_seen_at)
+         values ($1, $2, 'active', now(), now())`,
+        [UUID_V4, ORGANIZATION_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "contacts_id_uuid_v7_check" });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, status, first_seen_at, last_seen_at)
+         values ($1, $2, 'deleted', now(), now())`,
+        [TEST_ID_1, ORGANIZATION_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "contacts_status_check" });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, display_name_ciphertext, status,
+           first_seen_at, last_seen_at)
+         values ($1, $2, $3, 'active', now(), now())`,
+        [TEST_ID_1, ORGANIZATION_A, Buffer.alloc(0)],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "contacts_display_name_ciphertext_check",
+    });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, status, first_seen_at, last_seen_at, version)
+         values ($1, $2, 'active', now(), now(), 0)`,
+        [TEST_ID_1, ORGANIZATION_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "contacts_version_check" });
+    await expect(
+      database().query(
+        `insert into contacts
+          (id, organization_id, status, first_seen_at, last_seen_at)
+         values ($1, $2, 'active', now(), now())`,
+        [TEST_ID_1, UNKNOWN_ORGANIZATION],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "contacts_organization_id_organizations_id_fk",
+    });
+
+    await expect(
+      database().query(
+        `update contact_identities
+            set status = 'anonymized', value_ciphertext = null,
+                lookup_hash = null, display_redacted = null
+          where id = $1`,
+        [CONTACT_IDENTITY_A],
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      database().query("delete from contacts where id = $1", [CONTACT_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "contact_identities_contact_fk" });
+  });
+
+  it("activates the nullable same-tenant widget-session contact relationship", async () => {
+    await insertOrganization(ORGANIZATION_A, "widget-contact-a");
+    await insertOrganization(ORGANIZATION_B, "widget-contact-b");
+    await insertUser(USER_A);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Widget A");
+    await insertWidgetOrigin(WIDGET_ORIGIN_A, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A);
+    await insertWidgetSession(
+      WIDGET_SESSION_A,
+      ORGANIZATION_A,
+      CHANNEL_CONNECTION_A,
+      WIDGET_ORIGIN_A,
+      "widget-contact-session-hash",
+      "widget-contact-participant-hash",
+    );
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+
+    await expect(
+      database().query("update widget_sessions set contact_id = $2 where id = $1", [
+        WIDGET_SESSION_A,
+        CONTACT_A,
+      ]),
+    ).resolves.toBeDefined();
+    await expect(
+      database().query("update widget_sessions set contact_id = $2 where id = $1", [
+        WIDGET_SESSION_A,
+        CONTACT_B,
+      ]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "widget_sessions_contact_fk" });
+    await expect(
+      database().query("update widget_sessions set contact_id = null where id = $1", [
+        WIDGET_SESSION_A,
+      ]),
+    ).resolves.toBeDefined();
+  });
+
+  it("stores append-only consent evidence with withdrawal history and tenant-safe subjects", async () => {
+    await insertOrganization(ORGANIZATION_A, "consent-a");
+    await insertOrganization(ORGANIZATION_B, "consent-b");
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+    await insertContact(TEST_ID_1, ORGANIZATION_A);
+    await insertContactIdentity(
+      CONTACT_IDENTITY_A,
+      ORGANIZATION_A,
+      CONTACT_A,
+      "phone",
+      "consent-subject-lookup-hash-a",
+    );
+    await insertContactIdentity(
+      CONTACT_IDENTITY_B,
+      ORGANIZATION_B,
+      CONTACT_B,
+      "phone",
+      "consent-subject-lookup-hash-b",
+    );
+
+    const insertConsent = (
+      id: string,
+      status: string,
+      supersedesConsentId: string | null,
+      withdrawnAt: string | null,
+    ) =>
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, contact_identity_id, purpose, status,
+           notice_key, notice_version, locale, capture_channel, captured_by_type,
+           captured_at, withdrawn_at, supersedes_consent_id, evidence_hash,
+           evidence_ciphertext)
+         values ($1, $2, $3, $4, 'booking_follow_up', $5, 'privacy.booking', 1,
+           'en', 'staff', 'system', timestamptz '2026-01-01 00:00:00+00',
+           $6::timestamptz, $7, $8, $9)`,
+        [
+          id,
+          ORGANIZATION_A,
+          CONTACT_A,
+          CONTACT_IDENTITY_A,
+          status,
+          withdrawnAt,
+          supersedesConsentId,
+          Buffer.from(`synthetic-evidence-hash-${id}`),
+          Buffer.from("synthetic-consent-evidence-ciphertext"),
+        ],
+      );
+
+    await insertConsent(CONSENT_A, "granted", null, null);
+    await insertConsent(CONSENT_B, "withdrawn", CONSENT_A, "2026-01-02T00:00:00Z");
+    const history = await database().query<{ id: string; status: string }>(
+      "select id, status from consent_records order by captured_at, created_at, id",
+    );
+    expect(history.rows).toEqual([
+      { id: CONSENT_A, status: "granted" },
+      { id: CONSENT_B, status: "withdrawn" },
+    ]);
+
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, purpose, status, notice_key, notice_version,
+           locale, capture_channel, captured_by_type, captured_at, evidence_hash)
+         values ($1, $2, 'marketing', 'declined', 'privacy.marketing', 1,
+           'en', 'staff', 'system', now(), $3)`,
+        [TEST_ID_2, ORGANIZATION_A, Buffer.from("synthetic-evidence-hash")],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "consent_records_subject_anchor_check" });
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, purpose, status, notice_key, notice_version,
+           locale, capture_channel, captured_by_type, captured_at, evidence_hash)
+         values ($1, $2, $3, 'profiling', 'granted', 'privacy.profiling', 1,
+           'en', 'staff', 'system', now(), $4)`,
+        [TEST_ID_2, ORGANIZATION_A, CONTACT_A, Buffer.from("synthetic-evidence-hash")],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "consent_records_purpose_check" });
+    await expect(insertConsent(TEST_ID_2, "expired", null, null)).rejects.toMatchObject({
+      code: "23514",
+      constraint: "consent_records_status_check",
+    });
+    await expect(
+      insertConsent(TEST_ID_2, "withdrawn", CONSENT_A, "2025-12-31T00:00:00Z"),
+    ).rejects.toMatchObject({ code: "23514", constraint: "consent_records_withdrawal_check" });
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, purpose, status, notice_key, notice_version,
+           locale, capture_channel, captured_by_type, captured_at, evidence_hash)
+         values ($1, $2, $3, 'marketing', 'granted', 'privacy.marketing', 1,
+           'en', 'staff', 'system', now(), $4)`,
+        [TEST_ID_2, ORGANIZATION_A, CONTACT_A, Buffer.from("short")],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "consent_records_evidence_hash_check" });
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, purpose, status, notice_key, notice_version,
+           locale, capture_channel, captured_by_type, captured_at, evidence_hash)
+         values ($1, $2, $3, 'marketing', 'granted', 'privacy.marketing', 1,
+           'en', 'browser', 'system', now(), $4)`,
+        [TEST_ID_2, ORGANIZATION_A, CONTACT_A, Buffer.from("synthetic-evidence-hash")],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "consent_records_capture_channel_check",
+    });
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, purpose, status, notice_key, notice_version,
+           locale, capture_channel, captured_by_type, captured_at, evidence_hash)
+         values ($1, $2, $3, 'marketing', 'granted', 'privacy.marketing', 1,
+           'en', 'staff', 'system', now(), $4)`,
+        [TEST_ID_2, ORGANIZATION_A, CONTACT_B, Buffer.from("synthetic-evidence-hash")],
+      ),
+    ).rejects.toMatchObject({ code: "23503", constraint: "consent_records_contact_fk" });
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, contact_identity_id, purpose, status,
+           notice_key, notice_version, locale, capture_channel, captured_by_type,
+           captured_at, evidence_hash)
+         values ($1, $2, $3, $4, 'marketing', 'granted', 'privacy.marketing', 1,
+           'en', 'staff', 'system', now(), $5)`,
+        [
+          TEST_ID_2,
+          ORGANIZATION_A,
+          TEST_ID_1,
+          CONTACT_IDENTITY_A,
+          Buffer.from("synthetic-evidence-hash"),
+        ],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "consent_records_contact_identity_subject_fk",
+    });
+    await expect(
+      database().query(
+        `insert into consent_records
+          (id, organization_id, contact_id, contact_identity_id, purpose, status,
+           notice_key, notice_version, locale, capture_channel, captured_by_type,
+           captured_at, evidence_hash)
+         values ($1, $2, $3, $4, 'marketing', 'granted', 'privacy.marketing', 1,
+           'en', 'staff', 'system', now(), $5)`,
+        [
+          TEST_ID_2,
+          ORGANIZATION_A,
+          CONTACT_A,
+          CONTACT_IDENTITY_B,
+          Buffer.from("synthetic-evidence-hash"),
+        ],
+      ),
+    ).rejects.toMatchObject({ code: "23503" });
+    await expect(
+      database().query("delete from contacts where id = $1", [CONTACT_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "consent_records_contact_fk" });
+  });
+
+  it("persists the exact Lead lifecycle without inventing active-lead uniqueness", async () => {
+    await insertOrganization(ORGANIZATION_A, "leads-a");
+    await insertOrganization(ORGANIZATION_B, "leads-b");
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Lead Widget A");
+    await insertChannelConnection(CHANNEL_CONNECTION_B, ORGANIZATION_B, "widget", "Lead Widget B");
+
+    const states = [
+      [LEAD_A, "new"],
+      [LEAD_B, "engaged"],
+      [TEST_ID_1, "qualified"],
+      [TEST_ID_2, "booking_requested"],
+      [TEST_ID_3, "converted"],
+      [SERVICE_A, "disqualified"],
+      [SERVICE_B, "closed"],
+    ] as const;
+    for (const [id, status] of states) {
+      await insertLead(id, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, status);
+    }
+    await expect(
+      insertLead(SERVICE_VERSION_A, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "new"),
+    ).resolves.toBeUndefined();
+    expect(
+      (
+        await database().query<{ status: string }>(
+          "select distinct status from leads order by status",
+        )
+      ).rows.map(({ status }) => status),
+    ).toEqual([
+      "booking_requested",
+      "closed",
+      "converted",
+      "disqualified",
+      "engaged",
+      "new",
+      "qualified",
+    ]);
+
+    await expect(
+      insertLead(SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "archived"),
+    ).rejects.toMatchObject({ code: "23514", constraint: "leads_status_check" });
+    await expect(
+      insertLead(SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_B, CHANNEL_CONNECTION_A),
+    ).rejects.toMatchObject({ code: "23503", constraint: "leads_contact_fk" });
+    await expect(
+      insertLead(SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_B),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "leads_source_channel_connection_fk",
+    });
+    await expect(
+      database().query(
+        `insert into leads
+          (id, organization_id, contact_id, status, source_channel_connection_id,
+           qualification_reason_codes)
+         values ($1, $2, $3, 'new', $4, array['Bad-Code'])`,
+        [SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "leads_qualification_reason_codes_check",
+    });
+    await expect(
+      database().query(
+        `insert into leads
+          (id, organization_id, contact_id, status, source_channel_connection_id, version)
+         values ($1, $2, $3, 'new', $4, 0)`,
+        [SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "leads_version_check" });
+  });
+
+  it("keeps qualification evaluations immutable-shaped and evidence tenant-safe", async () => {
+    await insertOrganization(ORGANIZATION_A, "qualification-a");
+    await insertOrganization(ORGANIZATION_B, "qualification-b");
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Qualify A");
+    await insertChannelConnection(CHANNEL_CONNECTION_B, ORGANIZATION_B, "widget", "Qualify B");
+    await insertBusinessPolicy(POLICY_A, ORGANIZATION_A, "lead-qualification");
+    await insertBusinessPolicy(TEST_ID_3, ORGANIZATION_B, "lead-qualification");
+    await insertLead(LEAD_A, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A);
+    await insertLead(LEAD_B, ORGANIZATION_B, CONTACT_B, CHANNEL_CONNECTION_B);
+    await insertLeadQualificationEvaluation(EVALUATION_A, ORGANIZATION_A, LEAD_A, POLICY_A);
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'service.requested', 'customer_statement')`,
+        [ORGANIZATION_A, EVALUATION_A, MESSAGE_A],
+      ),
+    ).resolves.toBeDefined();
+
+    await expect(
+      insertLeadQualificationEvaluation(EVALUATION_B, ORGANIZATION_A, LEAD_B, POLICY_A),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "lead_qualification_evaluations_lead_fk",
+    });
+    await expect(
+      insertLeadQualificationEvaluation(EVALUATION_B, ORGANIZATION_A, LEAD_A, TEST_ID_3),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "lead_qualification_evaluations_policy_fk",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evaluations
+          (id, organization_id, lead_id, business_policy_id, result,
+           reason_codes, facts_jsonb, evaluated_by, occurred_at)
+         values ($1, $2, $3, $4, 'unknown', array[]::varchar[],
+           '{}'::jsonb, 'system', now())`,
+        [EVALUATION_B, ORGANIZATION_A, LEAD_A, POLICY_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "lead_qualification_evaluations_result_check",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evaluations
+          (id, organization_id, lead_id, business_policy_id, result,
+           reason_codes, facts_jsonb, evaluated_by, occurred_at)
+         values ($1, $2, $3, $4, 'qualified', array[]::varchar[],
+           '{}'::jsonb, 'member', now())`,
+        [EVALUATION_B, ORGANIZATION_A, LEAD_A, POLICY_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "lead_qualification_evaluations_evaluator_check",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evaluations
+          (id, organization_id, lead_id, business_policy_id, result,
+           reason_codes, facts_jsonb, evaluated_by, occurred_at)
+         values ($1, $2, $3, $4, 'qualified', array[]::varchar[],
+           '[]'::jsonb, 'system', now())`,
+        [EVALUATION_B, ORGANIZATION_A, LEAD_A, POLICY_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "lead_qualification_evaluations_facts_check",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'service.requested', 'customer_statement')`,
+        [ORGANIZATION_B, EVALUATION_A, MESSAGE_B],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "lead_qualification_evidence_evaluation_fk",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'Unsafe Field', 'customer_statement')`,
+        [ORGANIZATION_A, EVALUATION_A, MESSAGE_B],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "lead_qualification_evidence_field_key_check",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'service.requested', 'model_guess')`,
+        [ORGANIZATION_A, EVALUATION_A, MESSAGE_B],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "lead_qualification_evidence_kind_check",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'service.requested', 'derived')`,
+        [ORGANIZATION_A, EVALUATION_A, UUID_V4],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "lead_qualification_evidence_message_uuid_v7_check",
+    });
+    await expect(
+      database().query(
+        `insert into lead_qualification_evidence
+          (organization_id, evaluation_id, message_id, field_key, evidence_kind)
+         values ($1, $2, $3, 'service.requested', 'customer_statement')`,
+        [ORGANIZATION_A, EVALUATION_A, MESSAGE_A],
+      ),
+    ).rejects.toMatchObject({ code: "23505", constraint: "lead_qualification_evidence_pk" });
+    await expect(
+      database().query("delete from lead_qualification_evaluations where id = $1", [EVALUATION_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "lead_qualification_evidence_evaluation_fk",
+    });
   });
 });

@@ -1,4 +1,12 @@
 export { channelConnections, widgetAllowedOrigins, widgetSessions } from "./channels.js";
+export { contacts } from "./contacts.js";
+export {
+  consentRecords,
+  contactIdentities,
+  leadQualificationEvaluations,
+  leadQualificationEvidence,
+  leads,
+} from "./customer-records.js";
 export { inboundRoutes } from "./inbound-routes.js";
 export {
   locationBusinessHours,

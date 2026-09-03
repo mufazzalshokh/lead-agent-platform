@@ -29,6 +29,13 @@
       "when": 1788427814150,
       "tag": "0003_happy_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788430928312,
+      "tag": "0004_tired_jubilee",
+      "breakpoints": true
     }
   ]
 }
