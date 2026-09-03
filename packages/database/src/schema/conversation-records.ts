@@ -1,9 +1,11 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   foreignKey,
   index,
+  integer,
   jsonb,
   pgTable,
   timestamp,
@@ -21,6 +23,7 @@ import { leads } from "./leads.js";
 import { locations } from "./locations.js";
 import { memberships } from "./memberships.js";
 import { organizations } from "./organizations.js";
+import { retentionPolicies } from "./retention-policies.js";
 
 export const conversations = pgTable(
   "conversations",
@@ -516,6 +519,13 @@ export const messages = pgTable(
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.aiRunId],
+      foreignColumns: [aiRuns.organizationId, aiRuns.id],
+      name: "messages_ai_run_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
     unique("messages_organization_id_id_unique").on(table.organizationId, table.id),
     unique("messages_organization_conversation_id_unique").on(
       table.organizationId,
@@ -547,6 +557,348 @@ export const messages = pgTable(
       table.organizationId,
       table.deliveryStatus,
       table.createdAt,
+    ),
+  ],
+);
+
+export const aiRuns = pgTable(
+  "ai_runs",
+  {
+    id: uuid("id").primaryKey(),
+    organizationId: uuid("organization_id").notNull(),
+    conversationId: uuid("conversation_id").notNull(),
+    triggerMessageId: uuid("trigger_message_id").notNull(),
+    expectedConversationVersion: bigint("expected_conversation_version", {
+      mode: "bigint",
+    }).notNull(),
+    providerId: varchar("provider_id", { length: 64 }).notNull(),
+    requestedModelId: varchar("requested_model_id", { length: 255 }).notNull(),
+    modelProfileVersion: varchar("model_profile_version", { length: 128 }).notNull(),
+    providerResolvedModelId: varchar("provider_resolved_model_id", { length: 255 }),
+    orchestratorVersion: varchar("orchestrator_version", { length: 128 }).notNull(),
+    promptTemplateVersion: varchar("prompt_template_version", { length: 128 }).notNull(),
+    decisionSchemaVersion: varchar("decision_schema_version", { length: 64 }).notNull(),
+    policyVersion: varchar("policy_version", { length: 128 }).notNull(),
+    status: varchar("status", { length: 24 }).notNull(),
+    inputUnits: bigint("input_units", { mode: "bigint" }),
+    outputUnits: bigint("output_units", { mode: "bigint" }),
+    cachedInputUnits: bigint("cached_input_units", { mode: "bigint" }),
+    reasoningUnits: bigint("reasoning_units", { mode: "bigint" }),
+    totalUnits: bigint("total_units", { mode: "bigint" }),
+    estimatedCostMicros: bigint("estimated_cost_micros", { mode: "bigint" }),
+    costCurrency: varchar("cost_currency", { length: 3 }).notNull(),
+    costCatalogVersion: varchar("cost_catalog_version", { length: 128 }).notNull(),
+    latencyMs: integer("latency_ms"),
+    attemptNo: integer("attempt_no").notNull(),
+    failureCategory: varchar("failure_category", { length: 100 }),
+    knowledgeManifest: jsonb("knowledge_manifest_jsonb").$type<Record<string, unknown>>().notNull(),
+    inputHash: binary("input_hash").notNull(),
+    outputHash: binary("output_hash"),
+    inputSnapshotCiphertext: binary("input_snapshot_ciphertext"),
+    outputSnapshotCiphertext: binary("output_snapshot_ciphertext"),
+    snapshotCapturePolicyId: uuid("snapshot_capture_policy_id"),
+    schemaValid: boolean("schema_valid"),
+    policyAllowed: boolean("policy_allowed"),
+    startedAt: timestamp("started_at", { mode: "date", withTimezone: true }).notNull(),
+    finishedAt: timestamp("finished_at", { mode: "date", withTimezone: true }),
+    correlationId: uuid("correlation_id").notNull(),
+  },
+  (table): PgTableExtraConfigValue[] => [
+    check(
+      "ai_runs_id_uuid_v7_check",
+      sql`${table.id}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "ai_runs_correlation_uuid_v7_check",
+      sql`${table.correlationId}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "ai_runs_expected_conversation_version_check",
+      sql`${table.expectedConversationVersion} > 0`,
+    ),
+    check(
+      "ai_runs_provider_id_check",
+      sql`${table.providerId} = lower(btrim(${table.providerId}))
+        and ${table.providerId} ~ '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'`,
+    ),
+    check(
+      "ai_runs_model_identifiers_check",
+      sql`${table.requestedModelId} = btrim(${table.requestedModelId})
+        and length(${table.requestedModelId}) between 1 and 255
+        and ${table.requestedModelId} !~ '[[:space:]]'
+        and lower(${table.requestedModelId}) <> 'latest'
+        and (${table.providerResolvedModelId} is null
+          or (${table.providerResolvedModelId} = btrim(${table.providerResolvedModelId})
+            and length(${table.providerResolvedModelId}) between 1 and 255
+            and ${table.providerResolvedModelId} !~ '[[:space:]]'))`,
+    ),
+    check(
+      "ai_runs_versions_check",
+      sql`${table.modelProfileVersion} = btrim(${table.modelProfileVersion})
+        and ${table.modelProfileVersion} !~ '[[:space:]]'
+        and ${table.orchestratorVersion} = btrim(${table.orchestratorVersion})
+        and ${table.orchestratorVersion} !~ '[[:space:]]'
+        and ${table.promptTemplateVersion} = btrim(${table.promptTemplateVersion})
+        and ${table.promptTemplateVersion} !~ '[[:space:]]'
+        and ${table.decisionSchemaVersion} = btrim(${table.decisionSchemaVersion})
+        and ${table.decisionSchemaVersion} !~ '[[:space:]]'
+        and ${table.policyVersion} = btrim(${table.policyVersion})
+        and ${table.policyVersion} !~ '[[:space:]]'
+        and ${table.costCatalogVersion} = btrim(${table.costCatalogVersion})
+        and ${table.costCatalogVersion} !~ '[[:space:]]'`,
+    ),
+    check(
+      "ai_runs_status_check",
+      sql`${table.status} in ('started', 'succeeded', 'failed', 'schema_rejected', 'policy_denied', 'stale')`,
+    ),
+    check(
+      "ai_runs_usage_check",
+      sql`(${table.inputUnits} is null or ${table.inputUnits} >= 0)
+        and (${table.outputUnits} is null or ${table.outputUnits} >= 0)
+        and (${table.cachedInputUnits} is null or ${table.cachedInputUnits} >= 0)
+        and (${table.reasoningUnits} is null or ${table.reasoningUnits} >= 0)
+        and (${table.totalUnits} is null or ${table.totalUnits} >= 0)`,
+    ),
+    check(
+      "ai_runs_cost_check",
+      sql`${table.estimatedCostMicros} is null or ${table.estimatedCostMicros} >= 0`,
+    ),
+    check("ai_runs_cost_currency_check", sql`${table.costCurrency} ~ '^[A-Z]{3}$'`),
+    check("ai_runs_attempt_no_check", sql`${table.attemptNo} > 0`),
+    check(
+      "ai_runs_failure_category_check",
+      sql`${table.failureCategory} is null
+        or ${table.failureCategory} ~ '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$'`,
+    ),
+    check(
+      "ai_runs_knowledge_manifest_check",
+      sql`jsonb_typeof(${table.knowledgeManifest}) = 'object'
+        and pg_column_size(${table.knowledgeManifest}) <= 65536`,
+    ),
+    check("ai_runs_input_hash_check", sql`octet_length(${table.inputHash}) between 16 and 128`),
+    check(
+      "ai_runs_output_hash_check",
+      sql`${table.outputHash} is null or octet_length(${table.outputHash}) between 16 and 128`,
+    ),
+    check(
+      "ai_runs_snapshot_ciphertext_check",
+      sql`(${table.inputSnapshotCiphertext} is null
+          or octet_length(${table.inputSnapshotCiphertext}) between 1 and 65536)
+        and (${table.outputSnapshotCiphertext} is null
+          or octet_length(${table.outputSnapshotCiphertext}) between 1 and 65536)`,
+    ),
+    check(
+      "ai_runs_snapshot_capture_policy_check",
+      sql`(${table.inputSnapshotCiphertext} is null
+          and ${table.outputSnapshotCiphertext} is null
+          and ${table.snapshotCapturePolicyId} is null)
+        or ((${table.inputSnapshotCiphertext} is not null
+            or ${table.outputSnapshotCiphertext} is not null)
+          and ${table.snapshotCapturePolicyId} is not null)`,
+    ),
+    check(
+      "ai_runs_validation_order_check",
+      sql`${table.policyAllowed} is null or ${table.schemaValid} is true`,
+    ),
+    check(
+      "ai_runs_lifecycle_check",
+      sql`(${table.status} = 'started'
+          and ${table.finishedAt} is null
+          and ${table.latencyMs} is null)
+        or (${table.status} <> 'started'
+          and ${table.finishedAt} is not null
+          and ${table.finishedAt} >= ${table.startedAt}
+          and ${table.latencyMs} >= 0)`,
+    ),
+    check(
+      "ai_runs_outcome_shape_check",
+      sql`(${table.status} = 'succeeded'
+          and ${table.schemaValid} is true
+          and ${table.policyAllowed} is true
+          and ${table.providerResolvedModelId} is not null
+          and ${table.outputHash} is not null
+          and ${table.failureCategory} is null)
+        or (${table.status} = 'schema_rejected'
+          and ${table.schemaValid} is false
+          and ${table.policyAllowed} is null
+          and ${table.providerResolvedModelId} is not null
+          and ${table.outputHash} is not null)
+        or (${table.status} = 'policy_denied'
+          and ${table.schemaValid} is true
+          and ${table.policyAllowed} is false
+          and ${table.providerResolvedModelId} is not null
+          and ${table.outputHash} is not null)
+        or (${table.status} = 'failed' and ${table.failureCategory} is not null)
+        or ${table.status} in ('started', 'stale')`,
+    ),
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organizations.id],
+      name: "ai_runs_organization_id_organizations_id_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.conversationId],
+      foreignColumns: [conversations.organizationId, conversations.id],
+      name: "ai_runs_conversation_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.conversationId, table.triggerMessageId],
+      foreignColumns: [messages.organizationId, messages.conversationId, messages.id],
+      name: "ai_runs_trigger_message_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.snapshotCapturePolicyId],
+      foreignColumns: [retentionPolicies.organizationId, retentionPolicies.id],
+      name: "ai_runs_snapshot_capture_policy_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    unique("ai_runs_organization_id_id_unique").on(table.organizationId, table.id),
+    unique("ai_runs_trigger_attempt_provider_unique").on(
+      table.organizationId,
+      table.triggerMessageId,
+      table.attemptNo,
+      table.providerId,
+    ),
+    index("ai_runs_organization_conversation_started_idx").on(
+      table.organizationId,
+      table.conversationId,
+      table.startedAt.desc(),
+    ),
+    index("ai_runs_organization_status_started_idx").on(
+      table.organizationId,
+      table.status,
+      table.startedAt,
+    ),
+    index("ai_runs_organization_model_started_idx").on(
+      table.organizationId,
+      table.requestedModelId,
+      table.startedAt,
+    ),
+  ],
+);
+
+export const aiActionEvaluations = pgTable(
+  "ai_action_evaluations",
+  {
+    id: uuid("id").primaryKey(),
+    organizationId: uuid("organization_id").notNull(),
+    aiRunId: uuid("ai_run_id").notNull(),
+    actionName: varchar("action_name", { length: 40 }).notNull(),
+    actionSchemaVersion: varchar("action_schema_version", { length: 64 }).notNull(),
+    proposalHash: binary("proposal_hash").notNull(),
+    argumentsCiphertext: binary("arguments_ciphertext").notNull(),
+    validationStatus: varchar("validation_status", { length: 16 }).notNull(),
+    policyReasonCode: varchar("policy_reason_code", { length: 100 }),
+    applicationStatus: varchar("application_status", { length: 16 }).notNull(),
+    targetAggregateType: varchar("target_aggregate_type", { length: 32 }),
+    targetAggregateId: uuid("target_aggregate_id"),
+    resultHash: binary("result_hash"),
+    resultCiphertext: binary("result_ciphertext"),
+    startedAt: timestamp("started_at", { mode: "date", withTimezone: true }).notNull(),
+    finishedAt: timestamp("finished_at", { mode: "date", withTimezone: true }),
+  },
+  (table): PgTableExtraConfigValue[] => [
+    check(
+      "ai_action_evaluations_id_uuid_v7_check",
+      sql`${table.id}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "ai_action_evaluations_action_name_check",
+      sql`${table.actionName} in ('none', 'request_information', 'create_appointment_request', 'confirm_appointment', 'decline_appointment', 'request_handoff')`,
+    ),
+    check(
+      "ai_action_evaluations_action_schema_version_check",
+      sql`${table.actionSchemaVersion} = btrim(${table.actionSchemaVersion})
+        and ${table.actionSchemaVersion} !~ '[[:space:]]'`,
+    ),
+    check(
+      "ai_action_evaluations_proposal_hash_check",
+      sql`octet_length(${table.proposalHash}) between 16 and 128`,
+    ),
+    check(
+      "ai_action_evaluations_arguments_ciphertext_check",
+      sql`octet_length(${table.argumentsCiphertext}) between 1 and 65536`,
+    ),
+    check(
+      "ai_action_evaluations_validation_status_check",
+      sql`${table.validationStatus} in ('pending', 'allowed', 'denied', 'malformed')`,
+    ),
+    check(
+      "ai_action_evaluations_policy_reason_check",
+      sql`(${table.validationStatus} = 'pending' and ${table.policyReasonCode} is null)
+        or (${table.validationStatus} in ('denied', 'malformed')
+          and ${table.policyReasonCode} is not null
+          and ${table.policyReasonCode} ~ '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$')
+        or (${table.validationStatus} = 'allowed'
+          and (${table.policyReasonCode} is null
+            or ${table.policyReasonCode} ~ '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$'))`,
+    ),
+    check(
+      "ai_action_evaluations_application_status_check",
+      sql`${table.applicationStatus} in ('not_applied', 'applied', 'failed', 'stale')`,
+    ),
+    check(
+      "ai_action_evaluations_authority_shape_check",
+      sql`${table.validationStatus} = 'allowed'
+        or ${table.applicationStatus} = 'not_applied'`,
+    ),
+    check(
+      "ai_action_evaluations_target_shape_check",
+      sql`(${table.targetAggregateType} is null and ${table.targetAggregateId} is null)
+        or (${table.targetAggregateType} in ('conversation', 'appointment_request', 'handoff')
+          and ${table.targetAggregateId} is not null
+          and ${table.targetAggregateId}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')`,
+    ),
+    check(
+      "ai_action_evaluations_result_hash_check",
+      sql`${table.resultHash} is null or octet_length(${table.resultHash}) between 16 and 128`,
+    ),
+    check(
+      "ai_action_evaluations_result_ciphertext_check",
+      sql`${table.resultCiphertext} is null
+        or (${table.resultHash} is not null
+          and octet_length(${table.resultCiphertext}) between 1 and 65536)`,
+    ),
+    check(
+      "ai_action_evaluations_lifecycle_check",
+      sql`(${table.validationStatus} = 'pending'
+          and ${table.finishedAt} is null
+          and ${table.applicationStatus} = 'not_applied')
+        or (${table.validationStatus} <> 'pending'
+          and ${table.finishedAt} is not null
+          and ${table.finishedAt} >= ${table.startedAt})`,
+    ),
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [organizations.id],
+      name: "ai_action_evaluations_organization_id_organizations_id_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.aiRunId],
+      foreignColumns: [aiRuns.organizationId, aiRuns.id],
+      name: "ai_action_evaluations_ai_run_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    unique("ai_action_evaluations_organization_id_id_unique").on(table.organizationId, table.id),
+    unique("ai_action_evaluations_organization_ai_run_unique").on(
+      table.organizationId,
+      table.aiRunId,
+    ),
+    index("ai_action_evaluations_org_action_validation_started_idx").on(
+      table.organizationId,
+      table.actionName,
+      table.validationStatus,
+      table.startedAt,
     ),
   ],
 );

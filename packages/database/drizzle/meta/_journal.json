@@ -50,6 +50,13 @@
       "when": 1788451433045,
       "tag": "0006_mighty_molly_hayes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788458399995,
+      "tag": "0007_bright_star_brand",
+      "breakpoints": true
     }
   ]
 }

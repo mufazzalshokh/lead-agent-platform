@@ -5,8 +5,15 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import type { DomainEventPayloadByName } from "../../packages/contracts/src/index.js";
 import {
+  AgentDecisionActionSchema,
+  AgentDecisionV1Schema,
+  type AgentActionType,
+  type DomainEventPayloadByName,
+} from "../../packages/contracts/src/index.js";
+import {
+  aiActionEvaluations,
+  aiRuns,
   appointmentConfirmationEvidence,
   appointmentRequestAttendance,
   appointmentRequestPreferences,
@@ -126,6 +133,10 @@ const NOTIFICATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c6c";
 const NOTIFICATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c6d";
 const OUTBOX_EVENT_A = "0193f1a8-7f65-7c28-a434-a10796c41c6e";
 const OUTBOX_EVENT_B = "0193f1a8-7f65-7c28-a434-a10796c41c6f";
+const AI_RUN_A = "0193f1a8-7f65-7c28-a434-a10796c41c70";
+const AI_RUN_B = "0193f1a8-7f65-7c28-a434-a10796c41c71";
+const AI_ACTION_EVALUATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c72";
+const AI_ACTION_EVALUATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c73";
 const UNKNOWN_ORGANIZATION = "0193f1a8-7f65-7c28-a434-a10796c41cff";
 const UUID_V4 = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -293,7 +304,10 @@ const S4B6_TABLES = [
   "widget_allowed_origins",
   "widget_sessions",
 ];
+const S4C1_TABLES = [...S4B6_TABLES, "ai_action_evaluations", "ai_runs"].sort();
 const SCHEMA_TABLES = {
+  ai_action_evaluations: aiActionEvaluations,
+  ai_runs: aiRuns,
   appointment_confirmation_evidence: appointmentConfirmationEvidence,
   appointment_request_attendance: appointmentRequestAttendance,
   appointment_request_preferences: appointmentRequestPreferences,
@@ -348,6 +362,7 @@ let upgradeTablesAfterS4b3: string[] = [];
 let upgradeTablesAfterS4b4: string[] = [];
 let upgradeTablesAfterS4b5: string[] = [];
 let upgradeTablesAfterS4b6: string[] = [];
+let upgradeTablesAfterS4c1: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -448,8 +463,12 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0006_mighty_molly_hayes.sql");
   upgradeTablesAfterS4b6 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0007_bright_star_brand.sql");
+  upgradeTablesAfterS4c1 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table notification_attempts, handoff_transitions, notifications, handoffs,
+    `drop table ai_action_evaluations, ai_runs,
+      notification_attempts, handoff_transitions, notifications, handoffs,
       appointment_confirmation_evidence, appointment_request_attendance,
       appointment_request_preferences, appointment_request_transitions,
       appointment_revenue_attributions, appointment_requests,
@@ -463,7 +482,7 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4b.6 upgrade verification failed to restore the disposable database");
+    throw new Error("S4c.1 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -1236,11 +1255,119 @@ const insertNotificationAttempt = async (
   );
 };
 
+type AiRunInsertOverrides = Readonly<{
+  attemptNo?: number;
+  conversationId?: string;
+  correlationId?: string;
+  decisionSchemaVersion?: string;
+  expectedConversationVersion?: number;
+  inputSnapshotCiphertext?: Buffer | null;
+  organizationId?: string;
+  outputSnapshotCiphertext?: Buffer | null;
+  providerId?: string;
+  requestedModelId?: string;
+  snapshotCapturePolicyId?: string | null;
+  triggerMessageId?: string;
+}>;
+
+const insertAiRun = async (
+  id: string,
+  fixture: WorkflowTenantSeed,
+  overrides: AiRunInsertOverrides = {},
+): Promise<void> => {
+  const attemptNo = overrides.attemptNo ?? 1;
+  await database().query(
+    `insert into ai_runs
+      (id, organization_id, conversation_id, trigger_message_id,
+       expected_conversation_version, provider_id, requested_model_id,
+       model_profile_version, provider_resolved_model_id, orchestrator_version,
+       prompt_template_version, decision_schema_version, policy_version, status,
+       input_units, output_units, cached_input_units, reasoning_units, total_units,
+       estimated_cost_micros, cost_currency, cost_catalog_version, latency_ms,
+       attempt_no, failure_category, knowledge_manifest_jsonb, input_hash,
+       output_hash, input_snapshot_ciphertext, output_snapshot_ciphertext,
+       snapshot_capture_policy_id, schema_valid, policy_allowed, started_at,
+       finished_at, correlation_id)
+     values ($1, $2, $3, $4, $5::bigint, $6, $7,
+       'profile-v1', 'synthetic-model-2026-08-01', 'orchestrator-v1',
+       'lead-booking-v1', $8, 'application-policy-v1', 'succeeded',
+       120, 40, 10, 5, 160, 2500, 'USD', 'catalog-v1', 850,
+       $9, null, '{"context_version":"synthetic-v1"}'::jsonb, $10, $11,
+       $12, $13, $14, true, true,
+       timestamptz '2026-01-01 00:01:01+00',
+       timestamptz '2026-01-01 00:01:02+00', $15)`,
+    [
+      id,
+      overrides.organizationId ?? fixture.organizationId,
+      overrides.conversationId ?? fixture.conversationId,
+      overrides.triggerMessageId ?? fixture.messageId,
+      overrides.expectedConversationVersion ?? 1,
+      overrides.providerId ?? "synthetic_provider",
+      overrides.requestedModelId ?? "synthetic-model-2026-08-01",
+      overrides.decisionSchemaVersion ?? "1",
+      attemptNo,
+      Buffer.from(`synthetic-ai-input-hash-${id}`),
+      Buffer.from(`synthetic-ai-output-hash-${id}`),
+      overrides.inputSnapshotCiphertext ?? null,
+      overrides.outputSnapshotCiphertext ?? null,
+      overrides.snapshotCapturePolicyId ?? null,
+      overrides.correlationId ?? syntheticUuid(0x900 + attemptNo),
+    ],
+  );
+};
+
+type AiActionEvaluationInsert = Readonly<{
+  actionName?: AgentActionType;
+  aiRunId: string;
+  applicationStatus?: "applied" | "failed" | "not_applied" | "stale";
+  id: string;
+  organizationId: string;
+  policyReasonCode?: string | null;
+  targetAggregateId?: string | null;
+  targetAggregateType?: "appointment_request" | "conversation" | "handoff" | null;
+  validationStatus?: "allowed" | "denied" | "malformed" | "pending";
+}>;
+
+const insertAiActionEvaluation = async (evaluation: AiActionEvaluationInsert): Promise<void> => {
+  const validationStatus = evaluation.validationStatus ?? "allowed";
+  const applicationStatus = evaluation.applicationStatus ?? "not_applied";
+  const hasResult = applicationStatus !== "not_applied";
+  await database().query(
+    `insert into ai_action_evaluations
+      (id, organization_id, ai_run_id, action_name, action_schema_version,
+       proposal_hash, arguments_ciphertext, validation_status,
+       policy_reason_code, application_status, target_aggregate_type,
+       target_aggregate_id, result_hash, result_ciphertext, started_at, finished_at)
+     values ($1, $2, $3, $4, '1', $5, $6, $7, $8, $9, $10, $11,
+       case when $12::boolean then $13::bytea else null end,
+       case when $12::boolean then $14::bytea else null end,
+       timestamptz '2026-01-01 00:01:02+00',
+       case when $7::varchar = 'pending'
+         then null else timestamptz '2026-01-01 00:01:03+00' end)`,
+    [
+      evaluation.id,
+      evaluation.organizationId,
+      evaluation.aiRunId,
+      evaluation.actionName ?? "none",
+      Buffer.from(`synthetic-proposal-hash-${evaluation.id}`),
+      Buffer.from("synthetic-encrypted-agent-decision-action"),
+      validationStatus,
+      evaluation.policyReasonCode ?? null,
+      applicationStatus,
+      evaluation.targetAggregateType ?? null,
+      evaluation.targetAggregateId ?? null,
+      hasResult,
+      Buffer.from(`synthetic-result-hash-${evaluation.id}`),
+      Buffer.from("synthetic-encrypted-application-result"),
+    ],
+  );
+};
+
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4b6_test")
+      .withDatabase("lead_agent_s4c1_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -1258,7 +1385,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table notification_attempts, handoff_transitions, notifications, handoffs,
+    `truncate table ai_action_evaluations, ai_runs,
+      notification_attempts, handoff_transitions, notifications, handoffs,
       appointment_confirmation_evidence, appointment_request_attendance,
       appointment_request_preferences, appointment_request_transitions,
       appointment_revenue_attributions, appointment_requests,
@@ -1278,7 +1406,7 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
   it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
     const conversationStatuses = [
       "open",
@@ -1346,6 +1474,14 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "dead_lettered",
       "cancelled",
     ] as const satisfies readonly PersistedNotificationStatus[];
+    const agentActions = [
+      "none",
+      "request_information",
+      "create_appointment_request",
+      "confirm_appointment",
+      "decline_appointment",
+      "request_handoff",
+    ] as const satisfies readonly AgentActionType[];
 
     expect(conversationStatuses.every(isConversationStatus)).toBe(true);
     expect(automationModes.every(isConversationAutomationMode)).toBe(true);
@@ -1356,6 +1492,9 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(notificationTypes).toHaveLength(3);
     expect(notificationResourceTypes).toHaveLength(6);
     expect(notificationStatuses).toHaveLength(6);
+    expect(agentActions).toHaveLength(6);
+    expect(Reflect.get(AgentDecisionV1Schema, "$id")).toBe("AgentDecision.v1");
+    expect(Reflect.get(AgentDecisionActionSchema, "$id")).toBe("AgentDecisionAction.v1");
     expect(isConversationStatus("handed_off")).toBe(false);
     expect(isConversationAutomationMode("human")).toBe(false);
     expect(isAppointmentRequestStatus("completed")).toBe(false);
@@ -1364,7 +1503,7 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4a through S4b.5 to S4b.6, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4a through S4b.6 to S4c.1, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -1372,6 +1511,7 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(upgradeTablesAfterS4b4).toEqual(S4B4_TABLES);
     expect(upgradeTablesAfterS4b5).toEqual(S4B5_TABLES);
     expect(upgradeTablesAfterS4b6).toEqual(S4B6_TABLES);
+    expect(upgradeTablesAfterS4c1).toEqual(S4C1_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -1379,12 +1519,12 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4B6_TABLES);
+    expect(await productionTables(database())).toEqual(S4C1_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(7);
+    expect(migrationCount.rows[0]?.count).toBe(8);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -1400,6 +1540,63 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         order by table_name, ordinal_position`,
     );
     const namesByTable = Object.groupBy(columns.rows, ({ table_name }) => table_name);
+
+    expect(namesByTable["ai_runs"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "conversation_id",
+      "trigger_message_id",
+      "expected_conversation_version",
+      "provider_id",
+      "requested_model_id",
+      "model_profile_version",
+      "provider_resolved_model_id",
+      "orchestrator_version",
+      "prompt_template_version",
+      "decision_schema_version",
+      "policy_version",
+      "status",
+      "input_units",
+      "output_units",
+      "cached_input_units",
+      "reasoning_units",
+      "total_units",
+      "estimated_cost_micros",
+      "cost_currency",
+      "cost_catalog_version",
+      "latency_ms",
+      "attempt_no",
+      "failure_category",
+      "knowledge_manifest_jsonb",
+      "input_hash",
+      "output_hash",
+      "input_snapshot_ciphertext",
+      "output_snapshot_ciphertext",
+      "snapshot_capture_policy_id",
+      "schema_valid",
+      "policy_allowed",
+      "started_at",
+      "finished_at",
+      "correlation_id",
+    ]);
+    expect(namesByTable["ai_action_evaluations"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "ai_run_id",
+      "action_name",
+      "action_schema_version",
+      "proposal_hash",
+      "arguments_ciphertext",
+      "validation_status",
+      "policy_reason_code",
+      "application_status",
+      "target_aggregate_type",
+      "target_aggregate_id",
+      "result_hash",
+      "result_ciphertext",
+      "started_at",
+      "finished_at",
+    ]);
 
     expect(namesByTable["organizations"]?.map(({ column_name }) => column_name)).toEqual([
       "id",
@@ -2093,7 +2290,7 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4B6_TABLES);
+    expect(declaredNames).toEqual(S4C1_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -2114,6 +2311,17 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     const constraintNames = constraints.rows.map(({ conname }) => conname);
     expect(constraintNames).toEqual(
       expect.arrayContaining([
+        "ai_action_evaluations_organization_id_id_unique",
+        "ai_action_evaluations_organization_ai_run_unique",
+        "ai_action_evaluations_organization_id_organizations_id_fk",
+        "ai_action_evaluations_ai_run_fk",
+        "ai_runs_organization_id_id_unique",
+        "ai_runs_trigger_attempt_provider_unique",
+        "ai_runs_organization_id_organizations_id_fk",
+        "ai_runs_conversation_fk",
+        "ai_runs_trigger_message_fk",
+        "ai_runs_snapshot_capture_policy_fk",
+        "messages_ai_run_fk",
         "locations_organization_id_code_unique",
         "locations_organization_id_id_unique",
         "locations_organization_id_organizations_id_fk",
@@ -2250,6 +2458,18 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     const indexDefinitions = new Map(
       indexes.rows.map(({ indexdef, indexname }) => [indexname, indexdef]),
     );
+    expect(indexDefinitions.get("ai_runs_organization_conversation_started_idx")).toContain(
+      "(organization_id, conversation_id, started_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("ai_runs_organization_status_started_idx")).toContain(
+      "(organization_id, status, started_at)",
+    );
+    expect(indexDefinitions.get("ai_runs_organization_model_started_idx")).toContain(
+      "(organization_id, requested_model_id, started_at)",
+    );
+    expect(
+      indexDefinitions.get("ai_action_evaluations_org_action_validation_started_idx"),
+    ).toContain("(organization_id, action_name, validation_status, started_at)");
     expect(indexDefinitions.get("locations_organization_status_code_idx")).toContain(
       "(organization_id, status, code)",
     );
@@ -2406,6 +2626,17 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "location_business_hours_no_overlap_excl",
       "service_locations_no_active_overlap_excl",
       "service_prices_no_published_overlap_excl",
+    ]);
+
+    const targetOwnershipTrigger = await database().query<{ trigger_name: string }>(
+      `select distinct trigger_name
+         from information_schema.triggers
+        where event_object_schema = 'public'
+          and event_object_table = 'ai_action_evaluations'
+          and trigger_name = 'ai_action_evaluations_target_tenant_trigger'`,
+    );
+    expect(targetOwnershipTrigger.rows).toEqual([
+      { trigger_name: "ai_action_evaluations_target_tenant_trigger" },
     ]);
 
     const localeValidator = await database().query<{ provolatile: string }>(
@@ -3770,7 +4001,7 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and relkind = 'r'
         order by relname`,
     );
-    expect(rls.rows).toEqual(S4B6_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
+    expect(rls.rows).toEqual(S4C1_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
 
     const activatedRouteForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -5670,6 +5901,373 @@ describe("S4b.6 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({
       code: "23503",
       constraint: "appointment_revenue_attributions_member_fk",
+    });
+  });
+
+  it("persists provider-neutral AI run provenance with protected payloads and exact telemetry", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "ai-runs-a", "ai-location-a", "ai-service-a");
+    await insertRetentionPolicy(RETENTION_POLICY_A, ORGANIZATION_A, 1);
+    await insertAiRun(AI_RUN_A, WORKFLOW_A, {
+      inputSnapshotCiphertext: Buffer.from("synthetic-encrypted-input-snapshot"),
+      outputSnapshotCiphertext: Buffer.from("synthetic-encrypted-output-snapshot"),
+      snapshotCapturePolicyId: RETENTION_POLICY_A,
+    });
+
+    const run = await database().query<{
+      cost_currency: string;
+      decision_schema_version: string;
+      estimated_cost_micros: string;
+      input_snapshot_type: string;
+      input_units: string;
+      policy_allowed: boolean;
+      provider_id: string;
+      schema_valid: boolean;
+      status: string;
+      total_units: string;
+    }>(
+      `select provider_id, decision_schema_version, status, input_units,
+              total_units, estimated_cost_micros, cost_currency,
+              schema_valid, policy_allowed,
+              pg_typeof(input_snapshot_ciphertext)::text as input_snapshot_type
+         from ai_runs
+        where id = $1`,
+      [AI_RUN_A],
+    );
+    expect(run.rows[0]).toEqual({
+      cost_currency: "USD",
+      decision_schema_version: "1",
+      estimated_cost_micros: "2500",
+      input_snapshot_type: "bytea",
+      input_units: "120",
+      policy_allowed: true,
+      provider_id: "synthetic_provider",
+      schema_valid: true,
+      status: "succeeded",
+      total_units: "160",
+    });
+
+    const forbiddenPlaintextColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'ai_runs'
+          and column_name in ('prompt', 'prompt_text', 'input_text', 'output_text',
+                              'response', 'response_body', 'api_key', 'authorization_header')`,
+    );
+    expect(forbiddenPlaintextColumns.rows).toEqual([]);
+
+    await database().query(
+      `insert into messages
+        (id, organization_id, conversation_id, channel_connection_id,
+         direction, sender_type, sequence_no, content_type, body_ciphertext,
+         body_hash, locale, processing_status, delivery_status, ai_run_id)
+       values ($1, $2, $3, $4, 'outbound', 'system', 2, 'text', $5, $6,
+         'en', 'processed', 'queued', $7)`,
+      [
+        syntheticUuid(0x960),
+        ORGANIZATION_A,
+        CONVERSATION_A,
+        CHANNEL_CONNECTION_A,
+        Buffer.from("synthetic-encrypted-outbound-message"),
+        Buffer.from("synthetic-outbound-message-hash"),
+        AI_RUN_A,
+      ],
+    );
+
+    await expect(
+      database().query("delete from retention_policies where id = $1", [RETENTION_POLICY_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_runs_snapshot_capture_policy_fk",
+    });
+    await expect(
+      database().query("delete from messages where id = $1", [MESSAGE_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "ai_runs_trigger_message_fk" });
+  });
+
+  it("rejects invalid AI run lifecycle, telemetry, payload, and cross-tenant relationships", async () => {
+    await seedWorkflowTenant(
+      WORKFLOW_A,
+      "ai-run-guard-a",
+      "ai-guard-location-a",
+      "ai-guard-service-a",
+    );
+    await seedWorkflowTenant(
+      WORKFLOW_B,
+      "ai-run-guard-b",
+      "ai-guard-location-b",
+      "ai-guard-service-b",
+    );
+    await insertRetentionPolicy(RETENTION_POLICY_B, ORGANIZATION_B, 1);
+    await insertAiRun(AI_RUN_A, WORKFLOW_A);
+    await insertAiRun(AI_RUN_B, WORKFLOW_B);
+
+    await expect(
+      database().query("update ai_runs set id = $1 where id = $2", [UUID_V4, AI_RUN_A]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_id_uuid_v7_check" });
+    await expect(
+      database().query("update ai_runs set provider_id = 'Synthetic Provider' where id = $1", [
+        AI_RUN_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_provider_id_check" });
+    await expect(
+      database().query("update ai_runs set requested_model_id = 'latest' where id = $1", [
+        AI_RUN_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_model_identifiers_check" });
+    await expect(
+      database().query("update ai_runs set input_units = -1 where id = $1", [AI_RUN_A]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_usage_check" });
+    await expect(
+      database().query("update ai_runs set estimated_cost_micros = -1 where id = $1", [AI_RUN_A]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_cost_check" });
+    await expect(
+      database().query("update ai_runs set cost_currency = 'usd' where id = $1", [AI_RUN_A]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_cost_currency_check" });
+    await expect(
+      database().query("update ai_runs set knowledge_manifest_jsonb = '[]'::jsonb where id = $1", [
+        AI_RUN_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_knowledge_manifest_check" });
+    await expect(
+      database().query(
+        `update ai_runs
+            set status = 'failed', failure_category = 'synthetic_failure',
+                schema_valid = false, policy_allowed = true
+          where id = $1`,
+        [AI_RUN_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_validation_order_check" });
+    await expect(
+      database().query(
+        `update ai_runs
+            set finished_at = started_at - interval '1 millisecond'
+          where id = $1`,
+        [AI_RUN_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "ai_runs_lifecycle_check" });
+    await expect(
+      database().query(
+        `update ai_runs
+            set input_snapshot_ciphertext = $1, snapshot_capture_policy_id = null
+          where id = $2`,
+        [Buffer.from("synthetic-encrypted-snapshot"), AI_RUN_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "ai_runs_snapshot_capture_policy_check",
+    });
+
+    await expect(
+      insertAiRun(syntheticUuid(0x961), WORKFLOW_A, {
+        attemptNo: 2,
+        conversationId: CONVERSATION_B,
+        triggerMessageId: MESSAGE_B,
+      }),
+    ).rejects.toMatchObject({ code: "23503" });
+    await expect(
+      insertAiRun(syntheticUuid(0x962), WORKFLOW_A, {
+        attemptNo: 3,
+        triggerMessageId: MESSAGE_B,
+      }),
+    ).rejects.toMatchObject({ code: "23503", constraint: "ai_runs_trigger_message_fk" });
+    await expect(
+      insertAiRun(syntheticUuid(0x963), WORKFLOW_A, {
+        attemptNo: 4,
+        inputSnapshotCiphertext: Buffer.from("synthetic-encrypted-input-snapshot"),
+        snapshotCapturePolicyId: RETENTION_POLICY_B,
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_runs_snapshot_capture_policy_fk",
+    });
+    await expect(
+      database().query("update messages set ai_run_id = $1 where id = $2", [AI_RUN_B, MESSAGE_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "messages_ai_run_fk" });
+  });
+
+  it("stores one canonical encrypted action evaluation without treating validation as execution", async () => {
+    await seedWorkflowTenant(
+      WORKFLOW_A,
+      "ai-action-a",
+      "ai-action-location-a",
+      "ai-action-service-a",
+    );
+    await insertAiRun(AI_RUN_A, WORKFLOW_A);
+    await insertAiActionEvaluation({
+      actionName: "request_handoff",
+      aiRunId: AI_RUN_A,
+      id: AI_ACTION_EVALUATION_A,
+      organizationId: ORGANIZATION_A,
+      validationStatus: "allowed",
+    });
+
+    const evaluation = await database().query<{
+      action_name: string;
+      action_schema_version: string;
+      application_status: string;
+      arguments_type: string;
+      validation_status: string;
+    }>(
+      `select action_name, action_schema_version, validation_status,
+              application_status,
+              pg_typeof(arguments_ciphertext)::text as arguments_type
+         from ai_action_evaluations
+        where id = $1`,
+      [AI_ACTION_EVALUATION_A],
+    );
+    expect(evaluation.rows[0]).toEqual({
+      action_name: "request_handoff",
+      action_schema_version: "1",
+      application_status: "not_applied",
+      arguments_type: "bytea",
+      validation_status: "allowed",
+    });
+
+    const forbiddenPlaintextColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'ai_action_evaluations'
+          and column_name in ('arguments', 'arguments_jsonb', 'result', 'result_jsonb',
+                              'tool_call', 'tool_output')`,
+    );
+    expect(forbiddenPlaintextColumns.rows).toEqual([]);
+
+    await expect(
+      insertAiActionEvaluation({
+        aiRunId: AI_RUN_A,
+        id: AI_ACTION_EVALUATION_B,
+        organizationId: ORGANIZATION_A,
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "ai_action_evaluations_organization_ai_run_unique",
+    });
+    await expect(
+      database().query(
+        "update ai_action_evaluations set action_name = 'execute_sql' where id = $1",
+        [AI_ACTION_EVALUATION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "ai_action_evaluations_action_name_check",
+    });
+    await expect(
+      database().query(
+        `update ai_action_evaluations
+            set validation_status = 'denied', policy_reason_code = 'policy_blocked',
+                application_status = 'applied'
+          where id = $1`,
+        [AI_ACTION_EVALUATION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "ai_action_evaluations_authority_shape_check",
+    });
+    await expect(
+      database().query("delete from ai_runs where id = $1", [AI_RUN_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_action_evaluations_ai_run_fk",
+    });
+  });
+
+  it("rejects cross-tenant action-evaluation runs and bounded aggregate targets", async () => {
+    await seedWorkflowTenant(
+      WORKFLOW_A,
+      "ai-target-a",
+      "ai-target-location-a",
+      "ai-target-service-a",
+    );
+    await seedWorkflowTenant(
+      WORKFLOW_B,
+      "ai-target-b",
+      "ai-target-location-b",
+      "ai-target-service-b",
+    );
+    await insertAiRun(AI_RUN_A, WORKFLOW_A);
+    await insertAiRun(AI_RUN_B, WORKFLOW_B);
+    await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A);
+    const appointmentRequestB = syntheticUuid(0x970);
+    await insertAppointmentRequest(appointmentRequestB, WORKFLOW_B);
+    await insertHandoff(HANDOFF_B, WORKFLOW_B);
+
+    await expect(
+      insertAiActionEvaluation({
+        aiRunId: AI_RUN_B,
+        id: AI_ACTION_EVALUATION_A,
+        organizationId: ORGANIZATION_A,
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_action_evaluations_ai_run_fk",
+    });
+
+    await expect(
+      insertAiActionEvaluation({
+        actionName: "confirm_appointment",
+        aiRunId: AI_RUN_A,
+        id: AI_ACTION_EVALUATION_A,
+        organizationId: ORGANIZATION_A,
+        targetAggregateId: appointmentRequestB,
+        targetAggregateType: "appointment_request",
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_action_evaluations_target_tenant_fk",
+    });
+
+    const secondAiRunA = syntheticUuid(0x971);
+    await insertAiRun(secondAiRunA, WORKFLOW_A, { attemptNo: 2 });
+    await expect(
+      insertAiActionEvaluation({
+        actionName: "request_information",
+        aiRunId: secondAiRunA,
+        id: syntheticUuid(0x972),
+        organizationId: ORGANIZATION_A,
+        targetAggregateId: CONVERSATION_B,
+        targetAggregateType: "conversation",
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_action_evaluations_target_tenant_fk",
+    });
+
+    const thirdAiRunA = syntheticUuid(0x973);
+    await insertAiRun(thirdAiRunA, WORKFLOW_A, { attemptNo: 3 });
+    await expect(
+      insertAiActionEvaluation({
+        actionName: "request_handoff",
+        aiRunId: thirdAiRunA,
+        id: syntheticUuid(0x974),
+        organizationId: ORGANIZATION_A,
+        targetAggregateId: HANDOFF_B,
+        targetAggregateType: "handoff",
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_action_evaluations_target_tenant_fk",
+    });
+
+    await insertAiActionEvaluation({
+      actionName: "confirm_appointment",
+      aiRunId: AI_RUN_A,
+      id: AI_ACTION_EVALUATION_A,
+      organizationId: ORGANIZATION_A,
+      targetAggregateId: APPOINTMENT_REQUEST_A,
+      targetAggregateType: "appointment_request",
+    });
+    await expect(
+      database().query(
+        `update ai_action_evaluations
+            set target_aggregate_id = $1
+          where id = $2`,
+        [appointmentRequestB, AI_ACTION_EVALUATION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "ai_action_evaluations_target_tenant_fk",
     });
   });
 });

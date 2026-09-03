@@ -8,7 +8,7 @@ export {
 } from "./appointment-records.js";
 export { channelConnections, widgetAllowedOrigins, widgetSessions } from "./channels.js";
 export { contacts } from "./contacts.js";
-export { conversations, messages } from "./conversation-records.js";
+export { aiActionEvaluations, aiRuns, conversations, messages } from "./conversation-records.js";
 export {
   consentRecords,
   contactIdentities,
