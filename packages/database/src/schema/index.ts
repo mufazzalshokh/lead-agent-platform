@@ -1,3 +1,4 @@
+export { channelConnections, widgetAllowedOrigins, widgetSessions } from "./channels.js";
 export { inboundRoutes } from "./inbound-routes.js";
 export {
   locationBusinessHours,

@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   businessPolicies,
+  channelConnections,
   faqs,
   inboundRoutes,
   locationBusinessHours,
@@ -24,6 +25,8 @@ import {
   services,
   serviceVersions,
   users,
+  widgetAllowedOrigins,
+  widgetSessions,
 } from "../../packages/database/src/index.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
@@ -54,6 +57,12 @@ const SERVICE_VERSION_B = "0193f1a8-7f65-7c28-a434-a10796c41c47";
 const PRICE_A = "0193f1a8-7f65-7c28-a434-a10796c41c48";
 const FAQ_A = "0193f1a8-7f65-7c28-a434-a10796c41c49";
 const POLICY_A = "0193f1a8-7f65-7c28-a434-a10796c41c4a";
+const WIDGET_ORIGIN_A = "0193f1a8-7f65-7c28-a434-a10796c41c4b";
+const WIDGET_ORIGIN_B = "0193f1a8-7f65-7c28-a434-a10796c41c4c";
+const WIDGET_SESSION_A = "0193f1a8-7f65-7c28-a434-a10796c41c4d";
+const WIDGET_SESSION_B = "0193f1a8-7f65-7c28-a434-a10796c41c4e";
+const FUTURE_CONTACT_A = "0193f1a8-7f65-7c28-a434-a10796c41c4f";
+const FUTURE_CONVERSATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c50";
 const UNKNOWN_ORGANIZATION = "0193f1a8-7f65-7c28-a434-a10796c41cff";
 const UUID_V4 = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -85,8 +94,30 @@ const S4B2_TABLES = [
   "services",
   "users",
 ];
+const S4B3_TABLES = [
+  "business_policies",
+  "channel_connections",
+  "faqs",
+  "inbound_routes",
+  "location_business_hours",
+  "location_closures",
+  "location_versions",
+  "locations",
+  "memberships",
+  "organizations",
+  "retention_policies",
+  "retention_policy_rules",
+  "service_locations",
+  "service_prices",
+  "service_versions",
+  "services",
+  "users",
+  "widget_allowed_origins",
+  "widget_sessions",
+];
 const SCHEMA_TABLES = {
   business_policies: businessPolicies,
+  channel_connections: channelConnections,
   faqs,
   inbound_routes: inboundRoutes,
   location_business_hours: locationBusinessHours,
@@ -102,6 +133,8 @@ const SCHEMA_TABLES = {
   service_versions: serviceVersions,
   services,
   users,
+  widget_allowed_origins: widgetAllowedOrigins,
+  widget_sessions: widgetSessions,
 } as const;
 
 const isDrizzleColumn = (value: unknown): value is { name: string; table: unknown } =>
@@ -115,6 +148,7 @@ let pool: Pool | undefined;
 let upgradeTablesAfterS4a: string[] = [];
 let upgradeTablesAfterS4b1: string[] = [];
 let upgradeTablesAfterS4b2: string[] = [];
+let upgradeTablesAfterS4b3: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -203,14 +237,18 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0002_unique_bucky.sql");
   upgradeTablesAfterS4b2 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0003_happy_lilith.sql");
+  upgradeTablesAfterS4b3 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table business_policies, faqs, service_prices, service_locations,
+    `drop table widget_sessions, widget_allowed_origins, channel_connections,
+      business_policies, faqs, service_prices, service_locations,
       service_versions, services, location_closures, location_business_hours,
       location_versions, inbound_routes, retention_policy_rules, retention_policies,
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4b.2 upgrade verification failed to restore the disposable database");
+    throw new Error("S4b.3 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -376,11 +414,81 @@ const insertInboundRoute = async (
   );
 };
 
+const insertChannelConnection = async (
+  id: string,
+  organizationId: string,
+  channelType: "instagram" | "telegram" | "whatsapp" | "widget",
+  displayName: string,
+  providerAccountHash?: string,
+): Promise<void> => {
+  await database().query(
+    `insert into channel_connections
+      (id, organization_id, channel_type, status, display_name,
+       provider_account_id_hash, credential_secret_ref, webhook_secret_hash,
+       configuration_jsonb, verified_at)
+     values ($1, $2, $3, 'active', $4, $5, $6, $7, $8::jsonb, now())`,
+    [
+      id,
+      organizationId,
+      channelType,
+      displayName,
+      providerAccountHash === undefined ? null : Buffer.from(providerAccountHash),
+      channelType === "widget" ? null : `secret://channels/${id}/credential`,
+      channelType === "widget" ? null : Buffer.from("synthetic-webhook-secret-hash"),
+      JSON.stringify({ environment: "test", enabledCapabilities: ["text"] }),
+    ],
+  );
+};
+
+const insertWidgetOrigin = async (
+  id: string,
+  organizationId: string,
+  channelConnectionId: string,
+  createdByUserId: string,
+  normalizedHost = "clinic.example",
+): Promise<void> => {
+  await database().query(
+    `insert into widget_allowed_origins
+      (id, organization_id, channel_connection_id, match_type, scheme,
+       normalized_host, port, status, created_by_user_id)
+     values ($1, $2, $3, 'exact', 'https', $4, null, 'active', $5)`,
+    [id, organizationId, channelConnectionId, normalizedHost, createdByUserId],
+  );
+};
+
+const insertWidgetSession = async (
+  id: string,
+  organizationId: string,
+  channelConnectionId: string,
+  widgetAllowedOriginId: string,
+  tokenHash: string,
+  participantHash: string,
+): Promise<void> => {
+  await database().query(
+    `insert into widget_sessions
+      (id, organization_id, channel_connection_id, widget_allowed_origin_id,
+       session_token_jti_hash, participant_lookup_hash, status, requested_locale,
+       issued_at, last_seen_at, expires_at)
+     values ($1, $2, $3, $4, $5, $6, 'active', 'en',
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-01 00:01:00+00',
+       timestamptz '2026-01-01 00:15:00+00')`,
+    [
+      id,
+      organizationId,
+      channelConnectionId,
+      widgetAllowedOriginId,
+      Buffer.from(tokenHash),
+      Buffer.from(participantHash),
+    ],
+  );
+};
+
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4b2_test")
+      .withDatabase("lead_agent_s4b3_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -398,7 +506,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table business_policies, faqs, service_prices, service_locations,
+    `truncate table widget_sessions, widget_allowed_origins, channel_connections,
+      business_policies, faqs, service_prices, service_locations,
       service_versions, services, location_closures, location_business_hours,
       location_versions, inbound_routes, retention_policy_rules, retention_policies,
       memberships, locations, users, organizations`,
@@ -410,11 +519,12 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
-  it("upgrades S4a through S4b.1 to S4b.2, bootstraps head, and reruns safely", async () => {
+describe("S4b.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+  it("upgrades S4a through S4b.2 to S4b.3, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
+    expect(upgradeTablesAfterS4b3).toEqual(S4B3_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -422,12 +532,12 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4B2_TABLES);
+    expect(await productionTables(database())).toEqual(S4B3_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(3);
+    expect(migrationCount.rows[0]?.count).toBe(4);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -526,6 +636,54 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "status",
       "rotated_at",
       "created_at",
+    ]);
+    expect(namesByTable["channel_connections"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "channel_type",
+      "status",
+      "display_name",
+      "provider_account_id_hash",
+      "credential_secret_ref",
+      "webhook_secret_hash",
+      "configuration_jsonb",
+      "verified_at",
+      "credential_version",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["widget_allowed_origins"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "channel_connection_id",
+      "match_type",
+      "scheme",
+      "normalized_host",
+      "port",
+      "status",
+      "created_by_user_id",
+      "created_at",
+    ]);
+    expect(namesByTable["widget_sessions"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "channel_connection_id",
+      "widget_allowed_origin_id",
+      "session_token_jti_hash",
+      "participant_lookup_hash",
+      "status",
+      "requested_locale",
+      "contact_id",
+      "conversation_id",
+      "issued_at",
+      "last_seen_at",
+      "expires_at",
+      "revoked_at",
+      "revocation_reason",
+      "created_at",
+      "updated_at",
+      "version",
     ]);
     expect(namesByTable["location_versions"]?.map(({ column_name }) => column_name)).toEqual([
       "id",
@@ -665,14 +823,38 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(userBinaryColumns).toHaveLength(3);
     expect(userBinaryColumns?.every(({ data_type }) => data_type === "bytea")).toBe(true);
     expect(routeKeyHash).toMatchObject({ data_type: "bytea", is_nullable: "NO" });
-    expect(utcTimestamps).toHaveLength(21);
+    expect(utcTimestamps).toHaveLength(26);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
     expect(columns.rows.some(({ column_name }) => column_name.includes("issuer"))).toBe(false);
     expect(columns.rows.some(({ column_name }) => column_name.includes("subject"))).toBe(false);
     expect(columns.rows.some(({ column_name }) => column_name.includes("password"))).toBe(false);
-    expect(columns.rows.some(({ column_name }) => column_name.includes("secret"))).toBe(false);
+    expect(
+      columns.rows
+        .filter(
+          ({ column_name }) => column_name.includes("secret") || column_name.includes("token"),
+        )
+        .map(({ column_name, table_name }) => `${table_name}.${column_name}`)
+        .sort(),
+    ).toEqual([
+      "channel_connections.credential_secret_ref",
+      "channel_connections.webhook_secret_hash",
+      "widget_sessions.session_token_jti_hash",
+    ]);
+    expect(
+      columns.rows.some(({ column_name }) =>
+        [
+          "access_token",
+          "api_key",
+          "bot_token",
+          "credential",
+          "refresh_token",
+          "session_token",
+          "webhook_secret",
+        ].includes(column_name),
+      ),
+    ).toBe(false);
     expect(columns.rows.some(({ column_name }) => column_name === "route_key")).toBe(false);
   });
 
@@ -689,7 +871,7 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4B2_TABLES);
+    expect(declaredNames).toEqual(S4B3_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -753,6 +935,20 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         "faqs_publisher_membership_fk",
         "business_policies_organization_id_organizations_id_fk",
         "business_policies_publisher_membership_fk",
+        "channel_connections_organization_id_id_unique",
+        "channel_connections_organization_type_provider_unique",
+        "channel_connections_organization_id_organizations_id_fk",
+        "inbound_routes_channel_connection_fk",
+        "widget_allowed_origins_organization_id_id_unique",
+        "widget_allowed_origins_connection_id_id_unique",
+        "widget_allowed_origins_organization_id_organizations_id_fk",
+        "widget_allowed_origins_channel_connection_fk",
+        "widget_allowed_origins_creator_membership_fk",
+        "widget_sessions_organization_id_id_unique",
+        "widget_sessions_organization_jti_hash_unique",
+        "widget_sessions_organization_id_organizations_id_fk",
+        "widget_sessions_channel_connection_fk",
+        "widget_sessions_allowed_origin_fk",
       ]),
     );
 
@@ -810,6 +1006,27 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(indexDefinitions.get("service_versions_search_vector_uz_idx")).toContain("USING gin");
     expect(indexDefinitions.get("service_versions_search_vector_ru_idx")).toContain("USING gin");
     expect(indexDefinitions.get("service_versions_search_vector_en_idx")).toContain("USING gin");
+    expect(indexDefinitions.get("channel_connections_organization_type_status_idx")).toContain(
+      "(organization_id, channel_type, status)",
+    );
+    expect(indexDefinitions.get("channel_connections_organization_display_name_unique")).toContain(
+      "UNIQUE",
+    );
+    expect(indexDefinitions.get("widget_allowed_origins_canonical_origin_unique")).toContain(
+      "(organization_id, channel_connection_id, match_type, scheme, normalized_host, COALESCE(port, 0))",
+    );
+    expect(indexDefinitions.get("widget_sessions_one_active_participant_unique")).toContain(
+      "(organization_id, channel_connection_id, participant_lookup_hash)",
+    );
+    expect(indexDefinitions.get("widget_sessions_one_active_participant_unique")).toContain(
+      "WHERE ((status)::text = 'active'::text)",
+    );
+    expect(indexDefinitions.get("widget_sessions_organization_status_expiry_idx")).toContain(
+      "(organization_id, status, expires_at)",
+    );
+    expect(indexDefinitions.get("widget_sessions_organization_conversation_idx")).toContain(
+      "(organization_id, conversation_id)",
+    );
 
     const exclusions = await database().query<{ conname: string }>(
       `select conname
@@ -861,6 +1078,7 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
     await insertRetentionPolicy(RETENTION_POLICY_A, ORGANIZATION_A, 1, "published", USER_A);
     await insertRetentionRule(RETENTION_RULE_A, ORGANIZATION_A, RETENTION_POLICY_A);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Primary Widget");
     await insertInboundRoute(
       INBOUND_ROUTE_A,
       ORGANIZATION_A,
@@ -1118,6 +1336,18 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
   it("enforces exact hashed-route uniqueness and tenant ownership without route scans", async () => {
     await insertOrganization(ORGANIZATION_A, "routes-a");
     await insertOrganization(ORGANIZATION_B, "routes-b");
+    await insertChannelConnection(
+      CHANNEL_CONNECTION_A,
+      ORGANIZATION_A,
+      "widget",
+      "Routes Widget A",
+    );
+    await insertChannelConnection(
+      CHANNEL_CONNECTION_B,
+      ORGANIZATION_B,
+      "widget",
+      "Routes Widget B",
+    );
     await insertInboundRoute(
       INBOUND_ROUTE_A,
       ORGANIZATION_A,
@@ -1168,6 +1398,18 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({
       code: "23514",
       constraint: "inbound_routes_route_key_hash_check",
+    });
+    await expect(
+      insertInboundRoute(
+        TEST_ID_3,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_B,
+        "cross-tenant-connection-hash",
+        "disabled",
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "inbound_routes_channel_connection_fk",
     });
   });
 
@@ -1598,7 +1840,553 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     });
   });
 
-  it("keeps RLS and the S4b.3 channel relationship deferred while activating current pointers", async () => {
+  it("persists the canonical channel vocabulary and anonymous widget session shape", async () => {
+    await insertOrganization(ORGANIZATION_A, "channels-a");
+    await insertUser(USER_A);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Website Widget");
+    await insertChannelConnection(
+      CHANNEL_CONNECTION_B,
+      ORGANIZATION_A,
+      "telegram",
+      "Telegram Bot",
+      "synthetic-telegram-account-hash",
+    );
+    await insertChannelConnection(
+      TEST_ID_1,
+      ORGANIZATION_A,
+      "instagram",
+      "Instagram Seam",
+      "synthetic-instagram-account-hash",
+    );
+    await insertChannelConnection(
+      TEST_ID_2,
+      ORGANIZATION_A,
+      "whatsapp",
+      "WhatsApp Seam",
+      "synthetic-whatsapp-account-hash",
+    );
+    await insertWidgetOrigin(WIDGET_ORIGIN_A, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A);
+    await insertWidgetSession(
+      WIDGET_SESSION_A,
+      ORGANIZATION_A,
+      CHANNEL_CONNECTION_A,
+      WIDGET_ORIGIN_A,
+      "synthetic-session-jti-hash",
+      "synthetic-participant-hash",
+    );
+
+    expect(
+      (
+        await database().query<{ channel_type: string }>(
+          "select channel_type from channel_connections order by channel_type",
+        )
+      ).rows.map(({ channel_type }) => channel_type),
+    ).toEqual(["instagram", "telegram", "whatsapp", "widget"]);
+
+    const anonymousSession = await database().query<{
+      contact_id: string | null;
+      conversation_id: string | null;
+      expires_at: Date;
+      issued_at: Date;
+      session_token_jti_hash: Buffer;
+    }>(
+      `select contact_id, conversation_id, issued_at, expires_at, session_token_jti_hash
+         from widget_sessions
+        where organization_id = $1 and id = $2`,
+      [ORGANIZATION_A, WIDGET_SESSION_A],
+    );
+    expect(anonymousSession.rows[0]).toMatchObject({
+      contact_id: null,
+      conversation_id: null,
+      session_token_jti_hash: Buffer.from("synthetic-session-jti-hash"),
+    });
+    expect(anonymousSession.rows[0]?.issued_at).toBeInstanceOf(Date);
+    expect(anonymousSession.rows[0]?.expires_at).toBeInstanceOf(Date);
+
+    await expect(
+      database().query(
+        `update widget_sessions
+            set contact_id = $2, conversation_id = $3
+          where id = $1`,
+        [WIDGET_SESSION_A, FUTURE_CONTACT_A, FUTURE_CONVERSATION_A],
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("rejects invalid channel metadata, credential representations, and tenant/provider duplicates", async () => {
+    await insertOrganization(ORGANIZATION_A, "channel-constraints-a");
+    await insertOrganization(ORGANIZATION_B, "channel-constraints-b");
+    await insertChannelConnection(
+      CHANNEL_CONNECTION_A,
+      ORGANIZATION_A,
+      "telegram",
+      "Primary Telegram",
+      "synthetic-provider-account-hash",
+    );
+
+    const insertInvalidConnection = async (
+      channelType: string,
+      status: string,
+      displayName: string,
+      providerHash: Buffer | null,
+      credentialSecretRef: string | null,
+      webhookSecretHash: Buffer | null,
+      configuration: string,
+      id = TEST_ID_1,
+    ) =>
+      database().query(
+        `insert into channel_connections
+          (id, organization_id, channel_type, status, display_name,
+           provider_account_id_hash, credential_secret_ref, webhook_secret_hash,
+           configuration_jsonb)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+        [
+          id,
+          ORGANIZATION_A,
+          channelType,
+          status,
+          displayName,
+          providerHash,
+          credentialSecretRef,
+          webhookSecretHash,
+          configuration,
+        ],
+      );
+
+    await expect(
+      insertInvalidConnection("email", "active", "Unsupported", null, null, null, "{}"),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "channel_connections_channel_type_check",
+    });
+    await expect(
+      insertInvalidConnection("widget", "deleted", "Invalid Status", null, null, null, "{}"),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "channel_connections_status_check",
+    });
+    await expect(
+      insertInvalidConnection(
+        "telegram",
+        "active",
+        "Short Provider Hash",
+        Buffer.from("short"),
+        null,
+        null,
+        "{}",
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "channel_connections_provider_account_hash_check",
+    });
+    await expect(
+      insertInvalidConnection(
+        "telegram",
+        "active",
+        "Plain Credential",
+        null,
+        "plaintext-reusable-token",
+        null,
+        "{}",
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "channel_connections_credential_secret_ref_check",
+    });
+    await expect(
+      insertInvalidConnection(
+        "telegram",
+        "active",
+        "Short Webhook Hash",
+        null,
+        null,
+        Buffer.from("short"),
+        "{}",
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "channel_connections_webhook_secret_hash_check",
+    });
+    await expect(
+      insertInvalidConnection("widget", "active", "Array Config", null, null, null, "[]"),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "channel_connections_configuration_check",
+    });
+    await expect(
+      insertInvalidConnection(
+        "telegram",
+        "active",
+        "Duplicate Provider",
+        Buffer.from("synthetic-provider-account-hash"),
+        "secret://channels/duplicate/credential",
+        Buffer.from("synthetic-webhook-secret-hash"),
+        "{}",
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "channel_connections_organization_type_provider_unique",
+    });
+    await expect(
+      insertInvalidConnection("widget", "active", "primary telegram", null, null, null, "{}"),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "channel_connections_organization_display_name_unique",
+    });
+    await expect(
+      insertInvalidConnection(
+        "widget",
+        "active",
+        "UUID V4 Connection",
+        null,
+        null,
+        null,
+        "{}",
+        UUID_V4,
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "channel_connections_id_uuid_v7_check",
+    });
+    await expect(
+      database().query(
+        `insert into channel_connections
+          (id, organization_id, channel_type, status, display_name, provider_account_id_hash)
+         values ($1, $2, 'telegram', 'active', 'Other Tenant Telegram', $3)`,
+        [TEST_ID_2, ORGANIZATION_B, Buffer.from("synthetic-provider-account-hash")],
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("enforces canonical widget origins, actor provenance, and same-tenant connection ownership", async () => {
+    await insertOrganization(ORGANIZATION_A, "origin-constraints-a");
+    await insertOrganization(ORGANIZATION_B, "origin-constraints-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Widget A");
+    await insertChannelConnection(CHANNEL_CONNECTION_B, ORGANIZATION_B, "widget", "Widget B");
+    await insertWidgetOrigin(WIDGET_ORIGIN_A, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A);
+
+    await expect(
+      insertWidgetOrigin(
+        WIDGET_ORIGIN_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_B,
+        USER_A,
+        "cross-tenant.example",
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "widget_allowed_origins_channel_connection_fk",
+    });
+    await expect(
+      insertWidgetOrigin(
+        WIDGET_ORIGIN_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        USER_B,
+        "wrong-actor.example",
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "widget_allowed_origins_creator_membership_fk",
+    });
+
+    for (const invalidHost of [
+      "*.clinic.example",
+      "Clinic.Example",
+      "https://clinic.example",
+      "clinic.example/path",
+      "localhost",
+    ]) {
+      await expect(
+        insertWidgetOrigin(
+          WIDGET_ORIGIN_B,
+          ORGANIZATION_A,
+          CHANNEL_CONNECTION_A,
+          USER_A,
+          invalidHost,
+        ),
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "widget_allowed_origins_host_check",
+      });
+    }
+
+    await expect(
+      database().query(
+        `insert into widget_allowed_origins
+          (id, organization_id, channel_connection_id, match_type, scheme,
+           normalized_host, port, status, created_by_user_id)
+         values ($1, $2, $3, 'exact', 'http', 'http.example', null, 'active', $4)`,
+        [WIDGET_ORIGIN_B, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "widget_allowed_origins_scheme_check",
+    });
+    await expect(
+      database().query(
+        `insert into widget_allowed_origins
+          (id, organization_id, channel_connection_id, match_type, scheme,
+           normalized_host, port, status, created_by_user_id)
+         values ($1, $2, $3, 'subdomain_wildcard', 'https',
+           'wildcard.example', 8443, 'active', $4)`,
+        [WIDGET_ORIGIN_B, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "widget_allowed_origins_wildcard_port_check",
+    });
+    await expect(
+      database().query(
+        `insert into widget_allowed_origins
+          (id, organization_id, channel_connection_id, match_type, scheme,
+           normalized_host, port, status, created_by_user_id)
+         values ($1, $2, $3, 'exact', 'https', 'default-port.example', 443, 'active', $4)`,
+        [WIDGET_ORIGIN_B, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "widget_allowed_origins_port_check",
+    });
+    await expect(
+      insertWidgetOrigin(WIDGET_ORIGIN_B, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "widget_allowed_origins_canonical_origin_unique",
+    });
+  });
+
+  it("enforces widget session hashes, lifetime, origin binding, tenant integrity, and restrictive deletes", async () => {
+    await insertOrganization(ORGANIZATION_A, "session-constraints-a");
+    await insertOrganization(ORGANIZATION_B, "session-constraints-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertChannelConnection(
+      CHANNEL_CONNECTION_A,
+      ORGANIZATION_A,
+      "widget",
+      "Session Widget A",
+    );
+    await insertChannelConnection(
+      CHANNEL_CONNECTION_B,
+      ORGANIZATION_B,
+      "widget",
+      "Session Widget B",
+    );
+    await insertChannelConnection(TEST_ID_1, ORGANIZATION_A, "widget", "Second Widget A");
+    await insertWidgetOrigin(WIDGET_ORIGIN_A, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A);
+    await insertWidgetOrigin(WIDGET_ORIGIN_B, ORGANIZATION_A, TEST_ID_1, USER_A, "other.example");
+    await insertWidgetSession(
+      WIDGET_SESSION_A,
+      ORGANIZATION_A,
+      CHANNEL_CONNECTION_A,
+      WIDGET_ORIGIN_A,
+      "synthetic-session-jti-hash",
+      "synthetic-participant-hash",
+    );
+
+    const insertSessionShape = async (
+      id: string,
+      organizationId: string,
+      connectionId: string,
+      originId: string,
+      tokenHash: string,
+      participantHash: string,
+      status: string,
+      locale: string,
+      issuedAt: string,
+      lastSeenAt: string,
+      expiresAt: string,
+    ) =>
+      database().query(
+        `insert into widget_sessions
+          (id, organization_id, channel_connection_id, widget_allowed_origin_id,
+           session_token_jti_hash, participant_lookup_hash, status, requested_locale,
+           issued_at, last_seen_at, expires_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8,
+           $9::timestamptz, $10::timestamptz, $11::timestamptz)`,
+        [
+          id,
+          organizationId,
+          connectionId,
+          originId,
+          Buffer.from(tokenHash),
+          Buffer.from(participantHash),
+          status,
+          locale,
+          issuedAt,
+          lastSeenAt,
+          expiresAt,
+        ],
+      );
+
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_A,
+        "short",
+        "another-participant-hash",
+        "active",
+        "en",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "widget_sessions_session_token_hash_check",
+    });
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_A,
+        "another-session-token-hash",
+        "another-participant-hash",
+        "active",
+        "en",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:15:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "widget_sessions_lifetime_check",
+    });
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_A,
+        "another-session-token-hash",
+        "another-participant-hash",
+        "unknown",
+        "en",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "widget_sessions_status_check",
+    });
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_A,
+        "another-session-token-hash",
+        "another-participant-hash",
+        "active",
+        "de",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "widget_sessions_requested_locale_check",
+    });
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_B,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_A,
+        "another-session-token-hash",
+        "another-participant-hash",
+        "active",
+        "en",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "widget_sessions_channel_connection_fk",
+    });
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_B,
+        "another-session-token-hash",
+        "another-participant-hash",
+        "active",
+        "en",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "widget_sessions_allowed_origin_fk",
+    });
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_A,
+        "synthetic-session-jti-hash",
+        "different-participant-hash",
+        "active",
+        "en",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "widget_sessions_organization_jti_hash_unique",
+    });
+    await expect(
+      insertSessionShape(
+        WIDGET_SESSION_B,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        WIDGET_ORIGIN_A,
+        "different-session-jti-hash",
+        "synthetic-participant-hash",
+        "active",
+        "en",
+        "2026-01-01T00:00:00Z",
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:15:00Z",
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "widget_sessions_one_active_participant_unique",
+    });
+
+    await expect(
+      database().query("delete from widget_allowed_origins where id = $1", [WIDGET_ORIGIN_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "widget_sessions_allowed_origin_fk",
+    });
+    await expect(
+      database().query("delete from channel_connections where id = $1", [CHANNEL_CONNECTION_A]),
+    ).rejects.toMatchObject({ code: "23503" });
+    await expect(
+      database().query("delete from organizations where id = $1", [ORGANIZATION_A]),
+    ).rejects.toMatchObject({ code: "23503" });
+  });
+
+  it("keeps RLS deferred, activates the route FK, and preserves future contact/conversation seams", async () => {
     const rls = await database().query<{ relname: string; relrowsecurity: boolean }>(
       `select relname, relrowsecurity
          from pg_class
@@ -1608,6 +2396,7 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     expect(rls.rows).toEqual([
       { relname: "business_policies", relrowsecurity: false },
+      { relname: "channel_connections", relrowsecurity: false },
       { relname: "faqs", relrowsecurity: false },
       { relname: "inbound_routes", relrowsecurity: false },
       { relname: "location_business_hours", relrowsecurity: false },
@@ -1623,16 +2412,33 @@ describe("S4b.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       { relname: "service_versions", relrowsecurity: false },
       { relname: "services", relrowsecurity: false },
       { relname: "users", relrowsecurity: false },
+      { relname: "widget_allowed_origins", relrowsecurity: false },
+      { relname: "widget_sessions", relrowsecurity: false },
     ]);
 
-    const deferredChannelForeignKeys = await database().query<{ count: number }>(
+    const activatedRouteForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count
-         from information_schema.key_column_usage
+         from information_schema.table_constraints
         where table_schema = 'public'
-          and column_name = 'channel_connection_id'
-          and position_in_unique_constraint is not null`,
+          and table_name = 'inbound_routes'
+          and constraint_name = 'inbound_routes_channel_connection_fk'
+          and constraint_type = 'FOREIGN KEY'`,
     );
-    expect(deferredChannelForeignKeys.rows[0]?.count).toBe(0);
+    expect(activatedRouteForeignKey.rows[0]?.count).toBe(1);
+
+    const deferredFutureForeignKeys = await database().query<{ column_name: string }>(
+      `select kcu.column_name
+         from information_schema.table_constraints tc
+         join information_schema.key_column_usage kcu
+           on kcu.constraint_schema = tc.constraint_schema
+          and kcu.constraint_name = tc.constraint_name
+        where tc.table_schema = 'public'
+          and tc.table_name = 'widget_sessions'
+          and tc.constraint_type = 'FOREIGN KEY'
+          and kcu.column_name in ('contact_id', 'conversation_id')
+        order by kcu.column_name`,
+    );
+    expect(deferredFutureForeignKeys.rows).toEqual([]);
 
     const activatedCurrentVersionForeignKeys = await database().query<{ count: number }>(
       `select count(*)::integer as count

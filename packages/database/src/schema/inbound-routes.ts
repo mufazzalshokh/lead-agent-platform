@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { binary, immutableCreatedAt } from "./common.js";
+import { channelConnections } from "./channels.js";
 import { organizations } from "./organizations.js";
 
 export const inboundRoutes = pgTable(
@@ -20,7 +21,6 @@ export const inboundRoutes = pgTable(
     routeType: varchar("route_type", { length: 32 }).notNull(),
     routeKeyHash: binary("route_key_hash").notNull(),
     organizationId: uuid("organization_id").notNull(),
-    // The mandatory composite channel-connection FK is added when S4b creates that table.
     channelConnectionId: uuid("channel_connection_id").notNull(),
     status: varchar("status", { length: 16 }).notNull(),
     rotatedAt: timestamp("rotated_at", {
@@ -48,6 +48,13 @@ export const inboundRoutes = pgTable(
       columns: [table.organizationId],
       foreignColumns: [organizations.id],
       name: "inbound_routes_organization_id_organizations_id_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.channelConnectionId],
+      foreignColumns: [channelConnections.organizationId, channelConnections.id],
+      name: "inbound_routes_channel_connection_fk",
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
