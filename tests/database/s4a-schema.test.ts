@@ -491,7 +491,10 @@ let upgradeTablesAfterS4c1: string[] = [];
 let upgradeTablesAfterS4c2: string[] = [];
 let upgradeTablesAfterS4c3: string[] = [];
 let upgradeTablesAfterS5: string[] = [];
+let upgradeTablesAfterS52: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
+let upgradeRejectedConversationConflict = false;
+let upgradeRejectedLeadConflict = false;
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -613,6 +616,96 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
       order by relname`,
   );
   upgradeRlsTablesAfterS5 = rlsTables.rows.map(({ relname }) => relname);
+
+  const upgradeOrganizationId = syntheticUuid(0x1500);
+  const upgradeContactAId = syntheticUuid(0x1501);
+  const upgradeContactBId = syntheticUuid(0x1502);
+  const upgradeChannelConnectionId = syntheticUuid(0x1503);
+  const upgradeLeadAId = syntheticUuid(0x1504);
+  const conflictingLeadId = syntheticUuid(0x1505);
+  const upgradeLeadBId = syntheticUuid(0x1506);
+  const upgradeConversationAId = syntheticUuid(0x1507);
+  const conflictingConversationId = syntheticUuid(0x1508);
+  const upgradeThreadHash = Buffer.from("synthetic-upgrade-thread-group");
+
+  await insertOrganization(upgradeOrganizationId, "s52-upgrade-conflicts");
+  await insertContact(upgradeContactAId, upgradeOrganizationId);
+  await insertChannelConnection(
+    upgradeChannelConnectionId,
+    upgradeOrganizationId,
+    "widget",
+    "S5.2 upgrade fixture",
+  );
+  await insertLead(
+    upgradeLeadAId,
+    upgradeOrganizationId,
+    upgradeContactAId,
+    upgradeChannelConnectionId,
+    "new",
+  );
+  await insertLead(
+    conflictingLeadId,
+    upgradeOrganizationId,
+    upgradeContactAId,
+    upgradeChannelConnectionId,
+    "engaged",
+  );
+  try {
+    await applyMigrationSql(testPool, "0011_s5_active_uniqueness.sql");
+  } catch (error) {
+    upgradeRejectedLeadConflict =
+      readObjectProperty(error, "code") === "23505" &&
+      readObjectProperty(error, "table") === "leads";
+  }
+  if (!upgradeRejectedLeadConflict) {
+    throw new Error("S5.2 migration must fail closed for conflicting active Leads");
+  }
+
+  await testPool.query("delete from leads where id = $1", [conflictingLeadId]);
+  await insertContact(upgradeContactBId, upgradeOrganizationId);
+  await insertLead(
+    upgradeLeadBId,
+    upgradeOrganizationId,
+    upgradeContactBId,
+    upgradeChannelConnectionId,
+    "new",
+  );
+  await insertConversation(
+    upgradeConversationAId,
+    upgradeOrganizationId,
+    upgradeContactAId,
+    upgradeLeadAId,
+    upgradeChannelConnectionId,
+    "open",
+    "ai",
+    null,
+    upgradeThreadHash,
+  );
+  await insertConversation(
+    conflictingConversationId,
+    upgradeOrganizationId,
+    upgradeContactBId,
+    upgradeLeadBId,
+    upgradeChannelConnectionId,
+    "awaiting_lead",
+    "ai",
+    null,
+    upgradeThreadHash,
+  );
+  try {
+    await applyMigrationSql(testPool, "0011_s5_active_uniqueness.sql");
+  } catch (error) {
+    upgradeRejectedConversationConflict =
+      readObjectProperty(error, "code") === "23505" &&
+      readObjectProperty(error, "table") === "conversations";
+  }
+  if (!upgradeRejectedConversationConflict) {
+    throw new Error("S5.2 migration must fail closed for conflicting active Conversations");
+  }
+
+  await testPool.query("delete from conversations where id = $1", [conflictingConversationId]);
+  await applyMigrationSql(testPool, "0011_s5_active_uniqueness.sql");
+  upgradeTablesAfterS52 = await productionTables(testPool);
 
   await testPool.query(
     `drop table analytics_events, legal_holds, privacy_requests,
@@ -971,6 +1064,7 @@ const insertConversation = async (
   status: "awaiting_lead" | "awaiting_staff" | "closed" | "open" | "resolved" = "open",
   automationMode: "ai" | "paused" | "staff" = "ai",
   activeHandoffId: string | null = null,
+  externalThreadHash: Buffer | null = Buffer.from(`synthetic-thread-hash-${id}`),
 ): Promise<void> => {
   await database().query(
     `insert into conversations
@@ -990,7 +1084,7 @@ const insertConversation = async (
       contactId,
       leadId,
       channelConnectionId,
-      Buffer.from(`synthetic-thread-hash-${id}`),
+      externalThreadHash,
       status,
       automationMode,
       activeHandoffId,
@@ -1905,6 +1999,66 @@ const expectDatabaseError = async (
   }
 };
 
+const waitForTransactionLock = async (processId: number): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const activity = await database().query<{ wait_event_type: string | null }>(
+      `select wait_event_type
+         from pg_catalog.pg_stat_activity
+        where pid = $1`,
+      [processId],
+    );
+    if (activity.rows[0]?.wait_event_type === "Lock") {
+      return;
+    }
+    await database().query("select pg_catalog.pg_sleep(0.01)");
+  }
+  throw new Error("Competing S5.2 transaction did not reach a PostgreSQL lock wait");
+};
+
+const proveConcurrentUniqueInsert = async (
+  statement: string,
+  firstParameters: readonly unknown[],
+  competingParameters: readonly unknown[],
+  expectedIndexName: string,
+): Promise<void> => {
+  const firstClient = await database().connect();
+  const competingClient = await database().connect();
+  let competingAttempt: Promise<{ error?: unknown; succeeded: boolean }> | undefined;
+  try {
+    await firstClient.query("begin");
+    await competingClient.query("begin");
+    await firstClient.query(statement, [...firstParameters]);
+    const process = await competingClient.query<{ process_id: number }>(
+      "select pg_catalog.pg_backend_pid() as process_id",
+    );
+    const processId = process.rows[0]?.process_id;
+    if (processId === undefined) {
+      throw new Error("Unable to identify competing PostgreSQL session");
+    }
+
+    competingAttempt = competingClient.query(statement, [...competingParameters]).then(
+      () => ({ succeeded: true }),
+      (error: unknown) => ({ error, succeeded: false }),
+    );
+    await waitForTransactionLock(processId);
+    await firstClient.query("commit");
+
+    const outcome = await competingAttempt;
+    expect(outcome.succeeded).toBe(false);
+    expect(readObjectProperty(outcome.error, "code")).toBe("23505");
+    expect(readObjectProperty(outcome.error, "constraint")).toBe(expectedIndexName);
+    await competingClient.query("rollback");
+  } finally {
+    await firstClient.query("rollback").catch(() => undefined);
+    if (competingAttempt !== undefined) {
+      await competingAttempt;
+    }
+    await competingClient.query("rollback").catch(() => undefined);
+    firstClient.release();
+    competingClient.release();
+  }
+};
+
 const seedS5IsolationFixtures = async (): Promise<void> => {
   await seedWorkflowTenant(WORKFLOW_A, "rls-a", "rls-a", "rls-a");
   await seedWorkflowTenant(WORKFLOW_B, "rls-b", "rls-b", "rls-b");
@@ -1993,7 +2147,7 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 }, () => {
+describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout: 30_000 }, () => {
   it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
     const conversationStatuses = [
       "open",
@@ -2093,7 +2247,7 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4 through S5.1, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4 through S5.2, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -2105,7 +2259,10 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     expect(upgradeTablesAfterS4c2).toEqual(S4C2_TABLES);
     expect(upgradeTablesAfterS4c3).toEqual(S4C3_TABLES);
     expect(upgradeTablesAfterS5).toEqual(S4C3_TABLES);
+    expect(upgradeTablesAfterS52).toEqual(S4C3_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
+    expect(upgradeRejectedLeadConflict).toBe(true);
+    expect(upgradeRejectedConversationConflict).toBe(true);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -2118,7 +2275,96 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(11);
+    expect(migrationCount.rows[0]?.count).toBe(12);
+  });
+
+  it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
+    const indexes = await database().query<{ indexdef: string; indexname: string }>(
+      `select indexname, indexdef
+         from pg_catalog.pg_indexes
+        where schemaname = 'public'
+          and indexname = any($1::text[])
+        order by indexname`,
+      [["conversations_one_active_per_thread_unique", "leads_one_active_per_contact_unique"]],
+    );
+    expect(indexes.rows).toHaveLength(2);
+
+    const definitions = new Map(
+      indexes.rows.map(({ indexdef, indexname }) => [indexname, indexdef]),
+    );
+    const leadIndex = definitions.get("leads_one_active_per_contact_unique");
+    expect(leadIndex).toContain("UNIQUE INDEX");
+    expect(leadIndex).toContain("(organization_id, contact_id)");
+    for (const activeStatus of ["new", "engaged", "qualified", "booking_requested"]) {
+      expect(leadIndex).toContain(`'${activeStatus}'`);
+    }
+    for (const inactiveStatus of ["disqualified", "converted", "closed"]) {
+      expect(leadIndex).not.toContain(`'${inactiveStatus}'`);
+    }
+
+    const conversationIndex = definitions.get("conversations_one_active_per_thread_unique");
+    expect(conversationIndex).toContain("UNIQUE INDEX");
+    expect(conversationIndex).toContain(
+      "(organization_id, channel_connection_id, external_thread_hash)",
+    );
+    for (const activeStatus of ["open", "awaiting_lead", "awaiting_staff"]) {
+      expect(conversationIndex).toContain(`'${activeStatus}'`);
+    }
+    for (const inactiveStatus of ["resolved", "closed"]) {
+      expect(conversationIndex).not.toContain(`'${inactiveStatus}'`);
+    }
+
+    const activeThreadCheck = await database().query<{ definition: string }>(
+      `select pg_catalog.pg_get_constraintdef(oid) as definition
+         from pg_catalog.pg_constraint
+        where connamespace = 'public'::regnamespace
+          and conname = 'conversations_active_thread_hash_required_check'`,
+    );
+    expect(activeThreadCheck.rows).toHaveLength(1);
+    expect(activeThreadCheck.rows[0]?.definition).toContain("external_thread_hash IS NOT NULL");
+    for (const activeStatus of ["open", "awaiting_lead", "awaiting_staff"]) {
+      expect(activeThreadCheck.rows[0]?.definition).toContain(`'${activeStatus}'`);
+    }
+
+    const nullability = await database().query<{
+      column_name: string;
+      is_nullable: "NO" | "YES";
+      table_name: string;
+    }>(
+      `select table_name, column_name, is_nullable
+         from information_schema.columns
+        where table_schema = 'public'
+          and (table_name, column_name) in (
+            ('leads', 'contact_id'),
+            ('conversations', 'external_thread_hash')
+          )
+        order by table_name, column_name`,
+    );
+    expect(nullability.rows).toEqual([
+      {
+        column_name: "external_thread_hash",
+        is_nullable: "YES",
+        table_name: "conversations",
+      },
+      { column_name: "contact_id", is_nullable: "NO", table_name: "leads" },
+    ]);
+
+    const relationSecurity = await database().query<{
+      relforcerowsecurity: boolean;
+      relname: string;
+      relrowsecurity: boolean;
+    }>(
+      `select relname, relrowsecurity, relforcerowsecurity
+         from pg_catalog.pg_class
+        where relnamespace = 'public'::regnamespace
+          and relname = any($1::text[])
+        order by relname`,
+      [["conversations", "leads"]],
+    );
+    expect(relationSecurity.rows).toEqual([
+      { relforcerowsecurity: true, relname: "conversations", relrowsecurity: true },
+      { relforcerowsecurity: true, relname: "leads", relrowsecurity: true },
+    ]);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -3399,10 +3645,17 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     expect(indexDefinitions.get("lead_qualification_evidence_message_evaluation_idx")).toContain(
       "(organization_id, message_id, evaluation_id)",
     );
-    expect(indexDefinitions.has("leads_one_active_per_contact_unique")).toBe(false);
+    expect(indexDefinitions.get("leads_one_active_per_contact_unique")).toContain(
+      "(organization_id, contact_id)",
+    );
+    expect(indexDefinitions.get("leads_one_active_per_contact_unique")).toContain("WHERE");
     expect(indexDefinitions.get("conversations_organization_status_activity_idx")).toContain(
       "(organization_id, status, last_activity_at DESC NULLS LAST)",
     );
+    expect(indexDefinitions.get("conversations_one_active_per_thread_unique")).toContain(
+      "(organization_id, channel_connection_id, external_thread_hash)",
+    );
+    expect(indexDefinitions.get("conversations_one_active_per_thread_unique")).toContain("WHERE");
     expect(indexDefinitions.get("messages_external_message_dedupe_unique")).toContain(
       "(organization_id, channel_connection_id, external_message_id)",
     );
@@ -5300,7 +5553,7 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     ).rejects.toMatchObject({ code: "23503", constraint: "consent_records_contact_fk" });
   });
 
-  it("persists the exact Lead lifecycle without inventing active-lead uniqueness", async () => {
+  it("persists the exact Lead lifecycle vocabulary with one active Lead per Contact", async () => {
     await insertOrganization(ORGANIZATION_A, "leads-a");
     await insertOrganization(ORGANIZATION_B, "leads-b");
     await insertContact(CONTACT_A, ORGANIZATION_A);
@@ -5308,21 +5561,31 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Lead Widget A");
     await insertChannelConnection(CHANNEL_CONNECTION_B, ORGANIZATION_B, "widget", "Lead Widget B");
 
-    const states = [
-      [LEAD_A, "new"],
-      [LEAD_B, "engaged"],
-      [TEST_ID_1, "qualified"],
-      [TEST_ID_2, "booking_requested"],
-      [TEST_ID_3, "converted"],
-      [SERVICE_A, "disqualified"],
-      [SERVICE_B, "closed"],
-    ] as const;
-    for (const [id, status] of states) {
-      await insertLead(id, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, status);
+    const engagedContactId = syntheticUuid(0x1410);
+    const qualifiedContactId = syntheticUuid(0x1411);
+    const bookingContactId = syntheticUuid(0x1412);
+    const invalidShapeContactId = syntheticUuid(0x1413);
+    for (const contactId of [
+      engagedContactId,
+      qualifiedContactId,
+      bookingContactId,
+      invalidShapeContactId,
+    ]) {
+      await insertContact(contactId, ORGANIZATION_A);
     }
-    await expect(
-      insertLead(SERVICE_VERSION_A, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "new"),
-    ).resolves.toBeUndefined();
+
+    const states = [
+      [LEAD_A, CONTACT_A, "new"],
+      [LEAD_B, engagedContactId, "engaged"],
+      [TEST_ID_1, qualifiedContactId, "qualified"],
+      [TEST_ID_2, bookingContactId, "booking_requested"],
+      [TEST_ID_3, CONTACT_A, "converted"],
+      [SERVICE_A, CONTACT_A, "disqualified"],
+      [SERVICE_B, CONTACT_A, "closed"],
+    ] as const;
+    for (const [id, contactId, status] of states) {
+      await insertLead(id, ORGANIZATION_A, contactId, CHANNEL_CONNECTION_A, status);
+    }
     expect(
       (
         await database().query<{ status: string }>(
@@ -5340,13 +5603,19 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     ]);
 
     await expect(
-      insertLead(SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "archived"),
+      insertLead(
+        SERVICE_VERSION_B,
+        ORGANIZATION_A,
+        invalidShapeContactId,
+        CHANNEL_CONNECTION_A,
+        "archived",
+      ),
     ).rejects.toMatchObject({ code: "23514", constraint: "leads_status_check" });
     await expect(
       insertLead(SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_B, CHANNEL_CONNECTION_A),
     ).rejects.toMatchObject({ code: "23503", constraint: "leads_contact_fk" });
     await expect(
-      insertLead(SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_B),
+      insertLead(SERVICE_VERSION_B, ORGANIZATION_A, invalidShapeContactId, CHANNEL_CONNECTION_B),
     ).rejects.toMatchObject({
       code: "23503",
       constraint: "leads_source_channel_connection_fk",
@@ -5357,7 +5626,7 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
           (id, organization_id, contact_id, status, source_channel_connection_id,
            qualification_reason_codes)
          values ($1, $2, $3, 'new', $4, array['Bad-Code'])`,
-        [SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A],
+        [SERVICE_VERSION_B, ORGANIZATION_A, invalidShapeContactId, CHANNEL_CONNECTION_A],
       ),
     ).rejects.toMatchObject({
       code: "23514",
@@ -5368,9 +5637,126 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
         `insert into leads
           (id, organization_id, contact_id, status, source_channel_connection_id, version)
          values ($1, $2, $3, 'new', $4, 0)`,
-        [SERVICE_VERSION_B, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A],
+        [SERVICE_VERSION_B, ORGANIZATION_A, invalidShapeContactId, CHANNEL_CONNECTION_A],
       ),
     ).rejects.toMatchObject({ code: "23514", constraint: "leads_version_check" });
+  });
+
+  it("enforces active Lead multiplicity while preserving inactive history and repeat business", async () => {
+    await insertOrganization(ORGANIZATION_A, "active-leads-a");
+    await insertOrganization(ORGANIZATION_B, "active-leads-b");
+    const secondContactAId = syntheticUuid(0x1420);
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(secondContactAId, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Active Lead A");
+    await insertChannelConnection(CHANNEL_CONNECTION_B, ORGANIZATION_B, "widget", "Active Lead B");
+    await insertContactIdentity(
+      CONTACT_IDENTITY_A,
+      ORGANIZATION_A,
+      CONTACT_A,
+      "widget_participant",
+      "shared-real-world-contact-concept",
+      CHANNEL_CONNECTION_A,
+    );
+    await insertContactIdentity(
+      CONTACT_IDENTITY_B,
+      ORGANIZATION_B,
+      CONTACT_B,
+      "widget_participant",
+      "shared-real-world-contact-concept",
+      CHANNEL_CONNECTION_B,
+    );
+
+    await insertLead(
+      syntheticUuid(0x1421),
+      ORGANIZATION_A,
+      CONTACT_A,
+      CHANNEL_CONNECTION_A,
+      "closed",
+    );
+    const historicalLeadId = syntheticUuid(0x1422);
+    await insertLead(
+      historicalLeadId,
+      ORGANIZATION_A,
+      CONTACT_A,
+      CHANNEL_CONNECTION_A,
+      "disqualified",
+    );
+    await insertLead(
+      syntheticUuid(0x1423),
+      ORGANIZATION_A,
+      CONTACT_A,
+      CHANNEL_CONNECTION_A,
+      "converted",
+    );
+
+    const activeLeadId = syntheticUuid(0x1424);
+    await expect(
+      insertLead(activeLeadId, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "new"),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertLead(
+        syntheticUuid(0x1425),
+        ORGANIZATION_A,
+        CONTACT_A,
+        CHANNEL_CONNECTION_A,
+        "booking_requested",
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "leads_one_active_per_contact_unique",
+    });
+
+    await expect(
+      insertLead(
+        syntheticUuid(0x1426),
+        ORGANIZATION_A,
+        secondContactAId,
+        CHANNEL_CONNECTION_A,
+        "engaged",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertLead(LEAD_B, ORGANIZATION_B, CONTACT_B, CHANNEL_CONNECTION_B, "qualified"),
+    ).resolves.toBeUndefined();
+
+    await database().query(
+      "update leads set status = 'converted', version = version + 1 where id = $1",
+      [activeLeadId],
+    );
+    const repeatCustomerLeadId = syntheticUuid(0x1427);
+    await expect(
+      insertLead(
+        repeatCustomerLeadId,
+        ORGANIZATION_A,
+        CONTACT_A,
+        CHANNEL_CONNECTION_A,
+        "qualified",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      database().query("update leads set status = 'engaged', version = version + 1 where id = $1", [
+        historicalLeadId,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "leads_one_active_per_contact_unique",
+    });
+
+    const counts = await database().query<{ active_count: number; historical_count: number }>(
+      `select
+         count(*) filter (
+           where status in ('new', 'engaged', 'qualified', 'booking_requested')
+         )::integer as active_count,
+         count(*) filter (
+           where status in ('disqualified', 'converted', 'closed')
+         )::integer as historical_count
+       from leads
+       where organization_id = $1 and contact_id = $2`,
+      [ORGANIZATION_A, CONTACT_A],
+    );
+    expect(counts.rows[0]).toEqual({ active_count: 1, historical_count: 4 });
   });
 
   it("keeps qualification evaluations immutable-shaped and evidence tenant-safe", async () => {
@@ -5658,6 +6044,293 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
     ]);
   });
 
+  it("enforces active Conversation grouping without depending on Contact identity", async () => {
+    await insertOrganization(ORGANIZATION_A, "active-conversations-a");
+    await insertOrganization(ORGANIZATION_B, "active-conversations-b");
+    const secondContactAId = syntheticUuid(0x1430);
+    const pseudonymousContactId = syntheticUuid(0x1431);
+    const secondChannelAId = syntheticUuid(0x1432);
+    const secondLeadAId = syntheticUuid(0x1433);
+    const pseudonymousLeadId = syntheticUuid(0x1434);
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(secondContactAId, ORGANIZATION_A);
+    await insertContact(pseudonymousContactId, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+    await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "Conversation A");
+    await insertChannelConnection(secondChannelAId, ORGANIZATION_A, "widget", "Conversation A2");
+    await insertChannelConnection(CHANNEL_CONNECTION_B, ORGANIZATION_B, "widget", "Conversation B");
+    await insertLead(LEAD_A, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "qualified");
+    await insertLead(
+      secondLeadAId,
+      ORGANIZATION_A,
+      secondContactAId,
+      CHANNEL_CONNECTION_A,
+      "qualified",
+    );
+    await insertLead(
+      pseudonymousLeadId,
+      ORGANIZATION_A,
+      pseudonymousContactId,
+      CHANNEL_CONNECTION_A,
+      "new",
+    );
+    await insertLead(LEAD_B, ORGANIZATION_B, CONTACT_B, CHANNEL_CONNECTION_B, "qualified");
+
+    const sharedThreadHash = Buffer.from("synthetic-shared-provider-thread");
+    await expect(
+      insertConversation(
+        CONVERSATION_A,
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "open",
+        "ai",
+        null,
+        sharedThreadHash,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertConversation(
+        syntheticUuid(0x1435),
+        ORGANIZATION_A,
+        secondContactAId,
+        secondLeadAId,
+        CHANNEL_CONNECTION_A,
+        "awaiting_lead",
+        "ai",
+        null,
+        sharedThreadHash,
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "conversations_one_active_per_thread_unique",
+    });
+
+    await expect(
+      insertConversation(
+        syntheticUuid(0x1436),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "resolved",
+        "paused",
+        null,
+        sharedThreadHash,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertConversation(
+        syntheticUuid(0x1437),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "closed",
+        "paused",
+        null,
+        sharedThreadHash,
+      ),
+    ).resolves.toBeUndefined();
+
+    await database().query(
+      `update conversations
+          set status = 'resolved', resolved_at = now(), automation_mode = 'paused'
+        where id = $1`,
+      [CONVERSATION_A],
+    );
+    const replacementConversationId = syntheticUuid(0x1438);
+    await expect(
+      insertConversation(
+        replacementConversationId,
+        ORGANIZATION_A,
+        secondContactAId,
+        secondLeadAId,
+        CHANNEL_CONNECTION_A,
+        "awaiting_lead",
+        "ai",
+        null,
+        sharedThreadHash,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      database().query(
+        `update conversations
+            set status = 'open', resolved_at = null, automation_mode = 'ai'
+          where id = $1`,
+        [CONVERSATION_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "conversations_one_active_per_thread_unique",
+    });
+
+    await expect(
+      insertConversation(
+        syntheticUuid(0x1439),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        secondChannelAId,
+        "open",
+        "ai",
+        null,
+        sharedThreadHash,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertConversation(
+        syntheticUuid(0x143a),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "awaiting_lead",
+        "ai",
+        null,
+        Buffer.from("synthetic-distinct-provider-thread"),
+      ),
+    ).resolves.toBeUndefined();
+
+    const pseudonymousThreadHash = Buffer.from("synthetic-widget-session-thread");
+    await expect(
+      insertConversation(
+        syntheticUuid(0x143b),
+        ORGANIZATION_A,
+        pseudonymousContactId,
+        pseudonymousLeadId,
+        CHANNEL_CONNECTION_A,
+        "open",
+        "ai",
+        null,
+        pseudonymousThreadHash,
+      ),
+    ).resolves.toBeUndefined();
+    const pseudonymousIdentities = await database().query<{ count: number }>(
+      "select count(*)::integer as count from contact_identities where contact_id = $1",
+      [pseudonymousContactId],
+    );
+    expect(pseudonymousIdentities.rows[0]?.count).toBe(0);
+
+    await expect(
+      insertConversation(
+        syntheticUuid(0x143c),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "open",
+        "ai",
+        null,
+        null,
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "conversations_active_thread_hash_required_check",
+    });
+    await expect(
+      insertConversation(
+        syntheticUuid(0x143d),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "resolved",
+        "paused",
+        null,
+        null,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertConversation(
+        syntheticUuid(0x143e),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        "closed",
+        "paused",
+        null,
+        null,
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      insertConversation(
+        CONVERSATION_B,
+        ORGANIZATION_B,
+        CONTACT_B,
+        LEAD_B,
+        CHANNEL_CONNECTION_B,
+        "open",
+        "ai",
+        null,
+        sharedThreadHash,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("serializes racing active Lead and Conversation inserts through PostgreSQL uniqueness", async () => {
+    await insertOrganization(ORGANIZATION_A, "active-uniqueness-race");
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertChannelConnection(
+      CHANNEL_CONNECTION_A,
+      ORGANIZATION_A,
+      "widget",
+      "Active uniqueness race",
+    );
+
+    const leadInsert = `insert into leads
+      (id, organization_id, contact_id, status, source_channel_connection_id)
+     values ($1, $2, $3, 'new', $4)`;
+    await proveConcurrentUniqueInsert(
+      leadInsert,
+      [LEAD_A, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A],
+      [syntheticUuid(0x1440), ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A],
+      "leads_one_active_per_contact_unique",
+    );
+    const activeLeads = await database().query<{ count: number }>(
+      `select count(*)::integer as count
+         from leads
+        where organization_id = $1
+          and contact_id = $2
+          and status in ('new', 'engaged', 'qualified', 'booking_requested')`,
+      [ORGANIZATION_A, CONTACT_A],
+    );
+    expect(activeLeads.rows[0]?.count).toBe(1);
+
+    const conversationInsert = `insert into conversations
+      (id, organization_id, contact_id, lead_id, channel_connection_id,
+       external_thread_hash, status, preferred_locale, automation_mode,
+       started_at, last_activity_at)
+     values ($1, $2, $3, $4, $5, $6, 'open', 'en', 'ai', now(), now())`;
+    const racingThreadHash = Buffer.from("synthetic-concurrent-thread-group");
+    await proveConcurrentUniqueInsert(
+      conversationInsert,
+      [CONVERSATION_A, ORGANIZATION_A, CONTACT_A, LEAD_A, CHANNEL_CONNECTION_A, racingThreadHash],
+      [
+        syntheticUuid(0x1441),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        CHANNEL_CONNECTION_A,
+        racingThreadHash,
+      ],
+      "conversations_one_active_per_thread_unique",
+    );
+    const activeConversations = await database().query<{ count: number }>(
+      `select count(*)::integer as count
+         from conversations
+        where organization_id = $1
+          and channel_connection_id = $2
+          and external_thread_hash = $3
+          and status in ('open', 'awaiting_lead', 'awaiting_staff')`,
+      [ORGANIZATION_A, CHANNEL_CONNECTION_A, racingThreadHash],
+    );
+    expect(activeConversations.rows[0]?.count).toBe(1);
+  });
+
   it("enforces Handoff tenant integrity, lifecycle shape, active uniqueness, and exact Conversation identity", async () => {
     await seedWorkflowTenant(WORKFLOW_A, "handoff-a", "handoff-a", "handoff-a");
     await seedWorkflowTenant(WORKFLOW_B, "handoff-b", "handoff-b", "handoff-b");
@@ -5682,10 +6355,18 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
       constraint: "handoffs_assigned_membership_fk",
     });
 
-    const secondLeadId = syntheticUuid(0x624);
-    await insertLead(secondLeadId, ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A, "qualified");
+    const secondContactId = syntheticUuid(0x624);
+    const secondLeadId = syntheticUuid(0x625);
+    await insertContact(secondContactId, ORGANIZATION_A);
+    await insertLead(
+      secondLeadId,
+      ORGANIZATION_A,
+      secondContactId,
+      CHANNEL_CONNECTION_A,
+      "qualified",
+    );
     await expect(
-      insertHandoff(syntheticUuid(0x625), WORKFLOW_A, "requested", { leadId: secondLeadId }),
+      insertHandoff(syntheticUuid(0x626), WORKFLOW_A, "requested", { leadId: secondLeadId }),
     ).rejects.toMatchObject({
       code: "23503",
       constraint: "handoffs_conversation_lead_fk",
@@ -5713,7 +6394,7 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
       constraint: "conversations_active_handoff_fk",
     });
 
-    const secondConversationId = syntheticUuid(0x626);
+    const secondConversationId = syntheticUuid(0x627);
     await insertConversation(
       secondConversationId,
       ORGANIZATION_A,
@@ -5733,7 +6414,7 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
       constraint: "conversations_active_handoff_fk",
     });
 
-    await expect(insertHandoff(syntheticUuid(0x627), WORKFLOW_A)).rejects.toMatchObject({
+    await expect(insertHandoff(syntheticUuid(0x628), WORKFLOW_A)).rejects.toMatchObject({
       code: "23505",
       constraint: "handoffs_one_active_per_conversation_unique",
     });
@@ -5747,7 +6428,7 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
       insertHandoff(UUID_V4, { ...WORKFLOW_A, conversationId: secondConversationId }),
     ).rejects.toMatchObject({ code: "23514", constraint: "handoffs_id_uuid_v7_check" });
 
-    const deletionConversationId = syntheticUuid(0x628);
+    const deletionConversationId = syntheticUuid(0x629);
     await insertConversation(
       deletionConversationId,
       ORGANIZATION_A,
@@ -8357,6 +9038,76 @@ describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 
       });
       await client.query("rollback to savepoint malformed_context");
       await client.query("release savepoint malformed_context");
+      await client.query("rollback");
+    });
+  });
+
+  it("keeps S5.2 writes behind transaction-local tenant RLS", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "s52-rls-a", "s52-rls-a", "s52-rls-a");
+    await seedWorkflowTenant(WORKFLOW_B, "s52-rls-b", "s52-rls-b", "s52-rls-b");
+    const unusedContactAId = syntheticUuid(0x1450);
+    await insertContact(unusedContactAId, ORGANIZATION_A);
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin");
+      await expectDatabaseError(
+        client,
+        `insert into leads
+          (id, organization_id, contact_id, status, source_channel_connection_id)
+         values ($1, $2, $3, 'new', $4)`,
+        [syntheticUuid(0x1451), ORGANIZATION_A, unusedContactAId, CHANNEL_CONNECTION_A],
+        "42501",
+      );
+      await expectDatabaseError(
+        client,
+        `insert into conversations
+          (id, organization_id, contact_id, lead_id, channel_connection_id,
+           external_thread_hash, status, preferred_locale, automation_mode,
+           started_at, last_activity_at)
+         values ($1, $2, $3, $4, $5, $6, 'open', 'en', 'ai', now(), now())`,
+        [
+          syntheticUuid(0x1452),
+          ORGANIZATION_A,
+          CONTACT_A,
+          LEAD_A,
+          CHANNEL_CONNECTION_A,
+          Buffer.from("synthetic-missing-context-thread"),
+        ],
+        "42501",
+      );
+      await client.query("rollback");
+    });
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin");
+      await setLocalOrganization(client, ORGANIZATION_A);
+      await expectDatabaseError(
+        client,
+        `insert into leads
+          (id, organization_id, contact_id, status, source_channel_connection_id)
+         values ($1, $2, $3, 'engaged', $4)`,
+        [syntheticUuid(0x1453), ORGANIZATION_A, CONTACT_A, CHANNEL_CONNECTION_A],
+        "23505",
+      );
+      await expectDatabaseError(
+        client,
+        `insert into conversations
+          (id, organization_id, contact_id, lead_id, channel_connection_id,
+           external_thread_hash, status, preferred_locale, automation_mode,
+           started_at, last_activity_at)
+         values ($1, $2, $3, $4, $5, $6, 'open', 'en', 'ai', now(), now())`,
+        [
+          syntheticUuid(0x1454),
+          ORGANIZATION_A,
+          CONTACT_A,
+          LEAD_A,
+          CHANNEL_CONNECTION_A,
+          Buffer.from(`synthetic-thread-hash-${CONVERSATION_A}`),
+        ],
+        "23505",
+      );
+      expect((await client.query("select id from leads")).rowCount).toBe(1);
+      expect((await client.query("select id from conversations")).rowCount).toBe(1);
       await client.query("rollback");
     });
   });

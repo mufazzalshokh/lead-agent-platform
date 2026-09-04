@@ -6,6 +6,7 @@ import {
   pgTable,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
   type PgTableExtraConfigValue,
@@ -136,6 +137,9 @@ export const leads = pgTable(
       table.contactId,
       table.id,
     ),
+    uniqueIndex("leads_one_active_per_contact_unique")
+      .on(table.organizationId, table.contactId)
+      .where(sql`${table.status} in ('new', 'engaged', 'qualified', 'booking_requested')`),
     index("leads_organization_status_updated_idx").on(
       table.organizationId,
       table.status,

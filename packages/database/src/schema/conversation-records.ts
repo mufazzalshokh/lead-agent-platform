@@ -66,6 +66,11 @@ export const conversations = pgTable(
         or octet_length(${table.externalThreadHash}) between 16 and 128`,
     ),
     check(
+      "conversations_active_thread_hash_required_check",
+      sql`${table.status} not in ('open', 'awaiting_lead', 'awaiting_staff')
+        or ${table.externalThreadHash} is not null`,
+    ),
+    check(
       "conversations_status_check",
       sql`${table.status} in ('open', 'awaiting_lead', 'awaiting_staff', 'resolved', 'closed')`,
     ),
@@ -171,6 +176,9 @@ export const conversations = pgTable(
       table.leadId,
       table.id,
     ),
+    uniqueIndex("conversations_one_active_per_thread_unique")
+      .on(table.organizationId, table.channelConnectionId, table.externalThreadHash)
+      .where(sql`${table.status} in ('open', 'awaiting_lead', 'awaiting_staff')`),
     index("conversations_organization_status_activity_idx").on(
       table.organizationId,
       table.status,

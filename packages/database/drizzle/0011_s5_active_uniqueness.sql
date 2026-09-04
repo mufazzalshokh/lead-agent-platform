@@ -1,0 +1,4 @@
+CREATE UNIQUE INDEX "conversations_one_active_per_thread_unique" ON "conversations" USING btree ("organization_id","channel_connection_id","external_thread_hash") WHERE "conversations"."status" in ('open', 'awaiting_lead', 'awaiting_staff');--> statement-breakpoint
+CREATE UNIQUE INDEX "leads_one_active_per_contact_unique" ON "leads" USING btree ("organization_id","contact_id") WHERE "leads"."status" in ('new', 'engaged', 'qualified', 'booking_requested');--> statement-breakpoint
+ALTER TABLE "conversations" ADD CONSTRAINT "conversations_active_thread_hash_required_check" CHECK ("conversations"."status" not in ('open', 'awaiting_lead', 'awaiting_staff')
+        or "conversations"."external_thread_hash" is not null);
