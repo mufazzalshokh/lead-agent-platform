@@ -6,3 +6,4 @@ dist/
 coverage/
 pnpm-lock.yaml
 packages/contracts/snapshots/public-contracts.v1.json
+packages/database/drizzle/meta/*_snapshot.json

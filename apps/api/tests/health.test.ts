@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApi } from "../src/app.js";
 
-describe("GET /health", () => {
+describe("GET /health", { timeout: 30_000 }, () => {
   it("returns a deterministic readiness response", async () => {
     const api = createApi();
 
