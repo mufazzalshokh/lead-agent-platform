@@ -16,6 +16,7 @@ import {
   type DomainEventPayloadByName,
 } from "../../packages/contracts/src/index.js";
 import {
+  analyticsEvents,
   aiActionEvaluations,
   aiRuns,
   appointmentConfirmationEvidence,
@@ -24,6 +25,7 @@ import {
   appointmentRequestTransitions,
   appointmentRequests,
   appointmentRevenueAttributions,
+  auditEvents,
   businessPolicies,
   channelConnections,
   consentRecords,
@@ -42,6 +44,7 @@ import {
   leadQualificationEvaluations,
   leadQualificationEvidence,
   leads,
+  legalHolds,
   memberships,
   messages,
   migrationsFolder,
@@ -49,6 +52,8 @@ import {
   notifications,
   organizations,
   outboxEvents,
+  platformAuditEvents,
+  privacyRequests,
   retentionPolicies,
   retentionPolicyRules,
   runMigrations,
@@ -149,6 +154,15 @@ const WEBHOOK_RECEIPT_B = "0193f1a8-7f65-7c28-a434-a10796c41c75";
 const IDEMPOTENCY_KEY_A = "0193f1a8-7f65-7c28-a434-a10796c41c76";
 const IDEMPOTENCY_KEY_B = "0193f1a8-7f65-7c28-a434-a10796c41c77";
 const CAUSATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c78";
+const AUDIT_EVENT_A = "0193f1a8-7f65-7c28-a434-a10796c41c79";
+const AUDIT_EVENT_B = "0193f1a8-7f65-7c28-a434-a10796c41c7a";
+const PLATFORM_AUDIT_EVENT_A = "0193f1a8-7f65-7c28-a434-a10796c41c7b";
+const PRIVACY_REQUEST_A = "0193f1a8-7f65-7c28-a434-a10796c41c7c";
+const PRIVACY_REQUEST_B = "0193f1a8-7f65-7c28-a434-a10796c41c7d";
+const LEGAL_HOLD_A = "0193f1a8-7f65-7c28-a434-a10796c41c7e";
+const LEGAL_HOLD_B = "0193f1a8-7f65-7c28-a434-a10796c41c7f";
+const ANALYTICS_EVENT_A = "0193f1a8-7f65-7c28-a434-a10796c41c80";
+const ANALYTICS_EVENT_B = "0193f1a8-7f65-7c28-a434-a10796c41c81";
 const DOMAIN_AGGREGATE_TYPES = [
   "ai_run",
   "appointment_request",
@@ -339,7 +353,16 @@ const S4C2_TABLES = [
   "outbox_events",
   "webhook_receipts",
 ].sort();
+const S4C3_TABLES = [
+  ...S4C2_TABLES,
+  "analytics_events",
+  "audit_events",
+  "legal_holds",
+  "platform_audit_events",
+  "privacy_requests",
+].sort();
 const SCHEMA_TABLES = {
+  analytics_events: analyticsEvents,
   ai_action_evaluations: aiActionEvaluations,
   ai_runs: aiRuns,
   appointment_confirmation_evidence: appointmentConfirmationEvidence,
@@ -348,6 +371,7 @@ const SCHEMA_TABLES = {
   appointment_request_transitions: appointmentRequestTransitions,
   appointment_requests: appointmentRequests,
   appointment_revenue_attributions: appointmentRevenueAttributions,
+  audit_events: auditEvents,
   business_policies: businessPolicies,
   channel_connections: channelConnections,
   consent_records: consentRecords,
@@ -362,6 +386,7 @@ const SCHEMA_TABLES = {
   lead_qualification_evaluations: leadQualificationEvaluations,
   lead_qualification_evidence: leadQualificationEvidence,
   leads,
+  legal_holds: legalHolds,
   location_business_hours: locationBusinessHours,
   location_closures: locationClosures,
   location_versions: locationVersions,
@@ -372,6 +397,8 @@ const SCHEMA_TABLES = {
   notifications,
   organizations,
   outbox_events: outboxEvents,
+  platform_audit_events: platformAuditEvents,
+  privacy_requests: privacyRequests,
   retention_policies: retentionPolicies,
   retention_policy_rules: retentionPolicyRules,
   service_locations: serviceLocations,
@@ -409,6 +436,7 @@ let upgradeTablesAfterS4b5: string[] = [];
 let upgradeTablesAfterS4b6: string[] = [];
 let upgradeTablesAfterS4c1: string[] = [];
 let upgradeTablesAfterS4c2: string[] = [];
+let upgradeTablesAfterS4c3: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -515,8 +543,13 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0008_wandering_omega_flight.sql");
   upgradeTablesAfterS4c2 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0009_lyrical_night_thrasher.sql");
+  upgradeTablesAfterS4c3 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table webhook_receipts, idempotency_keys,
+    `drop table analytics_events, legal_holds, privacy_requests,
+      audit_events, platform_audit_events,
+      webhook_receipts, idempotency_keys,
       notification_attempts, handoff_transitions, notifications, outbox_events,
       ai_action_evaluations, ai_runs, handoffs,
       appointment_confirmation_evidence, appointment_request_attendance,
@@ -532,7 +565,7 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4c.2 upgrade verification failed to restore the disposable database");
+    throw new Error("S4c.3 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -1611,11 +1644,170 @@ const insertAiActionEvaluation = async (evaluation: AiActionEvaluationInsert): P
   );
 };
 
+type AuditEventOverrides = Readonly<{
+  actorId?: string | null;
+  actorMembershipId?: string | null;
+  actorType?: "customer" | "member" | "platform_operator" | "system";
+  metadata?: unknown;
+  organizationId?: string;
+  sourceIpPrefix?: string | null;
+}>;
+
+const insertAuditEvent = async (
+  id: string,
+  organizationId: string,
+  overrides: AuditEventOverrides = {},
+): Promise<void> => {
+  const actorType = overrides.actorType ?? "system";
+  await database().query(
+    `insert into audit_events
+      (id, organization_id, event_type, actor_type, actor_id, actor_membership_id,
+       target_type, target_id, action, result, reason_code, request_id, trace_id,
+       correlation_id, source_ip_prefix, user_agent_hash, metadata_redacted_jsonb,
+       occurred_at)
+     values ($1, $2, 'security.access', $3, $4, $5,
+       'conversation', $6, 'conversation.view', 'succeeded', null,
+       'request:test-001', 'trace:test-001', $7, $8::cidr, $9, $10::jsonb,
+       timestamptz '2026-01-01 00:10:00+00')`,
+    [
+      id,
+      overrides.organizationId ?? organizationId,
+      actorType,
+      overrides.actorId ?? null,
+      overrides.actorMembershipId ?? null,
+      CONVERSATION_A,
+      CORRELATION_A,
+      overrides.sourceIpPrefix ?? "192.0.2.0/24",
+      Buffer.from("synthetic-keyed-user-agent-hash"),
+      JSON.stringify(overrides.metadata ?? { source: "staff_console" }),
+    ],
+  );
+};
+
+const insertPlatformAuditEvent = async (
+  id: string,
+  targetOrganizationId: string | null,
+  metadata: unknown = { control_plane: true },
+): Promise<void> => {
+  await database().query(
+    `insert into platform_audit_events
+      (id, operator_principal_id, action, target_organization_id, target_type,
+       target_id, approval_reference, reason_code, result, request_id,
+       source_ip_hash, occurred_at, metadata_jsonb)
+     values ($1, $2, 'support.access_requested', $3, 'organization', $3,
+       'approval:test-001', 'customer_support', 'succeeded', 'request:test-002',
+       $4, timestamptz '2026-01-01 00:11:00+00', $5::jsonb)`,
+    [
+      id,
+      syntheticUuid(0xe00),
+      targetOrganizationId,
+      Buffer.from("synthetic-keyed-source-ip-hash"),
+      JSON.stringify(metadata),
+    ],
+  );
+};
+
+const insertPrivacyRequest = async (
+  id: string,
+  organizationId: string,
+  contactId: string | null,
+  handledByMembershipId: string | null = null,
+): Promise<void> => {
+  await database().query(
+    `insert into privacy_requests
+      (id, organization_id, contact_id, request_type, status, requested_at,
+       due_at, request_channel, handled_by_membership_id,
+       request_details_ciphertext, legal_hold_blocked)
+     values ($1, $2, $3, 'export', 'received',
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-31 00:00:00+00', 'web_form', $4, $5, false)`,
+    [
+      id,
+      organizationId,
+      contactId,
+      handledByMembershipId,
+      Buffer.from("synthetic-encrypted-privacy-request-details"),
+    ],
+  );
+};
+
+const insertLegalHold = async (
+  id: string,
+  organizationId: string,
+  placedByUserId: string,
+  scopeType: "appointment_request" | "contact" | "conversation" | "data_class" | "organization",
+  scopeId: string | null,
+  dataClass: string | null,
+): Promise<void> => {
+  await database().query(
+    `insert into legal_holds
+      (id, organization_id, scope_type, scope_id, data_class, status,
+       reason_ciphertext, placed_by_user_id, placed_at, approval_reference)
+     values ($1, $2, $3, $4, $5, 'active', $6, $7,
+       timestamptz '2026-01-01 00:12:00+00', 'legal:test-001')`,
+    [
+      id,
+      organizationId,
+      scopeType,
+      scopeId,
+      dataClass,
+      Buffer.from("synthetic-encrypted-legal-hold-reason"),
+      placedByUserId,
+    ],
+  );
+};
+
+type AnalyticsEventOverrides = Readonly<{
+  appointmentRequestId?: string | null;
+  campaignKey?: string | null;
+  conversationId?: string | null;
+  dimensions?: unknown;
+  eventType?: DomainEventName;
+  leadId?: string | null;
+  numericValueMinor?: bigint | null;
+  organizationId?: string;
+  schemaVersion?: string;
+  sourceEventId?: string;
+}>;
+
+const insertAnalyticsEvent = async (
+  id: string,
+  organizationId: string,
+  overrides: AnalyticsEventOverrides = {},
+): Promise<void> => {
+  const numericValueMinor = overrides.numericValueMinor ?? null;
+  await database().query(
+    `insert into analytics_events
+      (id, organization_id, source_event_id, event_type, schema_version,
+       occurred_at, lead_id, conversation_id, appointment_request_id,
+       channel_type, locale, campaign_key, dimensions_jsonb,
+       numeric_value_minor, currency, projected_at)
+     values ($1, $2, $3, $4, $5,
+       timestamptz '2026-01-01 00:13:00+00', $6, $7, $8,
+       'widget', 'en', $9, $10::jsonb, $11,
+       case when $11::bigint is null then null else 'USD' end,
+       timestamptz '2026-01-01 00:14:00+00')`,
+    [
+      id,
+      overrides.organizationId ?? organizationId,
+      overrides.sourceEventId ?? syntheticUuid(0xe10),
+      overrides.eventType ?? "conversation.started",
+      overrides.schemaVersion ?? "1",
+      overrides.leadId ?? null,
+      overrides.conversationId ?? null,
+      overrides.appointmentRequestId ?? null,
+      overrides.campaignKey ?? null,
+      JSON.stringify(overrides.dimensions ?? { funnel_step: "conversation_started" }),
+      numericValueMinor,
+    ],
+  );
+};
+
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4c2_test")
+      .withDatabase("lead_agent_s4c3_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -1633,7 +1825,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table webhook_receipts, idempotency_keys,
+    `truncate table analytics_events, legal_holds, privacy_requests,
+      audit_events, platform_audit_events,
+      webhook_receipts, idempotency_keys,
       notification_attempts, handoff_transitions, notifications, outbox_events,
       ai_action_evaluations, ai_runs, handoffs,
       appointment_confirmation_evidence, appointment_request_attendance,
@@ -1655,7 +1849,7 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+describe("S4c.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
   it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
     const conversationStatuses = [
       "open",
@@ -1755,7 +1949,7 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4a through S4c.1 to S4c.2, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4a through S4c.2 to S4c.3, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -1765,6 +1959,7 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(upgradeTablesAfterS4b6).toEqual(S4B6_TABLES);
     expect(upgradeTablesAfterS4c1).toEqual(S4C1_TABLES);
     expect(upgradeTablesAfterS4c2).toEqual(S4C2_TABLES);
+    expect(upgradeTablesAfterS4c3).toEqual(S4C3_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -1772,12 +1967,12 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4C2_TABLES);
+    expect(await productionTables(database())).toEqual(S4C3_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(9);
+    expect(migrationCount.rows[0]?.count).toBe(10);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -1908,6 +2103,99 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "locked_until",
       "published_at",
       "last_error_category",
+    ]);
+    expect(namesByTable["audit_events"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "event_type",
+      "actor_type",
+      "actor_id",
+      "actor_membership_id",
+      "impersonation_session_id",
+      "support_grant_id",
+      "target_type",
+      "target_id",
+      "action",
+      "result",
+      "reason_code",
+      "request_id",
+      "trace_id",
+      "correlation_id",
+      "source_ip_prefix",
+      "user_agent_hash",
+      "metadata_redacted_jsonb",
+      "occurred_at",
+    ]);
+    expect(namesByTable["platform_audit_events"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "operator_principal_id",
+      "action",
+      "target_organization_id",
+      "target_type",
+      "target_id",
+      "approval_reference",
+      "reason_code",
+      "result",
+      "request_id",
+      "source_ip_hash",
+      "occurred_at",
+      "metadata_jsonb",
+    ]);
+    expect(namesByTable["privacy_requests"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "contact_id",
+      "request_type",
+      "status",
+      "requested_at",
+      "due_at",
+      "verified_at",
+      "completed_at",
+      "request_channel",
+      "handled_by_membership_id",
+      "reason_code",
+      "request_details_ciphertext",
+      "export_artifact_ref",
+      "artifact_expires_at",
+      "legal_hold_blocked",
+      "created_at",
+      "updated_at",
+      "version",
+    ]);
+    expect(namesByTable["legal_holds"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "scope_type",
+      "scope_id",
+      "data_class",
+      "status",
+      "reason_ciphertext",
+      "placed_by_user_id",
+      "placed_at",
+      "released_by_user_id",
+      "released_at",
+      "approval_reference",
+    ]);
+    expect(namesByTable["analytics_events"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "source_event_id",
+      "event_type",
+      "schema_version",
+      "occurred_at",
+      "lead_id",
+      "conversation_id",
+      "appointment_request_id",
+      "channel_type",
+      "locale",
+      "campaign_key",
+      "service_id",
+      "location_id",
+      "confirmation_source",
+      "dimensions_jsonb",
+      "numeric_value_minor",
+      "currency",
+      "projected_at",
     ]);
 
     expect(namesByTable["organizations"]?.map(({ column_name }) => column_name)).toEqual([
@@ -2541,7 +2829,7 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         ?.filter(({ column_name }) => ["value_ciphertext", "lookup_hash"].includes(column_name))
         .every(({ data_type }) => data_type === "bytea"),
     ).toBe(true);
-    expect(utcTimestamps).toHaveLength(45);
+    expect(utcTimestamps).toHaveLength(47);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
@@ -2602,7 +2890,7 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4C2_TABLES);
+    expect(declaredNames).toEqual(S4C3_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -2623,6 +2911,26 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     const constraintNames = constraints.rows.map(({ conname }) => conname);
     expect(constraintNames).toEqual(
       expect.arrayContaining([
+        "analytics_events_organization_id_id_unique",
+        "analytics_events_source_projection_unique",
+        "analytics_events_organization_id_organizations_id_fk",
+        "analytics_events_lead_fk",
+        "analytics_events_conversation_fk",
+        "analytics_events_appointment_request_fk",
+        "analytics_events_service_fk",
+        "analytics_events_location_fk",
+        "audit_events_organization_id_id_unique",
+        "audit_events_organization_id_organizations_id_fk",
+        "audit_events_actor_membership_fk",
+        "legal_holds_organization_id_id_unique",
+        "legal_holds_organization_id_organizations_id_fk",
+        "legal_holds_placed_by_user_id_users_id_fk",
+        "legal_holds_released_by_user_id_users_id_fk",
+        "platform_audit_events_target_organization_fk",
+        "privacy_requests_organization_id_id_unique",
+        "privacy_requests_organization_id_organizations_id_fk",
+        "privacy_requests_contact_fk",
+        "privacy_requests_handler_membership_fk",
         "webhook_receipts_organization_id_id_unique",
         "webhook_receipts_connection_external_event_unique",
         "webhook_receipts_organization_id_organizations_id_fk",
@@ -2781,6 +3089,46 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const indexDefinitions = new Map(
       indexes.rows.map(({ indexdef, indexname }) => [indexname, indexdef]),
+    );
+    expect(indexDefinitions.get("analytics_events_organization_occurred_event_idx")).toContain(
+      "(organization_id, occurred_at, event_type)",
+    );
+    expect(indexDefinitions.get("analytics_events_organization_lead_occurred_idx")).toContain(
+      "(organization_id, lead_id, occurred_at)",
+    );
+    expect(
+      indexDefinitions.get("analytics_events_organization_appointment_occurred_idx"),
+    ).toContain("(organization_id, appointment_request_id, occurred_at)");
+    expect(indexDefinitions.get("audit_events_organization_occurred_idx")).toContain(
+      "(organization_id, occurred_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("audit_events_organization_target_occurred_idx")).toContain(
+      "(organization_id, target_type, target_id, occurred_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("audit_events_organization_actor_occurred_idx")).toContain(
+      "(organization_id, actor_type, actor_id, occurred_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("legal_holds_equivalent_active_unique")).toContain("UNIQUE");
+    expect(indexDefinitions.get("legal_holds_equivalent_active_unique")).toContain(
+      "WHERE ((status)::text = 'active'::text)",
+    );
+    expect(indexDefinitions.get("legal_holds_organization_status_scope_idx")).toContain(
+      "(organization_id, status, scope_type, scope_id)",
+    );
+    expect(indexDefinitions.get("legal_holds_organization_data_class_status_idx")).toContain(
+      "(organization_id, data_class, status)",
+    );
+    expect(indexDefinitions.get("platform_audit_events_operator_occurred_idx")).toContain(
+      "(operator_principal_id, occurred_at DESC NULLS LAST)",
+    );
+    expect(
+      indexDefinitions.get("platform_audit_events_target_organization_occurred_idx"),
+    ).toContain("(target_organization_id, occurred_at DESC NULLS LAST)");
+    expect(indexDefinitions.get("privacy_requests_organization_status_due_idx")).toContain(
+      "(organization_id, status, due_at)",
+    );
+    expect(indexDefinitions.get("privacy_requests_organization_contact_requested_idx")).toContain(
+      "(organization_id, contact_id, requested_at DESC NULLS LAST)",
     );
     expect(indexDefinitions.get("webhook_receipts_connection_external_message_unique")).toContain(
       "UNIQUE",
@@ -4364,7 +4712,7 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and relkind = 'r'
         order by relname`,
     );
-    expect(rls.rows).toEqual(S4C2_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
+    expect(rls.rows).toEqual(S4C3_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
 
     const activatedRouteForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -7206,5 +7554,344 @@ describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
                               'raw_message', 'raw_prompt', 'provider_credentials')`,
     );
     expect(forbiddenColumns.rows).toEqual([]);
+  });
+
+  it("persists minimized tenant audit evidence and rejects mutation or cross-tenant actors", async () => {
+    await insertOrganization(ORGANIZATION_A, "audit-a");
+    await insertOrganization(ORGANIZATION_B, "audit-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertAuditEvent(AUDIT_EVENT_A, ORGANIZATION_A, {
+      actorId: USER_A,
+      actorMembershipId: MEMBERSHIP_A,
+      actorType: "member",
+    });
+
+    const stored = await database().query<{
+      actor_type: string;
+      metadata_type: string;
+      source_ip_prefix: string;
+    }>(
+      `select actor_type, source_ip_prefix::text,
+              jsonb_typeof(metadata_redacted_jsonb) as metadata_type
+         from audit_events where id = $1`,
+      [AUDIT_EVENT_A],
+    );
+    expect(stored.rows[0]).toEqual({
+      actor_type: "member",
+      metadata_type: "object",
+      source_ip_prefix: "192.0.2.0/24",
+    });
+
+    await expect(
+      insertAuditEvent(AUDIT_EVENT_B, ORGANIZATION_A, {
+        actorId: USER_B,
+        actorMembershipId: MEMBERSHIP_B,
+        actorType: "member",
+      }),
+    ).rejects.toMatchObject({ code: "23503", constraint: "audit_events_actor_membership_fk" });
+    await expect(
+      database().query("update audit_events set action = 'conversation.export' where id = $1", [
+        AUDIT_EVENT_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "audit_events_immutability_check" });
+    await expect(
+      insertAuditEvent(AUDIT_EVENT_B, ORGANIZATION_A, {
+        metadata: ["not", "allowlisted", "object"],
+      }),
+    ).rejects.toMatchObject({ code: "23514", constraint: "audit_events_metadata_check" });
+    await expect(
+      insertAuditEvent(AUDIT_EVENT_B, ORGANIZATION_A, { sourceIpPrefix: "192.0.2.1/32" }),
+    ).rejects.toMatchObject({ code: "23514", constraint: "audit_events_source_ip_prefix_check" });
+    await expect(
+      database().query("delete from memberships where id = $1", [MEMBERSHIP_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "audit_events_actor_membership_fk",
+    });
+  });
+
+  it("keeps global platform audit evidence separate from tenant audit records", async () => {
+    await insertOrganization(ORGANIZATION_A, "platform-audit");
+    await insertPlatformAuditEvent(PLATFORM_AUDIT_EVENT_A, null);
+    await insertPlatformAuditEvent(syntheticUuid(0xe01), ORGANIZATION_A);
+
+    const contexts = await database().query<{ target_organization_id: string | null }>(
+      "select target_organization_id from platform_audit_events order by target_organization_id nulls first",
+    );
+    expect(contexts.rows).toEqual([
+      { target_organization_id: null },
+      { target_organization_id: ORGANIZATION_A },
+    ]);
+
+    await expect(
+      insertPlatformAuditEvent(syntheticUuid(0xe02), UNKNOWN_ORGANIZATION),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "platform_audit_events_target_organization_fk",
+    });
+    await expect(
+      database().query("update platform_audit_events set reason_code = 'rewritten' where id = $1", [
+        PLATFORM_AUDIT_EVENT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "platform_audit_events_immutability_check",
+    });
+    await expect(
+      insertPlatformAuditEvent(syntheticUuid(0xe03), null, ["not-an-object"]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "platform_audit_events_metadata_check",
+    });
+
+    const forbiddenPlatformColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'platform_audit_events'
+          and column_name in ('organization_id', 'actor_type', 'actor_membership_id',
+                              'support_grant_secret', 'impersonated_user_id')`,
+    );
+    expect(forbiddenPlatformColumns.rows).toEqual([]);
+    await expect(
+      database().query("delete from organizations where id = $1", [ORGANIZATION_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "platform_audit_events_target_organization_fk",
+    });
+  });
+
+  it("preserves privacy request provenance and tenant-safe unresolved-subject lifecycle state", async () => {
+    await insertOrganization(ORGANIZATION_A, "privacy-a");
+    await insertOrganization(ORGANIZATION_B, "privacy-b");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertActiveMembership(MEMBERSHIP_A, ORGANIZATION_A, USER_A);
+    await insertActiveMembership(MEMBERSHIP_B, ORGANIZATION_B, USER_B);
+    await insertContact(CONTACT_A, ORGANIZATION_A);
+    await insertContact(CONTACT_B, ORGANIZATION_B);
+
+    await insertPrivacyRequest(PRIVACY_REQUEST_A, ORGANIZATION_A, null);
+    await database().query(
+      `update privacy_requests
+          set contact_id = $1, handled_by_membership_id = $2,
+              status = 'completed', verified_at = timestamptz '2026-01-02 00:00:00+00',
+              completed_at = timestamptz '2026-01-03 00:00:00+00',
+              updated_at = now(), version = version + 1
+        where id = $3`,
+      [CONTACT_A, MEMBERSHIP_A, PRIVACY_REQUEST_A],
+    );
+    const completed = await database().query<{
+      contact_id: string;
+      details_type: string;
+      status: string;
+    }>(
+      `select contact_id, status,
+              pg_typeof(request_details_ciphertext)::text as details_type
+         from privacy_requests where id = $1`,
+      [PRIVACY_REQUEST_A],
+    );
+    expect(completed.rows[0]).toEqual({
+      contact_id: CONTACT_A,
+      details_type: "bytea",
+      status: "completed",
+    });
+
+    await expect(
+      insertPrivacyRequest(PRIVACY_REQUEST_B, ORGANIZATION_A, CONTACT_B),
+    ).rejects.toMatchObject({ code: "23503", constraint: "privacy_requests_contact_fk" });
+    await expect(
+      insertPrivacyRequest(PRIVACY_REQUEST_B, ORGANIZATION_A, null, MEMBERSHIP_B),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "privacy_requests_handler_membership_fk",
+    });
+    await expect(
+      database().query(
+        "update privacy_requests set request_details_ciphertext = $1 where id = $2",
+        [Buffer.from("rewritten-sensitive-evidence"), PRIVACY_REQUEST_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "privacy_requests_provenance_immutability_check",
+    });
+    await expect(
+      database().query("update privacy_requests set contact_id = $1 where id = $2", [
+        CONTACT_B,
+        PRIVACY_REQUEST_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "privacy_requests_provenance_immutability_check",
+    });
+    await expect(
+      database().query("update privacy_requests set due_at = requested_at - interval '1 day'"),
+    ).rejects.toMatchObject({ code: "23514", constraint: "privacy_requests_timestamps_check" });
+    await expect(
+      database().query("delete from contacts where id = $1", [CONTACT_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "privacy_requests_contact_fk" });
+  });
+
+  it("enforces legal-hold shape, unique active scope, terminal release, and durable provenance", async () => {
+    await insertOrganization(ORGANIZATION_A, "legal-hold-a");
+    await insertUser(USER_A);
+    await insertUser(USER_B);
+    await insertLegalHold(
+      LEGAL_HOLD_A,
+      ORGANIZATION_A,
+      USER_A,
+      "data_class",
+      null,
+      "conversation_content",
+    );
+
+    await expect(
+      insertLegalHold(
+        LEGAL_HOLD_B,
+        ORGANIZATION_A,
+        USER_A,
+        "data_class",
+        null,
+        "conversation_content",
+      ),
+    ).rejects.toMatchObject({ code: "23505", constraint: "legal_holds_equivalent_active_unique" });
+    await database().query(
+      `update legal_holds
+          set status = 'released', released_by_user_id = $1,
+              released_at = timestamptz '2026-01-02 00:12:00+00'
+        where id = $2`,
+      [USER_B, LEGAL_HOLD_A],
+    );
+    await expect(
+      insertLegalHold(
+        LEGAL_HOLD_B,
+        ORGANIZATION_A,
+        USER_A,
+        "data_class",
+        null,
+        "conversation_content",
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      database().query(
+        "update legal_holds set status = 'active', released_by_user_id = null, released_at = null where id = $1",
+        [LEGAL_HOLD_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "legal_holds_release_immutability_check",
+    });
+    await expect(
+      database().query(
+        `insert into legal_holds
+          (id, organization_id, scope_type, scope_id, data_class, status,
+           reason_ciphertext, placed_by_user_id, placed_at, approval_reference)
+         values ($1, $2, 'organization', $3, null, 'active', $4, $5, now(), 'legal:test-002')`,
+        [syntheticUuid(0xe04), ORGANIZATION_A, CONTACT_A, Buffer.from("protected"), USER_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "legal_holds_scope_check" });
+    await expect(
+      database().query("delete from users where id = $1", [USER_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "legal_holds_placed_by_user_id_users_id_fk",
+    });
+    await expect(
+      database().query("delete from organizations where id = $1", [ORGANIZATION_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "legal_holds_organization_id_organizations_id_fk",
+    });
+  });
+
+  it("projects canonical, idempotent, privacy-minimized analytics facts with tenant-safe subjects", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "analytics-a", "analytics-a", "analytics-a");
+    await seedWorkflowTenant(WORKFLOW_B, "analytics-b", "analytics-b", "analytics-b");
+    const isolatedAnalyticsOrganizationId = syntheticUuid(0x1300);
+    await insertOrganization(isolatedAnalyticsOrganizationId, "analytics-isolated");
+    await insertAnalyticsEvent(syntheticUuid(0x1301), isolatedAnalyticsOrganizationId, {
+      sourceEventId: syntheticUuid(0x1302),
+    });
+    let eventVariantCount = 0;
+
+    for (const eventName of DOMAIN_EVENT_NAMES) {
+      for (const schemaVersion of Object.keys(DomainEventSchemasByVersion[eventName])) {
+        await insertAnalyticsEvent(syntheticUuid(0x1000 + eventVariantCount), ORGANIZATION_A, {
+          eventType: eventName,
+          schemaVersion,
+          sourceEventId: syntheticUuid(0x1100 + eventVariantCount),
+        });
+        eventVariantCount += 1;
+      }
+    }
+    expect(eventVariantCount).toBe(64);
+
+    await insertAnalyticsEvent(ANALYTICS_EVENT_A, ORGANIZATION_A, {
+      campaignKey: "consented_campaign",
+      conversationId: CONVERSATION_A,
+      dimensions: { channel_group: "owned", funnel_step: "conversation_started" },
+      leadId: LEAD_A,
+      sourceEventId: syntheticUuid(0x1200),
+    });
+    await expect(
+      insertAnalyticsEvent(ANALYTICS_EVENT_B, ORGANIZATION_A, {
+        leadId: LEAD_B,
+        sourceEventId: syntheticUuid(0x1201),
+      }),
+    ).rejects.toMatchObject({ code: "23503", constraint: "analytics_events_lead_fk" });
+    await expect(
+      insertAnalyticsEvent(ANALYTICS_EVENT_B, ORGANIZATION_A, {
+        eventType: "conversation.started",
+        sourceEventId: syntheticUuid(0x1200),
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "analytics_events_source_projection_unique",
+    });
+    await database().query(
+      `update analytics_events
+          set lead_id = null, conversation_id = null, campaign_key = null,
+              dimensions_jsonb = '{"funnel_step":"conversation_started"}'::jsonb
+        where id = $1`,
+      [ANALYTICS_EVENT_A],
+    );
+    await expect(
+      database().query("update analytics_events set lead_id = $1 where id = $2", [
+        LEAD_A,
+        ANALYTICS_EVENT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "analytics_events_semantic_immutability_check",
+    });
+    await expect(
+      insertAnalyticsEvent(ANALYTICS_EVENT_B, ORGANIZATION_A, {
+        dimensions: ["raw", "telemetry"],
+        sourceEventId: syntheticUuid(0x1202),
+      }),
+    ).rejects.toMatchObject({ code: "23514", constraint: "analytics_events_dimensions_check" });
+
+    const prohibitedAnalyticsColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'analytics_events'
+          and column_name in ('email', 'phone', 'customer_name', 'message_body',
+                              'conversation_transcript', 'ip_address', 'user_agent',
+                              'browser_fingerprint', 'advertising_id', 'raw_payload',
+                              'revenue_amount', 'attendance_outcome')`,
+    );
+    expect(prohibitedAnalyticsColumns.rows).toEqual([]);
+    await expect(
+      database().query("delete from organizations where id = $1", [
+        isolatedAnalyticsOrganizationId,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "analytics_events_organization_id_organizations_id_fk",
+    });
   });
 });

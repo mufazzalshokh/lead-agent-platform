@@ -22,6 +22,13 @@ export {
   notifications,
   notificationAttempts,
 } from "./handoff-notification-records.js";
+export {
+  analyticsEvents,
+  auditEvents,
+  legalHolds,
+  platformAuditEvents,
+  privacyRequests,
+} from "./governance-records.js";
 export { inboundRoutes } from "./inbound-routes.js";
 export {
   locationBusinessHours,
