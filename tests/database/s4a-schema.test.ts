@@ -8,7 +8,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   AgentDecisionActionSchema,
   AgentDecisionV1Schema,
+  DOMAIN_EVENT_NAMES,
+  DomainEventSchemasByVersion,
   type AgentActionType,
+  type DomainAggregateType,
+  type DomainEventName,
   type DomainEventPayloadByName,
 } from "../../packages/contracts/src/index.js";
 import {
@@ -29,6 +33,7 @@ import {
   faqs,
   handoffs,
   handoffTransitions,
+  idempotencyKeys,
   inboundRoutes,
   locationBusinessHours,
   locationClosures,
@@ -43,6 +48,7 @@ import {
   notificationAttempts,
   notifications,
   organizations,
+  outboxEvents,
   retentionPolicies,
   retentionPolicyRules,
   runMigrations,
@@ -51,6 +57,7 @@ import {
   services,
   serviceVersions,
   users,
+  webhookReceipts,
   widgetAllowedOrigins,
   widgetSessions,
 } from "../../packages/database/src/index.js";
@@ -137,6 +144,27 @@ const AI_RUN_A = "0193f1a8-7f65-7c28-a434-a10796c41c70";
 const AI_RUN_B = "0193f1a8-7f65-7c28-a434-a10796c41c71";
 const AI_ACTION_EVALUATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c72";
 const AI_ACTION_EVALUATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c73";
+const WEBHOOK_RECEIPT_A = "0193f1a8-7f65-7c28-a434-a10796c41c74";
+const WEBHOOK_RECEIPT_B = "0193f1a8-7f65-7c28-a434-a10796c41c75";
+const IDEMPOTENCY_KEY_A = "0193f1a8-7f65-7c28-a434-a10796c41c76";
+const IDEMPOTENCY_KEY_B = "0193f1a8-7f65-7c28-a434-a10796c41c77";
+const CAUSATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c78";
+const DOMAIN_AGGREGATE_TYPES = [
+  "ai_run",
+  "appointment_request",
+  "business_policy",
+  "channel_connection",
+  "contact",
+  "conversation",
+  "faq",
+  "handoff",
+  "lead",
+  "location",
+  "membership",
+  "notification",
+  "organization",
+  "service",
+] as const satisfies readonly DomainAggregateType[];
 const UNKNOWN_ORGANIZATION = "0193f1a8-7f65-7c28-a434-a10796c41cff";
 const UUID_V4 = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -305,6 +333,12 @@ const S4B6_TABLES = [
   "widget_sessions",
 ];
 const S4C1_TABLES = [...S4B6_TABLES, "ai_action_evaluations", "ai_runs"].sort();
+const S4C2_TABLES = [
+  ...S4C1_TABLES,
+  "idempotency_keys",
+  "outbox_events",
+  "webhook_receipts",
+].sort();
 const SCHEMA_TABLES = {
   ai_action_evaluations: aiActionEvaluations,
   ai_runs: aiRuns,
@@ -323,6 +357,7 @@ const SCHEMA_TABLES = {
   faqs,
   handoff_transitions: handoffTransitions,
   handoffs,
+  idempotency_keys: idempotencyKeys,
   inbound_routes: inboundRoutes,
   lead_qualification_evaluations: leadQualificationEvaluations,
   lead_qualification_evidence: leadQualificationEvidence,
@@ -336,6 +371,7 @@ const SCHEMA_TABLES = {
   notification_attempts: notificationAttempts,
   notifications,
   organizations,
+  outbox_events: outboxEvents,
   retention_policies: retentionPolicies,
   retention_policy_rules: retentionPolicyRules,
   service_locations: serviceLocations,
@@ -343,6 +379,7 @@ const SCHEMA_TABLES = {
   service_versions: serviceVersions,
   services,
   users,
+  webhook_receipts: webhookReceipts,
   widget_allowed_origins: widgetAllowedOrigins,
   widget_sessions: widgetSessions,
 } as const;
@@ -352,6 +389,14 @@ const isDrizzleColumn = (value: unknown): value is { name: string; table: unknow
   value !== null &&
   typeof Reflect.get(value, "name") === "string" &&
   Reflect.get(value, "table") !== undefined;
+
+const readObjectProperty = (value: unknown, property: PropertyKey): unknown =>
+  typeof value === "object" && value !== null
+    ? (Reflect.get(value, property) as unknown)
+    : undefined;
+
+const isDomainAggregateType = (value: unknown): value is DomainAggregateType =>
+  DOMAIN_AGGREGATE_TYPES.some((aggregateType) => aggregateType === value);
 
 let container: StartedPostgreSqlContainer | undefined;
 let pool: Pool | undefined;
@@ -363,6 +408,7 @@ let upgradeTablesAfterS4b4: string[] = [];
 let upgradeTablesAfterS4b5: string[] = [];
 let upgradeTablesAfterS4b6: string[] = [];
 let upgradeTablesAfterS4c1: string[] = [];
+let upgradeTablesAfterS4c2: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -466,9 +512,13 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0007_bright_star_brand.sql");
   upgradeTablesAfterS4c1 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0008_wandering_omega_flight.sql");
+  upgradeTablesAfterS4c2 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table ai_action_evaluations, ai_runs,
-      notification_attempts, handoff_transitions, notifications, handoffs,
+    `drop table webhook_receipts, idempotency_keys,
+      notification_attempts, handoff_transitions, notifications, outbox_events,
+      ai_action_evaluations, ai_runs, handoffs,
       appointment_confirmation_evidence, appointment_request_attendance,
       appointment_request_preferences, appointment_request_transitions,
       appointment_revenue_attributions, appointment_requests,
@@ -482,7 +532,7 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
       memberships, locations, users, organizations`,
   );
   if ((await productionTables(testPool)).length !== 0) {
-    throw new Error("S4c.1 upgrade verification failed to restore the disposable database");
+    throw new Error("S4c.2 upgrade verification failed to restore the disposable database");
   }
 };
 
@@ -1169,6 +1219,202 @@ const insertHandoffTransition = async (transition: HandoffTransitionInsert): Pro
   );
 };
 
+type OutboxEventInsertOverrides = Readonly<{
+  aggregateId?: string;
+  aggregateType?: DomainAggregateType;
+  aggregateVersion?: number;
+  causationId?: string | null;
+  correlationId?: string;
+  eventType?: DomainEventName | "unknown.event";
+  payload?: Record<string, unknown> | readonly unknown[];
+  schemaVersion?: string;
+  status?: "dead_lettered" | "pending" | "processing" | "published";
+}>;
+
+const insertOutboxEvent = async (
+  id: string,
+  organizationId: string,
+  overrides: OutboxEventInsertOverrides = {},
+): Promise<void> => {
+  const status = overrides.status ?? "pending";
+  await database().query(
+    `insert into outbox_events
+      (id, organization_id, event_type, schema_version, aggregate_type,
+       aggregate_id, aggregate_version, payload_jsonb, correlation_id,
+       causation_id, occurred_at, status, attempt_count, available_at,
+       locked_by, locked_until, published_at, last_error_category)
+     values ($1, $2, $3, $4, $5, $6, $7::bigint, $8::jsonb, $9, $10,
+       timestamptz '2026-01-01 00:10:00+00', $11,
+       case when $11::varchar = 'pending' then 0 else 1 end,
+       timestamptz '2026-01-01 00:10:00+00',
+       case when $11::varchar = 'processing' then 'worker:test-1' else null end,
+       case when $11::varchar = 'processing'
+         then timestamptz '2026-01-01 00:20:00+00' else null end,
+       case when $11::varchar = 'published'
+         then timestamptz '2026-01-01 00:11:00+00' else null end,
+       case when $11::varchar = 'dead_lettered' then 'synthetic_failure' else null end)`,
+    [
+      id,
+      organizationId,
+      overrides.eventType ?? "notification.created",
+      overrides.schemaVersion ?? "1",
+      overrides.aggregateType ?? "notification",
+      overrides.aggregateId ?? id,
+      overrides.aggregateVersion ?? 1,
+      JSON.stringify(overrides.payload ?? { source: "synthetic_fixture" }),
+      overrides.correlationId ?? CORRELATION_A,
+      overrides.causationId ?? null,
+      status,
+    ],
+  );
+};
+
+const ensureOutboxEvent = async (
+  id: string,
+  organizationId: string,
+  aggregateId: string,
+): Promise<void> => {
+  const existing = await database().query("select 1 from outbox_events where id = $1", [id]);
+  if (existing.rowCount === 0) {
+    await insertOutboxEvent(id, organizationId, { aggregateId });
+  }
+};
+
+type WebhookReceiptInsertOverrides = Readonly<{
+  attemptCount?: number;
+  channelConnectionId?: string;
+  correlationId?: string;
+  externalEventId?: string;
+  externalMessageId?: string | null;
+  firstReceivedAt?: string;
+  lastErrorCategory?: string | null;
+  lastReceivedAt?: string;
+  nextAttemptAt?: string | null;
+  organizationId?: string;
+  payloadCiphertext?: Buffer | null;
+  payloadHash?: Buffer;
+  processedMessageId?: string | null;
+  provider?: string;
+  providerSequence?: number | null;
+  status?: "permanent_failure" | "processed" | "processing" | "received" | "retryable_failure";
+}>;
+
+const insertWebhookReceipt = async (
+  id: string,
+  fixture: WorkflowTenantSeed,
+  overrides: WebhookReceiptInsertOverrides = {},
+): Promise<void> => {
+  const status = overrides.status ?? "processed";
+  await database().query(
+    `insert into webhook_receipts
+      (id, organization_id, channel_connection_id, provider,
+       external_event_id, external_message_id, payload_hash,
+       payload_ciphertext, signature_verified_at, provider_sent_at,
+       provider_sequence, status, attempt_count, next_attempt_at,
+       processed_message_id, first_received_at, last_received_at,
+       correlation_id, last_error_category)
+     values ($1, $2, $3, $4, $5, $6, $7, $8,
+       timestamptz '2026-01-01 00:00:01+00',
+       timestamptz '2026-01-01 00:00:00+00', $9, $10, $11, $12, $13,
+       $14::timestamptz, $15::timestamptz, $16, $17)`,
+    [
+      id,
+      overrides.organizationId ?? fixture.organizationId,
+      overrides.channelConnectionId ?? fixture.channelConnectionId,
+      overrides.provider ?? "synthetic_provider",
+      overrides.externalEventId ?? `provider-event-${id}`,
+      overrides.externalMessageId === undefined
+        ? `provider-message-${id}`
+        : overrides.externalMessageId,
+      overrides.payloadHash ?? Buffer.from(`synthetic-webhook-payload-hash-${id}`),
+      overrides.payloadCiphertext ?? null,
+      overrides.providerSequence ?? 1,
+      status,
+      overrides.attemptCount ?? (status === "received" ? 0 : 1),
+      overrides.nextAttemptAt ?? (status === "retryable_failure" ? "2026-01-01T00:05:00Z" : null),
+      overrides.processedMessageId === undefined
+        ? status === "processed"
+          ? fixture.messageId
+          : null
+        : overrides.processedMessageId,
+      overrides.firstReceivedAt ?? "2026-01-01T00:00:01Z",
+      overrides.lastReceivedAt ?? "2026-01-01T00:00:01Z",
+      overrides.correlationId ?? CORRELATION_A,
+      overrides.lastErrorCategory ??
+        (status === "retryable_failure" || status === "permanent_failure"
+          ? "synthetic_failure"
+          : null),
+    ],
+  );
+};
+
+type IdempotencyKeyInsertOverrides = Readonly<{
+  completedAt?: string | null;
+  expiresAt?: string;
+  keyHash?: Buffer;
+  lockedUntil?: string | null;
+  principalIdHash?: Buffer;
+  principalType?: "channel_participant" | "system" | "user" | "widget_session";
+  requestHash?: Buffer;
+  resourceId?: string | null;
+  resourceType?: string | null;
+  responseCiphertext?: Buffer | null;
+  responseStatus?: number | null;
+  scope?: string;
+  status?: "failed" | "in_progress" | "succeeded";
+}>;
+
+const insertIdempotencyKey = async (
+  id: string,
+  organizationId: string,
+  overrides: IdempotencyKeyInsertOverrides = {},
+): Promise<void> => {
+  const status = overrides.status ?? "succeeded";
+  await database().query(
+    `insert into idempotency_keys
+      (id, organization_id, scope, key_hash, principal_type,
+       principal_id_hash, request_hash, status, response_status,
+       response_ciphertext, resource_type, resource_id, locked_until,
+       expires_at, created_at, completed_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+       $13::timestamptz, $14::timestamptz,
+       timestamptz '2026-01-01 00:00:00+00', $15::timestamptz)`,
+    [
+      id,
+      organizationId,
+      overrides.scope ?? "conversation.reply",
+      overrides.keyHash ?? Buffer.from("synthetic-idempotency-key-hash"),
+      overrides.principalType ?? "user",
+      overrides.principalIdHash ?? Buffer.from("synthetic-principal-id-hash"),
+      overrides.requestHash ?? Buffer.from("synthetic-request-fingerprint"),
+      status,
+      overrides.responseStatus === undefined
+        ? status === "in_progress"
+          ? null
+          : 202
+        : overrides.responseStatus,
+      overrides.responseCiphertext === undefined
+        ? status === "in_progress"
+          ? null
+          : Buffer.from("synthetic-encrypted-response")
+        : overrides.responseCiphertext,
+      overrides.resourceType ?? null,
+      overrides.resourceId ?? null,
+      overrides.lockedUntil === undefined
+        ? status === "in_progress"
+          ? "2026-01-01T00:05:00Z"
+          : null
+        : overrides.lockedUntil,
+      overrides.expiresAt ?? "2026-01-02T00:00:00Z",
+      overrides.completedAt === undefined
+        ? status === "in_progress"
+          ? null
+          : "2026-01-01T00:01:00Z"
+        : overrides.completedAt,
+    ],
+  );
+};
+
 type NotificationInsertOverrides = Readonly<{
   audienceType?: "contact" | "membership" | "queue";
   claimedByMembershipId?: string | null;
@@ -1190,6 +1436,8 @@ const insertNotification = async (
 ): Promise<void> => {
   const audienceType = overrides.audienceType ?? "membership";
   const status = overrides.status ?? "pending";
+  const originatingOutboxEventId = overrides.originatingOutboxEventId ?? OUTBOX_EVENT_A;
+  await ensureOutboxEvent(originatingOutboxEventId, organizationId, id);
   await database().query(
     `insert into notifications
       (id, organization_id, notification_type, audience_type,
@@ -1214,7 +1462,7 @@ const insertNotification = async (
       overrides.queueKey ?? (audienceType === "queue" ? "front_desk" : null),
       overrides.relatedResourceType ?? "handoff",
       overrides.relatedResourceId ?? HANDOFF_A,
-      overrides.originatingOutboxEventId ?? OUTBOX_EVENT_A,
+      originatingOutboxEventId,
       Buffer.from("synthetic-notification-ciphertext"),
       status,
       overrides.dedupeKey ?? `notification-${id}`,
@@ -1367,7 +1615,7 @@ beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
     container = await new PostgreSqlContainer("postgres:17")
-      .withDatabase("lead_agent_s4c1_test")
+      .withDatabase("lead_agent_s4c2_test")
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
@@ -1385,8 +1633,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table ai_action_evaluations, ai_runs,
-      notification_attempts, handoff_transitions, notifications, handoffs,
+    `truncate table webhook_receipts, idempotency_keys,
+      notification_attempts, handoff_transitions, notifications, outbox_events,
+      ai_action_evaluations, ai_runs, handoffs,
       appointment_confirmation_evidence, appointment_request_attendance,
       appointment_request_preferences, appointment_request_transitions,
       appointment_revenue_attributions, appointment_requests,
@@ -1406,7 +1655,7 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+describe("S4c.2 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
   it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
     const conversationStatuses = [
       "open",
@@ -1493,6 +1742,9 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(notificationResourceTypes).toHaveLength(6);
     expect(notificationStatuses).toHaveLength(6);
     expect(agentActions).toHaveLength(6);
+    expect(DOMAIN_EVENT_NAMES).toHaveLength(63);
+    expect(Object.keys(DomainEventSchemasByVersion)).toEqual([...DOMAIN_EVENT_NAMES]);
+    expect(Object.keys(DomainEventSchemasByVersion["lead.reopened"])).toEqual(["1", "2"]);
     expect(Reflect.get(AgentDecisionV1Schema, "$id")).toBe("AgentDecision.v1");
     expect(Reflect.get(AgentDecisionActionSchema, "$id")).toBe("AgentDecisionAction.v1");
     expect(isConversationStatus("handed_off")).toBe(false);
@@ -1503,7 +1755,7 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4a through S4b.6 to S4c.1, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4a through S4c.1 to S4c.2, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -1512,6 +1764,7 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(upgradeTablesAfterS4b5).toEqual(S4B5_TABLES);
     expect(upgradeTablesAfterS4b6).toEqual(S4B6_TABLES);
     expect(upgradeTablesAfterS4c1).toEqual(S4C1_TABLES);
+    expect(upgradeTablesAfterS4c2).toEqual(S4C2_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -1519,12 +1772,12 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4C1_TABLES);
+    expect(await productionTables(database())).toEqual(S4C2_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(8);
+    expect(migrationCount.rows[0]?.count).toBe(9);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -1596,6 +1849,65 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       "result_ciphertext",
       "started_at",
       "finished_at",
+    ]);
+    expect(namesByTable["webhook_receipts"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "channel_connection_id",
+      "provider",
+      "external_event_id",
+      "external_message_id",
+      "payload_hash",
+      "payload_ciphertext",
+      "signature_verified_at",
+      "provider_sent_at",
+      "provider_sequence",
+      "status",
+      "attempt_count",
+      "next_attempt_at",
+      "processed_message_id",
+      "first_received_at",
+      "last_received_at",
+      "correlation_id",
+      "last_error_category",
+    ]);
+    expect(namesByTable["idempotency_keys"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "scope",
+      "key_hash",
+      "principal_type",
+      "principal_id_hash",
+      "request_hash",
+      "status",
+      "response_status",
+      "response_ciphertext",
+      "resource_type",
+      "resource_id",
+      "locked_until",
+      "expires_at",
+      "created_at",
+      "completed_at",
+    ]);
+    expect(namesByTable["outbox_events"]?.map(({ column_name }) => column_name)).toEqual([
+      "id",
+      "organization_id",
+      "event_type",
+      "schema_version",
+      "aggregate_type",
+      "aggregate_id",
+      "aggregate_version",
+      "payload_jsonb",
+      "correlation_id",
+      "causation_id",
+      "occurred_at",
+      "status",
+      "attempt_count",
+      "available_at",
+      "locked_by",
+      "locked_until",
+      "published_at",
+      "last_error_category",
     ]);
 
     expect(namesByTable["organizations"]?.map(({ column_name }) => column_name)).toEqual([
@@ -2229,7 +2541,7 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
         ?.filter(({ column_name }) => ["value_ciphertext", "lookup_hash"].includes(column_name))
         .every(({ data_type }) => data_type === "bytea"),
     ).toBe(true);
-    expect(utcTimestamps).toHaveLength(44);
+    expect(utcTimestamps).toHaveLength(45);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
@@ -2290,7 +2602,7 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4C1_TABLES);
+    expect(declaredNames).toEqual(S4C2_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -2311,6 +2623,18 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     const constraintNames = constraints.rows.map(({ conname }) => conname);
     expect(constraintNames).toEqual(
       expect.arrayContaining([
+        "webhook_receipts_organization_id_id_unique",
+        "webhook_receipts_connection_external_event_unique",
+        "webhook_receipts_organization_id_organizations_id_fk",
+        "webhook_receipts_channel_connection_fk",
+        "webhook_receipts_processed_message_fk",
+        "idempotency_keys_organization_id_id_unique",
+        "idempotency_keys_tenant_principal_scope_key_unique",
+        "idempotency_keys_organization_id_organizations_id_fk",
+        "outbox_events_organization_id_id_unique",
+        "outbox_events_aggregate_version_event_unique",
+        "outbox_events_organization_id_organizations_id_fk",
+        "notifications_originating_outbox_event_fk",
         "ai_action_evaluations_organization_id_id_unique",
         "ai_action_evaluations_organization_ai_run_unique",
         "ai_action_evaluations_organization_id_organizations_id_fk",
@@ -2458,6 +2782,34 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     const indexDefinitions = new Map(
       indexes.rows.map(({ indexdef, indexname }) => [indexname, indexdef]),
     );
+    expect(indexDefinitions.get("webhook_receipts_connection_external_message_unique")).toContain(
+      "UNIQUE",
+    );
+    expect(indexDefinitions.get("webhook_receipts_connection_external_message_unique")).toContain(
+      "WHERE (external_message_id IS NOT NULL)",
+    );
+    expect(indexDefinitions.get("webhook_receipts_organization_status_next_attempt_idx")).toContain(
+      "(organization_id, status, next_attempt_at)",
+    );
+    expect(
+      indexDefinitions.get("webhook_receipts_organization_connection_provider_sent_idx"),
+    ).toContain("(organization_id, channel_connection_id, provider_sent_at)");
+    expect(indexDefinitions.get("idempotency_keys_organization_expires_idx")).toContain(
+      "(organization_id, expires_at)",
+    );
+    expect(indexDefinitions.get("idempotency_keys_organization_status_locked_idx")).toContain(
+      "(organization_id, status, locked_until)",
+    );
+    expect(indexDefinitions.get("outbox_events_pending_available_idx")).toContain(
+      "(status, available_at, id)",
+    );
+    expect(indexDefinitions.get("outbox_events_pending_available_idx")).toContain(
+      "WHERE ((status)::text = 'pending'::text)",
+    );
+    expect(indexDefinitions.get("outbox_events_organization_occurred_idx")).toContain(
+      "(organization_id, occurred_at DESC NULLS LAST)",
+    );
+    expect(indexDefinitions.get("outbox_events_locked_until_idx")).toContain("(locked_until)");
     expect(indexDefinitions.get("ai_runs_organization_conversation_started_idx")).toContain(
       "(organization_id, conversation_id, started_at DESC NULLS LAST)",
     );
@@ -2637,6 +2989,17 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     );
     expect(targetOwnershipTrigger.rows).toEqual([
       { trigger_name: "ai_action_evaluations_target_tenant_trigger" },
+    ]);
+
+    const outboxImmutabilityTrigger = await database().query<{ trigger_name: string }>(
+      `select distinct trigger_name
+         from information_schema.triggers
+        where event_object_schema = 'public'
+          and event_object_table = 'outbox_events'
+          and trigger_name = 'outbox_events_semantic_immutability_trigger'`,
+    );
+    expect(outboxImmutabilityTrigger.rows).toEqual([
+      { trigger_name: "outbox_events_semantic_immutability_trigger" },
     ]);
 
     const localeValidator = await database().query<{ provolatile: string }>(
@@ -4001,7 +4364,7 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and relkind = 'r'
         order by relname`,
     );
-    expect(rls.rows).toEqual(S4C1_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
+    expect(rls.rows).toEqual(S4C2_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
 
     const activatedRouteForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -4012,6 +4375,16 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
           and constraint_type = 'FOREIGN KEY'`,
     );
     expect(activatedRouteForeignKey.rows[0]?.count).toBe(1);
+
+    const notificationOutboxForeignKey = await database().query<{ count: number }>(
+      `select count(*)::integer as count
+         from information_schema.table_constraints
+        where table_schema = 'public'
+          and table_name = 'notifications'
+          and constraint_name = 'notifications_originating_outbox_event_fk'
+          and constraint_type = 'FOREIGN KEY'`,
+    );
+    expect(notificationOutboxForeignKey.rows[0]?.count).toBe(1);
 
     const widgetContactAndConversationForeignKeys = await database().query<{
       column_name: string;
@@ -6269,5 +6642,569 @@ describe("S4c.1 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
       code: "23503",
       constraint: "ai_action_evaluations_target_tenant_fk",
     });
+  });
+
+  it("deduplicates verified webhook receipts by tenant connection and provider identity", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "webhook-a", "webhook-a", "webhook-a");
+    await seedWorkflowTenant(WORKFLOW_B, "webhook-b", "webhook-b", "webhook-b");
+    const sharedEventId = "synthetic-provider-event-shared";
+    const sharedMessageId = "synthetic-provider-message-shared";
+
+    await insertWebhookReceipt(WEBHOOK_RECEIPT_A, WORKFLOW_A, {
+      externalEventId: sharedEventId,
+      externalMessageId: sharedMessageId,
+      payloadCiphertext: Buffer.from("synthetic-encrypted-webhook-payload"),
+    });
+    const receipt = await database().query<{
+      payload_type: string;
+      processed_message_id: string;
+      provider: string;
+      status: string;
+    }>(
+      `select provider, status, processed_message_id,
+              pg_typeof(payload_ciphertext)::text as payload_type
+         from webhook_receipts
+        where id = $1`,
+      [WEBHOOK_RECEIPT_A],
+    );
+    expect(receipt.rows[0]).toEqual({
+      payload_type: "bytea",
+      processed_message_id: MESSAGE_A,
+      provider: "synthetic_provider",
+      status: "processed",
+    });
+
+    await expect(
+      insertWebhookReceipt(syntheticUuid(0xa00), WORKFLOW_A, {
+        externalEventId: sharedEventId,
+        externalMessageId: "different-provider-message",
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "webhook_receipts_connection_external_event_unique",
+    });
+    await expect(
+      insertWebhookReceipt(syntheticUuid(0xa01), WORKFLOW_A, {
+        externalEventId: "different-provider-event",
+        externalMessageId: sharedMessageId,
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "webhook_receipts_connection_external_message_unique",
+    });
+    await expect(
+      insertWebhookReceipt(WEBHOOK_RECEIPT_B, WORKFLOW_B, {
+        externalEventId: sharedEventId,
+        externalMessageId: sharedMessageId,
+      }),
+    ).resolves.toBeUndefined();
+
+    const secondConnectionA = syntheticUuid(0xa02);
+    await insertChannelConnection(secondConnectionA, ORGANIZATION_A, "telegram", "Webhook A 2");
+    await expect(
+      insertWebhookReceipt(syntheticUuid(0xa03), WORKFLOW_A, {
+        channelConnectionId: secondConnectionA,
+        externalEventId: sharedEventId,
+        externalMessageId: sharedMessageId,
+        processedMessageId: null,
+      }),
+    ).resolves.toBeUndefined();
+
+    const forbiddenColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'webhook_receipts'
+          and column_name in ('payload', 'payload_jsonb', 'signature', 'headers_jsonb',
+                              'authorization_header', 'webhook_secret', 'provider_credentials')`,
+    );
+    expect(forbiddenColumns.rows).toEqual([]);
+    await expect(
+      database().query("delete from messages where id = $1", [MESSAGE_A]),
+    ).rejects.toMatchObject({ code: "23503", constraint: "webhook_receipts_processed_message_fk" });
+  });
+
+  it("rejects malformed webhook evidence and cross-tenant receipt relationships", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "webhook-guard-a", "webhook-guard-a", "webhook-guard-a");
+    await seedWorkflowTenant(WORKFLOW_B, "webhook-guard-b", "webhook-guard-b", "webhook-guard-b");
+    await insertWebhookReceipt(WEBHOOK_RECEIPT_A, WORKFLOW_A, { status: "received" });
+
+    await expect(
+      database().query("update webhook_receipts set id = $1 where id = $2", [
+        UUID_V4,
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "webhook_receipts_id_uuid_v7_check" });
+    await expect(
+      database().query(
+        "update webhook_receipts set provider = 'Synthetic Provider' where id = $1",
+        [WEBHOOK_RECEIPT_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "webhook_receipts_provider_check" });
+    await expect(
+      database().query("update webhook_receipts set payload_hash = $1 where id = $2", [
+        Buffer.from("short"),
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "webhook_receipts_payload_hash_check" });
+    await expect(
+      database().query("update webhook_receipts set payload_ciphertext = $1 where id = $2", [
+        Buffer.alloc(0),
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "webhook_receipts_payload_ciphertext_check",
+    });
+    await expect(
+      database().query("update webhook_receipts set provider_sequence = -1 where id = $1", [
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "webhook_receipts_provider_sequence_check",
+    });
+    await expect(
+      database().query("update webhook_receipts set status = 'rejected' where id = $1", [
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      database().query("update webhook_receipts set attempt_count = -1 where id = $1", [
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "webhook_receipts_attempt_count_check",
+    });
+    await expect(
+      database().query(
+        "update webhook_receipts set last_received_at = first_received_at - interval '1 second' where id = $1",
+        [WEBHOOK_RECEIPT_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "webhook_receipts_timestamps_check" });
+    await expect(
+      database().query("update webhook_receipts set status = 'retryable_failure' where id = $1", [
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "webhook_receipts_processing_shape_check",
+    });
+    await expect(
+      database().query("update webhook_receipts set processed_message_id = $1 where id = $2", [
+        MESSAGE_A,
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "webhook_receipts_processed_message_shape_check",
+    });
+    await expect(
+      database().query("update webhook_receipts set correlation_id = $1 where id = $2", [
+        UUID_V4,
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "webhook_receipts_correlation_uuid_v7_check",
+    });
+    await expect(
+      database().query("update webhook_receipts set channel_connection_id = $1 where id = $2", [
+        CHANNEL_CONNECTION_B,
+        WEBHOOK_RECEIPT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "webhook_receipts_channel_connection_fk",
+    });
+    await expect(
+      database().query(
+        "update webhook_receipts set status = 'processed', processed_message_id = $1 where id = $2",
+        [MESSAGE_B, WEBHOOK_RECEIPT_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "webhook_receipts_processed_message_fk",
+    });
+  });
+
+  it("preserves exact tenant-principal idempotency scope and protected replay evidence", async () => {
+    await insertOrganization(ORGANIZATION_A, "idempotency-a");
+    await insertOrganization(ORGANIZATION_B, "idempotency-b");
+    const keyHash = Buffer.from("synthetic-shared-idempotency-key-hash");
+    const principalHash = Buffer.from("synthetic-shared-principal-hash");
+
+    await insertIdempotencyKey(IDEMPOTENCY_KEY_A, ORGANIZATION_A, {
+      keyHash,
+      principalIdHash: principalHash,
+      resourceId: CONVERSATION_A,
+      resourceType: "conversation",
+    });
+    const record = await database().query<{
+      key_type: string;
+      request_type: string;
+      response_type: string;
+      status: string;
+    }>(
+      `select status, pg_typeof(key_hash)::text as key_type,
+              pg_typeof(request_hash)::text as request_type,
+              pg_typeof(response_ciphertext)::text as response_type
+         from idempotency_keys where id = $1`,
+      [IDEMPOTENCY_KEY_A],
+    );
+    expect(record.rows[0]).toEqual({
+      key_type: "bytea",
+      request_type: "bytea",
+      response_type: "bytea",
+      status: "succeeded",
+    });
+
+    await expect(
+      insertIdempotencyKey(syntheticUuid(0xa10), ORGANIZATION_A, {
+        keyHash,
+        principalIdHash: principalHash,
+        requestHash: Buffer.from("different-synthetic-request-fingerprint"),
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "idempotency_keys_tenant_principal_scope_key_unique",
+    });
+    await expect(
+      insertIdempotencyKey(IDEMPOTENCY_KEY_B, ORGANIZATION_B, {
+        keyHash,
+        principalIdHash: principalHash,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertIdempotencyKey(syntheticUuid(0xa11), ORGANIZATION_A, {
+        keyHash,
+        principalIdHash: principalHash,
+        scope: "appointment_request.accept",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      insertIdempotencyKey(syntheticUuid(0xa12), ORGANIZATION_A, {
+        keyHash,
+        principalIdHash: Buffer.from("different-synthetic-principal-hash"),
+      }),
+    ).resolves.toBeUndefined();
+
+    const forbiddenColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'idempotency_keys'
+          and column_name in ('key', 'idempotency_key', 'request_body', 'request_jsonb',
+                              'response_body', 'response_jsonb', 'headers_jsonb', 'cookies')`,
+    );
+    expect(forbiddenColumns.rows).toEqual([]);
+    await expect(
+      database().query("delete from organizations where id = $1", [ORGANIZATION_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "idempotency_keys_organization_id_organizations_id_fk",
+    });
+  });
+
+  it("enforces idempotency lifecycle, hash, response, resource, and replay-window bounds", async () => {
+    await insertOrganization(ORGANIZATION_A, "idempotency-guards");
+    await insertIdempotencyKey(IDEMPOTENCY_KEY_A, ORGANIZATION_A, { status: "in_progress" });
+
+    await expect(
+      database().query("update idempotency_keys set id = $1 where id = $2", [
+        UUID_V4,
+        IDEMPOTENCY_KEY_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "idempotency_keys_id_uuid_v7_check" });
+    await expect(
+      database().query("update idempotency_keys set scope = 'Conversation Reply' where id = $1", [
+        IDEMPOTENCY_KEY_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "idempotency_keys_scope_check" });
+    await expect(
+      database().query("update idempotency_keys set key_hash = $1 where id = $2", [
+        Buffer.from("short"),
+        IDEMPOTENCY_KEY_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "idempotency_keys_hashes_check" });
+    await expect(
+      database().query("update idempotency_keys set principal_type = 'admin' where id = $1", [
+        IDEMPOTENCY_KEY_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "idempotency_keys_principal_type_check",
+    });
+    await expect(
+      database().query("update idempotency_keys set status = 'pending' where id = $1", [
+        IDEMPOTENCY_KEY_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      database().query(
+        "update idempotency_keys set expires_at = created_at + interval '23 hours' where id = $1",
+        [IDEMPOTENCY_KEY_A],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "idempotency_keys_timestamps_check" });
+    await expect(
+      database().query(
+        "update idempotency_keys set resource_type = 'conversation', resource_id = null where id = $1",
+        [IDEMPOTENCY_KEY_A],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "idempotency_keys_resource_shape_check",
+    });
+    await expect(
+      database().query("update idempotency_keys set status = 'succeeded' where id = $1", [
+        IDEMPOTENCY_KEY_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "idempotency_keys_lifecycle_check" });
+
+    await insertIdempotencyKey(IDEMPOTENCY_KEY_B, ORGANIZATION_A, {
+      keyHash: Buffer.from("synthetic-idempotency-key-hash-b"),
+    });
+    await expect(
+      database().query("update idempotency_keys set response_status = 99 where id = $1", [
+        IDEMPOTENCY_KEY_B,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "idempotency_keys_response_status_check",
+    });
+    await expect(
+      database().query("update idempotency_keys set response_ciphertext = $1 where id = $2", [
+        Buffer.alloc(0),
+        IDEMPOTENCY_KEY_B,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "idempotency_keys_response_ciphertext_check",
+    });
+    await expect(
+      database().query(
+        "update idempotency_keys set completed_at = created_at - interval '1 second' where id = $1",
+        [IDEMPOTENCY_KEY_B],
+      ),
+    ).rejects.toMatchObject({ code: "23514", constraint: "idempotency_keys_timestamps_check" });
+  });
+
+  it("aligns outbox event names, versions, aggregate provenance, and immutable semantics", async () => {
+    await insertOrganization(ORGANIZATION_A, "outbox-contracts");
+    let eventVariantCount = 0;
+
+    for (const eventName of DOMAIN_EVENT_NAMES) {
+      const schemas = DomainEventSchemasByVersion[eventName];
+      for (const [schemaVersion, eventSchema] of Object.entries(schemas)) {
+        const properties = readObjectProperty(eventSchema, "properties");
+        const aggregateType = readObjectProperty(
+          readObjectProperty(properties, "aggregate_type"),
+          "const",
+        );
+        if (!isDomainAggregateType(aggregateType)) {
+          throw new Error(`Missing canonical aggregate type for ${eventName}`);
+        }
+        expect(readObjectProperty(eventSchema, "$id")).toMatch(
+          new RegExp(`DomainEvent\\.v${schemaVersion}$`),
+        );
+        await insertOutboxEvent(syntheticUuid(0xb00 + eventVariantCount), ORGANIZATION_A, {
+          aggregateId: syntheticUuid(0xc00 + eventVariantCount),
+          aggregateType,
+          eventType: eventName,
+          schemaVersion,
+        });
+        eventVariantCount += 1;
+      }
+    }
+
+    expect(eventVariantCount).toBe(64);
+    const persistedCount = await database().query<{ count: number }>(
+      "select count(*)::integer as count from outbox_events",
+    );
+    expect(persistedCount.rows[0]?.count).toBe(64);
+
+    await expect(
+      insertOutboxEvent(syntheticUuid(0xd00), ORGANIZATION_A, {
+        aggregateId: syntheticUuid(0xd01),
+        aggregateType: "lead",
+        eventType: "unknown.event",
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_event_aggregate_check",
+    });
+    await expect(
+      insertOutboxEvent(syntheticUuid(0xd02), ORGANIZATION_A, {
+        aggregateId: syntheticUuid(0xd03),
+        aggregateType: "conversation",
+        eventType: "lead.created",
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_event_aggregate_check",
+    });
+    await expect(
+      insertOutboxEvent(syntheticUuid(0xd04), ORGANIZATION_A, {
+        aggregateId: syntheticUuid(0xd05),
+        aggregateType: "lead",
+        eventType: "lead.created",
+        schemaVersion: "2",
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_schema_version_check",
+    });
+    await expect(
+      insertOutboxEvent(syntheticUuid(0xd06), ORGANIZATION_A, {
+        aggregateId: syntheticUuid(0xd07),
+        aggregateType: "lead",
+        eventType: "lead.created",
+        payload: [],
+      }),
+    ).rejects.toMatchObject({ code: "23514", constraint: "outbox_events_payload_check" });
+    await expect(
+      insertOutboxEvent(syntheticUuid(0xd09), ORGANIZATION_A, {
+        aggregateId: syntheticUuid(0xd0a),
+        aggregateType: "lead",
+        aggregateVersion: 0,
+        eventType: "lead.created",
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_aggregate_version_check",
+    });
+    await expect(
+      insertOutboxEvent(syntheticUuid(0xd0b), ORGANIZATION_A, {
+        aggregateId: syntheticUuid(0xd0c),
+        aggregateType: "lead",
+        causationId: UUID_V4,
+        eventType: "lead.created",
+      }),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_causation_uuid_v7_check",
+    });
+
+    const immutableEventId = syntheticUuid(0xb00);
+    await expect(
+      database().query(
+        "update outbox_events set payload_jsonb = '{\"changed\":true}' where id = $1",
+        [immutableEventId],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_semantic_immutability_check",
+    });
+    await expect(
+      insertOutboxEvent(syntheticUuid(0xd08), ORGANIZATION_A, {
+        aggregateId: syntheticUuid(0xc00),
+        aggregateType: "organization",
+        eventType: "organization.created",
+      }),
+    ).rejects.toMatchObject({
+      code: "23505",
+      constraint: "outbox_events_aggregate_version_event_unique",
+    });
+  });
+
+  it("enforces outbox delivery envelopes and Notification same-tenant provenance", async () => {
+    await seedWorkflowTenant(WORKFLOW_A, "outbox-a", "outbox-a", "outbox-a");
+    await seedWorkflowTenant(WORKFLOW_B, "outbox-b", "outbox-b", "outbox-b");
+    await insertOutboxEvent(OUTBOX_EVENT_A, ORGANIZATION_A, {
+      aggregateId: HANDOFF_A,
+      aggregateType: "handoff",
+      causationId: CAUSATION_A,
+      eventType: "handoff.requested",
+    });
+    await insertOutboxEvent(OUTBOX_EVENT_B, ORGANIZATION_B, {
+      aggregateId: HANDOFF_B,
+      aggregateType: "handoff",
+      eventType: "handoff.requested",
+    });
+
+    await database().query(
+      `update outbox_events
+          set status = 'processing', attempt_count = 1,
+              locked_by = 'worker:test-1',
+              locked_until = timestamptz '2026-01-01 00:20:00+00'
+        where id = $1`,
+      [OUTBOX_EVENT_A],
+    );
+    await database().query(
+      `update outbox_events
+          set status = 'published', locked_by = null, locked_until = null,
+              published_at = timestamptz '2026-01-01 00:21:00+00'
+        where id = $1`,
+      [OUTBOX_EVENT_A],
+    );
+    await expect(
+      database().query("update outbox_events set status = 'unknown' where id = $1", [
+        OUTBOX_EVENT_A,
+      ]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      database().query("update outbox_events set attempt_count = -1 where id = $1", [
+        OUTBOX_EVENT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_attempt_count_check",
+    });
+    await expect(
+      database().query("update outbox_events set causation_id = $1 where id = $2", [
+        UUID_V4,
+        OUTBOX_EVENT_A,
+      ]),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "outbox_events_semantic_immutability_check",
+    });
+
+    await insertOutboxEvent(syntheticUuid(0xd10), ORGANIZATION_A);
+    await expect(
+      database().query("update outbox_events set locked_by = 'worker:test-2' where id = $1", [
+        syntheticUuid(0xd10),
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "outbox_events_lifecycle_check" });
+    await insertOutboxEvent(syntheticUuid(0xd11), ORGANIZATION_A, { status: "dead_lettered" });
+    await expect(
+      database().query("update outbox_events set last_error_category = null where id = $1", [
+        syntheticUuid(0xd11),
+      ]),
+    ).rejects.toMatchObject({ code: "23514", constraint: "outbox_events_lifecycle_check" });
+
+    await insertNotification(NOTIFICATION_A, ORGANIZATION_A, {
+      originatingOutboxEventId: OUTBOX_EVENT_A,
+      recipientMembershipId: MEMBERSHIP_A,
+      relatedResourceId: HANDOFF_A,
+    });
+    await expect(
+      insertNotification(NOTIFICATION_B, ORGANIZATION_A, {
+        dedupeKey: "cross-tenant-outbox-notification",
+        originatingOutboxEventId: OUTBOX_EVENT_B,
+        recipientMembershipId: MEMBERSHIP_A,
+        relatedResourceId: HANDOFF_A,
+      }),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notifications_originating_outbox_event_fk",
+    });
+    await expect(
+      database().query("delete from outbox_events where id = $1", [OUTBOX_EVENT_A]),
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "notifications_originating_outbox_event_fk",
+    });
+
+    const forbiddenColumns = await database().query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'outbox_events'
+          and column_name in ('access_token', 'authorization_header', 'cookie',
+                              'raw_message', 'raw_prompt', 'provider_credentials')`,
+    );
+    expect(forbiddenColumns.rows).toEqual([]);
   });
 });

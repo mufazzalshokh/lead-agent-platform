@@ -31,6 +31,7 @@ export {
 } from "./locations.js";
 export { memberships } from "./memberships.js";
 export { organizations } from "./organizations.js";
+export { idempotencyKeys, outboxEvents, webhookReceipts } from "./reliability-records.js";
 export { retentionPolicies } from "./retention-policies.js";
 export { retentionPolicyRules } from "./retention-policy-rules.js";
 export {

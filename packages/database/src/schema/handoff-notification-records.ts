@@ -18,6 +18,7 @@ import { contacts } from "./contacts.js";
 import { handoffs } from "./conversation-records.js";
 import { memberships } from "./memberships.js";
 import { organizations } from "./organizations.js";
+import { outboxEvents } from "./reliability-records.js";
 
 export const handoffTransitions = pgTable(
   "handoff_transitions",
@@ -285,6 +286,13 @@ export const notifications = pgTable(
       columns: [table.organizationId, table.claimedByMembershipId],
       foreignColumns: [memberships.organizationId, memberships.id],
       name: "notifications_claimer_membership_fk",
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      columns: [table.organizationId, table.originatingOutboxEventId],
+      foreignColumns: [outboxEvents.organizationId, outboxEvents.id],
+      name: "notifications_originating_outbox_event_fk",
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
