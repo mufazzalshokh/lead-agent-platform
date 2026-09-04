@@ -361,6 +361,59 @@ const S4C3_TABLES = [
   "platform_audit_events",
   "privacy_requests",
 ].sort();
+const S5_RUNTIME_ROLE = "lead_agent_runtime";
+const S5_INGRESS_ROLE = "lead_agent_ingress";
+const S5_INBOUND_ROUTE_DEFINER_ROLE = "lead_agent_inbound_route_definer";
+const S5_ORDINARY_TENANT_TABLES = [
+  "ai_action_evaluations",
+  "ai_runs",
+  "analytics_events",
+  "appointment_confirmation_evidence",
+  "appointment_request_attendance",
+  "appointment_request_preferences",
+  "appointment_request_transitions",
+  "appointment_requests",
+  "appointment_revenue_attributions",
+  "audit_events",
+  "business_policies",
+  "channel_connections",
+  "consent_records",
+  "contact_identities",
+  "contacts",
+  "conversations",
+  "faqs",
+  "handoff_transitions",
+  "handoffs",
+  "idempotency_keys",
+  "lead_qualification_evaluations",
+  "lead_qualification_evidence",
+  "leads",
+  "legal_holds",
+  "location_business_hours",
+  "location_closures",
+  "location_versions",
+  "locations",
+  "memberships",
+  "messages",
+  "notification_attempts",
+  "notifications",
+  "outbox_events",
+  "privacy_requests",
+  "retention_policies",
+  "retention_policy_rules",
+  "service_locations",
+  "service_prices",
+  "service_versions",
+  "services",
+  "webhook_receipts",
+  "widget_allowed_origins",
+  "widget_sessions",
+] as const;
+const S5_FULL_DML_TABLES = S5_ORDINARY_TENANT_TABLES.filter(
+  (tableName) => tableName !== "audit_events",
+);
+const S5_RLS_TABLES = [...S5_ORDINARY_TENANT_TABLES, "inbound_routes", "organizations"].sort();
+const S5_GLOBAL_TABLES = ["platform_audit_events", "users"] as const;
 const SCHEMA_TABLES = {
   analytics_events: analyticsEvents,
   ai_action_evaluations: aiActionEvaluations,
@@ -437,6 +490,8 @@ let upgradeTablesAfterS4b6: string[] = [];
 let upgradeTablesAfterS4c1: string[] = [];
 let upgradeTablesAfterS4c2: string[] = [];
 let upgradeTablesAfterS4c3: string[] = [];
+let upgradeTablesAfterS5: string[] = [];
+let upgradeRlsTablesAfterS5: string[] = [];
 
 const requireTestDatabaseUrl = (): string | undefined => {
   const value = process.env["TEST_DATABASE_URL"];
@@ -545,6 +600,19 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
 
   await applyMigrationSql(testPool, "0009_lyrical_night_thrasher.sql");
   upgradeTablesAfterS4c3 = await productionTables(testPool);
+
+  await applyMigrationSql(testPool, "0010_s5_tenant_rls.sql");
+  upgradeTablesAfterS5 = await productionTables(testPool);
+  const rlsTables = await testPool.query<{ relname: string }>(
+    `select relname
+       from pg_catalog.pg_class
+      where relnamespace = 'public'::regnamespace
+        and relkind = 'r'
+        and relrowsecurity
+        and relforcerowsecurity
+      order by relname`,
+  );
+  upgradeRlsTablesAfterS5 = rlsTables.rows.map(({ relname }) => relname);
 
   await testPool.query(
     `drop table analytics_events, legal_holds, privacy_requests,
@@ -1803,6 +1871,82 @@ const insertAnalyticsEvent = async (
   );
 };
 
+const withDatabaseRole = async <Result>(
+  roleName: typeof S5_INGRESS_ROLE | typeof S5_RUNTIME_ROLE,
+  callback: (client: PoolClient) => Promise<Result>,
+): Promise<Result> => {
+  const client = await database().connect();
+  try {
+    await client.query(`set role ${roleName}`);
+    return await callback(client);
+  } finally {
+    await client.query("rollback").catch(() => undefined);
+    await client.query("reset role");
+    client.release();
+  }
+};
+
+const setLocalOrganization = async (client: PoolClient, organizationId: string): Promise<void> => {
+  await client.query("select set_config('app.organization_id', $1, true)", [organizationId]);
+};
+
+const expectDatabaseError = async (
+  client: PoolClient,
+  statement: string,
+  parameters: readonly unknown[],
+  code: string,
+): Promise<void> => {
+  await client.query("savepoint s5_expected_failure");
+  try {
+    await expect(client.query(statement, [...parameters])).rejects.toMatchObject({ code });
+  } finally {
+    await client.query("rollback to savepoint s5_expected_failure");
+    await client.query("release savepoint s5_expected_failure");
+  }
+};
+
+const seedS5IsolationFixtures = async (): Promise<void> => {
+  await seedWorkflowTenant(WORKFLOW_A, "rls-a", "rls-a", "rls-a");
+  await seedWorkflowTenant(WORKFLOW_B, "rls-b", "rls-b", "rls-b");
+  await insertInboundRoute(
+    INBOUND_ROUTE_A,
+    ORGANIZATION_A,
+    CHANNEL_CONNECTION_A,
+    "synthetic-rls-route-a",
+  );
+  await insertInboundRoute(
+    syntheticUuid(0xf01),
+    ORGANIZATION_B,
+    CHANNEL_CONNECTION_B,
+    "synthetic-rls-route-b",
+  );
+  await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A);
+  await insertAppointmentRequest(syntheticUuid(0xf02), WORKFLOW_B);
+  await insertHandoff(HANDOFF_A, WORKFLOW_A);
+  await insertHandoff(HANDOFF_B, WORKFLOW_B);
+  await insertNotification(NOTIFICATION_A, ORGANIZATION_A, {
+    originatingOutboxEventId: OUTBOX_EVENT_A,
+    recipientMembershipId: MEMBERSHIP_A,
+    relatedResourceId: HANDOFF_A,
+  });
+  await insertNotification(NOTIFICATION_B, ORGANIZATION_B, {
+    dedupeKey: "notification-rls-b",
+    originatingOutboxEventId: OUTBOX_EVENT_B,
+    recipientMembershipId: MEMBERSHIP_B,
+    relatedResourceId: HANDOFF_B,
+  });
+  await insertAiRun(AI_RUN_A, WORKFLOW_A);
+  await insertAiRun(AI_RUN_B, WORKFLOW_B);
+  await insertAuditEvent(AUDIT_EVENT_A, ORGANIZATION_A);
+  await insertAuditEvent(AUDIT_EVENT_B, ORGANIZATION_B, { organizationId: ORGANIZATION_B });
+  await insertAnalyticsEvent(ANALYTICS_EVENT_A, ORGANIZATION_A, {
+    sourceEventId: syntheticUuid(0xf03),
+  });
+  await insertAnalyticsEvent(ANALYTICS_EVENT_B, ORGANIZATION_B, {
+    sourceEventId: syntheticUuid(0xf04),
+  });
+};
+
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
@@ -1849,7 +1993,7 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S4c.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
+describe("S5.1 PostgreSQL 17 migration and tenant isolation", { timeout: 30_000 }, () => {
   it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
     const conversationStatuses = [
       "open",
@@ -1949,7 +2093,7 @@ describe("S4c.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4a through S4c.2 to S4c.3, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4 through S5.1, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -1960,6 +2104,8 @@ describe("S4c.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     expect(upgradeTablesAfterS4c1).toEqual(S4C1_TABLES);
     expect(upgradeTablesAfterS4c2).toEqual(S4C2_TABLES);
     expect(upgradeTablesAfterS4c3).toEqual(S4C3_TABLES);
+    expect(upgradeTablesAfterS5).toEqual(S4C3_TABLES);
+    expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
 
     const version = await database().query<{ server_version_num: string }>(
       "show server_version_num",
@@ -1972,7 +2118,7 @@ describe("S4c.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(10);
+    expect(migrationCount.rows[0]?.count).toBe(11);
   });
 
   it("matches the approved provider-neutral column and storage model", async () => {
@@ -4704,15 +4850,26 @@ describe("S4c.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({ code: "23503" });
   });
 
-  it("keeps RLS deferred and activates only the current reviewed relationship seams", async () => {
-    const rls = await database().query<{ relname: string; relrowsecurity: boolean }>(
-      `select relname, relrowsecurity
+  it("activates the frozen RLS manifest and preserves reviewed relationship seams", async () => {
+    const rls = await database().query<{
+      relforcerowsecurity: boolean;
+      relname: string;
+      relrowsecurity: boolean;
+    }>(
+      `select relname, relrowsecurity, relforcerowsecurity
          from pg_class
         where relnamespace = 'public'::regnamespace
           and relkind = 'r'
         order by relname`,
     );
-    expect(rls.rows).toEqual(S4C3_TABLES.map((relname) => ({ relname, relrowsecurity: false })));
+    const rlsTableSet = new Set(S5_RLS_TABLES);
+    expect(rls.rows).toEqual(
+      S4C3_TABLES.map((relname) => ({
+        relforcerowsecurity: rlsTableSet.has(relname),
+        relname,
+        relrowsecurity: rlsTableSet.has(relname),
+      })),
+    );
 
     const activatedRouteForeignKey = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -7892,6 +8049,525 @@ describe("S4c.3 PostgreSQL 17 migration", { timeout: 30_000 }, () => {
     ).rejects.toMatchObject({
       code: "23503",
       constraint: "analytics_events_organization_id_organizations_id_fk",
+    });
+  });
+
+  it("provisions least-privilege runtime, ingress, and route-definer roles", async () => {
+    const roles = await database().query<{
+      rolbypassrls: boolean;
+      rolcanlogin: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolinherit: boolean;
+      rolname: string;
+      rolreplication: boolean;
+      rolsuper: boolean;
+    }>(
+      `select rolname, rolcanlogin, rolsuper, rolinherit, rolcreatedb,
+              rolcreaterole, rolreplication, rolbypassrls
+         from pg_catalog.pg_roles
+        where rolname = any($1::text[])
+        order by rolname`,
+      [[S5_INBOUND_ROUTE_DEFINER_ROLE, S5_INGRESS_ROLE, S5_RUNTIME_ROLE]],
+    );
+    expect(roles.rows).toEqual([
+      {
+        rolbypassrls: true,
+        rolcanlogin: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolinherit: false,
+        rolname: S5_INBOUND_ROUTE_DEFINER_ROLE,
+        rolreplication: false,
+        rolsuper: false,
+      },
+      {
+        rolbypassrls: false,
+        rolcanlogin: true,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolinherit: true,
+        rolname: S5_INGRESS_ROLE,
+        rolreplication: false,
+        rolsuper: false,
+      },
+      {
+        rolbypassrls: false,
+        rolcanlogin: true,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolinherit: true,
+        rolname: S5_RUNTIME_ROLE,
+        rolreplication: false,
+        rolsuper: false,
+      },
+    ]);
+
+    const runtimeOwnedTables = await database().query<{ count: number }>(
+      `select count(*)::integer as count
+         from pg_catalog.pg_class c
+         join pg_catalog.pg_roles r on r.oid = c.relowner
+        where c.relnamespace = 'public'::regnamespace
+          and c.relkind in ('r', 'p', 'S')
+          and r.rolname = $1`,
+      [S5_RUNTIME_ROLE],
+    );
+    expect(runtimeOwnedTables.rows[0]?.count).toBe(0);
+
+    const canAssumeDefiner = await database().query<{ can_assume: boolean }>(
+      "select pg_catalog.pg_has_role($1, $2, 'MEMBER') as can_assume",
+      [S5_RUNTIME_ROLE, S5_INBOUND_ROUTE_DEFINER_ROLE],
+    );
+    expect(canAssumeDefiner.rows[0]?.can_assume).toBe(false);
+
+    const fullDmlPrivileges = await database().query<{
+      can_delete: boolean;
+      can_insert: boolean;
+      can_select: boolean;
+      can_truncate: boolean;
+      can_update: boolean;
+      table_name: string;
+    }>(
+      `select table_name,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'SELECT') as can_select,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'INSERT') as can_insert,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'UPDATE') as can_update,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'DELETE') as can_delete,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'TRUNCATE') as can_truncate
+         from unnest($2::text[]) as tenant_table(table_name)
+        order by table_name`,
+      [S5_RUNTIME_ROLE, S5_FULL_DML_TABLES],
+    );
+    expect(fullDmlPrivileges.rows).toEqual(
+      [...S5_FULL_DML_TABLES].sort().map((tableName) => ({
+        can_delete: true,
+        can_insert: true,
+        can_select: true,
+        can_truncate: false,
+        can_update: true,
+        table_name: tableName,
+      })),
+    );
+
+    const restrictedPrivileges = await database().query<{
+      can_delete: boolean;
+      can_insert: boolean;
+      can_select: boolean;
+      can_truncate: boolean;
+      can_update: boolean;
+      table_name: string;
+    }>(
+      `select table_name,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'SELECT') as can_select,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'INSERT') as can_insert,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'UPDATE') as can_update,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'DELETE') as can_delete,
+              pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'TRUNCATE') as can_truncate
+         from unnest($2::text[]) as restricted_table(table_name)
+        order by table_name`,
+      [S5_RUNTIME_ROLE, ["audit_events", "inbound_routes", "organizations", ...S5_GLOBAL_TABLES]],
+    );
+    expect(restrictedPrivileges.rows).toEqual([
+      {
+        can_delete: false,
+        can_insert: true,
+        can_select: true,
+        can_truncate: false,
+        can_update: false,
+        table_name: "audit_events",
+      },
+      {
+        can_delete: false,
+        can_insert: false,
+        can_select: false,
+        can_truncate: false,
+        can_update: false,
+        table_name: "inbound_routes",
+      },
+      {
+        can_delete: false,
+        can_insert: false,
+        can_select: true,
+        can_truncate: false,
+        can_update: true,
+        table_name: "organizations",
+      },
+      {
+        can_delete: false,
+        can_insert: false,
+        can_select: false,
+        can_truncate: false,
+        can_update: false,
+        table_name: "platform_audit_events",
+      },
+      {
+        can_delete: false,
+        can_insert: false,
+        can_select: false,
+        can_truncate: false,
+        can_update: false,
+        table_name: "users",
+      },
+    ]);
+
+    const specialPrivileges = await database().query<{
+      definer_route_select: boolean;
+      definer_tenant_select: boolean;
+      ingress_route_select: boolean;
+      runtime_app_create: boolean;
+      runtime_app_usage: boolean;
+      runtime_helper_execute: boolean;
+      runtime_public_create: boolean;
+    }>(
+      `select
+         pg_catalog.has_table_privilege($1, 'public.inbound_routes', 'SELECT') as definer_route_select,
+         pg_catalog.has_table_privilege($1, 'public.contacts', 'SELECT') as definer_tenant_select,
+         pg_catalog.has_table_privilege($2, 'public.inbound_routes', 'SELECT') as ingress_route_select,
+         pg_catalog.has_schema_privilege($3, 'app', 'CREATE') as runtime_app_create,
+         pg_catalog.has_schema_privilege($3, 'app', 'USAGE') as runtime_app_usage,
+         pg_catalog.has_function_privilege($3, 'app.current_organization_id()', 'EXECUTE') as runtime_helper_execute,
+         pg_catalog.has_schema_privilege($3, 'public', 'CREATE') as runtime_public_create`,
+      [S5_INBOUND_ROUTE_DEFINER_ROLE, S5_INGRESS_ROLE, S5_RUNTIME_ROLE],
+    );
+    expect(specialPrivileges.rows[0]).toEqual({
+      definer_route_select: true,
+      definer_tenant_select: false,
+      ingress_route_select: false,
+      runtime_app_create: false,
+      runtime_app_usage: true,
+      runtime_helper_execute: true,
+      runtime_public_create: false,
+    });
+
+    const publicLeaks = await database().query<{ count: number }>(
+      `select (
+          (select count(*) from information_schema.table_privileges
+            where table_schema = 'public' and grantee = 'PUBLIC')
+          +
+          (select count(*) from information_schema.routine_privileges
+            where specific_schema in ('app', 'public') and grantee = 'PUBLIC')
+        )::integer as count`,
+    );
+    expect(publicLeaks.rows[0]?.count).toBe(0);
+  });
+
+  it("keeps the tenant helper invoker-safe and the complete policy manifest drift-free", async () => {
+    const helper = await database().query<{
+      owner_name: string;
+      proconfig: string[] | null;
+      prosecdef: boolean;
+      provolatile: string;
+      result_type: string;
+    }>(
+      `select pg_catalog.pg_get_userbyid(p.proowner) as owner_name,
+              p.prosecdef, p.provolatile, p.proconfig,
+              pg_catalog.pg_get_function_result(p.oid) as result_type
+         from pg_catalog.pg_proc p
+        where p.oid = 'app.current_organization_id()'::regprocedure`,
+    );
+    expect(helper.rows).toHaveLength(1);
+    expect(helper.rows[0]).toMatchObject({
+      proconfig: ["search_path=pg_catalog"],
+      prosecdef: false,
+      provolatile: "s",
+      result_type: "uuid",
+    });
+    expect([S5_INBOUND_ROUTE_DEFINER_ROLE, S5_INGRESS_ROLE, S5_RUNTIME_ROLE]).not.toContain(
+      helper.rows[0]?.owner_name,
+    );
+
+    const relationSecurity = await database().query<{
+      relforcerowsecurity: boolean;
+      relname: string;
+      relrowsecurity: boolean;
+    }>(
+      `select relname, relrowsecurity, relforcerowsecurity
+         from pg_catalog.pg_class
+        where relnamespace = 'public'::regnamespace
+          and relkind = 'r'
+        order by relname`,
+    );
+    const expectedRlsTables = new Set(S5_RLS_TABLES);
+    expect(relationSecurity.rows).toEqual(
+      S4C3_TABLES.map((tableName) => ({
+        relforcerowsecurity: expectedRlsTables.has(tableName),
+        relname: tableName,
+        relrowsecurity: expectedRlsTables.has(tableName),
+      })),
+    );
+
+    const policies = await database().query<{
+      cmd: string;
+      permissive: string;
+      policyname: string;
+      qual: string | null;
+      roles: string;
+      tablename: string;
+      with_check: string | null;
+    }>(
+      `select tablename, policyname, permissive, roles, cmd, qual, with_check
+         from pg_catalog.pg_policies
+        where schemaname = 'public'
+        order by tablename, policyname`,
+    );
+    expect(policies.rows).toHaveLength(S5_RLS_TABLES.length);
+    for (const tableName of S5_RLS_TABLES) {
+      const policy = policies.rows.find(({ tablename }) => tablename === tableName);
+      const identityColumn = tableName === "organizations" ? "id" : "organization_id";
+      expect(policy).toMatchObject({
+        cmd: "ALL",
+        permissive: "PERMISSIVE",
+        policyname: `${tableName}_tenant_isolation`,
+        roles: `{${S5_RUNTIME_ROLE}}`,
+        tablename: tableName,
+      });
+      expect(policy?.qual).toContain(`${identityColumn} = app.current_organization_id()`);
+      expect(policy?.with_check).toContain(`${identityColumn} = app.current_organization_id()`);
+    }
+    const globalTableSet = new Set<string>(S5_GLOBAL_TABLES);
+    expect(policies.rows.some(({ tablename }) => globalTableSet.has(tablename))).toBe(false);
+  });
+
+  it("fails closed for absent or malformed tenant context across CRUD", async () => {
+    await insertOrganization(ORGANIZATION_A, "missing-context-a");
+    await insertOrganization(ORGANIZATION_B, "missing-context-b");
+    await insertLocation(LOCATION_A, ORGANIZATION_A, "missing-a");
+    await insertLocation(LOCATION_B, ORGANIZATION_B, "missing-b");
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin");
+      const helper = await client.query<{ organization_id: string | null }>(
+        "select app.current_organization_id()::text as organization_id",
+      );
+      expect(helper.rows[0]?.organization_id).toBeNull();
+      expect((await client.query("select id from locations")).rows).toEqual([]);
+      expect((await client.query("update locations set code = 'blocked'")).rowCount).toBe(0);
+      expect((await client.query("delete from locations")).rowCount).toBe(0);
+      await expectDatabaseError(
+        client,
+        "insert into locations (id, organization_id, code, status) values ($1, $2, 'blocked', 'active')",
+        [syntheticUuid(0xf10), ORGANIZATION_A],
+        "42501",
+      );
+
+      await client.query("savepoint malformed_context");
+      await client.query("select set_config('app.organization_id', 'not-a-uuid', true)");
+      await expect(client.query("select app.current_organization_id()")).rejects.toMatchObject({
+        code: "22P02",
+      });
+      await client.query("rollback to savepoint malformed_context");
+      await client.query("release savepoint malformed_context");
+      await client.query("rollback");
+    });
+  });
+
+  it("enforces symmetric Tenant A and Tenant B isolation across major data groups", async () => {
+    await seedS5IsolationFixtures();
+    const representativeTables = [
+      "memberships",
+      "business_policies",
+      "contacts",
+      "leads",
+      "conversations",
+      "messages",
+      "appointment_requests",
+      "handoffs",
+      "notifications",
+      "ai_runs",
+      "outbox_events",
+      "audit_events",
+      "analytics_events",
+    ] as const;
+
+    const verifyTenant = async (
+      organizationId: string,
+      otherOrganizationId: string,
+      otherLocationId: string,
+      ownCode: string,
+      ownLocationId: string,
+      foreignContactId: string,
+      foreignConnectionId: string,
+    ): Promise<void> => {
+      await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+        await client.query("begin");
+        await setLocalOrganization(client, organizationId);
+        const currentRole = await client.query<{ current_user: string }>("select current_user");
+        expect(currentRole.rows[0]?.current_user).toBe(S5_RUNTIME_ROLE);
+
+        for (const tableName of representativeTables) {
+          const visibleOrganizations = await client.query<{ organization_id: string }>(
+            `select distinct organization_id::text as organization_id from ${tableName}`,
+          );
+          expect(visibleOrganizations.rows).toEqual([{ organization_id: organizationId }]);
+        }
+
+        expect(
+          (
+            await client.query(
+              "insert into locations (id, organization_id, code, status) values ($1, $2, $3, 'active')",
+              [ownLocationId, organizationId, ownCode],
+            )
+          ).rowCount,
+        ).toBe(1);
+        expect(
+          (
+            await client.query("update locations set code = $1 where id = $2", [
+              `${ownCode}-updated`,
+              ownLocationId,
+            ])
+          ).rowCount,
+        ).toBe(1);
+        expect(
+          (
+            await client.query("update locations set code = 'cross-tenant-update' where id = $1", [
+              otherLocationId,
+            ])
+          ).rowCount,
+        ).toBe(0);
+        expect(
+          (await client.query("delete from locations where id = $1", [otherLocationId])).rowCount,
+        ).toBe(0);
+        await expectDatabaseError(
+          client,
+          "insert into locations (id, organization_id, code, status) values ($1, $2, 'cross-tenant-insert', 'active')",
+          [syntheticUuid(organizationId === ORGANIZATION_A ? 0xf13 : 0xf14), otherOrganizationId],
+          "42501",
+        );
+        await expectDatabaseError(
+          client,
+          `insert into leads
+             (id, organization_id, contact_id, status, source_channel_connection_id)
+           values ($1, $2, $3, 'new', $4)`,
+          [
+            syntheticUuid(organizationId === ORGANIZATION_A ? 0xf15 : 0xf16),
+            organizationId,
+            foreignContactId,
+            foreignConnectionId,
+          ],
+          "23503",
+        );
+        expect(
+          (await client.query("delete from locations where id = $1", [ownLocationId])).rowCount,
+        ).toBe(1);
+        await client.query("rollback");
+      });
+    };
+
+    await verifyTenant(
+      ORGANIZATION_A,
+      ORGANIZATION_B,
+      LOCATION_B,
+      "runtime-a",
+      syntheticUuid(0xf11),
+      CONTACT_B,
+      CHANNEL_CONNECTION_B,
+    );
+    await verifyTenant(
+      ORGANIZATION_B,
+      ORGANIZATION_A,
+      LOCATION_A,
+      "runtime-b",
+      syntheticUuid(0xf12),
+      CONTACT_A,
+      CHANNEL_CONNECTION_A,
+    );
+  });
+
+  it("isolates the Organization root and denies global and pre-tenant table paths", async () => {
+    await seedS5IsolationFixtures();
+    await insertPlatformAuditEvent(PLATFORM_AUDIT_EVENT_A, ORGANIZATION_A);
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin");
+      await setLocalOrganization(client, ORGANIZATION_A);
+      const organizationsVisible = await client.query<{ id: string }>(
+        "select id::text as id from organizations order by id",
+      );
+      expect(organizationsVisible.rows).toEqual([{ id: ORGANIZATION_A }]);
+      expect(
+        (
+          await client.query("update organizations set display_name = 'Tenant A' where id = $1", [
+            ORGANIZATION_A,
+          ])
+        ).rowCount,
+      ).toBe(1);
+      expect(
+        (
+          await client.query("update organizations set display_name = 'blocked' where id = $1", [
+            ORGANIZATION_B,
+          ])
+        ).rowCount,
+      ).toBe(0);
+
+      for (const statement of [
+        "select * from inbound_routes",
+        "select * from users",
+        "select * from platform_audit_events",
+        "insert into platform_audit_events default values",
+        "update platform_audit_events set result = result",
+        "delete from platform_audit_events",
+        "insert into organizations default values",
+        "delete from organizations where id = '0193f1a8-7f65-7c28-a434-a10796c41c2b'",
+      ]) {
+        await expectDatabaseError(client, statement, [], "42501");
+      }
+      await client.query("rollback");
+    });
+
+    await withDatabaseRole(S5_INGRESS_ROLE, async (client) => {
+      await client.query("begin");
+      await expectDatabaseError(client, "select * from inbound_routes", [], "42501");
+      await expectDatabaseError(client, "select * from contacts", [], "42501");
+      await client.query("rollback");
+    });
+  });
+
+  it("clears transaction-local context after commit and rollback on a reused connection", async () => {
+    await insertOrganization(ORGANIZATION_A, "context-a");
+    await insertOrganization(ORGANIZATION_B, "context-b");
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin");
+      await setLocalOrganization(client, ORGANIZATION_A);
+      expect((await client.query("select id from organizations")).rowCount).toBe(1);
+      await client.query("commit");
+
+      const contextAfterCommit = await client.query<{ id: string | null }>(
+        "select app.current_organization_id()::text as id",
+      );
+      expect(contextAfterCommit.rows[0]?.id).toBeNull();
+      expect((await client.query("select id from organizations")).rows).toEqual([]);
+
+      await client.query("begin");
+      await setLocalOrganization(client, ORGANIZATION_B);
+      expect((await client.query("select id::text as id from organizations")).rows).toEqual([
+        { id: ORGANIZATION_B },
+      ]);
+      await client.query("rollback");
+
+      const contextAfterRollback = await client.query<{ id: string | null }>(
+        "select app.current_organization_id()::text as id",
+      );
+      expect(contextAfterRollback.rows[0]?.id).toBeNull();
+      expect((await client.query("select id from organizations")).rows).toEqual([]);
+    });
+  });
+
+  it("documents that raw SQL can switch local context before S5.3 prevents application switching", async () => {
+    await insertOrganization(ORGANIZATION_A, "raw-switch-a");
+    await insertOrganization(ORGANIZATION_B, "raw-switch-b");
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin");
+      await setLocalOrganization(client, ORGANIZATION_A);
+      expect((await client.query("select id::text as id from organizations")).rows).toEqual([
+        { id: ORGANIZATION_A },
+      ]);
+      await setLocalOrganization(client, ORGANIZATION_B);
+      expect((await client.query("select id::text as id from organizations")).rows).toEqual([
+        { id: ORGANIZATION_B },
+      ]);
+      await client.query("rollback");
     });
   });
 });

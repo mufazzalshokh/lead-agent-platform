@@ -71,6 +71,13 @@
       "when": 1788501323782,
       "tag": "0009_lyrical_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788527101137,
+      "tag": "0010_s5_tenant_rls",
+      "breakpoints": true
     }
   ]
 }
