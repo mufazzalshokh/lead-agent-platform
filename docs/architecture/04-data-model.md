@@ -90,26 +90,41 @@ defense-in-depth.
 
 ### 2.1 Transaction context
 
-Each request/job opens a transaction and sets transaction-local, validated
-values:
+Every tenant-scoped repository operation runs through
+`withTenantTransaction(organizationId, callback)`. The wrapper accepts only an
+`OrganizationId` produced by trusted authentication/routing, opens an explicit
+transaction, and establishes context before exposing the callback's
+`TenantDbSession`. The driver uses bound parameters with transaction-local
+semantics, conceptually:
 
 ~~~sql
-SET LOCAL app.organization_id = '<server-derived uuid>';
-SET LOCAL app.principal_id = '<authenticated uuid or system principal>';
-SET LOCAL app.request_id = '<correlation uuid>';
+SELECT set_config('app.organization_id', $1, true);
+SELECT set_config('app.principal_id', $2, true);
+SELECT set_config('app.request_id', $3, true);
 ~~~
 
-A locked-down helper such as `app.current_organization_id()` safely returns a
-UUID or NULL; malformed/missing settings fail closed. Connection pool code must
-never use session-persistent tenant settings. A worker processing several
-tenants starts a new transaction and resets context for every claimed item.
+The third argument is always `true`; session-persistent settings are forbidden.
+Commit or rollback removes the context automatically. Nested tenant operations
+may reuse the same transaction only when their `OrganizationId` equals the
+already-bound tenant; attempting to switch organizations fails before SQL runs.
+A worker processing several tenants starts a new transaction/context for every
+selected item.
+
+S5 adopts one canonical `app.current_organization_id()` helper to keep all
+policy expressions identical. It is `SECURITY INVOKER`, has a fixed safe
+`search_path`, returns the setting as the canonical UUID, and provides no bypass
+behavior. A missing setting returns `NULL`, making policy predicates false; an
+invalid value errors and aborts the transaction. Both cases fail closed.
 
 ### 2.2 Policy form
 
 Every tenant table ultimately enables and forces RLS. S4a-S4c create the
 RLS-ready structural schema; S5 adds the policies, transaction-local context,
-and runtime-role separation. The normal runtime role is not the owner and has
-no `BYPASSRLS`:
+and runtime-role separation. The migration/owner role owns schema objects and
+runs reviewed migrations but is unavailable to application processes. The
+application runtime role is a non-owner `NOSUPERUSER NOBYPASSRLS` role, cannot
+create roles/databases or schema objects, and receives only required
+schema/table/function privileges:
 
 ~~~sql
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
@@ -120,28 +135,125 @@ CREATE POLICY conversations_tenant_isolation ON conversations
   WITH CHECK (organization_id = app.current_organization_id());
 ~~~
 
-`organizations` uses `id = app.current_organization_id()`. `users` and
-pre-tenant routing are control-plane exceptions with no generic runtime
-`SELECT`. Membership/location permissions are still evaluated in application
-policy; RLS organization equality alone does not grant a user access.
+For an ordinary tenant table, SELECT/UPDATE/DELETE visibility uses
+`organization_id = app.current_organization_id()` and INSERT/UPDATE applies the
+same equality through `WITH CHECK`. `organizations` instead uses
+`id = app.current_organization_id()`. Missing context cannot see or create a
+row. Membership/location permissions are still evaluated in application
+policy; organization equality alone does not grant a user access.
 
 Migration/owner roles are unavailable to application processes. Platform
 support uses a separate, just-in-time, audited control path and does not reuse
-the tenant runtime role.
+the tenant runtime role. `users` and `platform_audit_events` are true global/
+platform tables with no generic tenant-repository access. No runtime session
+uses a generic `app.is_admin`, `app.is_platform`, or `app.bypass_rls` flag.
+Future workers also receive no generic cross-tenant `BYPASSRLS`; any discovery
+mechanism is narrow and separately reviewed before per-tenant processing.
 
 ### 2.3 Pre-tenant route resolution
 
 Inbound traffic must find a tenant before setting RLS context. The
 `inbound_routes` control table contains only keyed route hashes and target IDs;
-it has no message content or credentials. Runtime roles have no direct table
-access. A narrowly defined `SECURITY DEFINER` function accepts an exact
-type/hash, returns an active organization/connection pair, has a fixed
-`search_path`, owns no arbitrary SQL, and is executable only by the ingress
-role. After resolution the application sets tenant context, reads the
+it has no message content or credentials. It remains tenant-owned and receives
+forced RLS, while the ordinary ingress/runtime role has no direct table SELECT
+or scan grant. A narrowly defined `SECURITY DEFINER` function accepts only an
+exact canonical route type and route-key hash, returns only the active
+organization/channel-connection identity, has a fixed safe `search_path`, owns
+no arbitrary SQL, and is executable only by the ingress role. Because forced
+RLS also applies before tenant context exists, the function is owned by a
+dedicated `NOLOGIN` definer role whose `BYPASSRLS` capability is usable only
+with its narrowly granted `inbound_routes` SELECT; it has no other tenant-table
+privileges. The ingress/application runtime has only function `EXECUTE`, no
+direct table SELECT and no `BYPASSRLS`. Invalid or inactive routes return no
+tenant and the function cannot enumerate routes.
+After resolution the application opens the tenant transaction, reads the
 `channel_connections` row under forced RLS, and verifies signature/origin.
 
 This is the only public-ingress tenant lookup exception. Resource IDs and
 payload `organization_id` values never use it.
+
+### 2.4 S5 RLS table manifest
+
+The accepted S4 schema has exactly 47 production tables. In the table below,
+`T` means `organization_id = app.current_organization_id()` and `R` means
+`id = app.current_organization_id()`. For every class A/D table, `USING T`
+applies to SELECT/UPDATE/DELETE and `WITH CHECK T` applies to INSERT/UPDATE.
+Class B uses the equivalent `R` predicate. Class C has no tenant policy or
+ordinary tenant-runtime table grant.
+
+| Class | Table | Organization/root identity | Intended `USING` | Intended `WITH CHECK` / special access |
+| --- | --- | --- | --- | --- |
+| A | `ai_action_evaluations` | `organization_id` | `T` | `T` |
+| A | `ai_runs` | `organization_id` | `T` | `T` |
+| A | `analytics_events` | `organization_id` | `T` | `T` |
+| A | `appointment_confirmation_evidence` | `organization_id` | `T` | `T` |
+| A | `appointment_request_attendance` | `organization_id` | `T` | `T` |
+| A | `appointment_request_preferences` | `organization_id` | `T` | `T` |
+| A | `appointment_request_transitions` | `organization_id` | `T` | `T` |
+| A | `appointment_requests` | `organization_id` | `T` | `T` |
+| A | `appointment_revenue_attributions` | `organization_id` | `T` | `T` |
+| A | `audit_events` | `organization_id` | `T` | `T`; append-only grant and application `audit.read` for reads |
+| A | `business_policies` | `organization_id` | `T` | `T` |
+| A | `channel_connections` | `organization_id` | `T` | `T` |
+| A | `consent_records` | `organization_id` | `T` | `T` |
+| A | `contact_identities` | `organization_id` | `T` | `T` |
+| A | `contacts` | `organization_id` | `T` | `T` |
+| A | `conversations` | `organization_id` | `T` | `T` |
+| A | `faqs` | `organization_id` | `T` | `T` |
+| A | `handoff_transitions` | `organization_id` | `T` | `T` |
+| A | `handoffs` | `organization_id` | `T` | `T` |
+| A | `idempotency_keys` | `organization_id` | `T` | `T` |
+| A | `lead_qualification_evaluations` | `organization_id` | `T` | `T` |
+| A | `lead_qualification_evidence` | `organization_id` | `T` | `T` |
+| A | `leads` | `organization_id` | `T` | `T` |
+| A | `legal_holds` | `organization_id` | `T` | `T`; privileged legal/privacy application permission |
+| A | `location_business_hours` | `organization_id` | `T` | `T` |
+| A | `location_closures` | `organization_id` | `T` | `T` |
+| A | `location_versions` | `organization_id` | `T` | `T` |
+| A | `locations` | `organization_id` | `T` | `T` |
+| A | `memberships` | `organization_id` | `T` | `T`; application permission still required |
+| A | `messages` | `organization_id` | `T` | `T` |
+| A | `notification_attempts` | `organization_id` | `T` | `T` |
+| A | `notifications` | `organization_id` | `T` | `T` |
+| A | `outbox_events` | `organization_id` | `T` | `T`; narrow future claim path is not a tenant bypass |
+| A | `privacy_requests` | `organization_id` | `T` | `T`; narrow privacy application permission |
+| A | `retention_policies` | `organization_id` | `T` | `T` |
+| A | `retention_policy_rules` | `organization_id` | `T` | `T` |
+| A | `service_locations` | `organization_id` | `T` | `T` |
+| A | `service_prices` | `organization_id` | `T` | `T` |
+| A | `service_versions` | `organization_id` | `T` | `T` |
+| A | `services` | `organization_id` | `T` | `T` |
+| A | `webhook_receipts` | `organization_id` | `T` | `T` |
+| A | `widget_allowed_origins` | `organization_id` | `T` | `T` |
+| A | `widget_sessions` | `organization_id` | `T` | `T` |
+| B | `organizations` | root `id` | `R` | `R`; normal tenant runtime cannot create a different root |
+| C | `platform_audit_events` | none; optional target organization is not ownership | none | dedicated audited platform writer only; no tenant access |
+| C | `users` | none | none | restricted identity/auth path only; no tenant scan |
+| D | `inbound_routes` | `organization_id` | `T` | `T`; ingress gets only exact resolver `EXECUTE`, never table SELECT |
+
+Class A contains 43 ordinary tenant tables, class B one tenant-root table,
+class C two global/platform tables, and class D the one tenant-owned special
+pre-tenant path. All class A, B, and D tables enable and force RLS in S5.
+
+### 2.5 Tenant session and repository contract
+
+- Application/domain code never receives the raw pooled connection for tenant
+  work. Only `withTenantTransaction` can create a `TenantDbSession`.
+- A session and every repository constructed from it are bound to one immutable
+  Organization for that transaction. Methods accept resource IDs, not another
+  organization argument, and still qualify SQL by organization plus resource.
+- Mutable/versioned writes compare tenant, resource ID, and expected version,
+  then advance to the exact domain-produced next version. A zero-row update is
+  resolved with a same-tenant probe into not found or version conflict; another
+  tenant's row is never disclosed.
+- Structural/domain conflicts are distinct from not found and concurrency
+  conflict. Repositories do not invent domain transitions or silently retry a
+  transition after a version conflict; retry is allowed only at an explicitly
+  idempotent application boundary.
+- One business mutation transaction contains aggregate CAS, child/history and
+  transition records, required audit evidence, and outbox insertion. Failure of
+  any required write rolls back all of them. Cross-machine workflows use the
+  same transaction/session.
 
 ## 3. Control-plane and tenancy tables
 
@@ -313,8 +425,8 @@ role/status/location-scope value; it implements no authorization behavior.
   mandatory composite
   (`organization_id`, `channel_connection_id`) ->
   `channel_connections(organization_id, id)`, so a route can never bind a
-  connection to the wrong tenant. It is classified as control-plane because it
-  must be resolved before tenant context.
+  connection to the wrong tenant. It is tenant-owned and forced-RLS; only its
+  exact resolver is a special pre-tenant database boundary.
 - **Uniqueness:** (`route_type`, `route_key_hash`); one active route per
   connection/type as applicable.
 - **Indexes:** unique exact lookup only; no prefix/search endpoint.
@@ -665,9 +777,12 @@ IDNA ambiguity, and wildcard ports fail validation.
   `closed_at`), `closed_reason`, common mutable columns.
 - **PK/FKs/tenant:** PK; composite tenant FKs to contact, connection, service,
   location, assignment, and policy version.
-- **Uniqueness:** (`organization_id`, `id`); a partial unique active-lead key
-  must follow the product decision on campaign/service scope and is not invented
-  before that question is resolved.
+- **Uniqueness:** (`organization_id`, `id`); S5 adds a partial unique index on
+  (`organization_id`, `contact_id`) where status is `new`, `engaged`,
+  `qualified`, or `booking_requested`. `disqualified`, `converted`, and `closed`
+  Leads do not compete, so a later commercial cycle may create a new Lead.
+  Reopening a disqualified Lead conflicts if another active Lead already exists.
+  Channel, campaign, service, and location are not part of this identity.
 - **Indexes:** (`organization_id`, `status`, `updated_at desc`);
   (`organization_id`, `contact_id`, `created_at desc`);
   (`organization_id`, `assigned_membership_id`, `status`);
@@ -721,16 +836,31 @@ IDNA ambiguity, and wildcard ports fail validation.
   `next_sequence_no bigint`, `started_at`, `last_activity_at`,
   `resolved_at`, `closed_at`, common mutable columns.
 - **PK/FKs/tenant:** PK; composite FKs to contact, lead, connection.
-- **Uniqueness:** (`organization_id`, `channel_connection_id`,
-  `external_thread_hash`, `id`) is not enough to define active grouping; use a
-  partial unique provider/session key after channel grouping policy is fixed.
-  (`organization_id`, `id`) always unique.
+- **Uniqueness:** (`organization_id`, `id`) is always unique. S5 requires
+  `external_thread_hash` on active rows and adds a partial unique index on
+  (`organization_id`, `channel_connection_id`, `external_thread_hash`) where
+  status is `open`, `awaiting_lead`, or `awaiting_staff`. `resolved` and `closed`
+  rows do not compete, so policy may create a later Conversation for the same
+  grouping.
 - **Indexes:** (`organization_id`, `status`, `last_activity_at desc`);
   (`organization_id`, `lead_id`, `started_at desc`);
   (`organization_id`, `channel_connection_id`, `last_activity_at desc`).
 - **Sensitive:** S1/S2 by association; thread hashes are pseudonymous.
 - **Deletion/RLS:** forced RLS; resolve/close for lifecycle. Payload deletion
   occurs through messages; conversation shell may remain for funnel/audit.
+
+`external_thread_hash` is sufficient for the frozen grouping contract: it is
+the deterministic hash of the canonical provider thread/session grouping
+identity derived from trusted channel or widget-session context. For Telegram
+this is the canonical chat/thread identity; for Widget it is the canonical
+participant/session conversation grouping; future adapters define an equivalent
+canonical provider conversation/thread input. The hash never derives tenant
+authority and never uses `contact_id` as grouping identity. The same Contact may
+therefore have simultaneous Conversations on different connections or threads.
+Different Contacts are never merged from similar metadata. Before the first
+meaningful Widget message, anonymous state remains in `widget_sessions`; that
+message atomically creates/resolves the pseudonymous Contact, Lead, and
+Conversation without making Contact identity part of the grouping key.
 
 Conversation/handoff coupling is explicit and transactional. A requested
 handoff sets `awaiting_staff + paused`; assignment or work in progress sets
@@ -1295,6 +1425,27 @@ decision.
   when legally required while aggregate facts may remain; retention policy
   purges old events. Reprojection is idempotent and canonical tables win.
 
+### 10.6 Polymorphic ownership contract
+
+The following accepted-schema references cannot all be expressed as one normal
+foreign key. Their type/ID pairs are never authorization evidence. Each writer
+must select a type from the stated finite vocabulary, load the target through
+the same `TenantDbSession` (or the dedicated platform path), and reject an ID
+that is absent from that scope. RLS protects the referencing tenant row but does
+not prove that an arbitrary polymorphic target ID belongs to it.
+
+| Record/reference | Bounded vocabulary | Writer ownership responsibility | Row isolation and trust rule |
+| --- | --- | --- | --- |
+| `consent_records.captured_by_type/id` | `customer`, `member`, `system` | Customer maps to the same-tenant Contact; member maps to the same-tenant Membership; system requires null ID and trusted system provenance. | Consent row is forced-RLS; a syntactically valid UUID is not ownership proof. |
+| `notifications.related_resource_type/id` | `appointment_request`, `handoff`, `conversation`, `lead`, `channel_connection`, `ai_run` | Notification writer resolves the exact target through the bound tenant session before insert. | Notification row is forced-RLS; the polymorphic target has no generic FK. |
+| `ai_action_evaluations.target_aggregate_type/id` | `conversation`, `appointment_request`, `handoff` (or both null) | AI policy/application writer validates the proposed target in the same tenant and transaction; model output is never trusted. | Evaluation row is forced-RLS; target syntax/type checks do not establish ownership. |
+| `idempotency_keys.resource_type/id` | Finite allowlist owned by each registered idempotency `scope`; the current column check permits only a normalized code but does not define one repository-global vocabulary. | Each command maps its scope to an allowed resource type/table and validates the completed resource through the bound tenant session before storing the pair. | Idempotency row is forced-RLS; client-provided result IDs/types are never copied as authority. |
+| `outbox_events.aggregate_type/id` | `organization`, `membership`, `location`, `service`, `faq`, `business_policy`, `channel_connection`, `contact`, `lead`, `conversation`, `appointment_request`, `handoff`, `notification`, `ai_run` | Aggregate repository inserts the event beside the exact same-tenant mutation and validates the aggregate type/event mapping. | Outbox row is forced-RLS; aggregate ID is not a FK and must come from committed command state. |
+| `audit_events.actor_type/id` and `target_type/id` | Actor: `system`, `member`, `customer`, `platform_operator`; target: finite allowlist owned by each registered audit event/action (the column itself accepts normalized codes). | Audit writer validates same-tenant member/customer/target references; platform-operator provenance also requires its separately authorized control-plane path. | Audit row is forced-RLS and append-only; arbitrary actor/target identifiers are untrusted. |
+| `legal_holds.scope_type/id` | `organization`, `contact`, `conversation`, `appointment_request`, `data_class` | Legal/privacy writer validates the organization root or same-tenant scoped target; `data_class` uses the approved data-class registry. | Legal-hold row is forced-RLS; the check constrains shape but not target ownership. |
+| `analytics_events.source_event_id` | Canonical event catalog identified by the row's bounded `event_type` and `schema_version` | Projector accepts only a same-tenant outbox/domain event and preserves its canonical event ID. | Analytics row is forced-RLS; source ID alone cannot select another tenant's event. |
+| `platform_audit_events.target_type/id` | Finite allowlist owned by the separately reviewed platform action; target organization has its explicit FK. | Dedicated platform writer validates the target and authorization/approval grant; tenant repositories cannot call it. | Global/platform row has no tenant RLS and no ordinary runtime access. |
+
 ## 11. Entity-relationship diagrams
 
 The diagrams show ownership/cardinality, not every column. Every tenant
@@ -1393,7 +1544,7 @@ added speculatively.
 | Knowledge load | tenant + active service/location/policy + effective instant | catalog tenant/status/effective indexes described above |
 | Provider dedupe | tenant + connection + exact external ID | webhook/message unique indexes |
 | Contact resolution | tenant + identity type/connection + exact tenant-peppered hash | contact identity expression unique index |
-| Outbox claim | global worker due pending items | partial `outbox_events(status, available_at, id)` through dedicated claim function; tenant context set before processing |
+| Outbox claim | global worker due pending items | partial `outbox_events(status, available_at, id)` through a later-approved narrow claim boundary; tenant context set before processing |
 | Notification claim | tenant/worker + due state | `notifications(organization_id, status, available_at)` |
 | Funnel report | tenant + event type + occurred range, optional dimensions | `analytics_events(organization_id, occurred_at, event_type)` and subject indexes |
 | Audit target history | tenant + target + reverse time | audit target composite index |
@@ -1502,8 +1653,9 @@ and never delivered through a public stable URL.
    where transaction/tooling rules permit.
 4. Runtime roles receive explicit table/function grants, no schema create,
    ownership, superuser, or `BYPASSRLS`.
-5. Worker claim functions have fixed search paths, bounded operations, and
-   return only leased IDs/tenant context; they are security-reviewed.
+5. Any later-approved worker claim mechanism has bounded least-privilege
+   operations and returns only leased IDs/tenant context; if implemented as a
+   function, it has a fixed safe search path and receives security review.
 6. Backup/restore exercises verify keys, extensions, RLS policies, constraints,
    and encrypted-data key availability—not only row count.
 7. Status check changes are additive first; application compatibility is
@@ -1561,24 +1713,23 @@ channel-participant identity is permitted.
 
 ## 19. Data-model open questions
 
-1. The active-lead uniqueness scope (contact only, service, campaign, or a
-   configurable combination).
-2. Exact Telegram thread grouping and widget conversation reopen/session
-   windows, needed before partial active-conversation uniqueness is finalized.
-3. Jurisdiction-specific retention day values, legal basis, legal-hold
+1. Exact channel-specific resolved-conversation reopen/new-cycle and Widget
+   session windows. The active grouping identity and its structural uniqueness
+   are frozen above.
+2. Jurisdiction-specific retention day values, legal basis, legal-hold
    authority, and whether audit/outcome records must be physically segregated.
-4. Whether each fixed V1 external-attestation method (`phone|in_person`) is
+3. Whether each fixed V1 external-attestation method (`phone|in_person`) is
    legally acceptable and which evidence fields/retention it requires; any new
    method needs a versioned contract and architecture review.
-5. Whether external imports are P0 for attendance/revenue; the schema supports
+4. Whether external imports are P0 for attendance/revenue; the schema supports
    `approved_import`, while the product requires only manual P0 entry.
-6. Base currency/reporting rules for organizations operating in multiple
+5. Base currency/reporting rules for organizations operating in multiple
    currencies; raw facts remain currency-specific regardless.
-7. Whether provider payloads/message bodies remain in PostgreSQL or move to
+6. Whether provider payloads/message bodies remain in PostgreSQL or move to
    encrypted object storage at launch volume.
-8. Measured volume thresholds for partitioning and whether a read replica is
+7. Measured volume thresholds for partitioning and whether a read replica is
    justified.
-9. Whether the selected ORM/migration stack safely supports range exclusion
+8. Whether the selected ORM/migration stack safely supports range exclusion
     constraints, partial/expression indexes, generated search vectors,
     security-definer functions, and forced RLS; migrations must use explicit SQL
     where it does not.

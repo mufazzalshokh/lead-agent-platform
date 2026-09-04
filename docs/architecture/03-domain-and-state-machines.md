@@ -499,24 +499,29 @@ decisions.
 
 Repository interfaces live with the domain/application contracts; PostgreSQL
 implements them. Except for explicit platform-control-plane repositories, every
-method requires `TenantContext` or an `OrganizationId` already authorized by
-the application service.
+repository is constructed from a `TenantDbSession`/`TenantTransaction` already
+bound to exactly one trusted `OrganizationId`. Tenant repository methods do not
+accept a second organization argument, cannot use the raw pool/base database,
+and issue tenant-qualified SQL even though forced RLS is also present.
 
 - `OrganizationRepository`: get active tenant, save settings with version.
 - `MembershipRepository`: find active membership by tenant/principal, list
   location grants, save invitation/status.
 - `CatalogRepository`: get effective location/service/price/FAQ/policy versions;
   save validated versions.
-- `ChannelConnectionRepository`: resolve trusted inbound connection by
-  provider/public identifier; tenant admin mutations are tenant-scoped.
+- `InboundRouteResolver`: pre-tenant exact route type/hash resolution only
+  through the narrow database boundary; no route scan or tenant repository.
+- `ChannelConnectionRepository`: load the resolved connection within the bound
+  tenant session; tenant admin mutations remain tenant-scoped.
 - `WidgetSessionRepository`: create/load/revoke a tenant-bound session by
   verified token/JTI and enforce immutable conversation binding.
 - `ContactRepository`: resolve identity within tenant, get/save contact and
   protected identities.
-- `LeadRepository`: get by tenant and ID, get active tenant-local lead for
-  contact, save with expected version.
-- `ConversationRepository`: get tenant-scoped active conversation, append
-  idempotent message, save state/version, page by opaque cursor.
+- `LeadRepository`: get by ID within the bound tenant, get the one active Lead
+  for a Contact, and save with expected version.
+- `ConversationRepository`: get the active Conversation by channel connection
+  and canonical external thread/group hash within the bound tenant, append an
+  idempotent message, save state/version, and page by opaque cursor.
 - `AppointmentRequestRepository`: get/list by tenant/location, save aggregate
   and transition with expected version.
 - `HandoffRepository`: find active by tenant/conversation, save aggregate and
@@ -530,13 +535,16 @@ the application service.
 - `AuditEventRepository`: append and tenant-scoped read; no update/delete API.
 - `WebhookReceiptRepository` and `IdempotencyRepository`: insert-or-get by
   tenant/connection scope and record outcome.
-- `OutboxRepository`: append in current transaction and claim/publish with
-  leasing.
+- `OutboxRepository`: append in the current tenant transaction. Cross-tenant
+  due-work discovery is a separate later-reviewed narrow worker boundary;
+  publish handling returns to one tenant session.
 
-Forbidden shapes include `findById(id)` for a tenant entity, raw query handles
-returned to handlers, or a repository that accepts a client organization ID.
-The safe shape is conceptually `get(tenantContext, typedId)` and returns
-not-found for an unauthorized resource.
+Forbidden shapes include a tenant repository built from the raw pool/base
+database, raw query handles returned to handlers, or a repository method that
+accepts a client or second organization ID. The safe shape is conceptually
+`tenantSession.leads.get(typedId)`: the session supplies immutable organization
+scope, SQL still qualifies by that scope, and another tenant's identifier is
+indistinguishable from not found.
 
 ## 7. Domain events
 
@@ -669,6 +677,17 @@ cancellation separately. A command may run multiple valid intermediate
 transitions atomically (for example first message `new -> engaged`), but each
 transition is separately recorded; it cannot skip preconditions.
 
+Within one Organization, a Contact has at most one active Lead across `new`,
+`engaged`, `qualified`, and `booking_requested`. `disqualified`, `converted`,
+and `closed` records do not compete, so repeat business creates a new Lead while
+retaining history. Reopening a disqualified Lead conflicts when another active
+Lead already exists for the same organization/contact. Multiple channel
+Conversations may associate with the same active Lead; this rule neither merges
+Contacts nor crosses tenant boundaries. S5 enforces the invariant in both the
+repository and a normal PostgreSQL partial unique index; Stage 3 remains the
+authority for transition legality. The index is not a trigger-based Lead state
+machine.
+
 ## 10. Conversation state machine
 
 `open | awaiting_lead | awaiting_staff | resolved | closed`
@@ -695,6 +714,18 @@ delivery failure/handoff according to policy. A conversation cannot be
 `awaiting_staff` without an active Handoff. `awaiting_lead + staff` also requires
 the same assigned/in-progress Handoff; all other valid combinations prohibit an
 active Handoff.
+
+An active Conversation is unique by organization, channel connection, and the
+canonical external provider thread/session grouping hash. Active statuses are
+`open`, `awaiting_lead`, and `awaiting_staff`; `resolved` and `closed` do not
+compete. The grouping hash is derived deterministically from trusted adapter or
+widget-session context and never from `ContactId`, so one Contact may have
+simultaneous Conversations on different connections or canonical threads and
+the anonymous/pre-Contact Widget flow remains supported. Before the first
+meaningful message that flow persists as a WidgetSession; the message then
+creates/resolves the pseudonymous Contact, Lead, and Conversation atomically.
+S5 requires the hash for active rows and enforces the grouping with a normal
+PostgreSQL partial unique index, not a SQL Conversation state machine.
 
 When resolution, cancellation, or expiry terminalizes an active Handoff, the
 cross-machine command must select exactly one disposition; there is no implicit
@@ -897,19 +928,16 @@ For each machine:
 1. Exact permission-bundle granularity within canonical
    `owner|admin|staff|analyst` roles, including which role/capability and
    location scope represent the location-manager persona.
-2. Whether one contact may have multiple simultaneous active leads for different
-   services in V1; recommended default is one active lead per campaign/service
-   scope, enforced by an explicit key.
-3. Exact conversation reopen window and whether Telegram threads require a
-   different grouping policy than widget sessions.
-4. Whether each fixed V1 staff-attestation method (`phone|in_person`) is
+2. Exact channel-specific resolved-conversation reopen/new-cycle windows. The
+   active grouping identity itself is frozen and is not an open question.
+3. Whether each fixed V1 staff-attestation method (`phone|in_person`) is
    permitted in the launch jurisdiction and what evidence/retention applies.
    Adding another method requires a versioned contract and architecture review.
-5. Customer confirmation and staff review expiry defaults and reminder cadence.
-6. Whether staff may replace an offered slot; recommended invariant is cancel
+4. Customer confirmation and staff review expiry defaults and reminder cadence.
+5. Whether staff may replace an offered slot; recommended invariant is cancel
    the current offer/request and create a new version/request rather than mutate
    evidence in place.
-7. Whether revenue attribution allows partial/multiple currencies per request;
+6. Whether revenue attribution allows partial/multiple currencies per request;
    reporting must never sum unlike currencies.
-8. Final retention and legal-hold rules for messages, AI payloads, consent,
+7. Final retention and legal-hold rules for messages, AI payloads, consent,
    audit, and outcome facts.

@@ -207,8 +207,12 @@ end-to-end user SLIs. Final contractual SLAs remain an open commercial decision.
 - Uzbek, Russian, and English understanding and responses.
 - Structured location, service, active price, FAQ, business hours, and business
   policy configuration.
-- One active conversation per channel identity under the documented uniqueness
-  rule.
+- At most one active Lead per organization/contact across `new`, `engaged`,
+  `qualified`, and `booking_requested`; terminal history does not prevent a
+  later repeat-customer Lead.
+- One active Conversation per organization, channel connection, and canonical
+  external provider thread/session grouping hash. The same Contact may have
+  simultaneous Conversations on different connections or canonical threads.
 - Contact capture, deterministic qualification, lead lifecycle, and safe human
   handoff.
 - Appointment request, staff accept/reject, customer confirmation, and terminal

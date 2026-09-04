@@ -178,7 +178,7 @@ keys/checks/unique constraints/indexes, and managed backups/PITR in production.
 
 **Context:** Every tenant-owned access path is security-critical; either application filters or RLS alone can be misconfigured. Connection pooling can leak session context if handled incorrectly.
 
-**Decision:** Require organization scope in repository/application interfaces, derive it from trusted authentication/channel context, enforce tenant-consistent keys/constraints, and use PostgreSQL `ENABLE` plus `FORCE ROW LEVEL SECURITY` on tenant-owned tables as defense-in-depth. Set tenant context transaction-locally and reset by transaction completion; runtime roles do not receive bypass/table-owner privileges. Platform-operator repositories/roles are separate and audited.
+**Decision:** Require organization scope in application interfaces and create tenant repositories only from `withTenantTransaction(OrganizationId)`, which returns a transaction-bound `TenantDbSession` for exactly one trusted organization. Repository methods accept no second tenant ID and still issue tenant-qualified SQL. Establish `app.organization_id` with safely parameterized transaction-local `set_config(..., true)` before any tenant query; use one fixed-search-path, `SECURITY INVOKER` `app.current_organization_id()` helper that fails closed. Enable and force RLS on every tenant/tenant-root table in the 47-table manifest. The application runtime is a non-owner `NOSUPERUSER NOBYPASSRLS` least-privilege role; the migration/owner and platform paths are separate. There is no generic runtime bypass flag. Pre-tenant inbound routing uses only an exact, non-enumerable, fixed-search-path `SECURITY DEFINER` resolver with `EXECUTE` rather than table SELECT. Future workers receive no generic cross-tenant bypass.
 
 **Consequences:** Two independent controls reduce IDOR/query mistakes. Migrations/tests/operations are more complex, and careless owner/bypass roles or pooled session state could defeat RLS. Cross-tenant matrices and pool-reuse integration tests are mandatory.
 
@@ -191,6 +191,34 @@ keys/checks/unique constraints/indexes, and managed backups/PITR in production.
 **Decision:** Package web/API/worker as hardened OCI containers, use a managed PostgreSQL capability, inject validated environment configuration/secrets, and promote one signed image digest through staging to production. Keep target-specific IaC under `infra/deploy`.
 
 **Consequences:** Hosting remains selectable and release provenance improves. “Cloud-neutral” is not identical behavior across providers; one target must still be selected, tested, documented, and operated before production.
+
+### ADR-019: Active Lead and Conversation uniqueness
+
+**Status:** Accepted
+
+**Context:** Contact-only ambiguity could create duplicate active Leads, while
+Contact-based Conversation uniqueness would incorrectly collapse legitimate
+parallel provider threads and channels.
+
+**Decision:** Within one Organization, a Contact has at most one active Lead in
+`new|engaged|qualified|booking_requested`; `disqualified|converted|closed`
+history does not compete, and reopening conflicts if another active Lead exists.
+The key is only (`organization_id`, `contact_id`) and does not merge Contacts.
+An active Conversation in `open|awaiting_lead|awaiting_staff` is unique by
+(`organization_id`, `channel_connection_id`, `external_thread_hash`), where the
+hash is deterministically derived from trusted canonical provider/session
+grouping context and never from Contact ID. `resolved|closed` history does not
+compete. S5 enforces both decisions through repository behavior and normal
+PostgreSQL partial unique indexes, including a non-null hash requirement for
+active Conversations; Stage 3 remains the transition authority.
+
+**Consequences:** Repeat customers retain historical Leads, and multiple
+channels/threads may share one active Lead. Anonymous/pre-Contact Widget flow
+persists first as a WidgetSession and creates/resolves its pseudonymous Contact,
+Lead, and Conversation on the first meaningful message, without making Contact
+identity the grouping key. Concurrent creates/reopens map structural uniqueness
+violations to typed conflicts. Channel-specific reopen/session windows remain a
+later product/integration setting, not part of the grouping identity.
 
 ## MVP scope and release boundaries
 
@@ -237,13 +265,13 @@ Each stage is a focused, reviewable change and must follow `AGENTS.md`. “Gate�
 | **S4a Tenant/configuration database foundation:** first reviewed migration slice | S2-S3 | database schema/migration for exactly `organizations`, `users`, `memberships`, `locations` | PostgreSQL 17 + installed Drizzle workflow; exactly four production tables; UUIDv7-compatible IDs, UTC timestamps, checks, safe FKs, tenant-leading uniqueness; no RLS/repositories/auth/identity/session/invitation/location-grant behavior | PostgreSQL 17 migrate-from-zero/rerun, four-table constraints, same-tenant structure, schema/migration parity | Slice SQL reviewed; exact manifest only; no unscoped tenant table or assumed ORM API |
 | **S4b Business configuration and customer/workflow database foundation:** second migration slice | S4a | `retention_policies`, `retention_policy_rules`, `inbound_routes`, location versions/hours/closures, service/price/FAQ/policy/channel/widget tables, and contact/lead/conversation/message/appointment/outcome/handoff/notification tables listed explicitly in `04-data-model.md` | Remaining business configuration, knowledge, channels and customer workflow tables; transition/evidence history, exact money/time, dedupe and tenant composite references exist | clean/upgrade migration, configuration/knowledge/workflow constraints, concurrent uniqueness | Slice SQL reviewed; no hidden JSON state or cross-tenant reference |
 | **S4c Reliability/governance database foundation:** final initial-schema slice | S4a-S4b | database receipts/idempotency/outbox/AI/audit/privacy/analytics schema | Reliable processing, governance and analytics fact tables/indexes exist with bounded sensitive payloads | clean/upgrade migration, atomicity/uniqueness/retention constraints | Full initial schema maps to data specification and migrates cleanly |
-| **S5 Tenant-safe persistence:** scoped repositories + RLS | S4a,S4b,S4c | database repositories/transactions/RLS, security test helpers | Tenant scope required; transaction-local RLS; operator path separate | two-tenant CRUD/list/count/export hostile matrix, pooled connection reuse | Zero cross-tenant access/mutation in suite |
+| **S5 Tenant-safe persistence:** scoped repositories + RLS | S4a,S4b,S4c | database repositories/transactions/RLS, role/context and exact inbound-resolver migrations, security test helpers | Transaction-bound one-tenant sessions; tenant-qualified repositories; active Lead/Conversation partial uniqueness; forced RLS across the exact 47-table classification; non-owner/no-bypass runtime; global/platform paths separate; atomic CAS/history/audit/outbox writes | missing-context CRUD, two-tenant hostile CRUD/FK/repository/CAS matrix, pooled commit/rollback reuse, runtime-role/FORCE RLS, exact inbound resolver, polymorphic ownership, global-table denial | Zero cross-tenant access/mutation or pool-context leakage; active grouping conflicts deterministic; business write/outbox atomicity proven |
 | **S6 Staff identity/RBAC:** OIDC-to-membership path | S2,S5 | `external_identities`, `membership_invitations`, `auth_sessions`, `membership_location_scopes`; security, integrations/identity, API auth plugin | Provider-neutral user has 1:N exact `(issuer, subject)` identities; pre-user invitations are separate and never auto-linked by email; valid OIDC maps to active app membership/role; disabled/revoked denied; org claim ignored | identity-link/invitation/session/token/issuer/audience/JWKS rotation, role/location/IDOR/CSRF tests | Every private route uses trusted actor/tenant context; no provider claim establishes tenancy |
 | **S7 Business knowledge configuration API:** authoritative tenant facts | S3,S5,S6 | domain/application knowledge, private API | Owner/admin manage locations/services/prices/FAQs/hours/policies with revisions/audit | auth matrix, exact money/timezone, tenant/revision integration | AI-independent API returns only active authoritative tenant facts |
 | **S8 Reliable async substrate:** outbox and pg-boss | S4c,S5 | database outbox, integrations/jobs, worker | Atomic intent, claims/leases/retry/DLQ/replay/reconciliation; workload queues | crash-point, duplicate, poison, fairness, replay audit tests | One logical effect under retries/restarts |
 | **S9 Conversation/lead/contact application:** deterministic persistence | S3,S5,S8 | domain/application conversations/leads, API queries | One lead/conversation/message per logical inbound; approved active-lead/conversation grouping, phone/session sufficiency, contact/consent semantics; no AI yet | state/concurrency/idempotency/PII/grouping tests | Duplicate/reordered canonical messages cannot regress state or identity |
 | **S10 Widget trust and intake:** secure widget vertical ingress | S2,S6,S8-S9 | web widget bootstrap, API widget routes, channel adapter | Opaque session/public credential + allowed origin resolves server-side tenant; approved session/reopen/body/rate/idempotency settings; message durably accepted | origin/forgery/replay/oversize/duplicate/reopen E2E | Tenant cannot be selected or crossed by widget input |
-| **S11 Telegram adapter:** verified Telegram ingress/outbound | S2,S8-S9 | integrations/channels/telegram, webhook routes | Authenticated connection resolves tenant; approved bot ownership/thread grouping/limits; canonical normalize/send/status/errors | recorded contract fixtures, forgery/retry/reorder/thread/ambiguous send | Shared channel contract suite passes unchanged |
+| **S11 Telegram adapter:** verified Telegram ingress/outbound | S2,S8-S9 | integrations/channels/telegram, webhook routes | Authenticated connection resolves tenant; approved bot ownership/limits and canonical chat/thread hash derivation within the frozen grouping identity; canonical normalize/send/status/errors | recorded contract fixtures, forgery/retry/reorder/thread/ambiguous send | Shared channel contract suite passes unchanged |
 | **S12 AI orchestration harness:** safe provider-independent decision path | S2,S7,S9 | `packages/ai`, application policy, AI run schema/adapter | OpenAI Responses adapter uses `store:false`, schema output, bounded context/deadline; policy executes no unauthorized action | malformed/refusal/timeout/stale/tool/prompt injection deterministic suite | Safe fallback/handoff and zero direct protected mutation |
 | **S13 Multilingual model selection:** pin evaluated model/budgets | S12 | `tests/ai-evals`, prompt/model/price/processor config | Luna/Terra viable candidates (and another only if justified) compared on the same EN/RU/UZ corpus, safety, latency, tokens/cost; provider contract/region/data controls approved; model pinned | full live eval plus deterministic regression | Red-line safety 100%; approved per-slice quality/cost/privacy thresholds documented and met |
 | **S14 Grounded FAQ/pricing response:** first AI product slice | S7,S10-S13 | application conversation flow, AI context/prompt, channel renderer | Same-tenant active facts only; deterministic direct lookup when sufficient; missing facts hand off | all-language FAQ/price/missing/discount/service/medical/injection E2E/evals | Zero accepted invented authoritative fact in gate corpus |
@@ -399,7 +427,7 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | Does launch-jurisdiction counsel require productized automated subject export/deletion/retention in P0, or is the verified audited operator runbook sufficient until P1/FR-023? | Privacy/legal + product | The architecture must fulfill applicable rights, but product priority cannot override launch law | Decide before S21a scope; verify before S23 |
 | What exact qualification fields/rules are the launch defaults, and who may edit/publish them? | Product + clinic operations | Changes lead conversion semantics and eval fixtures | Before S7/S15 |
 | Is a phone number mandatory for an appointment request, or can a bound widget/Telegram identity suffice for selected tenants? | Product + privacy | Contact sufficiency changes validation, consent, and reachability behavior | Before S9/S16 |
-| What is the active-lead uniqueness scope, and what widget reopen/Telegram thread grouping windows apply? | Product + domain architecture | Database uniqueness and message-to-conversation routing cannot be inferred | Before S4b constraints and S9-S11 |
+| What exact channel-specific resolved-conversation reopen/new-cycle and Widget session windows apply within the frozen active grouping identity? | Product + integrations | Timing changes whether an inactive thread is reopened or a later Conversation is created, but does not change the approved grouping key | Before S10-S11 |
 | What exact permission bundles/location restrictions apply to `owner`, `admin`, `staff`, and `analyst`, including price/content publishing? | Product + security | Role names are fixed, but least-privilege capabilities affect every private command | Before S6/S7 |
 | Which OIDC provider, MFA/session policy, invitation/recovery flow, and platform-operator approval process? | Security + platform | Identity assurance and contracts are provider/product decisions | Before S6 |
 | Is Telegram one platform bot or a tenant-owned bot per connection, and who handles token rotation/ownership? | Product + integrations | Affects onboarding, provider limits, credentials, and support | Before S11 |

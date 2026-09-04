@@ -127,6 +127,41 @@ Required coverage includes:
 
 Each test creates at least two tenants where scoping is relevant. Helpers that silently add tenant filters are not sufficient evidence: tests issue hostile identifiers from another tenant and assert both response behavior and absence of state change.
 
+### S5 tenant-safe persistence acceptance contract
+
+S5 uses real PostgreSQL and the actual non-owner application runtime role. Its
+security suite is release-blocking and proves:
+
+- **Missing context:** direct tenant-table SELECT returns no rows and INSERT,
+  UPDATE, and DELETE cannot affect/create rows. Invalid context aborts safely.
+- **Tenant A/Tenant B symmetry:** each tenant can read/write permitted own rows
+  and cannot read, update, delete, or create foreign-key relationships to the
+  other's rows.
+- **Pool safety:** after Organization A commits, and separately after it rolls
+  back, the same pooled connection can serve Organization B without retaining A
+  context. No tenant query can run before the wrapper establishes context.
+- **Forced RLS:** migrations assert `ENABLE` plus `FORCE ROW LEVEL SECURITY` for
+  every manifest table; the runtime role is a non-owner without superuser or
+  `BYPASSRLS`; even direct broad SELECT observes only the current tenant.
+- **Repositories:** every ID lookup remains tenant-qualified; methods cannot
+  accept a conflicting Organization ID or access a raw pool; CAS combines the
+  bound tenant, resource ID, and expected version; cross-tenant IDs reveal no
+  existence and map to not found rather than version conflict.
+- **Inbound route:** ordinary runtime/ingress table scans are denied. The narrow
+  exact resolver accepts only canonical route type/hash, resolves only active
+  routes, returns minimum organization/connection identity, cannot enumerate,
+  and reveals no tenant for an invalid hash. Tests verify its dedicated definer
+  is `NOLOGIN`, can select only `inbound_routes`, and the ingress/runtime role
+  has only function `EXECUTE` with no direct table grant or RLS bypass.
+- **Polymorphic writes:** each writer accepts only its registered finite type
+  vocabulary and rejects a target ID that does not resolve through the same
+  tenant session.
+- **Global tables:** tenant repositories cannot arbitrarily scan `users`; the
+  tenant runtime role cannot read or write `platform_audit_events`.
+- **Atomicity:** aggregate CAS, child/history/transition facts, required audit
+  evidence, and outbox insertion commit or roll back together. No repository
+  silently retries a business transition after a version conflict.
+
 ## Contract tests
 
 ### REST and JSON Schema

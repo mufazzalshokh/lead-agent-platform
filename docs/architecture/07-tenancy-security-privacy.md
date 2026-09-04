@@ -53,6 +53,12 @@ no direct table or scan access. It returns only the active organization/
 connection identifiers needed to establish tenant context. Credential material
 is then read through the tenant-scoped connection path.
 
+Forced RLS remains enabled on `inbound_routes`. The resolver function is owned
+by a dedicated `NOLOGIN` definer role with `BYPASSRLS` and SELECT only on that
+table; it has no other tenant-table privileges. Runtime/ingress receives only
+function `EXECUTE`, is `NOBYPASSRLS`, and cannot assume the definer role. This is
+a contained database capability, not a generic application bypass.
+
 ### Membership and location scope
 
 Tenant roles are `owner`, `admin`, `staff`, and `analyst`. A membership also has
@@ -103,12 +109,17 @@ skipping another.
 - Authentication/routing creates an immutable `TenantContext` containing
   `organization_id`, principal/actor type and ID, membership ID/role/location
   scope where applicable, request ID, and permission set.
-- `TenantContext` is passed explicitly through application services and
-  repositories. It is never a mutable process global, singleton, or inherited
-  from a previous pooled request.
-- Tenant repositories require it in their method signatures and include
-  `organization_id` in every SELECT/INSERT/UPDATE/DELETE predicate. Find-by-ID
-  APIs are actually find-by-tenant-and-ID.
+- `TenantContext` is passed explicitly through application services. It is never
+  a mutable process global, singleton, or inherited from a previous pooled
+  request. Its trusted Organization ID is passed to
+  `withTenantTransaction(organizationId, callback)`.
+- The wrapper begins an explicit transaction, establishes transaction-local
+  tenant context before any tenant query, and exposes only a
+  `TenantDbSession`/`TenantTransaction` bound to that Organization. Tenant
+  repositories are created from that session, not the raw pool/base database.
+- Repository methods do not accept a second Organization ID. They include the
+  session's `organization_id` in every SELECT/INSERT/UPDATE/DELETE predicate;
+  find-by-ID APIs are actually find-by-bound-tenant-and-ID.
 - Domain objects do not accept a caller-supplied `organization_id` mutation. New
   rows obtain it from the trusted context/parent aggregate.
 - Batch, analytics, search, cache, object-store, rate-limit, and lock keys begin
@@ -149,36 +160,71 @@ CREATE POLICY tenant_isolation_conversations ON conversations
 ```
 
 The exact migration helper generates equivalent policies consistently for every
-tenant table. Requirements:
+tenant table. The authoritative 47-table classification is in
+`04-data-model.md` Section 2.4. Requirements:
 
-- The runtime application/worker role is not a table owner, superuser, or
-  `BYPASSRLS` role. A separate non-runtime migration owner applies schema changes.
-- Each tenant operation starts an explicit transaction and executes
-  transaction-local, bound/validated `app.organization_id`, `app.principal_id`,
-  and `app.request_id` settings before any tenant query. The locked-down
-  `app.current_organization_id()` helper returns the tenant UUID or null;
-  missing/invalid context yields zero rows or an application fail-closed error.
-- `SET LOCAL` confines context to the transaction. Connection-pool checkout and
-  release hooks assert that no session-level tenant setting leaks. No tenant
-  query runs outside the wrapper transaction.
+- The migration/owner role owns schema objects and applies reviewed migrations;
+  application processes never use it. The application runtime role is not a
+  table owner, is `NOSUPERUSER NOBYPASSRLS`, cannot create roles/databases or
+  schema objects, and receives only minimum schema/table/function privileges.
+- Each tenant operation starts an explicit transaction and uses safely bound
+  `set_config('app.organization_id', value, true)` (plus validated principal and
+  request context) before any tenant query. The local flag is mandatory; no
+  connection/session-persistent tenant state is permitted.
+- The canonical `app.current_organization_id()` helper is `SECURITY INVOKER`,
+  has a fixed safe `search_path`, returns a canonical UUID, and cannot bypass
+  policy. Missing context returns no rows/fails insertion; invalid context
+  aborts the transaction. Both fail closed.
+- Commit and rollback discard context. Nested operations may reuse the session
+  only for the same Organization; any attempted tenant switch fails before SQL.
+  Pool tests reuse connections after commit and rollback to prove no leakage.
 - INSERT policies use `WITH CHECK`; update/delete policies use both visibility
   and check behavior. Tests exercise every operation, not SELECT alone.
 - Elevated maintenance, migrations, backup, and privacy purge use separate
   credentials and code paths, never the request runtime role. Their use is
   scheduled, monitored, and audited.
-- Intentionally global domain data is limited to records such as `users`;
-  supported locales are enforced by schema contracts and `CHECK` constraints
+- Intentionally global/platform data is limited to `users` and
+  `platform_audit_events`; `organizations` is the tenant root and uses
+  `organizations.id = app.current_organization_id()`. Tenant repositories cannot
+  scan either global table. `users` is available only through a restricted
+  identity/auth path, and `platform_audit_events` only through its separately
+  audited platform path.
+- No `app.is_admin`, `app.is_platform`, `app.bypass_rls`, or similar generic
+  runtime bypass setting exists. Future cross-tenant worker discovery also uses
+  no generic `BYPASSRLS`; a narrow reviewed claim mechanism may return minimum
+  references, after which business processing uses a fresh tenant transaction.
+- Supported locales are enforced by schema contracts and `CHECK` constraints
   rather than a locale table. Migration-tool and pg-boss internal metadata are
   infrastructure-owned, are not queried through tenant repositories, and must
   contain no customer payload. Application `outbox_events` remain tenant-owned
   and forced-RLS; only their minimal due-work references may be claimed through
-  the reviewed worker function. `memberships` and routing maps are accessed
-  through narrowly
-  authorized policies/repositories rather than a broad RLS bypass.
+  a later-approved narrow worker boundary. `memberships` and routing maps are
+  accessed through narrowly authorized policies/repositories rather than a broad
+  RLS bypass.
 
 RLS isolates organizations. Fine-grained role and location authorization stays
 in application policy and may be reinforced by additional database policies only
 after their correctness and operational impact are tested.
+
+### 3.1 Frozen S5 repository and write contract
+
+- Tenant repository instances live only for one tenant transaction and cannot
+  expose the underlying pooled connection.
+- Resource lookup qualifies both tenant and resource ID. Cross-tenant and absent
+  identifiers produce the same not-found result.
+- Versioned mutable writes use compare-and-swap on tenant + resource ID +
+  expected version and advance to the exact domain-produced next version. A
+  same-tenant probe may distinguish not found from version conflict internally;
+  it never reveals that another tenant owns the supplied ID.
+- Structural/domain conflict is distinct from not found and version conflict.
+  Repositories do not invent transitions or silently retry after concurrency
+  conflict; only an explicitly safe idempotency/application boundary retries.
+- Aggregate mutation, history/transition children, required audit evidence, and
+  outbox insertion commit in the same transaction. Any failure rolls back the
+  entire business mutation, including cross-machine workflows.
+- Bounded polymorphic references are validated by their writer against the
+  target loaded through the same tenant session. RLS protects the referencing
+  row but cannot establish ownership of an arbitrary target UUID.
 
 ### 4. Derived systems and caches
 
@@ -210,6 +256,16 @@ from the other tenant. Required suites include:
   rollbacks to expose context leakage;
 - pagination/cursor and idempotency replay across tenant boundaries;
 - platform support access with absent, expired, revoked, and wrong-tenant grants.
+
+The S5 acceptance matrix additionally proves missing context fails closed for
+all CRUD verbs; tenants A and B can operate only on their own rows and cannot
+create cross-tenant FKs; forced RLS applies under the actual non-owner runtime
+role even for broad SQL; CAS combines tenant and version without an existence
+oracle; and repository lookups remain tenant-qualified. Ordinary ingress cannot
+scan `inbound_routes`, while the exact resolver resolves only active exact
+hashes, cannot enumerate, and returns nothing for invalid hashes. Tenant
+repositories cannot scan `users` or read `platform_audit_events`, and every
+polymorphic writer rejects another tenant's target.
 
 Any cross-tenant disclosure/mutation is a release blocker. These tests run in CI
 and against migrations in staging.
