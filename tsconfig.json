@@ -3,6 +3,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@lead-agent/config": ["./packages/config/src/index.ts"],
       "@lead-agent/contracts": ["./packages/contracts/src/index.ts"]
     },
     "types": ["node"]

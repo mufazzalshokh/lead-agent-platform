@@ -10,11 +10,15 @@ import {
   AgentDecisionV1Schema,
   DOMAIN_EVENT_NAMES,
   DomainEventSchemasByVersion,
+  OrganizationIdSchema,
+  isSchemaValue,
   type AgentActionType,
   type DomainAggregateType,
   type DomainEventName,
   type DomainEventPayloadByName,
+  type OrganizationId,
 } from "../../packages/contracts/src/index.js";
+import { createTenantDatabaseRuntimeConfig } from "../../packages/config/src/index.js";
 import {
   analyticsEvents,
   aiActionEvaluations,
@@ -32,6 +36,7 @@ import {
   contactIdentities,
   contacts,
   conversations,
+  createTenantDatabaseRuntime,
   faqs,
   handoffs,
   handoffTransitions,
@@ -65,6 +70,7 @@ import {
   webhookReceipts,
   widgetAllowedOrigins,
   widgetSessions,
+  type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import {
   isAppointmentConfirmationSource,
@@ -80,6 +86,7 @@ import {
   type HandoffStatus,
   type HandoffTriggerReason,
 } from "../../packages/domain/src/index.js";
+import { registerTenantSessionTests } from "./tenant-session.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -480,6 +487,10 @@ const isDomainAggregateType = (value: unknown): value is DomainAggregateType =>
 
 let container: StartedPostgreSqlContainer | undefined;
 let pool: Pool | undefined;
+let privilegedConnectionString: string | undefined;
+let runtimeConnectionString: string | undefined;
+let tenantRuntime: TenantDatabaseRuntime | undefined;
+const tenantRuntimePoolErrors: Error[] = [];
 let upgradeTablesAfterS4a: string[] = [];
 let upgradeTablesAfterS4b1: string[] = [];
 let upgradeTablesAfterS4b2: string[] = [];
@@ -519,6 +530,34 @@ const database = (): Pool => {
     throw new Error("PostgreSQL test pool is not initialized");
   }
   return pool;
+};
+
+const requirePrivilegedConnectionString = (): string => {
+  if (privilegedConnectionString === undefined) {
+    throw new Error("Privileged PostgreSQL test connection is not initialized");
+  }
+  return privilegedConnectionString;
+};
+
+const requireRuntimeConnectionString = (): string => {
+  if (runtimeConnectionString === undefined) {
+    throw new Error("Runtime PostgreSQL test connection is not initialized");
+  }
+  return runtimeConnectionString;
+};
+
+const requireTenantRuntime = (): TenantDatabaseRuntime => {
+  if (tenantRuntime === undefined) {
+    throw new Error("Tenant database runtime is not initialized");
+  }
+  return tenantRuntime;
+};
+
+const requireOrganizationId = (value: unknown): OrganizationId => {
+  if (!isSchemaValue(OrganizationIdSchema, value)) {
+    throw new Error("Invalid OrganizationId test fixture");
+  }
+  return value;
 };
 
 const requirePostgreSql17 = async (testPool: Pool): Promise<void> => {
@@ -2109,8 +2148,10 @@ beforeAll(async () => {
       .withUsername("lead_agent_test")
       .withPassword("local-test-only-password")
       .start();
-    pool = new Pool({ connectionString: container.getConnectionUri(), max: 4 });
+    privilegedConnectionString = container.getConnectionUri();
+    pool = new Pool({ connectionString: privilegedConnectionString, max: 4 });
   } else {
+    privilegedConnectionString = testDatabaseUrl;
     pool = new Pool({ connectionString: testDatabaseUrl, max: 4 });
     await requireEmptyExternalTestDatabase(pool);
   }
@@ -2119,6 +2160,32 @@ beforeAll(async () => {
   await verifyUpgradeAndReset(pool);
   await runMigrations(pool);
   await runMigrations(pool);
+
+  const syntheticRuntimePassword = "s53-local-test-only-password";
+  const passwordStatement = await pool.query<{ statement: string }>(
+    "select pg_catalog.format('alter role lead_agent_runtime password %L', $1::text) as statement",
+    [syntheticRuntimePassword],
+  );
+  const statement = passwordStatement.rows[0]?.statement;
+  if (statement === undefined) {
+    throw new Error("Unable to configure the disposable runtime-role test credential");
+  }
+  await pool.query(statement);
+
+  const runtimeUrl = new URL(requirePrivilegedConnectionString());
+  runtimeUrl.username = S5_RUNTIME_ROLE;
+  runtimeUrl.password = syntheticRuntimePassword;
+  runtimeConnectionString = runtimeUrl.toString();
+  tenantRuntime = createTenantDatabaseRuntime(
+    createTenantDatabaseRuntimeConfig({
+      connectionString: runtimeConnectionString,
+      maxConnections: 1,
+      statementTimeoutMilliseconds: 30_000,
+    }),
+    {
+      onUnexpectedPoolError: (error) => tenantRuntimePoolErrors.push(error),
+    },
+  );
 }, 180_000);
 
 beforeEach(async () => {
@@ -2143,8 +2210,12 @@ beforeEach(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  await tenantRuntime?.close();
   await pool?.end();
   await container?.stop();
+  if (tenantRuntimePoolErrors.length > 0) {
+    throw new AggregateError(tenantRuntimePoolErrors, "Unexpected tenant runtime pool errors");
+  }
 }, 60_000);
 
 describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout: 30_000 }, () => {
@@ -9320,5 +9391,14 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       ]);
       await client.query("rollback");
     });
+  });
+
+  registerTenantSessionTests({
+    organizationA: requireOrganizationId(ORGANIZATION_A),
+    organizationB: requireOrganizationId(ORGANIZATION_B),
+    privilegedConnectionString: requirePrivilegedConnectionString,
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+    runtimeConnectionString: requireRuntimeConnectionString,
   });
 });
