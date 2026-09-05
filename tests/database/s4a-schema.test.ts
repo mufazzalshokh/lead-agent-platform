@@ -87,6 +87,7 @@ import {
   type HandoffTriggerReason,
 } from "../../packages/domain/src/index.js";
 import { registerTenantSessionTests } from "./tenant-session.test-suite.js";
+import { registerTenantRepositoryTests } from "./tenant-repositories.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -1353,6 +1354,84 @@ const WORKFLOW_B: WorkflowTenantSeed = {
   serviceVersionId: SERVICE_VERSION_B,
   staffMembershipId: MEMBERSHIP_B,
   userId: USER_B,
+};
+
+const seedTenantRepositoryFixtures = async (): Promise<void> => {
+  await seedWorkflowTenant(WORKFLOW_A, "s54-tenant-a", "s54-a", "s54-service-a");
+  await seedWorkflowTenant(WORKFLOW_B, "s54-tenant-b", "s54-b", "s54-service-b");
+  await insertContactIdentity(
+    CONTACT_IDENTITY_A,
+    ORGANIZATION_A,
+    CONTACT_A,
+    "widget_participant",
+    "s54-tenant-a-participant-hash",
+    CHANNEL_CONNECTION_A,
+  );
+  await insertContactIdentity(
+    CONTACT_IDENTITY_B,
+    ORGANIZATION_B,
+    CONTACT_B,
+    "widget_participant",
+    "s54-tenant-b-participant-hash",
+    CHANNEL_CONNECTION_B,
+  );
+  await insertWidgetOrigin(
+    WIDGET_ORIGIN_A,
+    ORGANIZATION_A,
+    CHANNEL_CONNECTION_A,
+    USER_A,
+    "s54-a.example",
+  );
+  await insertWidgetOrigin(
+    WIDGET_ORIGIN_B,
+    ORGANIZATION_B,
+    CHANNEL_CONNECTION_B,
+    USER_B,
+    "s54-b.example",
+  );
+  await insertWidgetSession(
+    WIDGET_SESSION_A,
+    ORGANIZATION_A,
+    CHANNEL_CONNECTION_A,
+    WIDGET_ORIGIN_A,
+    "s54-a-session-token-hash",
+    "s54-a-participant-hash",
+  );
+  await insertWidgetSession(
+    WIDGET_SESSION_B,
+    ORGANIZATION_B,
+    CHANNEL_CONNECTION_B,
+    WIDGET_ORIGIN_B,
+    "s54-b-session-token-hash",
+    "s54-b-participant-hash",
+  );
+  await insertRetentionPolicy(RETENTION_POLICY_A, ORGANIZATION_A, 1, "published", USER_A);
+  await insertRetentionPolicy(RETENTION_POLICY_B, ORGANIZATION_B, 1, "published", USER_B);
+  await insertRetentionRule(RETENTION_RULE_A, ORGANIZATION_A, RETENTION_POLICY_A);
+  await database().query(
+    `update organizations
+        set current_retention_policy_id = case
+          when id = $1 then $2::uuid
+          when id = $3 then $4::uuid
+        end,
+        updated_at = statement_timestamp()
+      where id in ($1, $3)`,
+    [ORGANIZATION_A, RETENTION_POLICY_A, ORGANIZATION_B, RETENTION_POLICY_B],
+  );
+  await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A);
+  await insertAppointmentRequest(TEST_ID_1, WORKFLOW_B);
+  await insertHandoff(HANDOFF_A, WORKFLOW_A);
+  await insertHandoff(HANDOFF_B, WORKFLOW_B);
+  await insertNotification(NOTIFICATION_A, ORGANIZATION_A, {
+    recipientMembershipId: MEMBERSHIP_A,
+    relatedResourceId: HANDOFF_A,
+  });
+  await insertNotification(NOTIFICATION_B, ORGANIZATION_B, {
+    originatingOutboxEventId: OUTBOX_EVENT_B,
+    recipientMembershipId: MEMBERSHIP_B,
+    relatedResourceId: HANDOFF_B,
+  });
+  await insertNotificationAttempt(TEST_ID_2, ORGANIZATION_A, NOTIFICATION_A, 1);
 };
 
 type HandoffInsertOverrides = Readonly<{
@@ -9400,5 +9479,38 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     privilegedPool: database,
     runtime: requireTenantRuntime,
     runtimeConnectionString: requireRuntimeConnectionString,
+  });
+
+  registerTenantRepositoryTests({
+    fixtures: {
+      appointmentA: APPOINTMENT_REQUEST_A,
+      appointmentB: TEST_ID_1,
+      channelA: CHANNEL_CONNECTION_A,
+      channelB: CHANNEL_CONNECTION_B,
+      contactA: CONTACT_A,
+      contactB: CONTACT_B,
+      conversationA: CONVERSATION_A,
+      conversationB: CONVERSATION_B,
+      handoffA: HANDOFF_A,
+      handoffB: HANDOFF_B,
+      identityA: CONTACT_IDENTITY_A,
+      leadA: LEAD_A,
+      leadB: LEAD_B,
+      locationA: LOCATION_A,
+      locationVersionA: LOCATION_VERSION_A,
+      membershipA: MEMBERSHIP_A,
+      messageA: MESSAGE_A,
+      notificationA: NOTIFICATION_A,
+      notificationB: NOTIFICATION_B,
+      organizationA: ORGANIZATION_A,
+      organizationB: ORGANIZATION_B,
+      retentionPolicyA: RETENTION_POLICY_A,
+      serviceA: SERVICE_A,
+      widgetSessionA: WIDGET_SESSION_A,
+      widgetSessionB: WIDGET_SESSION_B,
+    },
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+    seed: seedTenantRepositoryFixtures,
   });
 });

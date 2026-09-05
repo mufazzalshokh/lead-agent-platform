@@ -18,4 +18,5 @@ export {
   type TenantDbSession,
   type TenantTransactionCallback,
 } from "./runtime/tenant.js";
+export * from "./repositories/index.js";
 export * from "./schema/index.js";
