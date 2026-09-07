@@ -4,11 +4,16 @@ export * from "./conversations.js";
 export * from "./customers.js";
 export * from "./handoffs.js";
 export * from "./leads.js";
+export * from "./mutations.js";
 export {
+  InvalidRepositoryMutationPlanError,
   InvalidRepositoryQueryError,
   RepositoryDataIntegrityError,
   RepositoryDatabaseError,
   RepositoryNotFoundError,
+  RepositoryOwnershipValidationError,
+  RepositoryStructuralConflictError,
+  RepositoryVersionConflictError,
   type RepositoryPage,
   type RepositoryPageRequest,
   type RepositoryResource,

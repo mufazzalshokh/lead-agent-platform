@@ -22,6 +22,7 @@ type TenantSessionState = {
   active: boolean;
   readonly client: PoolClient;
   readonly database: TenantDatabase;
+  rollbackOnlyError?: Error;
 };
 
 const tenantSessionStates = new WeakMap<TenantDbSession, TenantSessionState>();
@@ -166,6 +167,10 @@ class TenantDatabaseRuntimeImplementation implements TenantDatabaseRuntime {
       let result: Result;
       try {
         result = await callback(session);
+        const rollbackOnlyError = requireActiveSession(session).rollbackOnlyError;
+        if (rollbackOnlyError !== undefined) {
+          throw rollbackOnlyError;
+        }
       } finally {
         closeTenantSession(session);
       }
@@ -243,4 +248,10 @@ export const executeTenantQuery = async <Row extends QueryResultRow>(
   const state = requireActiveSession(session);
   const query = createQuery(session.organizationId);
   return await state.client.query<Row>(query.text, [...(query.values ?? [])]);
+};
+
+/** Package-internal atomicity guard for multi-statement persistence plans. */
+export const markTenantTransactionRollbackOnly = (session: TenantDbSession, error: Error): void => {
+  const state = requireActiveSession(session);
+  state.rollbackOnlyError ??= error;
 };

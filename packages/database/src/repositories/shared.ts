@@ -109,19 +109,76 @@ export class RepositoryDatabaseError extends Error {
   }
 }
 
+export class InvalidRepositoryMutationPlanError extends Error {
+  readonly code = "invalid_repository_mutation_plan" as const;
+
+  constructor() {
+    super("Repository mutation plan is invalid");
+    this.name = "InvalidRepositoryMutationPlanError";
+  }
+}
+
+export class RepositoryOwnershipValidationError extends Error {
+  readonly code = "repository_ownership_validation_failed" as const;
+  readonly resource: RepositoryResource;
+
+  constructor(resource: RepositoryResource) {
+    super("Referenced resource was not found in the current tenant");
+    this.name = "RepositoryOwnershipValidationError";
+    this.resource = resource;
+  }
+}
+
+export class RepositoryVersionConflictError extends Error {
+  readonly code = "repository_version_conflict" as const;
+  readonly currentVersion: AggregateVersion;
+  readonly resource: RepositoryResource;
+
+  constructor(resource: RepositoryResource, currentVersion: AggregateVersion) {
+    super("Repository aggregate version is stale");
+    this.name = "RepositoryVersionConflictError";
+    this.resource = resource;
+    this.currentVersion = currentVersion;
+  }
+}
+
+export class RepositoryStructuralConflictError extends Error {
+  readonly code = "repository_structural_conflict" as const;
+  readonly reason: "active_record_conflict" | "integrity_conflict";
+  readonly resource: RepositoryResource;
+
+  constructor(
+    resource: RepositoryResource,
+    reason: "active_record_conflict" | "integrity_conflict",
+  ) {
+    super("Repository mutation conflicts with a structural invariant");
+    this.name = "RepositoryStructuralConflictError";
+    this.resource = resource;
+    this.reason = reason;
+  }
+}
+
 const repositoryDatabaseCauses = new WeakMap<RepositoryDatabaseError, unknown>();
 
 const isExpectedRepositoryError = (
   error: unknown,
 ): error is
   | InvalidRepositoryQueryError
+  | InvalidRepositoryMutationPlanError
   | RepositoryDataIntegrityError
   | RepositoryDatabaseError
-  | RepositoryNotFoundError =>
+  | RepositoryNotFoundError
+  | RepositoryOwnershipValidationError
+  | RepositoryStructuralConflictError
+  | RepositoryVersionConflictError =>
   error instanceof InvalidRepositoryQueryError ||
+  error instanceof InvalidRepositoryMutationPlanError ||
   error instanceof RepositoryDataIntegrityError ||
   error instanceof RepositoryDatabaseError ||
-  error instanceof RepositoryNotFoundError;
+  error instanceof RepositoryNotFoundError ||
+  error instanceof RepositoryOwnershipValidationError ||
+  error instanceof RepositoryStructuralConflictError ||
+  error instanceof RepositoryVersionConflictError;
 
 const isTenantRuntimeError = (
   error: unknown,
@@ -139,7 +196,7 @@ const isTenantRuntimeError = (
   error instanceof TenantSessionClosedError ||
   error instanceof TenantTransactionRollbackError;
 
-const mapRepositoryFailure = (error: unknown): Error => {
+export const mapRepositoryFailure = (error: unknown): Error => {
   if (isExpectedRepositoryError(error) || isTenantRuntimeError(error)) {
     return error;
   }
@@ -154,6 +211,10 @@ export const readRepositoryDatabaseCause = (error: RepositoryDatabaseError): unk
 
 const TENANT_QUALIFICATION_PATTERN = /\b(?:[a-z][a-z0-9_]*\.)?organization_id\s*=\s*\$1\b/i;
 const TENANT_ROOT_QUALIFICATION_PATTERN = /\b(?:[a-z][a-z0-9_]*\.)?id\s*=\s*\$1\b/i;
+const TENANT_INSERT_PATTERN =
+  /^\s*insert\s+into\s+[a-z][a-z0-9_]*\s*\([^)]*\borganization_id\b[^)]*\)/is;
+const TENANT_UPDATE_PATTERN =
+  /^\s*update\s+[a-z][a-z0-9_]*\s+set\b[\s\S]*\borganization_id\s*=\s*\$1\b/is;
 
 const requireReadQuery = (query: TenantParameterizedQuery, tenantRoot: boolean): void => {
   if (!/^\s*select\b/i.test(query.text)) {
@@ -203,6 +264,24 @@ export const executeTenantRootRead = <Row extends QueryResultRow>(
     text,
     values: [organizationId, ...values],
   }));
+
+export const executeTenantWrite = async <Row extends QueryResultRow>(
+  session: TenantDbSession,
+  text: string,
+  values: readonly unknown[] = [],
+): Promise<Readonly<{ rowCount: number; rows: readonly Row[] }>> => {
+  try {
+    const result = await executeTenantQuery<Row>(session, (organizationId) => {
+      if (!TENANT_INSERT_PATTERN.test(text) && !TENANT_UPDATE_PATTERN.test(text)) {
+        throw new InvalidRepositoryQueryError();
+      }
+      return { text, values: [organizationId, ...values] };
+    });
+    return Object.freeze({ rowCount: result.rowCount ?? 0, rows: result.rows });
+  } catch (error) {
+    throw mapRepositoryFailure(error);
+  }
+};
 
 export const requireFound = <Row>(rows: readonly Row[], resource: RepositoryResource): Row => {
   const row = rows[0];

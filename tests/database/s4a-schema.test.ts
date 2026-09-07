@@ -88,6 +88,7 @@ import {
 } from "../../packages/domain/src/index.js";
 import { registerTenantSessionTests } from "./tenant-session.test-suite.js";
 import { registerTenantRepositoryTests } from "./tenant-repositories.test-suite.js";
+import { registerTenantMutationTests } from "./tenant-mutations.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -1432,6 +1433,11 @@ const seedTenantRepositoryFixtures = async (): Promise<void> => {
     relatedResourceId: HANDOFF_B,
   });
   await insertNotificationAttempt(TEST_ID_2, ORGANIZATION_A, NOTIFICATION_A, 1);
+};
+
+const seedTenantMutationFixtures = async (): Promise<void> => {
+  await seedWorkflowTenant(WORKFLOW_A, "s55-tenant-a", "s55-a", "s55-service-a");
+  await seedWorkflowTenant(WORKFLOW_B, "s55-tenant-b", "s55-b", "s55-service-b");
 };
 
 type HandoffInsertOverrides = Readonly<{
@@ -9512,5 +9518,33 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     privilegedPool: database,
     runtime: requireTenantRuntime,
     seed: seedTenantRepositoryFixtures,
+  });
+
+  registerTenantMutationTests({
+    fixtures: {
+      appointmentA: APPOINTMENT_REQUEST_A,
+      businessPolicyA: POLICY_A,
+      channelA: CHANNEL_CONNECTION_A,
+      channelB: CHANNEL_CONNECTION_B,
+      contactA: CONTACT_A,
+      contactB: CONTACT_B,
+      conversationA: CONVERSATION_A,
+      conversationB: CONVERSATION_B,
+      leadA: LEAD_A,
+      leadB: LEAD_B,
+      locationA: LOCATION_A,
+      locationVersionA: LOCATION_VERSION_A,
+      membershipA: MEMBERSHIP_A,
+      membershipB: MEMBERSHIP_B,
+      messageA: MESSAGE_A,
+      organizationA: ORGANIZATION_A,
+      organizationB: ORGANIZATION_B,
+      serviceA: SERVICE_A,
+      serviceVersionA: SERVICE_VERSION_A,
+    },
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+    runtimeConnectionString: requireRuntimeConnectionString,
+    seed: seedTenantMutationFixtures,
   });
 });
