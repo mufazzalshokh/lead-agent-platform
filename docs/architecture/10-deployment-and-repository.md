@@ -31,8 +31,8 @@ flowchart TB
     API -. durable intent .-> Worker
     Worker --> OpenAI[OpenAI adapter]
     Worker --> Channels[Telegram / widget delivery\nnotification adapters]
-    Web --> OIDC[OIDC identity provider]
-    API --> OIDC
+    Web --> Auth0[Auth0 OIDC identity provider]
+    API --> Auth0
     Web --> OTLP[OTLP collector/backend]
     API --> OTLP
     Worker --> OTLP
@@ -53,6 +53,14 @@ V1 is one production region with failure-domain redundancy where the selected ho
 | Production | Customer traffic | Production-only managed services and secrets; no synthetic staging identities reused | Approval, migration gate, progressive rollout, smoke/telemetry gate, audited rollback |
 
 Environments do not share databases, encryption keys, OIDC clients, bot tokens, webhook secrets, storage, telemetry projects, or network credentials. Production data is never copied to lower environments. Configuration validation fails closed when an environment points at a resource tagged for another environment.
+
+Auth0 is the concrete V1 staff authentication provider. Development, staging,
+and production each use a dedicated Auth0 tenant and dedicated application/
+client. No environment shares its client ID, client secret, callback URL list,
+logout URL list, or allowed-origin list. CI uses deterministic fake OIDC by
+default; opt-in development sandbox work uses only the development Auth0 tenant.
+Auth0 is never tenant/Membership authority, and application-owned sessions and
+authorization state remain portable behind the OIDC port.
 
 Preview deployments may be added for the web UI, but they use isolated synthetic APIs/data and cannot receive real provider webhooks.
 
@@ -75,7 +83,7 @@ Seed data includes multiple tenants with visibly fictional Uzbek, Russian, and E
 
 `packages/config` owns a runtime-validated configuration schema. Each app declares the subset it consumes. Unknown/missing/contradictory production settings fail startup with a safe key name and error code, never a secret value. Checked-in `.env.example` files contain names and non-secret examples only.
 
-Configuration categories include environment/release, public origins, database pool and deadlines, OIDC issuer/audience/client references, encryption key references, channel/provider endpoints, OpenAI provider/model alias and deadlines, job concurrency/retry profiles, telemetry exporter, retention controls, feature flags, and budget guardrails.
+Configuration categories include environment/release, public origins, database pool and deadlines, exact Auth0 OIDC issuer/audience/client and callback/logout/staff-origin references, encryption key references, channel/provider endpoints, OpenAI provider/model alias and deadlines, job concurrency/retry profiles, telemetry exporter, retention controls, feature flags, and budget guardrails.
 
 ### Secret handling
 
@@ -85,7 +93,10 @@ Configuration categories include environment/release, public origins, database p
 - Integration tokens stored in PostgreSQL use application-level envelope encryption with a managed key reference, key version, and auditable rotation path.
 - Webhook signing secrets support a bounded dual-key rotation window. Verification identifies the key version without logging the signature.
 - Public browser configuration is explicitly allowlisted. Server secrets can never be included in Next.js public bundles or source maps.
-- Rotation and revocation runbooks cover OIDC client, database, OpenAI, Telegram, webhook, encryption, and telemetry credentials.
+- Rotation and revocation runbooks cover each environment's Auth0 client,
+  application sessions, database, OpenAI, Telegram, webhook, encryption, and
+  telemetry credentials. Auth0 access/refresh tokens are not persisted by
+  default; a later management-API need requires separate security review.
 - Secret values are filtered from logs, traces, errors, process listings, build arguments, test snapshots, and support exports.
 
 ## Build and artifact strategy
@@ -305,7 +316,8 @@ Code ownership/review rules require security review for tenant context/RLS/auth/
 - outbox backlog, poison job, dead-letter inspect/replay/discard;
 - OpenAI/channel/notification outage and circuit-breaker recovery;
 - revoked/compromised channel credential and secret rotation;
-- suspected cross-tenant access, PII/log leak, account takeover, and prompt/tool abuse;
+- suspected cross-tenant access, PII/log leak, account takeover, local session
+  revocation, Auth0 outage/credential rotation, and prompt/tool abuse;
 - customer data export/deletion/legal hold;
 - cost spike/budget kill switch;
 - analytics reconciliation and incorrect funnel definition rollback.
@@ -317,8 +329,7 @@ Each runbook names required role, safe read-only diagnostics, decision points, r
 1. Which cloud/region and managed PostgreSQL, container runtime, secret manager, WAF/edge, and OTLP backend will be used?
 2. Are the Stage 0 availability/latency/outbox targets and database RPO <= 5 minutes/RTO <= 60 minutes approved or replaced, and what backup/PITR retention, release-observation window, provider exclusions, and support/on-call model apply?
 3. Is GitHub Actions production environment approval sufficient, or is a separate change-management system required?
-4. Which OIDC provider is selected, and what MFA/session/SCIM requirements apply?
-5. Which customer-confirmation and optional staff-alert providers must be reachable from production egress?
-6. What production/staging domains, data-residency constraints, widget origin rules, and Telegram bot ownership model apply?
-7. What benchmark results, burst duration, tenant skew, and safety margin validate or replace the Stage 0 load-test hypothesis and determine initial instance sizes, connection budgets, and autoscaling limits?
-8. What dependency-license policy and vulnerability severity/exception SLA gate release?
+4. Which customer-confirmation and optional staff-alert providers must be reachable from production egress?
+5. What production/staging domains, data-residency constraints, widget origin rules, and Telegram bot ownership model apply?
+6. What benchmark results, burst duration, tenant skew, and safety margin validate or replace the Stage 0 load-test hypothesis and determine initial instance sizes, connection budgets, and autoscaling limits?
+7. What dependency-license policy and vulnerability severity/exception SLA gate release?

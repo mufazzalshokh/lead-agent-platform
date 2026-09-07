@@ -79,10 +79,13 @@ as one in-memory object.
 
 **Fields:** organization, user/principal, status
 (`invited|active|suspended|revoked`), canonical role
-(`owner|admin|staff|analyst`), optional allowed location set,
-invitation/activation metadata. Location-manager behavior is an admin/staff
-permission plus location scope, not another role. `platform_operator` is never
-a membership role.
+(`owner|admin|staff|analyst`), location scope, invitation/activation metadata.
+Owners/admins are always all-location; staff/analysts may be all-location or
+restricted to an explicit set whose empty set grants no location access. The
+closed permission vocabulary and exact bundles are frozen in
+`07-tenancy-security-privacy.md`; location-manager behavior is staff scope, not
+another role. A pre-user invitation is a separate S6 record.
+`platform_operator` is never a membership role.
 
 **Invariants:**
 
@@ -90,8 +93,9 @@ a membership role.
 - Only active memberships authorize tenant access.
 - A location-scoped permission can reference only an active location in the
   same organization.
-- The last active owner cannot be removed without an explicit ownership
-  transfer rule.
+- Every organization retains at least one active owner. Only an active owner can
+  grant/transfer owner; suspend/revoke/demote/transfer operations cannot remove
+  the last active owner, and admins cannot promote themselves.
 - Role labels never replace an evaluated permission and resource scope.
 
 ### 3.3 Location
@@ -925,19 +929,16 @@ For each machine:
 
 ## 16. Domain-model open questions
 
-1. Exact permission-bundle granularity within canonical
-   `owner|admin|staff|analyst` roles, including which role/capability and
-   location scope represent the location-manager persona.
-2. Exact channel-specific resolved-conversation reopen/new-cycle windows. The
+1. Exact channel-specific resolved-conversation reopen/new-cycle windows. The
    active grouping identity itself is frozen and is not an open question.
-3. Whether each fixed V1 staff-attestation method (`phone|in_person`) is
+2. Whether each fixed V1 staff-attestation method (`phone|in_person`) is
    permitted in the launch jurisdiction and what evidence/retention applies.
    Adding another method requires a versioned contract and architecture review.
-4. Customer confirmation and staff review expiry defaults and reminder cadence.
-5. Whether staff may replace an offered slot; recommended invariant is cancel
+3. Customer confirmation and staff review expiry defaults and reminder cadence.
+4. Whether staff may replace an offered slot; recommended invariant is cancel
    the current offer/request and create a new version/request rather than mutate
    evidence in place.
-6. Whether revenue attribution allows partial/multiple currencies per request;
+5. Whether revenue attribution allows partial/multiple currencies per request;
    reporting must never sum unlike currencies.
-7. Final retention and legal-hold rules for messages, AI payloads, consent,
+6. Final retention and legal-hold rules for messages, AI payloads, consent,
    audit, and outcome facts.

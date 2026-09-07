@@ -28,7 +28,7 @@ and privacy/data lifecycle for V1.
 
 ## Tenant model
 
-`Organization` is the tenant boundary. A human `user` may have independent
+`Organization` is the tenant boundary. A human `User` may have independent
 `membership` records in several organizations. Tenant-owned aggregates include
 locations, services/prices/FAQs/policies, channel connections, contacts, leads,
 conversations/messages, appointment requests, handoffs, notifications, AI runs,
@@ -61,7 +61,7 @@ a contained database capability, not a generic application bypass.
 
 ### Membership and location scope
 
-Tenant roles are `owner`, `admin`, `staff`, and `analyst`. A membership also has
+Tenant roles are `owner`, `admin`, `staff`, and `analyst`. A Membership also has
 `status` and a location scope:
 
 ```text
@@ -69,35 +69,58 @@ location_scope = all | restricted
 membership_locations = set<location_id> when restricted
 ```
 
-An empty restricted set grants no location access. Owners normally require
-`all`; changes to role/location scope are high-risk audit events. Organization-
-wide objects (membership, organization policy, integrations) require the
-corresponding tenant permission and are not made accessible by a location grant.
+Owners and admins always use `all`. Staff and analysts may use `all` or
+`restricted`; an empty restricted set grants no location access. Changes to
+role/location scope are high-risk audit events. Organization-wide objects
+(membership, organization policy, integrations) require the corresponding
+tenant permission and are not made accessible by a location grant.
 For location-owned operational objects, policy checks both role permission and
 the object's location. Objects whose location is not yet known (for example an
 unqualified inbound lead) are visible only under a documented organization-wide
 queue permission, not accidentally to every restricted staff member.
 
-Baseline permissions:
+The closed V1 permission vocabulary is:
 
-| Capability | owner | admin | staff | analyst |
-|---|:---:|:---:|:---:|:---:|
-| Organization ownership/lifecycle | yes | no | no | no |
-| Manage members | yes | yes, except ownership transfer/final owner | no | no |
-| Configure locations/services/prices/FAQ/policy | yes | yes | no | read public configuration only |
-| Configure/rotate integrations | yes | yes with step-up | no | no |
-| Read/reply to in-scope conversations | yes | yes | yes | no message/contact body |
-| Read/update in-scope leads and handoffs | yes | yes | yes | aggregate only |
-| Accept/reject/cancel in-scope appointment request | yes | yes | yes | no |
-| Record `staff_attested_external` customer confirmation | yes | yes | yes, in-scope and recent auth | no |
-| Record/correct in-scope attendance and add/reverse revenue attribution | yes | yes | yes | no |
-| View aggregate analytics | yes | yes | limited as configured | yes |
-| Read audit/security events | yes | yes | own operational actions only | no |
-| Request productized tenant export/deletion (P1 when enabled) | yes | no by default | no | no |
+```text
+organization.read              organization.update
+memberships.read               memberships.invite
+memberships.manage             ownership.transfer
+configuration.read             configuration.write
+configuration.publish          integrations.read
+integrations.manage            contacts.read
+contacts.read_sensitive        leads.read
+leads.manage                   conversations.read
+conversations.manage           appointments.read
+appointments.manage            attendance.manage
+revenue_attribution.manage     handoffs.read
+handoffs.manage                notifications.read
+analytics.read                 audit.read
+privacy.read                   privacy.manage
+```
+
+Unknown permission identifiers deny and cannot be loaded from uncontrolled JSON.
+The exact immutable role bundles are:
+
+| Role | Named permissions |
+|---|---|
+| `owner` | Every permission in the closed vocabulary. `ownership.transfer` and creating/promoting, demoting, suspending, or revoking an owner are owner-only resource actions. |
+| `admin` | Every permission except `ownership.transfer`. Resource policy also denies creating/promoting, demoting, suspending, or revoking an owner and every final-owner action. |
+| `staff` | `organization.read`, `configuration.read`, `contacts.read`, `contacts.read_sensitive`, `leads.read`, `leads.manage`, `conversations.read`, `conversations.manage`, `appointments.read`, `appointments.manage`, `attendance.manage`, `revenue_attribution.manage`, `handoffs.read`, `handoffs.manage`, `notifications.read`. |
+| `analyst` | `organization.read`, `configuration.read`, `analytics.read`. |
 
 Permissions are server-side named capabilities, not hard-coded role comparisons
-scattered through handlers. Deny is the default. The current user may not approve
-their own elevation or remove the final owner.
+scattered through handlers. Deny is the default. Role capability, location
+scope, resource policy, and current active Membership must all pass. A
+restricted actor is denied when a resource has no deterministic allowed
+location. Staff receive no membership, configuration mutation/publishing,
+integration, analytics, audit, or privacy administration; analysts receive no
+sensitive/customer/message access or operational mutation.
+
+Every organization must retain at least one active owner. Reject suspending,
+revoking, or demoting the last active owner, or transferring away the last
+ownership without first establishing another active owner. Admins cannot promote
+themselves. Only an active owner may grant or transfer owner status. These are
+application/domain authorization plus transactional persistence invariants.
 
 ## Isolation architecture
 
@@ -316,46 +339,123 @@ tenant membership role. Tenant sessions cannot call platform routes; platform
 tokens cannot be silently used as tenant sessions.
 
 - Platform operators authenticate through a separate admin entry point with
-  enforced phishing-resistant MFA where available, short sessions, managed
-  devices/network policy as operations matures, and no shared accounts.
+  mandatory production MFA, no shared accounts, and fresh MFA step-up within 15
+  minutes for support access. Managed-device/network policy may harden this
+  boundary later without weakening it.
 - Routine control-plane views show service health and redacted metadata, not
   message/contact bodies or integration secrets.
 - Tenant data access requires a just-in-time support grant naming organization,
-  ticket/reason, allowed capabilities, approving actor, start and expiry. It
-  requires step-up authentication, is time bounded, deny-by-default, revocable,
-  visibly bannered, and emits start/read/write/end audit events and alerts.
+  ticket/reason, allowed capabilities, two distinct platform-operator approvers,
+  start and expiry. It lasts at most 30 minutes, is read-only by default, names
+  every write capability explicitly, is deny-by-default, revocable, visibly
+  bannered, and emits start/read/write/end audit events and alerts.
 - Support elevation respects purpose and may be read-only. The operator cannot
   add themselves as an owner, impersonate a user, export a tenant, or reveal an
   integration secret through that grant.
 - Emergency database break-glass uses a separate vaulted credential, explicit
-  incident, two-person approval when operationally available, bounded duration,
-  query/activity capture, and post-incident review. Runtime services never hold
-  this credential.
+  emergency reason, two-person approval, at most 15 minutes, query/activity
+  capture, full platform audit, and mandatory post-incident review. It provides
+  no user impersonation, silent Membership creation, or generic runtime
+  `BYPASSRLS`; runtime services never hold this credential.
 - Support grants are rechecked on every request and job; an expired/revoked grant
   cannot leave a durable worker with residual authority.
+
+This policy does not authorize S6 support-grant persistence outside the frozen
+four-table S6 manifest. Its implementation remains deferred to the dedicated
+platform-support stage.
 
 ## Security architecture baseline
 
 ### Identity and sessions
 
-- Staff identity is delegated through an OIDC-compatible authentication
-  component/provider behind an application port. The application owns
-  memberships/RBAC and issues an opaque, revocable, server-side session; browser
-  credentials live only in Secure, HttpOnly cookies with appropriate SameSite
-  and narrow Path/Domain attributes.
-- Browser login uses authorization code with PKCE, exact redirect URIs, and
-  single-use state/nonce. The callback validates signature, issuer, audience,
-  expiry and nonce against pinned provider metadata; membership identity maps by
-  stable issuer + subject, never unverified email alone.
-- Session IDs are random, rotated after authentication/privilege change, hashed
-  at rest, idle- and absolute-expiring, and revoked on logout, password/identity
-  reset, membership disable, or suspected compromise.
-- Owners/admins/platform operators require MFA; sensitive membership,
-  integration, privacy, confirmation-attestation, and export actions require
-  recent/step-up authentication. Recovery is rate-limited and auditable.
-- Cookie mutations require anti-CSRF tokens and same-origin checks. Login and
-  recovery endpoints have enumeration-resistant responses, progressive delay,
-  credential-stuffing controls, and security notifications.
+- Auth0 is the V1 authentication/external-identity provider behind an OIDC
+  application port. It is not tenant or Membership authority. Development,
+  staging, and production each use a dedicated Auth0 tenant and application;
+  client ID, client secret, callback URLs, logout URLs, and allowed origins are
+  never shared across environments.
+- Browser login uses Authorization Code + PKCE, exact redirect URIs, and
+  single-use state/nonce. The callback validates signature, exact issuer,
+  audience/client, expiry, subject, nonce, and state against pinned provider
+  metadata. No implicit flow is permitted.
+- One User may have multiple exact (`issuer`, `subject`) external identities.
+  `active` may authenticate; `disabled` and `unlinked` remain historical and
+  deny. Linking/unlinking is explicit and audited, never email-driven, never
+  tenant-authoritative, and cannot remove the last usable identity without an
+  approved recovery path.
+- The application issues an opaque, revocable, server-side session. The random
+  token exists raw only in the client cookie and hash-only at rest. Cookies are
+  `Secure`, `HttpOnly`, server-controlled, narrowly scoped, and `SameSite=Lax`
+  by default unless a later exact flow receives security review.
+- Idle expiry is 60 minutes; absolute expiry is 12 hours and is never silently
+  extended; remember-me is disabled. Rotate the token every four hours and
+  immediately after authentication, MFA/step-up, organization switch,
+  role/location/privilege change, or recovery. Cap active sessions at five per
+  User and retain expired/revoked metadata for 30 days.
+- Sessions carry identity and optional selected-organization navigation state,
+  never trusted role, permission, or tenant authority. Every authorization-
+  sensitive operation reloads current Membership and location scope. An
+  organization switch validates active Membership, rotates the token, constructs
+  a new immutable AuthorizationContext, and opens a new tenant transaction; a
+  TenantDbSession never crosses organizations.
+- Production MFA is mandatory before tenant access for owner, admin, staff,
+  analyst, and platform operator. Prefer WebAuthn/passkey/security key; TOTP is
+  the allowed fallback; recovery codes are single-use. SMS/email alone is not
+  sufficient production MFA.
+- Security-sensitive actions require fresh MFA step-up within 15 minutes,
+  including ownership transfer, owner/admin role changes, Membership suspension/
+  revocation, location administration, integration credentials, privacy export/
+  erase approval, staff-attested external confirmation, identity link/unlink,
+  recovery changes, and platform support access.
+- Revoke the current session on logout and all sessions on sign-out-all, User
+  disable/security lock, external-identity compromise, or User-wide recovery.
+  Membership suspension or revocation revokes every session capable of
+  authorizing that organization;
+  relevant privilege/security changes rotate or revoke as policy requires.
+  Upstream Auth0 logout never substitutes for local revocation.
+- Cookie mutations require a session-bound anti-CSRF token, Origin validation,
+  and Fetch Metadata validation where available. Login/callback also uses
+  state/nonce against login CSRF. Staff CORS denies by default, permits only
+  explicit environment-specific staff origins, and never reuses
+  `widget_allowed_origins`.
+- Auth0 access/refresh tokens exist only as long as needed to verify identity and
+  create the local session. They are not persisted by default. A later Auth0
+  Management/API need requires separate security review before token storage.
+
+### Membership and invitation lifecycle
+
+Membership states remain `invited|active|suspended|revoked`. Only `active` is
+eligible for authorization; all other states deny tenant access. Suspension,
+revocation, and reactivation are explicit, audited transitions and history is
+retained rather than hard-deleted.
+
+A pre-user Membership invitation is a separate record. It expires after seven
+days, is unique while active per organization + canonical target, and uses a
+high-entropy opaque single-use token stored only as a hash. Resend revokes the
+old invitation and issues a new token; expiry, revocation, mismatch, and replay
+deny without revealing account existence. Owners may invite all roles. Admins
+may invite `admin|staff|analyst`, never owner; staff/analyst cannot invite.
+
+Acceptance requires a valid invitation, authenticated OIDC identity, verified
+email/profile target match, and explicit acceptance. Email remains delivery and
+profile evidence, not an identity key. Mismatch requires revoke/reissue. An
+existing active Membership returns an idempotent safe result; invited follows
+normal acceptance; suspended/revoked is never silently reactivated.
+
+### Owner recovery
+
+Email-only and admin self-service owner recovery are prohibited. Auth0 account
+recovery can restore external authentication but cannot grant organization
+ownership. Exceptional owner recovery is deferred to an explicitly authorized
+manual high-assurance support/security workflow with verified external recovery,
+fresh platform-operator MFA, two-person approval, reason/ticket, full platform
+audit, and no impersonation.
+
+### S6 persistence manifest
+
+S6 may create exactly `external_identities`, `membership_invitations`,
+`auth_sessions`, and `membership_location_scopes`. It may not add provider-
+specific User columns, MFA-secret tables, support-grant/impersonation tables, or
+any other authentication table without separate owner review.
 
 ### Application and network controls
 
@@ -407,6 +507,15 @@ session/widget tokens, webhook headers, integration secrets, raw AI prompts, or
 full before/after records. Events are append-only to runtime roles; corrections
 are new events. Access, export, retention, and integrity monitoring are restricted
 and themselves audited.
+
+S6 audit action categories include login success/failure, session create/rotate/
+revoke/sign-out-all, MFA enrollment/recovery/step-up outcomes, external-identity
+link/disable/unlink, invitation issue/resend/revoke/accept/expire, Membership
+activate/suspend/reactivate/revoke, role/location-scope change, final-owner
+denial, and organization selection. Each records bounded result/reason and actor/
+target/correlation provenance without raw tokens, recovery codes, email, OIDC
+claims, or provider bodies. These are audit action categories, not new public
+domain-event contracts.
 
 Control-plane actions use a separate `platform_audit_events` store/schema with
 the platform actor and optional target organization/support grant. They are not
@@ -691,16 +800,16 @@ These require product/legal/operations input and cannot be inferred safely:
 - launch jurisdictions, controller/processor roles, data residency, healthcare
   data classification, required data-processing agreements, breach-notification
   obligations, and statutory retention;
-- final identity provider/authentication component, recovery process, mandatory
-  MFA factors, and enterprise SSO timing;
+- enterprise SSO/SCIM timing and deprovisioning contracts beyond the frozen V1
+  Auth0 OIDC, local-session, MFA, invitation, and recovery policy;
 - approved legal bases, notice text/versions, marketing scope, minimum age, and
   identity-verification procedure for subject requests;
 - final retention bounds replacing the provisional values above and which fields
   must be anonymized versus purged;
 - whether attachments enter V1 (architecture currently treats arbitrary
   attachments as unsupported/quarantined and excludes them from AI);
-- support staffing/two-person break-glass availability and production network/
-  device restrictions;
+- production platform-operator network/device restrictions beyond the frozen
+  two-person support and break-glass policy;
 - OpenAI/other processor contract, region, data controls, and suitability for the
   exact production data before customer content is enabled.
 

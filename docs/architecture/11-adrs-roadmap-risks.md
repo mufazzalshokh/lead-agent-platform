@@ -72,15 +72,29 @@ keys/checks/unique constraints/indexes, and managed backups/PITR in production.
 
 **Consequences:** One web stack can deliver staff and widget experiences and share accessible UI/i18n primitives. Bundle isolation, CSP/CORS/origin rules, XSS tests, and caching scope require care. If an independently versioned tiny widget loader becomes necessary, it can be built as an artifact/package without moving domain logic.
 
-### ADR-007: OIDC-compatible staff authentication with app-owned membership/RBAC
+### ADR-007: Auth0 OIDC staff authentication with app-owned membership/RBAC
 
 **Status:** Accepted
 
 **Context:** Authentication provider choice may change, while organization membership and tenant authorization are core application facts. Trusting organization claims or client-supplied IDs would create cross-tenant risk.
 
-**Decision:** Authenticate staff through a standards-compatible OIDC provider. Map the stable external subject/issuer to an application user/membership. The application owns organization membership and roles `owner`, `admin`, `staff`, and `analyst`; a `platform_operator` identity/path is separate, explicit, reason-bound, and audited. Derive tenant context server-side for every request.
+**Decision:** Use Auth0 as the V1 authentication/external-identity provider
+through a standards-compatible OIDC port and Authorization Code + PKCE. Map the
+exact external issuer + subject to a global application User; the application
+then loads active Membership, the closed role/permission bundle, and location
+scope. Auth0 Organization/email claims never establish tenancy. Development,
+staging, and production use separate Auth0 tenants/clients. The application owns
+opaque revocable sessions and roles `owner`, `admin`, `staff`, and `analyst`;
+`platform_operator` is a separate MFA-protected, reason-bound, audited path.
+Derive tenant context server-side for every request.
 
-**Consequences:** Identity capabilities can be outsourced without outsourcing authorization. OIDC validation, key rotation, account lifecycle, membership revocation, MFA/session policy, and provider outage need contracts/runbooks. The concrete provider remains an open deployment decision.
+**Consequences:** Identity capabilities are outsourced without outsourcing
+authorization. Provider coupling stays inside the Auth0/OIDC adapter; User,
+Membership, permission, location, session, and audit state remain application-
+owned. OIDC/JWKS validation, environment/client separation, provider outage,
+identity lifecycle, mandatory production MFA, 15-minute step-up, bounded local
+sessions, invitation/recovery, and revocation require the S6 contracts and
+security gate. Auth0 access/refresh tokens are not persisted by default.
 
 ### ADR-008: pg-boss for PostgreSQL-backed background work
 
@@ -266,7 +280,7 @@ Each stage is a focused, reviewable change and must follow `AGENTS.md`. “Gate�
 | **S4b Business configuration and customer/workflow database foundation:** second migration slice | S4a | `retention_policies`, `retention_policy_rules`, `inbound_routes`, location versions/hours/closures, service/price/FAQ/policy/channel/widget tables, and contact/lead/conversation/message/appointment/outcome/handoff/notification tables listed explicitly in `04-data-model.md` | Remaining business configuration, knowledge, channels and customer workflow tables; transition/evidence history, exact money/time, dedupe and tenant composite references exist | clean/upgrade migration, configuration/knowledge/workflow constraints, concurrent uniqueness | Slice SQL reviewed; no hidden JSON state or cross-tenant reference |
 | **S4c Reliability/governance database foundation:** final initial-schema slice | S4a-S4b | database receipts/idempotency/outbox/AI/audit/privacy/analytics schema | Reliable processing, governance and analytics fact tables/indexes exist with bounded sensitive payloads | clean/upgrade migration, atomicity/uniqueness/retention constraints | Full initial schema maps to data specification and migrates cleanly |
 | **S5 Tenant-safe persistence:** scoped repositories + RLS | S4a,S4b,S4c | database repositories/transactions/RLS, role/context and exact inbound-resolver migrations, security test helpers | Transaction-bound one-tenant sessions; tenant-qualified repositories; active Lead/Conversation partial uniqueness; forced RLS across the exact 47-table classification; non-owner/no-bypass runtime; global/platform paths separate; atomic CAS/history/audit/outbox writes | missing-context CRUD, two-tenant hostile CRUD/FK/repository/CAS matrix, pooled commit/rollback reuse, runtime-role/FORCE RLS, exact inbound resolver, polymorphic ownership, global-table denial | Zero cross-tenant access/mutation or pool-context leakage; active grouping conflicts deterministic; business write/outbox atomicity proven |
-| **S6 Staff identity/RBAC:** OIDC-to-membership path | S2,S5 | `external_identities`, `membership_invitations`, `auth_sessions`, `membership_location_scopes`; security, integrations/identity, API auth plugin | Provider-neutral user has 1:N exact `(issuer, subject)` identities; pre-user invitations are separate and never auto-linked by email; valid OIDC maps to active app membership/role; disabled/revoked denied; org claim ignored | identity-link/invitation/session/token/issuer/audience/JWKS rotation, role/location/IDOR/CSRF tests | Every private route uses trusted actor/tenant context; no provider claim establishes tenancy |
+| **S6 Staff identity/RBAC:** Auth0 OIDC-to-membership path | S2,S5 | exactly `external_identities`, `membership_invitations`, `auth_sessions`, `membership_location_scopes`; security, integrations/identity, API auth plugin | Auth0 Authorization Code + PKCE maps exact `(issuer, subject)` to an application User; active Membership plus closed role/location policy authorizes; seven-day invitations and 60m-idle/12h-absolute app sessions; all production roles use MFA; no email/org-claim authority or provider-token persistence | Auth0 issuer/audience/signature/nonce/state/JWKS/outage, identity-link, invitation/session/revocation, exhaustive role/location/final-owner/IDOR/CSRF tests | Every private route uses current trusted actor/tenant context; local session and Membership revocation work; no provider claim establishes tenancy |
 | **S7 Business knowledge configuration API:** authoritative tenant facts | S3,S5,S6 | domain/application knowledge, private API | Owner/admin manage locations/services/prices/FAQs/hours/policies with revisions/audit | auth matrix, exact money/timezone, tenant/revision integration | AI-independent API returns only active authoritative tenant facts |
 | **S8 Reliable async substrate:** outbox and pg-boss | S4c,S5 | database outbox, integrations/jobs, worker | Atomic intent, claims/leases/retry/DLQ/replay/reconciliation; workload queues | crash-point, duplicate, poison, fairness, replay audit tests | One logical effect under retries/restarts |
 | **S9 Conversation/lead/contact application:** deterministic persistence | S3,S5,S8 | domain/application conversations/leads, API queries | One lead/conversation/message per logical inbound; approved active-lead/conversation grouping, phone/session sufficiency, contact/consent semantics; no AI yet | state/concurrency/idempotency/PII/grouping tests | Duplicate/reordered canonical messages cannot regress state or identity |
@@ -287,6 +301,14 @@ Each stage is a focused, reviewable change and must follow `AGENTS.md`. “Gate�
 | **S22a Staging delivery:** deploy the immutable release safely | S1,S4c,S8,S20,S21a,S21b | containers, infra/deploy, CI/CD, deploy/rollback runbooks | Build-once deploy, one-shot migrations, probes/drain, secret injection and progressive rollback work in staging | migration rehearsal, deployment interruption, rollback, staging smoke | Same image digest promotes; deploy and rollback gates pass |
 | **S22b Recovery and capacity rehearsal:** prove operational objectives | S22a | backup/restore, outage and capacity runbooks/reports | Isolated restore, provider/database failure behavior, and Stage 0 load profile are exercised | restore/integrity, outage/backlog drain, load/noisy-tenant tests | Measured RPO/RTO, capacity, rollback and degradation evidence meets approved targets |
 | **S23 Production readiness review:** evidence-based go/no-go | All P0 stages | release evidence/docs only | SLOs and provisional database RPO <= 5m/RTO <= 60m approved or replaced; on-call/providers/retention approved; capacity, multilingual eval, security, restore, cost and all P0 journeys current | full release matrix; no new product code in review | Named approvers record go/no-go; no “production ready” claim without evidence |
+
+S6 executes as seven separately reviewed units: S6.1 identity/session/RBAC
+database migration; S6.2 Auth0 OIDC verification and identity mapping; S6.3
+application session lifecycle; S6.4 permission evaluator and location scopes;
+S6.5 invitation/onboarding/revocation/recovery; S6.6 API/web authentication plus
+CSRF/staff-origin integration; and S6.7 the hostile-auth/RBAC/session final gate.
+No unit may add a fifth S6 table or implement the deferred platform-support
+grant without separate owner review.
 
 Optional external staff-alert adapters are separate P1 tasks. Instagram/WhatsApp, calendar/CRM sync, billing, and other P2 capabilities are separate later tasks; none is silently appended to an existing stage.
 
@@ -371,7 +393,7 @@ Probability and impact are qualitative launch estimates (`L`, `M`, `H`) and must
 | R5 | Booking | Staff acceptance/delivery is misreported as confirmed | M | H | Critical | Explicit four-step state machine, customer evidence/attestation only, wording policy, transition constraints, race/E2E tests, reconciliation |
 | R6 | Reliability | Duplicate/reordered webhook duplicates leads/bookings/messages | H | H | Critical | Signature/freshness, unique external IDs, inbox/idempotency, aggregate locks/versions, crash/reorder/concurrency tests |
 | R7 | Privacy | PII/health text leaks through logs, traces, evals, dead letters, support export | M | H | Critical | Allowlisted telemetry, no raw content, redaction tests/scans, access audit/retention, synthetic evals, incident runbook |
-| R8 | Identity | Account takeover or stale membership grants staff access | M | H | High | OIDC validation, provider MFA/session policy, app-owned active membership/RBAC, revocation tests, audit/anomaly monitoring |
+| R8 | Identity | Account takeover or stale membership grants staff access | M | H | High | Auth0 OIDC validation, mandatory production WebAuthn/TOTP MFA, 15-minute step-up, bounded app-owned sessions, current active Membership/RBAC reload, local revocation tests, audit/anomaly monitoring |
 | R9 | Integration | Compromised/revoked bot/provider token affects traffic | M | H | High | Envelope encryption/least privilege/rotation, connection-scoped breaker/disable, provider error alert, containment/runbook |
 | R10 | Reliability | AI/provider outage blocks immediate responses | H | M | High | Async durable intake, bounded timeouts/retries/breaker, localized safe template/handoff, provider telemetry and optional future adapter |
 | R11 | Operations | Outbox/job backlog delays handoff or customer confirmation | M | H | High | Workload priorities, oldest-age SLI, bounded concurrency/fairness, DLQ/reconciliation, scale/runbook tests |
@@ -388,7 +410,7 @@ Probability and impact are qualitative launch estimates (`L`, `M`, `H`) and must
 | R22 | Product | Configured knowledge is stale/wrong, causing grounded but bad answers | M | H | High | Revision/audit/publish workflow, staff ownership/freshness indicators, effective dates, easy handoff; do not label AI as source of truth |
 | R23 | Integration | Telegram/Meta/provider API or policy changes break adapters | M | M-H | Medium-High | Capability/contract adapters, pinned/tested APIs, sandbox fixtures, deprecation monitoring, breaker/fallback, provider-specific runbook |
 | R24 | Operations | High-cardinality/verbose telemetry causes cost spike or outage | M | M | Medium | Attribute allowlist, no tenant IDs in metrics, sampling/retention/budgets, cardinality/cost CI and dashboards |
-| R25 | Security | Platform operator path becomes an unaudited tenant bypass | L-M | H | High | Separate identity/role/repository, just-in-time reason/approval, immutable audit, alert/review, no routine use |
+| R25 | Security | Platform operator path becomes an unaudited tenant bypass | L-M | H | High | Separate identity/audience/repository, mandatory MFA, 15-minute step-up, two-operator approval, 30-minute scoped support grant or 15-minute break-glass, immutable platform audit, no impersonation/generic bypass |
 | R26 | Time | Timezone/DST handling creates wrong appointment preference/expiry | M | H | High | UTC instants + location zone, explicit ambiguous/nonexistent local time handling, clock port and DST/property tests |
 | R27 | Product | Manual attendance/revenue is incomplete or manipulated | M | M-H | Medium-High | Role/source/audit/correction rules, missing-data indicators, reconciliation with future source, never infer zero or AI-derived revenue |
 | R28 | Vendor | OpenAI or hosting coupling makes change expensive | M | M | Medium | Provider/OTLP/channel/repository ports, application-owned state/contracts, cloud-neutral images, periodic adapter/eval evidence |
@@ -410,6 +432,12 @@ The following apparent contradictions are resolved as normative rules:
 9. **Cloud-neutral architecture versus a deployable plan:** OCI/managed-PostgreSQL/OTLP capability contracts are accepted, but one concrete target/region and tested IaC remain a production prerequisite.
 10. **Stage 3 state/event ambiguity:** `lead.reopened` V1 remains immutable and V2 carries the two exact transition variants; Conversation create/resolve/close use specialized events instead of the generic status event; mode-only `awaiting_staff` ownership changes use `conversation.automation_mode_changed` for exactly `paused -> staff` and `staff -> paused`; requested-to-requested successor replacement while mode remains paused uses `conversation.active_handoff_changed` with distinct previous/successor Handoff IDs and no transition-history-only exception; `awaiting_lead + ai` has no Handoff while `awaiting_lead + staff` retains the assigned/in-progress Handoff and customer replies branch by that ownership; handoff terminal coupling always records one explicit disposition with fixed modes and no implicit resume; confirmation matches both aggregate and offer versions and uses `[issued_at, expires_at)` with an explicit clock; reassignment is a versioned `assigned -> assigned` transition whose ledger preserves both assignees.
 11. **No vector store versus multilingual grounding:** V1 retrieves bounded structured same-tenant facts through PostgreSQL and tests recall; measured failure triggers a new evaluated/security-reviewed ADR, not speculative infrastructure.
+12. **Auth0 authentication versus application tenant authority:** Auth0 verifies
+    only the external OIDC identity. Exact issuer + subject maps to a global User;
+    current PostgreSQL Membership, closed role permissions, and location scope
+    alone establish tenant authorization. Email/Auth0 Organization claims and
+    persisted session navigation state never do. Application-owned sessions and
+    local revocation remain authoritative even when upstream logout occurs.
 
 ## Stage entry and release gates
 
@@ -428,8 +456,6 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | What exact qualification fields/rules are the launch defaults, and who may edit/publish them? | Product + clinic operations | Changes lead conversion semantics and eval fixtures | Before S7/S15 |
 | Is a phone number mandatory for an appointment request, or can a bound widget/Telegram identity suffice for selected tenants? | Product + privacy | Contact sufficiency changes validation, consent, and reachability behavior | Before S9/S16 |
 | What exact channel-specific resolved-conversation reopen/new-cycle and Widget session windows apply within the frozen active grouping identity? | Product + integrations | Timing changes whether an inactive thread is reopened or a later Conversation is created, but does not change the approved grouping key | Before S10-S11 |
-| What exact permission bundles/location restrictions apply to `owner`, `admin`, `staff`, and `analyst`, including price/content publishing? | Product + security | Role names are fixed, but least-privilege capabilities affect every private command | Before S6/S7 |
-| Which OIDC provider, MFA/session policy, invitation/recovery flow, and platform-operator approval process? | Security + platform | Identity assurance and contracts are provider/product decisions | Before S6 |
 | Is Telegram one platform bot or a tenant-owned bot per connection, and who handles token rotation/ownership? | Product + integrations | Affects onboarding, provider limits, credentials, and support | Before S11 |
 | What customer-confirmation UX, legal sufficiency, offer/staff-review expiry, reminder, cancel/reschedule/new-offer rules apply per widget and Telegram? | Product + privacy/legal + domain | Determines valid state transitions and legal/audit evidence; configured values still need approved defaults | Before S16/S18 |
 | Which optional staff-alert provider(s) and preference/escalation rules are desired after the P0 in-app inbox? | Product + integrations | Provider/commercial/consent choice; not required for correctness | Before the relevant P1 stage |

@@ -195,7 +195,45 @@ Fixture suites cover widget and Telegram initially. Instagram and WhatsApp adapt
 
 The AI adapter contract verifies application-owned state, `store: false`, pinned approved model identifier, schema-constrained output, timeout/cancellation, provider usage capture, refusal/error mapping, and absence of unrestricted tool execution. Recorded responses are synthetic and tagged with provider/schema/model-contract versions.
 
-OIDC contract tests validate issuer/audience/signature/time claims, key rotation, revoked/disabled memberships, logout/session expiry, and map external identity to app-owned membership/RBAC without accepting organization claims as authority.
+### S6 authentication, session, and authorization contract
+
+Auth0 OIDC contract tests cover valid Authorization Code + PKCE identity;
+invalid issuer/signature/audience; expired token; nonce/state mismatch; JWKS
+rotation; provider outage/fail-closed behavior; and exact issuer + subject
+mapping. Identity tests prove multiple identities per User, no email auto-link,
+disabled/unlinked denial, and no provider Organization claim authority.
+
+Membership tests cover active allow; invited/suspended/revoked denial; foreign-
+tenant denial; explicit reactivation; and transactional final-owner protection.
+The closed permission vocabulary is tested exhaustively for owner, admin, staff,
+and analyst, including unknown-permission default denial and every owner-only
+resource rule.
+
+Location tests cover staff/analyst all-location and restricted allow/deny,
+restricted zero rows denying every location, owner/admin all-location,
+cross-tenant location rejection, and default denial for a restricted actor when
+the resource has no deterministic allowed location.
+
+Session tests use a fixed clock for 60-minute idle expiry, 12-hour absolute
+expiry without extension, four-hour rotation, the five-session cap, fixation
+protection, organization-switch rotation, current-Membership reload, logout,
+sign-out-all, User-wide and organization-specific revocation, stale/escaped
+session rejection, and pooled/request context leakage. They prove Auth0 logout
+alone is never assumed to have revoked the local application session.
+
+Invitation tests cover seven-day expiry, one active organization/target record,
+resend revocation, replay, explicit revoke, owner/admin issuer rules, owner-role
+restriction, verified-email mismatch denial without email identity linking,
+active Membership idempotency, and no suspended/revoked auto-reactivation.
+
+MFA tests require production MFA for every tenant role and platform operator,
+accept WebAuthn and TOTP according to policy, reject missing or SMS/email-only
+MFA, consume recovery codes once, and enforce 15-minute fresh-MFA step-up.
+CSRF/origin tests cover valid/invalid session tokens, Origin and Fetch Metadata,
+login CSRF state/nonce, environment-specific staff CORS, and staff/widget origin
+separation. Platform tests prove tenant roles cannot become platform operators,
+generic impersonation is impossible, support grants remain a separate deferred
+capability, and platform actions use platform audit.
 
 ## End-to-end journeys
 
@@ -246,7 +284,7 @@ Additional isolation tests cover:
 ### Threat-driven tests
 
 - IDOR and mass-assignment attempts across every mutable field;
-- expired/forged/wrong-audience OIDC tokens, session fixation, privilege downgrade, disabled membership, MFA/provider policy where configured;
+- expired/forged/wrong-audience Auth0 OIDC tokens, session fixation, privilege downgrade, disabled Membership, mandatory production MFA, and 15-minute step-up policy;
 - CSRF on cookie-authenticated mutations, CORS/origin bypass, clickjacking headers, and widget embedding allowlist;
 - stored/reflected XSS in messages, FAQ/knowledge content, staff UI, exported data, and Markdown/link handling;
 - SQL/metacharacter injection in search/filter/sort/cursor and repository parameters;

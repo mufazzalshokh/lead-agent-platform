@@ -296,15 +296,19 @@ pre-tenant path. All class A, B, and D tables enable and force RLS in S5.
 
 - **Purpose:** Provider-neutral 1:N mapping from an exact external identity to
   one global application user.
-- **Columns:** `id`, `user_id`, exact `issuer`, exact `subject`, provider-neutral
-  lifecycle/provenance timestamps defined with the S6 authentication flow.
+- **Columns:** `id`, `user_id`, exact `issuer`, exact `subject`, `status`
+  (`active|disabled|unlinked`), `linked_at`, `last_authenticated_at nullable`,
+  `disabled_at nullable`, `unlinked_at nullable`, common mutable columns.
 - **PK/FKs/tenant:** PK; `user_id -> users(id) RESTRICT`; global authentication
   control table with no `organization_id`.
 - **Uniqueness:** (`issuer`, `subject`). Email is not an identity key and never
   causes automatic linking.
 - **Sensitive/deletion:** S2 stable pseudonymous identity. Linking another
   identity requires explicit trusted S6 logic; provider claims never establish
-  tenant membership. Disable/unlink through an audited authentication workflow.
+  tenant membership. Only `active` may authenticate. `disabled` and `unlinked`
+  remain as security/history evidence and cannot authenticate. Disable/unlink
+  through an audited workflow, and never remove the last usable identity without
+  an approved recovery path.
 
 This table is allocated to S6 and is not created by S4a.
 
@@ -312,11 +316,31 @@ This table is allocated to S6 and is not created by S4a.
 
 - **Purpose:** Persist a pre-user invitation independently from membership and
   authentication identity.
+- **Columns/behavior:** `id`, `organization_id`, canonical invitation-target
+  ciphertext and lookup hash, proposed role/location scope, `token_hash`,
+  `status active|accepted|revoked|expired`, inviter, lifecycle timestamps,
+  seven-day expiry, acceptance actor, and revocation evidence.
+  Only one active invitation exists for one organization + canonical target;
+  owner/admin targets are all-location and restricted scope is available only
+  for staff/analyst targets.
+- **PK/FKs/tenant:** PK `id`; FK organization; inviter is a same-tenant active
+  Membership authorization checked transactionally; acceptance may bind the
+  resulting User/Membership without requiring a User before acceptance. Forced
+  RLS applies through `organization_id`.
+- **Uniqueness/indexes:** unique `token_hash`; partial unique active
+  (`organization_id`, target lookup hash); index active expiry and organization
+  lifecycle queries.
 - **Identity rule:** an invitation does not require `user_id`, does not
   auto-link by email, and becomes a membership only through explicit,
-  security-reviewed S6 acceptance logic.
-- **Secret rule:** no raw invitation token/secret is persisted if S6 uses a
-  token scheme.
+  security-reviewed acceptance of a valid invitation by an authenticated OIDC
+  identity whose verified email/profile target matches. Mismatch denies and
+  requires revoke/reissue; active membership replay is idempotent, while
+  suspended/revoked membership is never silently reactivated.
+- **Authority rule:** owners may invite any tenant role. Admins may invite
+  `admin|staff|analyst` but never owner. Staff/analyst cannot invite.
+- **Secret rule:** the token is high-entropy, opaque, hash-only at rest, never
+  logged, single-use, replay-resistant, expiring, and explicitly revocable.
+  Resend revokes the previous active invitation before issuing a new token.
 
 This table is allocated to S6 and is not created by S4a.
 
@@ -342,6 +366,15 @@ This table is allocated to S6 and is not created by S4a.
   lookup/update uses a narrow auth repository/role. Revoke immediately and purge
   after the session replay/investigation window.
 
+The V1 session policy is idle expiry after 60 minutes, absolute expiry after 12
+hours, token rotation every four hours and immediately after authentication,
+MFA/step-up, organization switch, role/location/privilege change, or recovery.
+Remember-me is disabled, at most five active sessions exist per User, and
+expired/revoked metadata is retained for 30 days. A session may remember a
+selected organization only as navigation state; it stores no trusted role,
+permission, or tenant authority. Authorization reloads current Membership and
+location scope. Auth0 access/refresh tokens are not persisted by default.
+
 ### 3.3 `memberships`
 
 - **Purpose:** Bind an existing user to an existing organization with product
@@ -362,8 +395,10 @@ This table is allocated to S6 and is not created by S4a.
   no audit dependency.
 
 A restricted membership with zero `membership_location_scopes` rows has access
-to no location. Owners normally require `location_scope=all`; permission policy
-still controls organization-wide resources.
+to no location. Owners and admins require `location_scope=all`; staff and
+analysts may use `all|restricted`. Permission policy still controls
+organization-wide resources, and a restricted actor is denied when a resource
+has no deterministic allowed location.
 
 `membership_location_scopes` persistence and all role/location authorization
 evaluation are allocated to S6. S4a stores only the membership's structural

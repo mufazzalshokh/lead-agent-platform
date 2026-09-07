@@ -605,7 +605,7 @@ slot; it does not mean an external calendar event exists.
 |---|---|
 | `customer_session` | Widget token bound to the conversation/customer plus either a valid single-use grant bound to request, aggregate version, and current `offer_version`, or an unambiguous message for exactly one current offer; actor is the contact/channel identity. |
 | `telegram` | Verified Telegram webhook and matching channel connection/sender; an explicit callback uses an opaque single-use grant bound to request, aggregate version, and current `offer_version`, while an unambiguous message must identify exactly one current offer; actor is the Telegram contact identity. |
-| `staff_attested_external` | Authorized staff states they contacted the customer outside a reachable V1 channel; requires source method (`phone` or `in_person`), confirmation timestamp, actor membership, optional non-sensitive note, recent authentication, and audit event. |
+| `staff_attested_external` | Authorized staff states they contacted the customer outside a reachable V1 channel; requires source method (`phone` or `in_person`), confirmation timestamp, actor membership, optional non-sensitive note, fresh MFA step-up within 15 minutes, and audit event. |
 
 Staff attestation is not silent staff confirmation: the API/UI must label it as
 an attestation, capture who asserted it and how, and expose it in history. It is

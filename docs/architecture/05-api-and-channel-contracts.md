@@ -160,36 +160,73 @@ concurrency.
 
 | Surface | Principal | Authentication | Tenant resolution |
 |---|---|---|---|
-| Staff/private | Human user | OIDC-compatible login establishes an opaque, revocable server-side session in a Secure, HttpOnly, SameSite cookie; short idle/absolute lifetime; MFA required for owners/admins | Active organization selector is verified against server-side active membership on every request. |
+| Staff/private | Human user | Auth0 OIDC Authorization Code + PKCE establishes an opaque, revocable application session in a Secure, HttpOnly, SameSite=Lax cookie; production MFA is required for every tenant role | Active organization selector is verified against server-side active membership on every request; Auth0 Organization claims have no authority. |
 | Anonymous widget | Widget session | Short-lived, audience-scoped widget bearer token issued by the session bootstrap | Publishable widget key resolves configuration; token binds immutable `organization_id`, `channel_connection_id`, origin, and conversation/session. |
 | Telegram webhook | Provider delivery | Adapter verifies provider secret/signature against raw bytes before parsing | Opaque route connection key plus verified provider account resolves one active channel connection. |
 | Future Instagram/WhatsApp webhook | Provider delivery | Adapter-specific signature, timestamp, and replay verification | Verified provider account/connection mapping; never a payload `organization_id`. |
 | Background worker | Workload identity | Separate least-privilege database/application credential | Tenant carried in a trusted job created from an already resolved transaction and re-established for each job. |
-| Platform operations | Platform operator | Separate admin audience, MFA, step-up for sensitive actions | No implicit tenant scope; an explicit, audited support grant is required. |
+| Platform operations | Platform operator | Separate admin audience, mandatory MFA, and fresh step-up for sensitive actions | No implicit tenant scope; an explicit, two-operator-approved, audited support grant is required. |
 
-The V1 tenant membership roles are:
+The closed V1 permission vocabulary is `organization.read`,
+`organization.update`, `memberships.read`, `memberships.invite`,
+`memberships.manage`, `ownership.transfer`, `configuration.read`,
+`configuration.write`, `configuration.publish`, `integrations.read`,
+`integrations.manage`, `contacts.read`, `contacts.read_sensitive`, `leads.read`,
+`leads.manage`, `conversations.read`, `conversations.manage`,
+`appointments.read`, `appointments.manage`, `attendance.manage`,
+`revenue_attribution.manage`, `handoffs.read`, `handoffs.manage`,
+`notifications.read`, `analytics.read`, `audit.read`, `privacy.read`, and
+`privacy.manage`. Unknown permissions deny.
 
-- `owner`: organization lifecycle, memberships, channel credentials, privacy
-  export/deletion approval, and all tenant administration;
-- `admin`: operational configuration, memberships except ownership transfer,
-  integrations, conversations, leads, bookings, handoffs, and reporting;
-- `staff`: conversations, leads, appointment decisions, handoffs, and the
-  minimum customer/contact data needed to serve them;
-- `analyst`: read-only funnel and aggregate reporting; no integration secrets
-  and no message/contact body access by default.
+Owners receive every permission. Admins receive every permission except
+`ownership.transfer` and cannot create/promote, demote, suspend, or revoke an
+owner. Staff receive the operational read/manage permissions enumerated in
+`07-tenancy-security-privacy.md`, including sensitive contact access, but no
+membership/configuration/integration/analytics/audit/privacy administration.
+Analysts receive only `organization.read`, `configuration.read`, and
+`analytics.read`.
 
-Each tenant membership can additionally be restricted to an explicit set of
-locations. Role permission and location scope must both pass; an empty restricted
-set grants no location access.
+Owners/admins are always all-location. Staff/analysts may be all-location or
+restricted to an explicit location allowlist. Role permission and location
+scope must both pass; an empty restricted set grants no location access and a
+restricted actor is denied when the resource has no deterministic allowed
+location.
 
 Role checks are permissions in application policy, not UI visibility checks.
-Membership must be active. High-risk actions require recent authentication and
-produce an `audit_event`. Customer/widget actors are not organization members.
+Membership must be active. High-risk actions require fresh MFA step-up within
+15 minutes and produce an `audit_event`. Customer/widget actors are not
+organization members.
 
 For cookie-authenticated mutations, the API validates an anti-CSRF token bound
-to the session and checks `Origin`/`Sec-Fetch-Site`; cookies use `Secure`,
-`HttpOnly`, and an appropriate `SameSite` policy. CORS is deny-by-default and
-does not grant authorization.
+to the session and checks `Origin`/Fetch Metadata where available; cookies use
+`Secure`, `HttpOnly`, and `SameSite=Lax` by default. Staff CORS is deny-by-default
+with environment-specific origins, is independent from widget allowed origins,
+and does not grant authorization.
+
+The application session idles out after 60 minutes and ends absolutely after
+12 hours, with no remember-me. Its token rotates every four hours and after
+authentication, MFA/step-up, organization switch, role/location/privilege
+change, or recovery. A User may have at most five active sessions; revoked or
+expired metadata is retained for 30 days. Current Membership authority is
+reloaded for authorization-sensitive work rather than trusted from a session
+snapshot.
+
+Auth endpoints are separate from tenant resource routes: login initiation and
+callback complete Auth0 Authorization Code + PKCE with state/nonce; session
+inspection returns no token; logout revokes the current local session;
+sign-out-all revokes every local session; organization selection validates an
+active Membership and rotates the session token; invitation acceptance receives
+the opaque token in a non-logged request body after OIDC authentication. Auth0
+logout alone never substitutes for local revocation.
+
+S6 reuses the canonical problem vocabulary: missing authentication maps to
+`authentication_required`; malformed, expired, revoked, mismatched, or replayed
+authentication/invitation proof maps to `token_invalid`; a valid principal that
+lacks active Membership, named permission, MFA freshness, or location/resource
+scope maps to `permission_denied`, except inaccessible tenant resources use the
+non-enumerating `resource_not_found`; CSRF and staff-origin failures remain
+`csrf_invalid` and `origin_not_allowed`. Provider-specific errors are never
+exposed as a competing public vocabulary.
 
 ## Staff/private API
 
@@ -206,68 +243,77 @@ request's tenant.
 | Method and path | Permission | Contract/notes |
 |---|---|---|
 | `GET /me` | authenticated | Current user, active memberships, and allowed organization selectors. |
-| `GET /organization` | member | Current organization profile and privacy/configuration versions. |
-| `PATCH /organization` | `organization:write` | Owner/admin; `If-Match`; JSON Merge Patch allowlist. |
-| `GET, POST /memberships` | `membership:read/write` | Owner/admin; invite/create is idempotent; role elevation is audited. |
-| `PATCH, DELETE /memberships/{id}` | `membership:write` | Cannot remove/demote final owner; `If-Match`. |
-| `GET, POST /locations` | `configuration:read/write` | Location name, IANA time zone, address, contact details. |
-| `GET, PATCH /locations/{id}` | `configuration:read/write` | Configuration changes are versioned and audited. |
-| `GET, PUT /locations/{id}/business-hours` | `configuration:read/write` | Versioned weekly local-time schedule evaluated in the location IANA zone; `If-Match`. |
-| `GET, POST /locations/{id}/closures` | `configuration:read/write` | Date/time closures with reason and effective interval; idempotent create. |
-| `DELETE /locations/{id}/closures/{closure_id}` | `configuration:write` | Versioned retire/cancel semantics; no destructive history loss. |
-| `GET, POST /services` | `configuration:read/write` | Service facts only; no free-form authoritative price. |
-| `GET, PATCH /services/{id}` | `configuration:read/write` | Disable rather than silently remove referenced services. |
-| `GET, PUT /services/{id}/locations` | `configuration:read/write` | Active/effective service-location mappings; all referenced locations are same-tenant. |
-| `GET, POST /services/{id}/prices` | `pricing:read/write` | Integer minor units, currency, effective range; overlap rule is domain-validated. |
-| `GET, POST /faqs` | `configuration:read/write` | Lists immutable versions or creates a `draft` with stable `faq_key`, optional service/location scope, effective interval, and atomic `question_i18n`/`answer_i18n` maps whose only locale keys are `uz`, `ru`, and `en`; content remains untrusted data. |
-| `GET /faqs/{id}` | `configuration:read` | Returns one exact version, including `version_no` and `draft`, `published`, or `retired` status; it never silently substitutes a different version. |
-| `POST /faqs/{id}/publish` | `configuration:write` | Publishes a draft with `If-Match`; validates both bounded locale maps and the organization default locale, then atomically retires any current version for the same key/scope. Published content is immutable. |
-| `POST /faqs/{id}/retire` | `configuration:write` | Idempotently retires a published version with `If-Match`; referenced history remains immutable. |
-| `GET, PUT /business-policy` | `configuration:read/write` | Qualification, handoff, appointment, and response policies; `If-Match`. |
-| `GET, POST /channel-connections` | `integration:read/write` | Metadata returned; credentials accepted only through secret-specific write fields and never echoed. |
-| `PATCH /channel-connections/{id}` | `integration:write` | Versioned allowlisted metadata/status change; secret values are never returned. |
-| `POST /channel-connections/{id}/rotate-credential` | `integration:write` | Step-up, idempotency and audit required; encrypted replacement with bounded overlap/revocation. |
-| `POST /channel-connections/{id}/disable` | `integration:write` | Step-up, `If-Match`, idempotency and audit; disables ingress/egress without deleting history. |
-| `GET, PUT /channel-connections/{id}/widget-origins` | `integration:read/write` | Widget connections only; canonical exact/wildcard origins, versioned with `If-Match` and audited. |
-| `GET /contacts/{id}` | `contact:read` | Minimum masked/full fields according to role/location and purpose; no cross-tenant existence disclosure. |
-| `PATCH /contacts/{id}` | `contact:write` | Validated correction/merge-independent fields; `If-Match`, audit, and consent/purpose policy. |
-| `GET /leads` | `lead:read` | Cursor list; filters by documented status, location, assignee, timestamps. |
-| `GET, PATCH /leads/{id}` | `lead:read/write` | Assignment/labels via allowlist; lifecycle transitions use domain commands. |
-| `POST /leads/{id}/disqualify` | `lead:write` | Reasoned, versioned/idempotent domain transition; cannot be inferred solely by AI. |
-| `POST /leads/{id}/close` | `lead:write` | Reasoned, versioned/idempotent close command. |
-| `POST /leads/{id}/reopen` | `lead:write` | Only from a permitted state under business policy; versioned/idempotent. |
-| `GET /conversations` | `conversation:read` | Cursor list; filters by status/channel/assignment. |
-| `GET /conversations/{id}` | `conversation:read` | Metadata and participant summary. |
-| `GET /conversations/{id}/messages` | `conversation:read` | Cursor list with redacted/authorized message representations. |
-| `GET /conversations/{id}/ai-runs` | `ai:read` | Redacted run/action-evaluation/source/policy summaries; no raw prompts, hidden reasoning, secrets, or unrestricted provider bodies. |
-| `GET /ai-runs/{id}` | `ai:read` | Tenant/location-authorized diagnostic representation with model/profile/schema/prompt versions, usage, outcome and safe failure codes. |
-| `POST /conversations/{id}/messages` | `conversation:reply` | Staff reply; requires `Idempotency-Key`; persists message + outbox atomically. |
-| `POST /conversations/{id}/resolve` | `conversation:write` | `If-Match`, `Idempotency-Key`; state machine validates. |
-| `POST /conversations/{id}/reopen` | `conversation:write` | `If-Match`, `Idempotency-Key`; policy-controlled. |
-| `GET /appointment-requests` | `appointment:read` | Cursor list; status/location/date filters. |
-| `GET /appointment-requests/{id}` | `appointment:read` | Includes transition history visible to staff. |
-| `POST /appointment-requests/{id}/accept` | `appointment:decide` | Staff supplies proposed appointment instant/location/optional staff note; `If-Match` and `Idempotency-Key`. Commits `staff_accepted` plus a prepare-confirmation outbox event and returns `202` with that durable state. |
-| `POST /appointment-requests/{id}/reject` | `appointment:decide` | Reason code plus optional customer-safe message; `If-Match` and idempotency. |
-| `POST /appointment-requests/{id}/cancel` | `appointment:decide` | Policy-authorized cancellation; idempotent command. |
-| `POST /appointment-requests/{id}/attest-customer-confirmation` | `appointment:decide` | For an offline/unreachable customer only: requires recent auth, an `attestation_method` of `phone` or `in_person`, actual confirmation time, `If-Match`, idempotency, and an audit event with source `staff_attested_external`. |
-| `GET /appointment-requests/{id}/attendance` | `outcome:read` | Current attendance fact plus immutable correction history. |
-| `POST /appointment-requests/{id}/attendance` | `outcome:write` | Record an initial `attended`, `did_not_attend`, or `unknown` fact for a confirmed request after its offered start; `If-Match`, idempotency, actor/source/audit required. |
-| `POST /appointment-requests/{id}/attendance/{attendance_id}/correct` | `outcome:write` | Append a superseding attendance fact and reason; never overwrite history; `If-Match` current fact and idempotency required. |
-| `GET /appointment-requests/{id}/revenue-attributions` | `outcome:read` | Cursor list of immutable charge/adjustment/reversal facts; currencies are never silently summed. |
-| `POST /appointment-requests/{id}/revenue-attributions` | `outcome:write` | Add a staff-manual `charge` or `adjustment` for a confirmed request using positive integer minor units, ISO currency, category, recognized time, actor/source/audit; idempotency required. |
-| `POST /appointment-requests/{id}/revenue-attributions/{attribution_id}/reverse` | `outcome:write` | Append one same-currency reversal linked to an unreversed attribution; reason and idempotency required; original row remains immutable. |
-| `GET /handoffs` | `handoff:read` | Cursor list; state/assignee filters. |
-| `POST /handoffs/{id}/assign` | `handoff:write` | Assignee membership is checked in this organization; `If-Match` and idempotency are required. Reassignment is a versioned `assigned -> assigned` transition whose history records old and new assignees while its event carries the new assignee only. |
-| `POST /handoffs/{id}/start` | `handoff:write` | Transition to `in_progress`. |
-| `POST /handoffs/{id}/resolve` | `handoff:write` | Resolution code plus explicit conversation disposition `resume_ai\|resolve_conversation\|successor_handoff`; versioned/idempotent. |
-| `POST /handoffs/{id}/cancel` | `handoff:write` | Authorized actor, reason, explicit conversation disposition, `If-Match`, and idempotency; terminal transition only when policy permits. |
-| `GET /notifications` | `notification:read` | Durable in-app staff inbox; cursor list filtered by assignment/type/read state and membership location scope. This is the P0 notification authority. |
-| `POST /notifications/{id}/mark-read` | `notification:read` | Idempotent actor-specific read acknowledgement; it never changes the referenced domain state. |
-| `GET /audit-events` | `audit:read` | Owner/admin; append-only event metadata, no unrestricted payload dumps. |
-| `GET /analytics/funnel` | `analytics:read` | Aggregate results; explicit time range, location and time-zone semantics. |
-| `POST /contacts/{id}/consents/{purpose}/withdraw` | `privacy:manage` | **P1 reserved:** append withdrawal evidence; idempotent and audited; never rewrite the original grant. |
-| `POST /privacy/exports` | `privacy:manage` | **P1 reserved:** owner-authorized asynchronous tenant export; idempotent and audited. |
-| `POST /privacy/deletion-requests` | `privacy:manage` | **P1 reserved:** validated deletion workflow, not immediate ad hoc SQL deletion. |
+| `GET /organization` | `organization.read` | Current organization profile and privacy/configuration versions. |
+| `PATCH /organization` | `organization.update` | Owner/admin; `If-Match`; JSON Merge Patch allowlist. |
+| `GET /memberships` | `memberships.read` | Tenant membership list; no external-identity or session data. |
+| `POST /membership-invitations` | `memberships.invite` | Owner/admin target-role rules; seven-day hash-only invitation; idempotent request and audited grant. |
+| `POST /membership-invitations/{id}/resend` | `memberships.invite` | Revokes the active token before issuing a replacement; never returns or logs stored token material. |
+| `DELETE /membership-invitations/{id}` | `memberships.invite` | Explicit revocation; idempotent and audited. |
+| `PATCH, DELETE /memberships/{id}` | `memberships.manage`; `ownership.transfer` for owner operations | Delete means audited revocation, not hard deletion; cannot suspend, revoke, or demote the final active owner; `If-Match`. |
+| `GET, POST /locations` | `configuration.read` / `configuration.write` | Location name, IANA time zone, address, contact details. |
+| `GET, PATCH /locations/{id}` | `configuration.read` / `configuration.write` | Configuration changes are versioned and audited. |
+| `GET, PUT /locations/{id}/business-hours` | `configuration.read` / `configuration.write` | Versioned weekly local-time schedule evaluated in the location IANA zone; `If-Match`. |
+| `GET, POST /locations/{id}/closures` | `configuration.read` / `configuration.write` | Date/time closures with reason and effective interval; idempotent create. |
+| `DELETE /locations/{id}/closures/{closure_id}` | `configuration.write` | Versioned retire/cancel semantics; no destructive history loss. |
+| `GET, POST /services` | `configuration.read` / `configuration.write` | Service facts only; no free-form authoritative price. |
+| `GET, PATCH /services/{id}` | `configuration.read` / `configuration.write` | Disable rather than silently remove referenced services. |
+| `GET, PUT /services/{id}/locations` | `configuration.read` / `configuration.write` | Active/effective service-location mappings; all referenced locations are same-tenant. |
+| `GET, POST /services/{id}/prices` | `configuration.read` / `configuration.write` | Integer minor units, currency, effective range; overlap rule is domain-validated. |
+| `GET, POST /faqs` | `configuration.read` / `configuration.write` | Lists immutable versions or creates a `draft` with stable `faq_key`, optional service/location scope, effective interval, and atomic `question_i18n`/`answer_i18n` maps whose only locale keys are `uz`, `ru`, and `en`; content remains untrusted data. |
+| `GET /faqs/{id}` | `configuration.read` | Returns one exact version, including `version_no` and `draft`, `published`, or `retired` status; it never silently substitutes a different version. |
+| `POST /faqs/{id}/publish` | `configuration.publish` | Publishes a draft with `If-Match`; validates both bounded locale maps and the organization default locale, then atomically retires any current version for the same key/scope. Published content is immutable. |
+| `POST /faqs/{id}/retire` | `configuration.publish` | Idempotently retires a published version with `If-Match`; referenced history remains immutable. |
+| `GET, PUT /business-policy` | `configuration.read` / `configuration.write` | Qualification, handoff, appointment, and response policies; `If-Match`. |
+| `GET, POST /channel-connections` | `integrations.read` / `integrations.manage` | Metadata returned; credentials accepted only through secret-specific write fields and never echoed. |
+| `PATCH /channel-connections/{id}` | `integrations.manage` | Versioned allowlisted metadata/status change; secret values are never returned. |
+| `POST /channel-connections/{id}/rotate-credential` | `integrations.manage` | Step-up, idempotency and audit required; encrypted replacement with bounded overlap/revocation. |
+| `POST /channel-connections/{id}/disable` | `integrations.manage` | Step-up, `If-Match`, idempotency and audit; disables ingress/egress without deleting history. |
+| `GET, PUT /channel-connections/{id}/widget-origins` | `integrations.read` / `integrations.manage` | Widget connections only; canonical exact/wildcard origins, versioned with `If-Match` and audited. |
+| `GET /contacts/{id}` | `contacts.read`; `contacts.read_sensitive` for unmasked fields | Minimum masked/full fields according to role/location and purpose; no cross-tenant existence disclosure. |
+| `PATCH /contacts/{id}` | `contacts.read_sensitive` + `leads.manage` | Validated correction/merge-independent fields; `If-Match`, audit, and consent/purpose policy. |
+| `GET /leads` | `leads.read` | Cursor list; filters by documented status, location, assignee, timestamps. |
+| `GET, PATCH /leads/{id}` | `leads.read` / `leads.manage` | Assignment/labels via allowlist; lifecycle transitions use domain commands. |
+| `POST /leads/{id}/disqualify` | `leads.manage` | Reasoned, versioned/idempotent domain transition; cannot be inferred solely by AI. |
+| `POST /leads/{id}/close` | `leads.manage` | Reasoned, versioned/idempotent close command. |
+| `POST /leads/{id}/reopen` | `leads.manage` | Only from a permitted state under business policy; versioned/idempotent. |
+| `GET /conversations` | `conversations.read` | Cursor list; filters by status/channel/assignment. |
+| `GET /conversations/{id}` | `conversations.read` | Metadata and participant summary. |
+| `GET /conversations/{id}/messages` | `conversations.read` | Cursor list with redacted/authorized message representations. |
+| `GET /conversations/{id}/ai-runs` | `conversations.read` | Redacted run/action-evaluation/source/policy summaries; no raw prompts, hidden reasoning, secrets, or unrestricted provider bodies. |
+| `GET /ai-runs/{id}` | `conversations.read` | Tenant/location-authorized diagnostic representation with model/profile/schema/prompt versions, usage, outcome and safe failure codes. |
+| `POST /conversations/{id}/messages` | `conversations.manage` | Staff reply; requires `Idempotency-Key`; persists message + outbox atomically. |
+| `POST /conversations/{id}/resolve` | `conversations.manage` | `If-Match`, `Idempotency-Key`; state machine validates. |
+| `POST /conversations/{id}/reopen` | `conversations.manage` | `If-Match`, `Idempotency-Key`; policy-controlled. |
+| `GET /appointment-requests` | `appointments.read` | Cursor list; status/location/date filters. |
+| `GET /appointment-requests/{id}` | `appointments.read` | Includes transition history visible to staff. |
+| `POST /appointment-requests/{id}/accept` | `appointments.manage` | Staff supplies proposed appointment instant/location/optional staff note; `If-Match` and `Idempotency-Key`. Commits `staff_accepted` plus a prepare-confirmation outbox event and returns `202` with that durable state. |
+| `POST /appointment-requests/{id}/reject` | `appointments.manage` | Reason code plus optional customer-safe message; `If-Match` and idempotency. |
+| `POST /appointment-requests/{id}/cancel` | `appointments.manage` | Policy-authorized cancellation; idempotent command. |
+| `POST /appointment-requests/{id}/attest-customer-confirmation` | `appointments.manage` | For an offline/unreachable customer only: requires MFA step-up within 15 minutes, an `attestation_method` of `phone` or `in_person`, actual confirmation time, `If-Match`, idempotency, and an audit event with source `staff_attested_external`. |
+| `GET /appointment-requests/{id}/attendance` | `appointments.read` | Current attendance fact plus immutable correction history. |
+| `POST /appointment-requests/{id}/attendance` | `attendance.manage` | Record an initial `attended`, `did_not_attend`, or `unknown` fact for a confirmed request after its offered start; `If-Match`, idempotency, actor/source/audit required. |
+| `POST /appointment-requests/{id}/attendance/{attendance_id}/correct` | `attendance.manage` | Append a superseding attendance fact and reason; never overwrite history; `If-Match` current fact and idempotency required. |
+| `GET /appointment-requests/{id}/revenue-attributions` | `appointments.read` | Cursor list of immutable charge/adjustment/reversal facts; currencies are never silently summed. |
+| `POST /appointment-requests/{id}/revenue-attributions` | `revenue_attribution.manage` | Add a staff-manual `charge` or `adjustment` for a confirmed request using positive integer minor units, ISO currency, category, recognized time, actor/source/audit; idempotency required. |
+| `POST /appointment-requests/{id}/revenue-attributions/{attribution_id}/reverse` | `revenue_attribution.manage` | Append one same-currency reversal linked to an unreversed attribution; reason and idempotency required; original row remains immutable. |
+| `GET /handoffs` | `handoffs.read` | Cursor list; state/assignee filters. |
+| `POST /handoffs/{id}/assign` | `handoffs.manage` | Assignee membership is checked in this organization; `If-Match` and idempotency are required. Reassignment is a versioned `assigned -> assigned` transition whose history records old and new assignees while its event carries the new assignee only. |
+| `POST /handoffs/{id}/start` | `handoffs.manage` | Transition to `in_progress`. |
+| `POST /handoffs/{id}/resolve` | `handoffs.manage` | Resolution code plus explicit conversation disposition `resume_ai\|resolve_conversation\|successor_handoff`; versioned/idempotent. |
+| `POST /handoffs/{id}/cancel` | `handoffs.manage` | Authorized actor, reason, explicit conversation disposition, `If-Match`, and idempotency; terminal transition only when policy permits. |
+| `GET /notifications` | `notifications.read` | Durable in-app staff inbox; cursor list filtered by assignment/type/read state and membership location scope. This is the P0 notification authority. |
+| `POST /notifications/{id}/mark-read` | `notifications.read` | Idempotent actor-specific read acknowledgement; it never changes the referenced domain state. |
+| `GET /audit-events` | `audit.read` | Owner/admin; append-only event metadata, no unrestricted payload dumps. |
+| `GET /analytics/funnel` | `analytics.read` | Aggregate results; explicit time range, location and time-zone semantics. |
+| `POST /contacts/{id}/consents/{purpose}/withdraw` | `privacy.manage` | **P1 reserved:** append withdrawal evidence; idempotent and audited; never rewrite the original grant. |
+| `POST /privacy/exports` | `privacy.manage` | **P1 reserved:** owner/admin-authorized asynchronous tenant export; idempotent, step-up protected, and audited. |
+| `POST /privacy/deletion-requests` | `privacy.manage` | **P1 reserved:** validated, step-up-protected deletion workflow, not immediate ad hoc SQL deletion. |
+
+`configuration.write` creates or changes draft/configuration state.
+`configuration.publish` is additionally required for any request that makes a
+service fact, price, FAQ, business policy, hours, or other authoritative content
+active/effective; a write route cannot silently publish using only
+`configuration.write`.
 
 The three privacy routes above are contracts reserved for P1 and are not exposed
 in P0. In P0, an explicit withdrawal received by widget, Telegram, or staff
@@ -664,14 +710,17 @@ duplicated, reordered, multi-event, oversized, and unsupported payloads.
 Decisions fixed for V1:
 
 - Versioned JSON REST over Fastify, with JSON Schema as the runtime contract.
-- Cookie-authenticated staff/private surface, short-lived widget sessions, and
-  separately authenticated webhook routes.
+- Auth0 Authorization Code + PKCE followed by an application-owned staff session
+  with 60-minute idle/12-hour absolute expiry, four-hour rotation, five-session
+  cap, mandatory production MFA, and 15-minute sensitive-action step-up;
+  short-lived widget sessions and separately authenticated webhook routes.
 - Customer confirmation is distinct from staff acceptance.
 - No API or adapter can write an external calendar in V1.
 - Widget keys are public routing identifiers; domain allowlists and session
   grants reduce abuse but do not turn a browser into a trusted environment.
 
-Deployment configuration still must set concrete session lifetimes, rate-limit
-budgets, idempotency retention above the minimum, message size limits per
-provider, allowed widget domains, and webhook secret rotation windows. These
-values must be tested and observable rather than embedded in clients.
+Deployment configuration still must set rate-limit budgets, idempotency
+retention above the minimum, message size limits per provider, allowed widget
+domains, environment-specific staff origins, and webhook secret rotation
+windows. These values must be tested and observable rather than embedded in
+clients; configuration cannot override the frozen V1 staff session maxima.

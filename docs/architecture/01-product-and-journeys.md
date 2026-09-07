@@ -76,7 +76,7 @@ are generalized.
 | Anonymous lead | Fast, accurate answers without an account | Start a widget session, send messages, receive factual answers, request a human |
 | Identified lead / customer | Continue a conversation and request an appointment | Provide contact details and consent, state preferences, confirm or decline a staff-accepted offer |
 | Receptionist / staff | Process leads and requests | Read assigned/permitted conversations, reply, claim handoffs, accept or reject requests |
-| Location-scoped staff/admin | Oversee one or more permitted locations | Capabilities come from `staff` or `admin` plus membership location scope, not a separate persisted role |
+| Location-scoped staff/analyst | Work within one or more permitted locations | Capabilities come from `staff` or `analyst` plus membership location scope, not a separate persisted role; owners/admins are always all-location |
 | Organization admin | Configure the tenant | Manage membership, locations, knowledge, policies, channel connections, allowed widget origins, and organization settings |
 | Organization owner | Be accountable for commercial results | Admin permissions plus ownership/billing decisions when billing is introduced |
 | Platform support operator | Resolve platform incidents without becoming a tenant user | Use a separately authorized, audited support path; no default access to message content or tenant mutation |
@@ -84,10 +84,21 @@ are generalized.
 | AI provider | Return a schema-constrained interpretation/proposed response | Has no tenant resolution, authorization, persistence, or side-effect authority |
 | Background worker | Deliver durable side effects | Execute only validated, persisted jobs with bounded service credentials |
 
-Canonical membership roles are `owner|admin|staff|analyst`. Exact permission
-grants are centralized policy, not string comparisons scattered through
-handlers. Membership always binds a user to an organization and optionally a
-location scope. `platform_operator` is not a tenant membership role.
+Canonical membership roles are `owner|admin|staff|analyst`. The closed V1
+permission vocabulary and exact role bundles are frozen in
+`07-tenancy-security-privacy.md`; unknown permissions deny. Membership always
+binds a User to one organization. Owners/admins are all-location, while staff
+and analysts may be all-location or restricted to an explicit allowlist whose
+empty set grants no location access. `platform_operator` is not a tenant
+membership role.
+
+Staff authenticate through Auth0 using OIDC Authorization Code with PKCE. Auth0
+proves only the external identity: the application maps exact issuer + subject
+to a global User, then reloads active Membership, role, and location scope from
+PostgreSQL. Email and Auth0 Organization claims never establish tenant access.
+Production tenant access requires MFA for every staff role. The application
+issues its own opaque, revocable server-side session and revalidates current
+Membership authority for authorization-sensitive work.
 
 ## 5. Primary value proposition
 
