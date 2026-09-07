@@ -2292,22 +2292,63 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `truncate table analytics_events, legal_holds, privacy_requests,
-      audit_events, platform_audit_events,
-      webhook_receipts, idempotency_keys,
-      notification_attempts, handoff_transitions, notifications, outbox_events,
-      ai_action_evaluations, ai_runs, handoffs,
-      appointment_confirmation_evidence, appointment_request_attendance,
-      appointment_request_preferences, appointment_request_transitions,
-      appointment_revenue_attributions, appointment_requests,
-      lead_qualification_evidence, consent_records, messages,
-      lead_qualification_evaluations, widget_sessions, conversations,
-      leads, contact_identities, contacts,
-      widget_allowed_origins, channel_connections,
-      business_policies, faqs, service_prices, service_locations,
-      service_versions, services, location_closures, location_business_hours,
-      location_versions, inbound_routes, retention_policy_rules, retention_policies,
-      memberships, locations, users, organizations`,
+    `update organizations set current_retention_policy_id = null;
+     update locations set current_version_id = null;
+     update services set current_version_id = null;
+     update conversations
+        set status = 'closed',
+            automation_mode = 'paused',
+            active_handoff_id = null,
+            resolved_at = last_activity_at,
+            closed_at = last_activity_at;
+     update messages set ai_run_id = null;
+     delete from analytics_events;
+     delete from legal_holds;
+     delete from privacy_requests;
+     delete from audit_events;
+     delete from platform_audit_events;
+     delete from webhook_receipts;
+     delete from idempotency_keys;
+     delete from notification_attempts;
+     delete from handoff_transitions;
+     delete from notifications;
+     delete from outbox_events;
+     delete from ai_action_evaluations;
+     delete from ai_runs;
+     delete from handoffs;
+     delete from appointment_confirmation_evidence;
+     delete from appointment_request_attendance;
+     delete from appointment_request_preferences;
+     delete from appointment_request_transitions;
+     delete from appointment_revenue_attributions;
+     delete from appointment_requests;
+     delete from lead_qualification_evidence;
+     delete from consent_records;
+     delete from messages;
+     delete from lead_qualification_evaluations;
+     delete from widget_sessions;
+     delete from conversations;
+     delete from leads;
+     delete from contact_identities;
+     delete from contacts;
+     delete from widget_allowed_origins;
+     delete from inbound_routes;
+     delete from channel_connections;
+     delete from business_policies;
+     delete from faqs;
+     delete from service_prices;
+     delete from service_locations;
+     delete from service_versions;
+     delete from services;
+     delete from location_closures;
+     delete from location_business_hours;
+     delete from location_versions;
+     delete from retention_policy_rules;
+     delete from retention_policies;
+     delete from memberships;
+     delete from locations;
+     delete from users;
+     delete from organizations`,
   );
 }, 60_000);
 

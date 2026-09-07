@@ -8,6 +8,9 @@ export default defineConfig({
       "@lead-agent/contracts": fileURLToPath(
         new URL("./packages/contracts/src/index.ts", import.meta.url),
       ),
+      "@lead-agent/domain": fileURLToPath(
+        new URL("./packages/domain/src/index.ts", import.meta.url),
+      ),
     },
   },
   test: {
