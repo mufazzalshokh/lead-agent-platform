@@ -89,6 +89,7 @@ import {
 import { registerTenantSessionTests } from "./tenant-session.test-suite.js";
 import { registerTenantRepositoryTests } from "./tenant-repositories.test-suite.js";
 import { registerTenantMutationTests } from "./tenant-mutations.test-suite.js";
+import { registerInboundRouteResolverTests } from "./inbound-route-resolver.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -505,6 +506,7 @@ let upgradeTablesAfterS4c2: string[] = [];
 let upgradeTablesAfterS4c3: string[] = [];
 let upgradeTablesAfterS5: string[] = [];
 let upgradeTablesAfterS52: string[] = [];
+let upgradeTablesAfterS56: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
 let upgradeRejectedConversationConflict = false;
 let upgradeRejectedLeadConflict = false;
@@ -748,6 +750,9 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0011_s5_active_uniqueness.sql");
   upgradeTablesAfterS52 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0012_s5_inbound_route_resolver.sql");
+  upgradeTablesAfterS56 = await productionTables(testPool);
+
   await testPool.query(
     `drop table analytics_events, legal_holds, privacy_requests,
       audit_events, platform_audit_events,
@@ -924,12 +929,13 @@ const insertInboundRoute = async (
   channelConnectionId: string,
   hash: string,
   status: "active" | "disabled" = "active",
+  routeType: "telegram_webhook" | "widget_key" = "widget_key",
 ): Promise<void> => {
   await database().query(
     `insert into inbound_routes
       (id, route_type, route_key_hash, organization_id, channel_connection_id, status)
-     values ($1, 'widget_key', $2, $3, $4, $5)`,
-    [id, Buffer.from(hash), organizationId, channelConnectionId, status],
+     values ($1, $2, $3, $4, $5, $6)`,
+    [id, routeType, Buffer.from(hash), organizationId, channelConnectionId, status],
   );
 };
 
@@ -1071,10 +1077,12 @@ const insertLead = async (
   await database().query(
     `insert into leads
       (id, organization_id, contact_id, status, source_channel_connection_id,
-       closed_at, closed_reason)
+       closed_at, closed_reason, created_at, updated_at)
      values ($1, $2, $3, $4::varchar, $5,
        case when $4::varchar = 'closed' then now() else null end,
-       case when $4::varchar = 'closed' then 'completed' else null end)`,
+       case when $4::varchar = 'closed' then 'completed' else null end,
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-01 00:00:00+00')`,
     [id, organizationId, contactId, status, sourceChannelConnectionId],
   );
 };
@@ -1111,14 +1119,17 @@ const insertConversation = async (
     `insert into conversations
       (id, organization_id, contact_id, lead_id, channel_connection_id,
        external_thread_hash, status, preferred_locale, automation_mode,
-       active_handoff_id, started_at, last_activity_at, resolved_at, closed_at)
+       active_handoff_id, started_at, last_activity_at, resolved_at, closed_at,
+       created_at, updated_at)
      values ($1, $2, $3, $4, $5, $6, $7, 'en', $8, $9,
        timestamptz '2026-01-01 00:00:00+00',
        timestamptz '2026-01-01 00:01:00+00',
        case when $7::varchar in ('resolved', 'closed')
          then timestamptz '2026-01-01 00:02:00+00' else null end,
        case when $7::varchar = 'closed'
-         then timestamptz '2026-01-01 00:03:00+00' else null end)`,
+         then timestamptz '2026-01-01 00:03:00+00' else null end,
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-01 00:01:00+00')`,
     [
       id,
       organizationId,
@@ -1204,7 +1215,8 @@ const insertAppointmentRequest = async (
        offered_time_zone, offered_local_start, offer_version,
        confirmation_issued_at, offer_expires_at, confirmation_token_hash,
        confirmed_at, confirmation_source, rejection_reason_code,
-       cancellation_reason_code, cancelled_by_type, expired_at)
+       cancellation_reason_code, cancelled_by_type, expired_at,
+       created_at, updated_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
        $14,
        case when $12::varchar in ('staff_accepted', 'awaiting_customer_confirmation', 'confirmed', 'rejected')
@@ -1235,7 +1247,9 @@ const insertAppointmentRequest = async (
        case when $12::varchar = 'cancelled' then 'customer_declined' else null end,
        case when $12::varchar = 'cancelled' then 'customer' else null end,
        case when $12::varchar = 'expired'
-         then statement_timestamp() + interval '1 hour' else null end)`,
+         then statement_timestamp() + interval '1 hour' else null end,
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-01 00:00:00+00')`,
     [
       id,
       fixture.organizationId,
@@ -1469,7 +1483,8 @@ const insertHandoff = async (
     `insert into handoffs
       (id, organization_id, conversation_id, lead_id, location_id, status,
        trigger_reason, queue_key, assigned_membership_id, requested_at,
-       assigned_at, started_at, sla_due_at, resolved_at, resolution_code)
+       assigned_at, started_at, sla_due_at, resolved_at, resolution_code,
+       created_at, updated_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9,
        timestamptz '2026-01-01 00:02:00+00',
        case when $6::varchar in ('assigned', 'in_progress', 'resolved')
@@ -1479,7 +1494,9 @@ const insertHandoff = async (
        timestamptz '2026-01-01 01:02:00+00',
        case when $6::varchar = 'resolved'
          then timestamptz '2026-01-01 00:05:00+00' else null end,
-       case when $6::varchar = 'resolved' then 'handled' else null end)`,
+       case when $6::varchar = 'resolved' then 'handled' else null end,
+       timestamptz '2026-01-01 00:00:00+00',
+       timestamptz '2026-01-01 00:10:00+00')`,
     [
       id,
       organizationId,
@@ -2403,7 +2420,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4 through S5.2, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4 through S5.6, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -2416,6 +2433,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(upgradeTablesAfterS4c3).toEqual(S4C3_TABLES);
     expect(upgradeTablesAfterS5).toEqual(S4C3_TABLES);
     expect(upgradeTablesAfterS52).toEqual(S4C3_TABLES);
+    expect(upgradeTablesAfterS56).toEqual(S4C3_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
     expect(upgradeRejectedLeadConflict).toBe(true);
     expect(upgradeRejectedConversationConflict).toBe(true);
@@ -2431,7 +2449,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(12);
+    expect(migrationCount.rows[0]?.count).toBe(13);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -9546,5 +9564,55 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     runtime: requireTenantRuntime,
     runtimeConnectionString: requireRuntimeConnectionString,
     seed: seedTenantMutationFixtures,
+  });
+
+  registerInboundRouteResolverTests({
+    fixtures: {
+      channelA: CHANNEL_CONNECTION_A,
+      channelB: CHANNEL_CONNECTION_B,
+      organizationA: ORGANIZATION_A,
+      organizationB: ORGANIZATION_B,
+      routeHashA: "synthetic-s56-widget-route-a",
+      routeHashB: "synthetic-s56-telegram-route-b",
+      routeHashDisabled: "synthetic-s56-disabled-route",
+    },
+    privilegedPool: database,
+    seed: async () => {
+      await insertOrganization(ORGANIZATION_A, "s56-route-a");
+      await insertOrganization(ORGANIZATION_B, "s56-route-b");
+      await insertChannelConnection(
+        CHANNEL_CONNECTION_A,
+        ORGANIZATION_A,
+        "widget",
+        "S5.6 Widget Route",
+      );
+      await insertChannelConnection(
+        CHANNEL_CONNECTION_B,
+        ORGANIZATION_B,
+        "telegram",
+        "S5.6 Telegram Route",
+      );
+      await insertInboundRoute(
+        INBOUND_ROUTE_A,
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        "synthetic-s56-widget-route-a",
+      );
+      await insertInboundRoute(
+        syntheticUuid(0x1600),
+        ORGANIZATION_B,
+        CHANNEL_CONNECTION_B,
+        "synthetic-s56-telegram-route-b",
+        "active",
+        "telegram_webhook",
+      );
+      await insertInboundRoute(
+        syntheticUuid(0x1601),
+        ORGANIZATION_A,
+        CHANNEL_CONNECTION_A,
+        "synthetic-s56-disabled-route",
+        "disabled",
+      );
+    },
   });
 });
