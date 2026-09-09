@@ -102,6 +102,10 @@ export const memberships = pgTable(
     ),
     check("memberships_location_scope_check", sql`${table.locationScope} in ('all', 'restricted')`),
     check(
+      "memberships_role_location_scope_check",
+      sql`${table.role} not in ('owner', 'admin') or ${table.locationScope} = 'all'`,
+    ),
+    check(
       "memberships_lifecycle_timestamps_check",
       sql`(${table.status} <> 'invited' or ${table.invitedAt} is not null)
         and (${table.status} <> 'active' or ${table.activatedAt} is not null)

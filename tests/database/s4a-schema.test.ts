@@ -29,6 +29,7 @@ import {
   appointmentRequestTransitions,
   appointmentRequests,
   appointmentRevenueAttributions,
+  authSessions,
   auditEvents,
   businessPolicies,
   channelConnections,
@@ -37,6 +38,7 @@ import {
   contacts,
   conversations,
   createTenantDatabaseRuntime,
+  externalIdentities,
   faqs,
   handoffs,
   handoffTransitions,
@@ -51,6 +53,8 @@ import {
   leads,
   legalHolds,
   memberships,
+  membershipInvitations,
+  membershipLocationScopes,
   messages,
   migrationsFolder,
   notificationAttempts,
@@ -90,6 +94,7 @@ import { registerTenantSessionTests } from "./tenant-session.test-suite.js";
 import { registerTenantRepositoryTests } from "./tenant-repositories.test-suite.js";
 import { registerTenantMutationTests } from "./tenant-mutations.test-suite.js";
 import { registerInboundRouteResolverTests } from "./inbound-route-resolver.test-suite.js";
+import { registerAuthenticationPersistenceTests } from "./authentication-persistence.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -371,6 +376,13 @@ const S4C3_TABLES = [
   "platform_audit_events",
   "privacy_requests",
 ].sort();
+const S6_1_TABLES = [
+  ...S4C3_TABLES,
+  "auth_sessions",
+  "external_identities",
+  "membership_invitations",
+  "membership_location_scopes",
+].sort();
 const S5_RUNTIME_ROLE = "lead_agent_runtime";
 const S5_INGRESS_ROLE = "lead_agent_ingress";
 const S5_INBOUND_ROUTE_DEFINER_ROLE = "lead_agent_inbound_route_definer";
@@ -424,6 +436,12 @@ const S5_FULL_DML_TABLES = S5_ORDINARY_TENANT_TABLES.filter(
 );
 const S5_RLS_TABLES = [...S5_ORDINARY_TENANT_TABLES, "inbound_routes", "organizations"].sort();
 const S5_GLOBAL_TABLES = ["platform_audit_events", "users"] as const;
+const S6_1_RLS_TABLES = [
+  ...S5_RLS_TABLES,
+  "membership_invitations",
+  "membership_location_scopes",
+].sort();
+const S6_1_GLOBAL_TABLES = [...S5_GLOBAL_TABLES, "auth_sessions", "external_identities"] as const;
 const SCHEMA_TABLES = {
   analytics_events: analyticsEvents,
   ai_action_evaluations: aiActionEvaluations,
@@ -434,6 +452,7 @@ const SCHEMA_TABLES = {
   appointment_request_transitions: appointmentRequestTransitions,
   appointment_requests: appointmentRequests,
   appointment_revenue_attributions: appointmentRevenueAttributions,
+  auth_sessions: authSessions,
   audit_events: auditEvents,
   business_policies: businessPolicies,
   channel_connections: channelConnections,
@@ -441,6 +460,7 @@ const SCHEMA_TABLES = {
   contact_identities: contactIdentities,
   contacts,
   conversations,
+  external_identities: externalIdentities,
   faqs,
   handoff_transitions: handoffTransitions,
   handoffs,
@@ -455,6 +475,8 @@ const SCHEMA_TABLES = {
   location_versions: locationVersions,
   locations,
   memberships,
+  membership_invitations: membershipInvitations,
+  membership_location_scopes: membershipLocationScopes,
   messages,
   notification_attempts: notificationAttempts,
   notifications,
@@ -507,6 +529,7 @@ let upgradeTablesAfterS4c3: string[] = [];
 let upgradeTablesAfterS5: string[] = [];
 let upgradeTablesAfterS52: string[] = [];
 let upgradeTablesAfterS56: string[] = [];
+let upgradeTablesAfterS61: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
 let upgradeRejectedConversationConflict = false;
 let upgradeRejectedLeadConflict = false;
@@ -753,8 +776,13 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0012_s5_inbound_route_resolver.sql");
   upgradeTablesAfterS56 = await productionTables(testPool);
 
+  await applyMigrationSql(testPool, "0013_odd_rockslide.sql");
+  upgradeTablesAfterS61 = await productionTables(testPool);
+
   await testPool.query(
-    `drop table analytics_events, legal_holds, privacy_requests,
+    `drop table membership_location_scopes, membership_invitations,
+      auth_sessions, external_identities,
+      analytics_events, legal_holds, privacy_requests,
       audit_events, platform_audit_events,
       webhook_receipts, idempotency_keys,
       notification_attempts, handoff_transitions, notifications, outbox_events,
@@ -2302,6 +2330,10 @@ beforeEach(async () => {
             resolved_at = last_activity_at,
             closed_at = last_activity_at;
      update messages set ai_run_id = null;
+     delete from membership_location_scopes;
+     delete from membership_invitations;
+     delete from auth_sessions;
+     delete from external_identities;
      delete from analytics_events;
      delete from legal_holds;
      delete from privacy_requests;
@@ -2461,7 +2493,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4 through S5.6, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4 through S6.1, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -2475,6 +2507,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(upgradeTablesAfterS5).toEqual(S4C3_TABLES);
     expect(upgradeTablesAfterS52).toEqual(S4C3_TABLES);
     expect(upgradeTablesAfterS56).toEqual(S4C3_TABLES);
+    expect(upgradeTablesAfterS61).toEqual(S6_1_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
     expect(upgradeRejectedLeadConflict).toBe(true);
     expect(upgradeRejectedConversationConflict).toBe(true);
@@ -2485,12 +2518,12 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S4C3_TABLES);
+    expect(await productionTables(database())).toEqual(S6_1_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(13);
+    expect(migrationCount.rows[0]?.count).toBe(14);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -3436,12 +3469,16 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         ?.filter(({ column_name }) => ["value_ciphertext", "lookup_hash"].includes(column_name))
         .every(({ data_type }) => data_type === "bytea"),
     ).toBe(true);
-    expect(utcTimestamps).toHaveLength(47);
+    expect(utcTimestamps).toHaveLength(53);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );
-    expect(columns.rows.some(({ column_name }) => column_name.includes("issuer"))).toBe(false);
-    expect(columns.rows.some(({ column_name }) => column_name.includes("subject"))).toBe(false);
+    expect(
+      columns.rows
+        .filter(({ column_name }) => ["issuer", "subject"].includes(column_name))
+        .map(({ column_name, table_name }) => `${table_name}.${column_name}`)
+        .sort(),
+    ).toEqual(["external_identities.issuer", "external_identities.subject"]);
     expect(columns.rows.some(({ column_name }) => column_name.includes("password"))).toBe(false);
     expect(
       columns.rows
@@ -3454,8 +3491,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         .sort(),
     ).toEqual([
       "appointment_requests.confirmation_token_hash",
+      "auth_sessions.csrf_secret_hash",
+      "auth_sessions.session_token_hash",
       "channel_connections.credential_secret_ref",
       "channel_connections.webhook_secret_hash",
+      "membership_invitations.token_hash",
       "widget_sessions.session_token_jti_hash",
     ]);
     expect(
@@ -3497,7 +3537,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S4C3_TABLES);
+    expect(declaredNames).toEqual(S6_1_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -5330,9 +5370,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
           and relkind = 'r'
         order by relname`,
     );
-    const rlsTableSet = new Set(S5_RLS_TABLES);
+    const rlsTableSet = new Set(S6_1_RLS_TABLES);
     expect(rls.rows).toEqual(
-      S4C3_TABLES.map((relname) => ({
+      S6_1_TABLES.map((relname) => ({
         relforcerowsecurity: rlsTableSet.has(relname),
         relname,
         relrowsecurity: rlsTableSet.has(relname),
@@ -9183,9 +9223,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
           and relkind = 'r'
         order by relname`,
     );
-    const expectedRlsTables = new Set(S5_RLS_TABLES);
+    const expectedRlsTables = new Set(S6_1_RLS_TABLES);
     expect(relationSecurity.rows).toEqual(
-      S4C3_TABLES.map((tableName) => ({
+      S6_1_TABLES.map((tableName) => ({
         relforcerowsecurity: expectedRlsTables.has(tableName),
         relname: tableName,
         relrowsecurity: expectedRlsTables.has(tableName),
@@ -9206,8 +9246,8 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S5_RLS_TABLES.length);
-    for (const tableName of S5_RLS_TABLES) {
+    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length);
+    for (const tableName of S6_1_RLS_TABLES) {
       const policy = policies.rows.find(({ tablename }) => tablename === tableName);
       const identityColumn = tableName === "organizations" ? "id" : "organization_id";
       expect(policy).toMatchObject({
@@ -9220,7 +9260,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       expect(policy?.qual).toContain(`${identityColumn} = app.current_organization_id()`);
       expect(policy?.with_check).toContain(`${identityColumn} = app.current_organization_id()`);
     }
-    const globalTableSet = new Set<string>(S5_GLOBAL_TABLES);
+    const globalTableSet = new Set<string>(S6_1_GLOBAL_TABLES);
     expect(policies.rows.some(({ tablename }) => globalTableSet.has(tablename))).toBe(false);
   });
 
@@ -9655,5 +9695,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         "disabled",
       );
     },
+  });
+
+  registerAuthenticationPersistenceTests({
+    privilegedPool: database,
   });
 });
