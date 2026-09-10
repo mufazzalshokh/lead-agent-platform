@@ -6,8 +6,11 @@ import type {
   OidcVerificationInput,
 } from "./contracts.js";
 
+declare const externalIdentityAuthenticationBrand: unique symbol;
+
 export type ExternalIdentityAuthentication = Readonly<{
   userId: UserId;
+  [externalIdentityAuthenticationBrand]: true;
 }>;
 
 export const authenticateExternalIdentity = async (
@@ -17,5 +20,5 @@ export const authenticateExternalIdentity = async (
 ): Promise<ExternalIdentityAuthentication> => {
   const identity = await verifier.verify(input);
   const userId = await resolver.resolve(identity);
-  return Object.freeze({ userId });
+  return Object.freeze({ userId }) as ExternalIdentityAuthentication;
 };

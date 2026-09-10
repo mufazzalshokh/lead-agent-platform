@@ -256,6 +256,7 @@ export const authSessions = pgTable(
     revocationReason: varchar("revocation_reason", { length: 500 }),
     sourceIpHash: binary("source_ip_hash"),
     userAgentHash: binary("user_agent_hash"),
+    rotatedAt: timestamp("rotated_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
   },
   (table): PgTableExtraConfigValue[] => [
     check(
@@ -278,7 +279,8 @@ export const authSessions = pgTable(
     ),
     check(
       "auth_sessions_lifetime_check",
-      sql`${table.authenticationTime} <= ${table.createdAt}
+      sql`${table.authenticationTime} <= ${table.lastSeenAt}
+        and ${table.rotatedAt} >= ${table.createdAt}
         and ${table.lastSeenAt} >= ${table.createdAt}
         and ${table.idleExpiresAt} > ${table.lastSeenAt}
         and ${table.idleExpiresAt} <= ${table.absoluteExpiresAt}

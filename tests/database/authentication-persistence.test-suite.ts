@@ -191,6 +191,7 @@ export const registerAuthenticationPersistenceTests = (
         "revocation_reason",
         "source_ip_hash",
         "user_agent_hash",
+        "rotated_at",
       ]);
       expect(columnNames("membership_location_scopes")).toEqual([
         "organization_id",

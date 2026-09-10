@@ -9,6 +9,15 @@ export {
   type IdentityDatabaseRuntimeObservability,
 } from "./runtime/identity.js";
 export {
+  SessionDatabaseError,
+  SessionDatabaseRoleError,
+  SessionDatabaseRuntimeClosedError,
+  createSessionDatabaseRuntime,
+  readSessionDatabaseCause,
+  type SessionDatabaseRuntime,
+  type SessionDatabaseRuntimeObservability,
+} from "./runtime/session.js";
+export {
   TenantContextInitializationError,
   TenantContextMismatchError,
   TenantDatabaseRuntimeClosedError,
