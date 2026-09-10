@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -18,7 +18,11 @@ import {
   type DomainEventPayloadByName,
   type OrganizationId,
 } from "../../packages/contracts/src/index.js";
-import { createTenantDatabaseRuntimeConfig } from "../../packages/config/src/index.js";
+import {
+  createIdentityDatabaseRuntimeConfig,
+  createTenantDatabaseRuntimeConfig,
+  type IdentityDatabaseRuntimeConfig,
+} from "../../packages/config/src/index.js";
 import {
   analyticsEvents,
   aiActionEvaluations,
@@ -37,6 +41,7 @@ import {
   contactIdentities,
   contacts,
   conversations,
+  createIdentityDatabaseRuntime,
   createTenantDatabaseRuntime,
   externalIdentities,
   faqs,
@@ -74,6 +79,7 @@ import {
   webhookReceipts,
   widgetAllowedOrigins,
   widgetSessions,
+  type IdentityDatabaseRuntime,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import {
@@ -95,6 +101,7 @@ import { registerTenantRepositoryTests } from "./tenant-repositories.test-suite.
 import { registerTenantMutationTests } from "./tenant-mutations.test-suite.js";
 import { registerInboundRouteResolverTests } from "./inbound-route-resolver.test-suite.js";
 import { registerAuthenticationPersistenceTests } from "./authentication-persistence.test-suite.js";
+import { registerIdentityResolutionTests } from "./identity-resolution.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -386,6 +393,7 @@ const S6_1_TABLES = [
 const S5_RUNTIME_ROLE = "lead_agent_runtime";
 const S5_INGRESS_ROLE = "lead_agent_ingress";
 const S5_INBOUND_ROUTE_DEFINER_ROLE = "lead_agent_inbound_route_definer";
+const S6_AUTH_ROLE = "lead_agent_auth";
 const S5_ORDINARY_TENANT_TABLES = [
   "ai_action_evaluations",
   "ai_runs",
@@ -515,7 +523,10 @@ let pool: Pool | undefined;
 let privilegedConnectionString: string | undefined;
 let runtimeConnectionString: string | undefined;
 let tenantRuntime: TenantDatabaseRuntime | undefined;
+let identityRuntime: IdentityDatabaseRuntime | undefined;
+let runtimeIdentityConfiguration: IdentityDatabaseRuntimeConfig | undefined;
 const tenantRuntimePoolErrors: Error[] = [];
+const identityRuntimePoolErrors: Error[] = [];
 let upgradeTablesAfterS4a: string[] = [];
 let upgradeTablesAfterS4b1: string[] = [];
 let upgradeTablesAfterS4b2: string[] = [];
@@ -530,6 +541,7 @@ let upgradeTablesAfterS5: string[] = [];
 let upgradeTablesAfterS52: string[] = [];
 let upgradeTablesAfterS56: string[] = [];
 let upgradeTablesAfterS61: string[] = [];
+let upgradeTablesAfterS62: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
 let upgradeRejectedConversationConflict = false;
 let upgradeRejectedLeadConflict = false;
@@ -578,6 +590,20 @@ const requireTenantRuntime = (): TenantDatabaseRuntime => {
     throw new Error("Tenant database runtime is not initialized");
   }
   return tenantRuntime;
+};
+
+const requireIdentityRuntime = (): IdentityDatabaseRuntime => {
+  if (identityRuntime === undefined) {
+    throw new Error("Identity database runtime is not initialized");
+  }
+  return identityRuntime;
+};
+
+const requireRuntimeIdentityConfiguration = (): IdentityDatabaseRuntimeConfig => {
+  if (runtimeIdentityConfiguration === undefined) {
+    throw new Error("Runtime-role identity database configuration is not initialized");
+  }
+  return runtimeIdentityConfiguration;
 };
 
 const requireOrganizationId = (value: unknown): OrganizationId => {
@@ -778,6 +804,10 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
 
   await applyMigrationSql(testPool, "0013_odd_rockslide.sql");
   upgradeTablesAfterS61 = await productionTables(testPool);
+
+  await applyMigrationSql(testPool, "0014_s6_oidc_identity_resolver.sql");
+  await applyMigrationSql(testPool, "0014_s6_oidc_identity_resolver.sql");
+  upgradeTablesAfterS62 = await productionTables(testPool);
 
   await testPool.query(
     `drop table membership_location_scopes, membership_invitations,
@@ -2273,6 +2303,7 @@ const seedS5IsolationFixtures = async (): Promise<void> => {
 beforeAll(async () => {
   const testDatabaseUrl = requireTestDatabaseUrl();
   if (testDatabaseUrl === undefined) {
+    const { PostgreSqlContainer } = await import("@testcontainers/postgresql");
     container = await new PostgreSqlContainer("postgres:17")
       .withDatabase("lead_agent_s4c3_test")
       .withUsername("lead_agent_test")
@@ -2316,6 +2347,36 @@ beforeAll(async () => {
       onUnexpectedPoolError: (error) => tenantRuntimePoolErrors.push(error),
     },
   );
+
+  const syntheticAuthPassword = "s62-local-test-only-password";
+  const authPasswordStatement = await pool.query<{ statement: string }>(
+    "select pg_catalog.format('alter role lead_agent_auth password %L', $1::text) as statement",
+    [syntheticAuthPassword],
+  );
+  const authStatement = authPasswordStatement.rows[0]?.statement;
+  if (authStatement === undefined) {
+    throw new Error("Unable to configure the disposable auth-role test credential");
+  }
+  await pool.query(authStatement);
+
+  const authUrl = new URL(requirePrivilegedConnectionString());
+  authUrl.username = S6_AUTH_ROLE;
+  authUrl.password = syntheticAuthPassword;
+  identityRuntime = createIdentityDatabaseRuntime(
+    createIdentityDatabaseRuntimeConfig({
+      connectionString: authUrl.toString(),
+      maxConnections: 1,
+      statementTimeoutMilliseconds: 30_000,
+    }),
+    {
+      onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
+    },
+  );
+  runtimeIdentityConfiguration = createIdentityDatabaseRuntimeConfig({
+    connectionString: runtimeConnectionString,
+    maxConnections: 1,
+    statementTimeoutMilliseconds: 30_000,
+  });
 }, 180_000);
 
 beforeEach(async () => {
@@ -2385,11 +2446,15 @@ beforeEach(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  await identityRuntime?.close();
   await tenantRuntime?.close();
   await pool?.end();
   await container?.stop();
   if (tenantRuntimePoolErrors.length > 0) {
     throw new AggregateError(tenantRuntimePoolErrors, "Unexpected tenant runtime pool errors");
+  }
+  if (identityRuntimePoolErrors.length > 0) {
+    throw new AggregateError(identityRuntimePoolErrors, "Unexpected identity runtime pool errors");
   }
 }, 60_000);
 
@@ -2493,7 +2558,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4 through S6.1, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4 through S6.2, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -2508,6 +2573,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(upgradeTablesAfterS52).toEqual(S4C3_TABLES);
     expect(upgradeTablesAfterS56).toEqual(S4C3_TABLES);
     expect(upgradeTablesAfterS61).toEqual(S6_1_TABLES);
+    expect(upgradeTablesAfterS62).toEqual(S6_1_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
     expect(upgradeRejectedLeadConflict).toBe(true);
     expect(upgradeRejectedConversationConflict).toBe(true);
@@ -2523,7 +2589,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(14);
+    expect(migrationCount.rows[0]?.count).toBe(15);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -9699,5 +9765,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
 
   registerAuthenticationPersistenceTests({
     privilegedPool: database,
+  });
+
+  registerIdentityResolutionTests({
+    privilegedPool: database,
+    runtime: requireIdentityRuntime,
+    runtimeConfiguration: requireRuntimeIdentityConfiguration,
   });
 });

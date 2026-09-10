@@ -24,6 +24,7 @@
     "@lead-agent/config": "workspace:*",
     "@lead-agent/contracts": "workspace:*",
     "@lead-agent/domain": "workspace:*",
+    "@lead-agent/security": "workspace:*",
     "drizzle-orm": "0.45.2",
     "pg": "8.23.0"
   },

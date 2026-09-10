@@ -5,7 +5,8 @@
     "paths": {
       "@lead-agent/config": ["../config/src/index.ts"],
       "@lead-agent/contracts": ["../contracts/src/index.ts"],
-      "@lead-agent/domain": ["../domain/src/index.ts"]
+      "@lead-agent/domain": ["../domain/src/index.ts"],
+      "@lead-agent/security": ["../security/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"]

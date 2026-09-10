@@ -1,5 +1,14 @@
 export { migrationsFolder, runMigrations } from "./migrations.js";
 export {
+  IdentityResolutionDatabaseError,
+  IdentityResolutionRoleError,
+  IdentityResolutionRuntimeClosedError,
+  createIdentityDatabaseRuntime,
+  readIdentityResolutionDatabaseCause,
+  type IdentityDatabaseRuntime,
+  type IdentityDatabaseRuntimeObservability,
+} from "./runtime/identity.js";
+export {
   TenantContextInitializationError,
   TenantContextMismatchError,
   TenantDatabaseRuntimeClosedError,

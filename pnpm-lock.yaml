@@ -35,6 +35,9 @@ importers:
       globals:
         specifier: 17.11.0
         version: 17.11.0
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
       pg:
         specifier: 8.23.0
         version: 8.23.0
@@ -97,6 +100,9 @@ importers:
       '@lead-agent/domain':
         specifier: workspace:*
         version: link:../domain
+      '@lead-agent/security':
+        specifier: workspace:*
+        version: link:../security
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -117,11 +123,25 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/integrations: {}
+  packages/integrations:
+    dependencies:
+      '@lead-agent/config':
+        specifier: workspace:*
+        version: link:../config
+      '@lead-agent/security':
+        specifier: workspace:*
+        version: link:../security
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
 
   packages/observability: {}
 
-  packages/security: {}
+  packages/security:
+    dependencies:
+      '@lead-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/testing: {}
 
@@ -2495,6 +2515,9 @@ packages:
 
   jackspeak@3.4.3:
     resolution: {integrity: sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==}
+
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -5841,6 +5864,8 @@ snapshots:
       '@isaacs/cliui': 8.0.2
     optionalDependencies:
       '@pkgjs/parseargs': 0.11.0
+
+  jose@6.2.12: {}
 
   js-tokens@4.0.0: {}
 
