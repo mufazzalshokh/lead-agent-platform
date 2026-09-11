@@ -781,10 +781,20 @@ export const registerAuthenticationPersistenceTests = (
            from pg_catalog.pg_policies
           where schemaname = 'public'
             and tablename = any($1::text[])
-          order by tablename`,
+          order by tablename, policyname`,
         [["membership_invitations", "membership_location_scopes"]],
       );
       expect(policies.rows).toEqual([
+        {
+          policyname: "membership_invitations_onboarding_select",
+          roles: "{lead_agent_membership_definer}",
+          tablename: "membership_invitations",
+        },
+        {
+          policyname: "membership_invitations_onboarding_update",
+          roles: "{lead_agent_membership_definer}",
+          tablename: "membership_invitations",
+        },
         {
           policyname: "membership_invitations_tenant_isolation",
           roles: "{lead_agent_runtime}",
@@ -817,7 +827,9 @@ export const registerAuthenticationPersistenceTests = (
                       as has_any_access`,
             [role, `public.${table}`],
           );
-          expect(privilege.rows[0]?.has_any_access).toBe(false);
+          expect(privilege.rows[0]?.has_any_access).toBe(
+            role === RUNTIME_ROLE && table === "membership_location_scopes",
+          );
         }
       }
     });

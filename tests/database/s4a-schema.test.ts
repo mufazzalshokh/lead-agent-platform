@@ -43,6 +43,7 @@ import {
   conversations,
   createAuthorizationDatabaseRuntime,
   createIdentityDatabaseRuntime,
+  createMembershipLifecycleDatabaseRuntime,
   createSessionDatabaseRuntime,
   createTenantDatabaseRuntime,
   externalIdentities,
@@ -83,6 +84,7 @@ import {
   widgetSessions,
   type AuthorizationDatabaseRuntime,
   type IdentityDatabaseRuntime,
+  type MembershipLifecycleDatabaseRuntime,
   type SessionDatabaseRuntime,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
@@ -108,6 +110,7 @@ import { registerAuthenticationPersistenceTests } from "./authentication-persist
 import { registerIdentityResolutionTests } from "./identity-resolution.test-suite.js";
 import { registerSessionLifecycleTests } from "./session-lifecycle.test-suite.js";
 import { registerAuthorizationResolutionTests } from "./authorization-resolution.test-suite.js";
+import { registerMembershipLifecycleTests } from "./membership-lifecycle.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -532,6 +535,8 @@ let tenantRuntime: TenantDatabaseRuntime | undefined;
 let identityRuntime: IdentityDatabaseRuntime | undefined;
 let sessionRuntime: SessionDatabaseRuntime | undefined;
 let authorizationRuntime: AuthorizationDatabaseRuntime | undefined;
+let membershipLifecycleRuntime: MembershipLifecycleDatabaseRuntime | undefined;
+let membershipTenantRuntime: TenantDatabaseRuntime | undefined;
 let runtimeIdentityConfiguration: IdentityDatabaseRuntimeConfig | undefined;
 const tenantRuntimePoolErrors: Error[] = [];
 const identityRuntimePoolErrors: Error[] = [];
@@ -552,6 +557,7 @@ let upgradeTablesAfterS61: string[] = [];
 let upgradeTablesAfterS62: string[] = [];
 let upgradeTablesAfterS63: string[] = [];
 let upgradeTablesAfterS64: string[] = [];
+let upgradeTablesAfterS65: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
 let upgradeRejectedConversationConflict = false;
 let upgradeRejectedLeadConflict = false;
@@ -832,6 +838,10 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0016_s6_membership_authorization_resolver.sql");
   await applyMigrationSql(testPool, "0016_s6_membership_authorization_resolver.sql");
   upgradeTablesAfterS64 = await productionTables(testPool);
+
+  await applyMigrationSql(testPool, "0017_s6_membership_lifecycle.sql");
+  await applyMigrationSql(testPool, "0017_s6_membership_lifecycle.sql");
+  upgradeTablesAfterS65 = await productionTables(testPool);
 
   await testPool.query(
     `drop table membership_location_scopes, membership_invitations,
@@ -2416,6 +2426,27 @@ beforeAll(async () => {
       onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
     },
   );
+  membershipTenantRuntime = createTenantDatabaseRuntime(
+    createTenantDatabaseRuntimeConfig({
+      connectionString: runtimeConnectionString,
+      maxConnections: 4,
+      statementTimeoutMilliseconds: 30_000,
+    }),
+    {
+      onUnexpectedPoolError: (error) => tenantRuntimePoolErrors.push(error),
+    },
+  );
+  membershipLifecycleRuntime = createMembershipLifecycleDatabaseRuntime(
+    createIdentityDatabaseRuntimeConfig({
+      connectionString: authUrl.toString(),
+      maxConnections: 4,
+      statementTimeoutMilliseconds: 30_000,
+    }),
+    membershipTenantRuntime,
+    {
+      onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
+    },
+  );
   runtimeIdentityConfiguration = createIdentityDatabaseRuntimeConfig({
     connectionString: runtimeConnectionString,
     maxConnections: 1,
@@ -2490,6 +2521,8 @@ beforeEach(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  await membershipLifecycleRuntime?.close();
+  await membershipTenantRuntime?.close();
   await authorizationRuntime?.close();
   await sessionRuntime?.close();
   await identityRuntime?.close();
@@ -2622,6 +2655,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(upgradeTablesAfterS62).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS63).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS64).toEqual(S6_1_TABLES);
+    expect(upgradeTablesAfterS65).toEqual(S6_1_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
     expect(upgradeRejectedLeadConflict).toBe(true);
     expect(upgradeRejectedConversationConflict).toBe(true);
@@ -2637,7 +2671,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(17);
+    expect(migrationCount.rows[0]?.count).toBe(18);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -9360,7 +9394,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length + 2);
+    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length + 9);
     const tenantIsolationPolicies = policies.rows.filter(({ policyname }) =>
       policyname.endsWith("_tenant_isolation"),
     );
@@ -9378,6 +9412,47 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       expect(policy?.qual).toContain(`${identityColumn} = app.current_organization_id()`);
       expect(policy?.with_check).toContain(`${identityColumn} = app.current_organization_id()`);
     }
+    expect(
+      policies.rows
+        .filter(({ roles }) => roles === "{lead_agent_membership_definer}")
+        .map(({ cmd, policyname, tablename }) => ({ cmd, policyname, tablename })),
+    ).toEqual([
+      {
+        cmd: "INSERT",
+        policyname: "audit_events_membership_onboarding_insert",
+        tablename: "audit_events",
+      },
+      {
+        cmd: "SELECT",
+        policyname: "membership_invitations_onboarding_select",
+        tablename: "membership_invitations",
+      },
+      {
+        cmd: "UPDATE",
+        policyname: "membership_invitations_onboarding_update",
+        tablename: "membership_invitations",
+      },
+      {
+        cmd: "INSERT",
+        policyname: "memberships_onboarding_insert",
+        tablename: "memberships",
+      },
+      {
+        cmd: "SELECT",
+        policyname: "memberships_onboarding_select",
+        tablename: "memberships",
+      },
+      {
+        cmd: "UPDATE",
+        policyname: "memberships_onboarding_update",
+        tablename: "memberships",
+      },
+      {
+        cmd: "SELECT",
+        policyname: "organizations_membership_onboarding",
+        tablename: "organizations",
+      },
+    ]);
     const globalTableSet = new Set<string>(S6_1_GLOBAL_TABLES);
     expect(policies.rows.some(({ tablename }) => globalTableSet.has(tablename))).toBe(false);
   });
@@ -9838,5 +9913,15 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     privilegedPool: database,
     runtime: requireAuthorizationRuntime,
     runtimeConfiguration: requireRuntimeIdentityConfiguration,
+  });
+  registerMembershipLifecycleTests({
+    authorizationRuntime: requireAuthorizationRuntime,
+    privilegedPool: database,
+    runtime: () => {
+      if (membershipLifecycleRuntime === undefined) {
+        throw new Error("Membership lifecycle runtime is not initialized");
+      }
+      return membershipLifecycleRuntime;
+    },
   });
 });
