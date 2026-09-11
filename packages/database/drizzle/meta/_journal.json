@@ -113,6 +113,13 @@
       "when": 1789032489758,
       "tag": "0015_s6_session_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789113600000,
+      "tag": "0016_s6_membership_authorization_resolver",
+      "breakpoints": true
     }
   ]
 }

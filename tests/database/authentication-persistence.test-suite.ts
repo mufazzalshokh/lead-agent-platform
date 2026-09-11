@@ -791,6 +791,11 @@ export const registerAuthenticationPersistenceTests = (
           tablename: "membership_invitations",
         },
         {
+          policyname: "membership_location_scopes_authorization_resolution",
+          roles: "{lead_agent_identity_definer}",
+          tablename: "membership_location_scopes",
+        },
+        {
           policyname: "membership_location_scopes_tenant_isolation",
           roles: "{lead_agent_runtime}",
           tablename: "membership_location_scopes",

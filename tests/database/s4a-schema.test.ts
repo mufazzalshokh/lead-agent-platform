@@ -41,6 +41,7 @@ import {
   contactIdentities,
   contacts,
   conversations,
+  createAuthorizationDatabaseRuntime,
   createIdentityDatabaseRuntime,
   createSessionDatabaseRuntime,
   createTenantDatabaseRuntime,
@@ -80,6 +81,7 @@ import {
   webhookReceipts,
   widgetAllowedOrigins,
   widgetSessions,
+  type AuthorizationDatabaseRuntime,
   type IdentityDatabaseRuntime,
   type SessionDatabaseRuntime,
   type TenantDatabaseRuntime,
@@ -105,6 +107,7 @@ import { registerInboundRouteResolverTests } from "./inbound-route-resolver.test
 import { registerAuthenticationPersistenceTests } from "./authentication-persistence.test-suite.js";
 import { registerIdentityResolutionTests } from "./identity-resolution.test-suite.js";
 import { registerSessionLifecycleTests } from "./session-lifecycle.test-suite.js";
+import { registerAuthorizationResolutionTests } from "./authorization-resolution.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -528,6 +531,7 @@ let runtimeConnectionString: string | undefined;
 let tenantRuntime: TenantDatabaseRuntime | undefined;
 let identityRuntime: IdentityDatabaseRuntime | undefined;
 let sessionRuntime: SessionDatabaseRuntime | undefined;
+let authorizationRuntime: AuthorizationDatabaseRuntime | undefined;
 let runtimeIdentityConfiguration: IdentityDatabaseRuntimeConfig | undefined;
 const tenantRuntimePoolErrors: Error[] = [];
 const identityRuntimePoolErrors: Error[] = [];
@@ -547,6 +551,7 @@ let upgradeTablesAfterS56: string[] = [];
 let upgradeTablesAfterS61: string[] = [];
 let upgradeTablesAfterS62: string[] = [];
 let upgradeTablesAfterS63: string[] = [];
+let upgradeTablesAfterS64: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
 let upgradeRejectedConversationConflict = false;
 let upgradeRejectedLeadConflict = false;
@@ -602,6 +607,13 @@ const requireIdentityRuntime = (): IdentityDatabaseRuntime => {
     throw new Error("Identity database runtime is not initialized");
   }
   return identityRuntime;
+};
+
+const requireAuthorizationRuntime = (): AuthorizationDatabaseRuntime => {
+  if (authorizationRuntime === undefined) {
+    throw new Error("Authorization database runtime is not initialized");
+  }
+  return authorizationRuntime;
 };
 
 const requireRuntimeIdentityConfiguration = (): IdentityDatabaseRuntimeConfig => {
@@ -816,6 +828,10 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
 
   await applyMigrationSql(testPool, "0015_s6_session_lifecycle.sql");
   upgradeTablesAfterS63 = await productionTables(testPool);
+
+  await applyMigrationSql(testPool, "0016_s6_membership_authorization_resolver.sql");
+  await applyMigrationSql(testPool, "0016_s6_membership_authorization_resolver.sql");
+  upgradeTablesAfterS64 = await productionTables(testPool);
 
   await testPool.query(
     `drop table membership_location_scopes, membership_invitations,
@@ -2390,6 +2406,16 @@ beforeAll(async () => {
       onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
     },
   );
+  authorizationRuntime = createAuthorizationDatabaseRuntime(
+    createIdentityDatabaseRuntimeConfig({
+      connectionString: authUrl.toString(),
+      maxConnections: 2,
+      statementTimeoutMilliseconds: 30_000,
+    }),
+    {
+      onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
+    },
+  );
   runtimeIdentityConfiguration = createIdentityDatabaseRuntimeConfig({
     connectionString: runtimeConnectionString,
     maxConnections: 1,
@@ -2464,6 +2490,7 @@ beforeEach(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  await authorizationRuntime?.close();
   await sessionRuntime?.close();
   await identityRuntime?.close();
   await tenantRuntime?.close();
@@ -2577,7 +2604,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4 through S6.3, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4 through S6.4, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -2594,6 +2621,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(upgradeTablesAfterS61).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS62).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS63).toEqual(S6_1_TABLES);
+    expect(upgradeTablesAfterS64).toEqual(S6_1_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
     expect(upgradeRejectedLeadConflict).toBe(true);
     expect(upgradeRejectedConversationConflict).toBe(true);
@@ -2609,7 +2637,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(16);
+    expect(migrationCount.rows[0]?.count).toBe(17);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -9332,9 +9360,13 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length);
+    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length + 2);
+    const tenantIsolationPolicies = policies.rows.filter(({ policyname }) =>
+      policyname.endsWith("_tenant_isolation"),
+    );
+    expect(tenantIsolationPolicies).toHaveLength(S6_1_RLS_TABLES.length);
     for (const tableName of S6_1_RLS_TABLES) {
-      const policy = policies.rows.find(({ tablename }) => tablename === tableName);
+      const policy = tenantIsolationPolicies.find(({ tablename }) => tablename === tableName);
       const identityColumn = tableName === "organizations" ? "id" : "organization_id";
       expect(policy).toMatchObject({
         cmd: "ALL",
@@ -9800,6 +9832,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       }
       return sessionRuntime;
     },
+    runtimeConfiguration: requireRuntimeIdentityConfiguration,
+  });
+  registerAuthorizationResolutionTests({
+    privilegedPool: database,
+    runtime: requireAuthorizationRuntime,
     runtimeConfiguration: requireRuntimeIdentityConfiguration,
   });
 });

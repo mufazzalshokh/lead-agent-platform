@@ -1,5 +1,14 @@
 export { migrationsFolder, runMigrations } from "./migrations.js";
 export {
+  AuthorizationResolutionDatabaseError,
+  AuthorizationResolutionRoleError,
+  AuthorizationResolutionRuntimeClosedError,
+  createAuthorizationDatabaseRuntime,
+  readAuthorizationResolutionDatabaseCause,
+  type AuthorizationDatabaseRuntime,
+  type AuthorizationDatabaseRuntimeObservability,
+} from "./runtime/authorization.js";
+export {
   IdentityResolutionDatabaseError,
   IdentityResolutionRoleError,
   IdentityResolutionRuntimeClosedError,
