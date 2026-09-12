@@ -1,12 +1,2 @@
-import Fastify, { type FastifyInstance } from "fastify";
-
-export const createApi = (): FastifyInstance => {
-  const api = Fastify({ logger: false });
-
-  api.get("/health", () => ({
-    service: "api",
-    status: "ok",
-  }));
-
-  return api;
-};
+export { createApi, type StaffAuthDependencies } from "./auth/plugin.js";
+export { authorizeOrganizationOperation } from "./auth/authorization.js";

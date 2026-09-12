@@ -21,6 +21,7 @@
   "dependencies": {
     "@lead-agent/config": "workspace:*",
     "@lead-agent/security": "workspace:*",
-    "jose": "6.2.12"
+    "jose": "6.2.12",
+    "openid-client": "6.8.7"
   }
 }

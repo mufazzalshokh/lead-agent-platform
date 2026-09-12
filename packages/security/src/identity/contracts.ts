@@ -43,3 +43,23 @@ export const createOidcIdentityVerifier = (
       }) as ValidatedOidcIdentity;
     },
   });
+
+/** @internal Restores only authenticated, integrity-protected identity evidence. */
+export const restoreValidatedOidcIdentity = (
+  evidence: VerifiedOidcIdentityEvidence,
+): ValidatedOidcIdentity => {
+  if (
+    typeof evidence.issuer !== "string" ||
+    evidence.issuer.length < 1 ||
+    evidence.issuer.length > 2_048 ||
+    typeof evidence.subject !== "string" ||
+    evidence.subject.length < 1 ||
+    evidence.subject.length > 512
+  ) {
+    throw new TypeError("Trusted OIDC identity evidence is invalid");
+  }
+  return Object.freeze({
+    issuer: evidence.issuer,
+    subject: evidence.subject,
+  }) as ValidatedOidcIdentity;
+};

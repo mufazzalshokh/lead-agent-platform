@@ -10,6 +10,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@lead-agent/config": "workspace:*",
+    "@lead-agent/contracts": "workspace:*",
+    "@lead-agent/database": "workspace:*",
+    "@lead-agent/integrations": "workspace:*",
+    "@lead-agent/security": "workspace:*",
     "fastify": "5.12.1"
   }
 }

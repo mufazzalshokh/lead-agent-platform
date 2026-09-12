@@ -14,3 +14,10 @@ export {
   type IdentityDatabaseRuntimeConfig,
   type IdentityDatabaseRuntimeConfigInput,
 } from "./identity-database.js";
+export {
+  createStaffWebAuthConfig,
+  loadStaffWebAuthConfig,
+  type ApplicationEnvironment,
+  type StaffWebAuthConfig,
+  type StaffWebAuthConfigInput,
+} from "./web-auth.js";

@@ -1,5 +1,6 @@
 export {
   authenticateExternalIdentity,
+  authenticateValidatedExternalIdentity,
   type ExternalIdentityAuthentication,
 } from "./authenticate.js";
 export type {
