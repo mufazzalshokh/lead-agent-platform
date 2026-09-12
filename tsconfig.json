@@ -1,14 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "./tsconfig.base.json",
+  "extends": ["./tsconfig.base.json", "./tooling/tsconfig.workspace-source.json"],
   "compilerOptions": {
-    "paths": {
-      "@lead-agent/config": ["./packages/config/src/index.ts"],
-      "@lead-agent/contracts": ["./packages/contracts/src/index.ts"],
-      "@lead-agent/domain": ["./packages/domain/src/index.ts"],
-      "@lead-agent/integrations": ["./packages/integrations/src/index.ts"],
-      "@lead-agent/security": ["./packages/security/src/index.ts"]
-    },
     "types": ["node"]
   },
   "include": ["scripts/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],

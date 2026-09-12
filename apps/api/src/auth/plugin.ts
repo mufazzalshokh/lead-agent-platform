@@ -347,15 +347,26 @@ const registerStaffAuth = async (
   const requireMutationSession = async (
     request: FastifyRequest,
     reply: FastifyReply,
+    rotateWhenDue = true,
   ): Promise<SessionResolution> => {
     requireMutationBrowserProof(request, dependencies.config);
-    const resolved = await resolveSession(request, reply);
+    const resolved = await resolveSession(request, reply, false);
     requireSessionBoundCsrf(
       request.headers[CSRF_HEADER],
       request.cookies[BROWSER_AUTH_COOKIE_NAMES.csrf],
       resolved.credential.csrfSecret,
     );
-    return resolved;
+    if (!rotateWhenDue || !resolved.session.rotationDue) return resolved;
+    const issued = await dependencies.sessions.rotateSession(resolved.credential.sessionToken);
+    setApplicationCookies(reply, dependencies.envelopeProtector, issued, clock());
+    return Object.freeze({
+      credential: Object.freeze({
+        csrfSecret: issued.csrfSecret,
+        expiresAt: issued.session.absoluteExpiresAt,
+        sessionToken: issued.sessionToken,
+      }),
+      session: issued.session,
+    });
   };
 
   api.addHook("onRequest", async (request, reply) => {
@@ -549,7 +560,7 @@ const registerStaffAuth = async (
   });
 
   api.post(STAFF_AUTH_PREFIX + "/logout", async (request, reply) => {
-    const { credential } = await requireMutationSession(request, reply);
+    const { credential } = await requireMutationSession(request, reply, false);
     try {
       await dependencies.sessions.revokeSession(credential.sessionToken);
       clearSecurityCookies(reply);
@@ -561,7 +572,7 @@ const registerStaffAuth = async (
   });
 
   api.post(STAFF_AUTH_PREFIX + "/organization", async (request, reply) => {
-    const resolved = await requireMutationSession(request, reply);
+    const resolved = await requireMutationSession(request, reply, false);
     const body = requireObjectBody(request.body);
     const organizationId = body["organization_id"];
     if (!isSchemaValue(OrganizationIdSchema, organizationId)) {

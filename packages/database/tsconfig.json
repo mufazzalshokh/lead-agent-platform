@@ -1,13 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "../../tooling/tsconfig.package.json",
-  "compilerOptions": {
-    "paths": {
-      "@lead-agent/config": ["../config/src/index.ts"],
-      "@lead-agent/contracts": ["../contracts/src/index.ts"],
-      "@lead-agent/domain": ["../domain/src/index.ts"],
-      "@lead-agent/security": ["../security/src/index.ts"]
-    }
-  },
+  "extends": [
+    "../../tooling/tsconfig.package.json",
+    "../../tooling/tsconfig.workspace-source.json"
+  ],
   "include": ["src/**/*.ts"]
 }

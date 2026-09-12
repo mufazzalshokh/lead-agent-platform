@@ -153,9 +153,15 @@ describe("S6.6 browser authentication security primitives", () => {
     for (const target of [
       "https://attacker.test/",
       "//attacker.test/",
+      "/..//attacker.test/",
+      "/%2e%2e//attacker.test/",
       "/%2f%2fattacker.test",
+      "/%252f%252fattacker.test",
+      "/%0d%0aLocation:%20https://attacker.test/",
       "/\\attacker.test",
+      "/%5c%5cattacker.test",
       "javascript:alert(1)",
+      "data:text/html,attacker",
       "/safe#fragment",
     ]) {
       expect(resolveSafeReturnPath(target, "/safe")).toBe("/safe");

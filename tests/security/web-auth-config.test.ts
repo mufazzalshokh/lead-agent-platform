@@ -39,6 +39,12 @@ describe("S6.6 web authentication configuration", () => {
     expect(() =>
       createStaffWebAuthConfig({
         ...valid(),
+        staffAllowedOrigins: ["https://staff.example.test", "https://*.example.test"],
+      }),
+    ).toThrow();
+    expect(() =>
+      createStaffWebAuthConfig({
+        ...valid(),
         staffAllowedOrigins: ["https://other.example.test"],
       }),
     ).toThrow();

@@ -448,6 +448,42 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
     }
   });
 
+  it("validates the current CSRF proof before rotating a due mutation session", async () => {
+    const fixture = createFixture();
+    try {
+      const established = await establishSession(fixture);
+      fixture.controls.rotationDue = true;
+      const baseHeaders = {
+        cookie: cookieHeader(
+          ["__Host-lead-session", established.session],
+          ["__Host-lead-csrf", established.csrf],
+        ),
+        origin: STAFF_ORIGIN,
+        "sec-fetch-site": "same-origin",
+      };
+      const denied = await fixture.api.inject({
+        body: {},
+        headers: { ...baseHeaders, "x-csrf-token": "x".repeat(43) },
+        method: "POST",
+        url: "/v1/staff/auth/step-up",
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(fixture.controls.rotationCount).toBe(0);
+
+      const allowed = await fixture.api.inject({
+        body: {},
+        headers: { ...baseHeaders, "x-csrf-token": established.csrf },
+        method: "POST",
+        url: "/v1/staff/auth/step-up",
+      });
+      expect(allowed.statusCode).toBe(302);
+      expect(fixture.controls.rotationCount).toBe(1);
+      expect(cookieValue(allowed.headers, "__Host-lead-csrf")).toBe(ROTATED_CSRF);
+    } finally {
+      await fixture.api.close();
+    }
+  });
+
   it("enforces session-bound CSRF, exact Origin, Fetch Metadata, and local revocation on logout", async () => {
     const fixture = createFixture();
     try {

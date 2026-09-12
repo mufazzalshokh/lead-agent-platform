@@ -97,6 +97,10 @@ class Auth0OidcEvidenceVerifier implements OidcIdentityEvidenceVerifier {
       if (
         verified.payload["nonce"] !== input.expectedNonce ||
         verified.payload.iss !== this.#configuration.issuer ||
+        typeof verified.payload.iat !== "number" ||
+        !Number.isSafeInteger(verified.payload.iat) ||
+        verified.payload.iat >
+          Math.floor(Date.now() / 1_000) + this.#configuration.clockToleranceSeconds ||
         !isValidOpaqueValue(verified.payload.sub, 512)
       ) {
         throw new OidcCredentialInvalidError();

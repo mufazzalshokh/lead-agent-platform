@@ -6,6 +6,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 const typeScriptFiles = ["**/*.{ts,tsx}"];
+const applicationTypeScriptFiles = ["apps/**/*.{ts,tsx}"];
 const webFiles = ["apps/web/**/*.{ts,tsx}"];
 
 const scopeConfigs = (configs, files) =>
@@ -59,6 +60,16 @@ export default defineConfig([
           prefer: "type-imports",
         },
       ],
+    },
+  },
+  {
+    files: applicationTypeScriptFiles,
+    languageOptions: {
+      parserOptions: {
+        project: ["./apps/*/tsconfig.lint.json"],
+        projectService: false,
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
   },
 ]);

@@ -249,11 +249,27 @@ describe("S6.2 Auth0 OIDC verification", () => {
   it("fails closed for forged, malformed, stale, premature, or mismatched credentials", async () => {
     const now = Math.floor(Date.now() / 1000);
     const verifier = createVerifier();
+    const unsignedToken = [
+      Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url"),
+      Buffer.from(
+        JSON.stringify({
+          aud: AUDIENCE,
+          exp: now + 300,
+          iat: now,
+          iss: ISSUER,
+          nonce: NONCE,
+          sub: SUBJECT,
+        }),
+      ).toString("base64url"),
+      "",
+    ].join(".");
     const invalidTokens = [
       "not-a-jwt",
+      unsignedToken,
       await createToken({ issuer: "https://attacker.auth0.example/" }),
       await createToken({ audience: "attacker-client" }),
       await createToken({ expiresAt: now - 60 }),
+      await createToken({ issuedAt: now + 3_600 }),
       await createToken({ notBefore: now + 3600 }),
       await createToken({ includeExpiration: false }),
       await createToken({ includeNonce: false }),

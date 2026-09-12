@@ -14,6 +14,7 @@ import {
 } from "openid-client";
 
 const MAXIMUM_ID_TOKEN_LENGTH = 32_768;
+const PROVIDER_REQUEST_TIMEOUT_SECONDS = 10;
 
 export type BrowserAuthorizationPurpose = "invitation" | "login" | "step_up";
 
@@ -122,6 +123,7 @@ const createConfiguration = (
     },
   );
   if (fetchImplementation !== undefined) client[customFetch] = fetchImplementation;
+  client.timeout = PROVIDER_REQUEST_TIMEOUT_SECONDS;
   return client;
 };
 

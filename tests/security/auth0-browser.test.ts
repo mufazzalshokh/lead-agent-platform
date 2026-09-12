@@ -59,6 +59,7 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
       input,
       init,
     ) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
       const url = input;
       if (url.endsWith("/.well-known/jwks.json")) {
         return Promise.resolve(
@@ -128,6 +129,33 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
     });
     expect(evidence).not.toHaveProperty("accessToken");
     expect(evidence).not.toHaveProperty("refreshToken");
+
+    signedIdToken = await new SignJWT({
+      amr: ["pwd", "sms"],
+      auth_time: nowSeconds,
+      email: "person@example.test",
+      email_verified: true,
+      mfa: true,
+      nonce: authorization.nonce,
+      roles: ["owner"],
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+      .setIssuer(ISSUER)
+      .setAudience(CLIENT_ID)
+      .setSubject("auth0|verified-subject")
+      .setIssuedAt(nowSeconds)
+      .setExpirationTime(nowSeconds + 600)
+      .sign(keys.privateKey);
+    await expect(
+      callbackClient.complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      }),
+    ).resolves.toMatchObject({ authenticationLevel: "single_factor" });
+
     await expect(
       callbackClient.complete({
         callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
@@ -169,9 +197,11 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
   });
 
   it("maps unavailable token transport to a safe provider-unavailable error", async () => {
-    const client = createAuth0BrowserOidcClientForTests(configuration, () =>
-      Promise.reject(new TypeError("fetch failed")),
-    );
+    let requestSignal: AbortSignal | null = null;
+    const client = createAuth0BrowserOidcClientForTests(configuration, (_input, init) => {
+      requestSignal = init?.signal ?? null;
+      return Promise.reject(new TypeError("fetch failed"));
+    });
     const authorization = await client.begin("login");
     await expect(
       client.complete({
@@ -182,5 +212,6 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
         maximumAgeSeconds: 43_200,
       }),
     ).rejects.toBeInstanceOf(OidcProviderUnavailableError);
+    expect(requestSignal).toBeInstanceOf(AbortSignal);
   });
 });

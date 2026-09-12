@@ -79,6 +79,7 @@ const requireHttpsOrLocalUrl = (
     isLoopbackHostname(parsed.hostname);
   if (
     (parsed.protocol !== "https:" && !localDevelopment) ||
+    parsed.hostname.includes("*") ||
     parsed.username.length > 0 ||
     parsed.password.length > 0
   ) {

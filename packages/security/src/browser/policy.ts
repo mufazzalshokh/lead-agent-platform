@@ -47,8 +47,18 @@ export const resolveSafeReturnPath = (value: unknown, fallback = "/"): string =>
   ) {
     return fallback;
   }
-  const parsed = new URL(value, "https://staff.invalid");
-  return parsed.origin === "https://staff.invalid" ? parsed.pathname + parsed.search : fallback;
+  try {
+    const parsed = new URL(value, "https://staff.invalid");
+    const normalized = parsed.pathname + parsed.search;
+    return parsed.origin === "https://staff.invalid" &&
+      normalized.startsWith("/") &&
+      !normalized.startsWith("//") &&
+      !CONTROL_OR_BACKSLASH_PATTERN.test(normalized)
+      ? normalized
+      : fallback;
+  } catch {
+    return fallback;
+  }
 };
 
 export const requireTrustedStaffOrigin = (

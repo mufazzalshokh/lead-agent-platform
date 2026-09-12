@@ -1,10 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "../../tooling/tsconfig.package.json",
+  "extends": [
+    "../../tooling/tsconfig.package.json",
+    "../../tooling/tsconfig.workspace-source.json"
+  ],
   "compilerOptions": {
-    "paths": {
-      "@lead-agent/contracts": ["../contracts/src/index.ts"]
-    },
     "types": ["node"]
   },
   "include": ["src/**/*.ts"]
