@@ -97,7 +97,14 @@ importers:
 
   packages/ai: {}
 
-  packages/application: {}
+  packages/application:
+    dependencies:
+      '@lead-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@lead-agent/security':
+        specifier: workspace:*
+        version: link:../security
 
   packages/config: {}
 

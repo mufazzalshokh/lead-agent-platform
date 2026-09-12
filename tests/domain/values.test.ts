@@ -161,7 +161,7 @@ describe("canonical UTC ordering and expiry", () => {
 
 describe("business time-zone values", () => {
   it.each(["Asia/Tashkent", "America/Argentina/Buenos_Aires", "Etc/UTC", "UTC"])(
-    "accepts structurally named time zone %s without claiming registry resolution",
+    "accepts a runtime-resolved IANA time zone %s",
     (candidate) => {
       const result = validateIanaTimeZone(candidate);
 
@@ -179,6 +179,7 @@ describe("business time-zone values", () => {
     "GMT+5",
     "Asia",
     "Asia//Tashkent",
+    "Mars/Olympus",
     "/Asia/Tashkent",
     "Asia/Tashkent\n",
     `Area/${"a".repeat(96)}`,

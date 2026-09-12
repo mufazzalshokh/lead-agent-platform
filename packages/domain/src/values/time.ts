@@ -1,4 +1,12 @@
-import { UtcTimestampSchema, isSchemaValue, type UtcTimestamp } from "@lead-agent/contracts";
+import {
+  IanaTimeZoneSchema,
+  UtcTimestampSchema,
+  isSchemaValue,
+  type IanaTimeZone,
+  type UtcTimestamp,
+} from "@lead-agent/contracts";
+
+export type { IanaTimeZone } from "@lead-agent/contracts";
 
 import {
   invalidTimePreference,
@@ -10,21 +18,6 @@ import { failure, success, type Result } from "../foundation/result.js";
 
 const CANONICAL_UTC_TIMESTAMP_PATTERN =
   /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]{1,9}))?Z(?![\s\S])/;
-
-const STRUCTURAL_IANA_TIME_ZONE_PATTERN =
-  /^(?:UTC|[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9][A-Za-z0-9._+-]*)+)(?![\s\S])/;
-
-const MAX_IANA_TIME_ZONE_LENGTH = 100;
-
-declare const ianaTimeZoneBrand: unique symbol;
-
-/**
- * A structurally valid named IANA-zone representation. This brand does not
- * claim registry membership or resolve local-time/DST ambiguity.
- */
-export type IanaTimeZone = string & {
-  readonly [ianaTimeZoneBrand]: "IanaTimeZone";
-};
 
 export type TimestampComparison = -1 | 0 | 1;
 
@@ -211,9 +204,7 @@ export const validateUtcTimeWindow = (
 };
 
 export const isNamedIanaTimeZone = (value: unknown): value is IanaTimeZone =>
-  typeof value === "string" &&
-  value.length <= MAX_IANA_TIME_ZONE_LENGTH &&
-  STRUCTURAL_IANA_TIME_ZONE_PATTERN.test(value);
+  isSchemaValue(IanaTimeZoneSchema, value);
 
 export const validateIanaTimeZone = (
   value: unknown,

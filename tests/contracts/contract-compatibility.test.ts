@@ -141,14 +141,21 @@ describe("public contract inventory and snapshot", () => {
   it("catalogs every intentional public schema exactly once", () => {
     const snapshot = buildContractSnapshot();
     const counts = Object.fromEntries(
-      ["ai", "api", "channel", "event", "shared"].map((category) => [
+      ["ai", "api", "channel", "configuration", "event", "shared"].map((category) => [
         category,
         snapshot.contracts.filter((contract) => contract.category === category).length,
       ]),
     );
 
-    expect(snapshot.contracts).toHaveLength(207);
-    expect(counts).toEqual({ ai: 16, api: 8, channel: 24, event: 131, shared: 28 });
+    expect(snapshot.contracts).toHaveLength(271);
+    expect(counts).toEqual({
+      ai: 16,
+      api: 8,
+      channel: 24,
+      configuration: 64,
+      event: 131,
+      shared: 28,
+    });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
     );
@@ -174,6 +181,22 @@ describe("public contract inventory and snapshot", () => {
 
   it("matches the reviewed canonical snapshot byte-for-byte", async () => {
     await expect(checkContractSnapshot()).resolves.toEqual(buildContractSnapshot());
+  });
+
+  it("classifies all S7.1 configuration contracts as additive only", () => {
+    const candidate = buildContractSnapshot();
+    const configurationContracts = candidate.contracts.filter(
+      (contract) => contract.category === "configuration",
+    );
+    const baseline: ContractSnapshot = {
+      ...candidate,
+      contracts: candidate.contracts.filter((contract) => contract.category !== "configuration"),
+    };
+    const findings = compareContractSnapshots(baseline, candidate);
+
+    expect(configurationContracts).toHaveLength(64);
+    expect(findings).toHaveLength(64);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 
   it("classifies the approved lead.reopened V2 schemas as additive only", () => {
@@ -322,7 +345,10 @@ describe("public contract inventory and snapshot", () => {
           exportName: "BadVersionSchema",
           schema: {
             $id: "BadVersion.v1",
-            properties: { schema_version: { const: "2" } },
+            properties: {
+              schema_id: { const: "BadVersion.v1" },
+              schema_version: { const: "2" },
+            },
           },
         },
       ]),

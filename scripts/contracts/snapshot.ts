@@ -51,7 +51,11 @@ const assertEmbeddedIdentity = (
   }
 
   const embeddedVersion = properties["schema_version"];
-  if (isJsonObject(embeddedVersion) && embeddedVersion["const"] !== schemaVersion) {
+  if (
+    isJsonObject(embeddedId) &&
+    isJsonObject(embeddedVersion) &&
+    embeddedVersion["const"] !== schemaVersion
+  ) {
     throw new TypeError(`${exportName} schema_version literal does not match ${schemaVersion}`);
   }
 };
