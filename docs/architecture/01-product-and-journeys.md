@@ -160,7 +160,7 @@ the model.
 | FR-007 | Validate every AI result against a versioned schema and deterministic action policy before any domain mutation. | P0 |
 | FR-008 | Refuse to invent services, prices, hours, availability, medical advice, discounts, guarantees, or unsupported facts; hand off where appropriate. | P0 |
 | FR-009 | Progress lead and conversation states only through the state machines in the domain specification. | P0 |
-| FR-010 | Capture qualification answers according to a versioned tenant policy and record the evidence used for the qualification result. | P0 |
+| FR-010 | Capture qualification answers according to the finite versioned tenant policy, distinguish incomplete evidence from deterministic disqualification, and record the policy version and evidence used for the result. | P0 |
 | FR-011 | Capture phone/contact information only after purpose disclosure as required, normalize it, encrypt sensitive values where appropriate, and record consent provenance. | P0 |
 | FR-012 | Create an appointment request with service, location, customer time zone, preferred time window(s), and customer notes; do not claim availability. | P0 |
 | FR-013 | Prevent duplicate appointment requests from retried messages, webhooks, or client submissions through idempotency and domain uniqueness. | P0 |
@@ -171,7 +171,7 @@ the model.
 | FR-018 | Permit customer-requested and policy-triggered handoff, with assignment, ownership, SLA timestamps, staff reply, and resolution history. | P0 |
 | FR-019 | Degrade safely when the AI or outbound provider is unavailable: persist inbound work, avoid false success, retry bounded side effects, and offer/queue human handling. | P0 |
 | FR-020 | Allow authorized staff to review tenant-scoped leads, conversations, messages, requests, handoffs, and audit history with cursor pagination. | P0 |
-| FR-021 | Allow authorized administrators to manage locations, active services, prices, FAQs, business hours/policy, channels, and widget origin allowlists with validation and auditing. | P0 |
+| FR-021 | Allow authorized administrators to manage locations, active services, prices, FAQs, business hours/policy, channels, and widget origin allowlists with validation and auditing; business knowledge becomes authoritative only through its explicit publication lifecycle. | P0 |
 | FR-022 | Emit durable domain events and privacy-safe analytics facts for each canonical funnel transition. | P0 |
 | FR-023 | Productize self-service/widget/staff endpoints and UI for consent withdrawal, subject export, and deletion-request tracking. | P1 |
 | FR-024 | Provide operator-visible retry/dead-letter tooling with authorization and audit controls. | P1 |
@@ -360,8 +360,12 @@ log the lead's raw message as telemetry.
 
 ### D. Lead becomes qualified
 
-**Preconditions:** A versioned business qualification policy defines only
-administrative/business criteria and required answers.
+**Preconditions:** A published schema-version-1 business qualification policy
+defines only administrative/business criteria and required evidence. The V1
+defaults require `service_interest`, `service_location_fit`,
+`positive_next_step_intent`, and `contactability`. Preferred time, budget, age,
+medical/clinical information, and detailed personal information are not
+required by default.
 
 **Happy path:**
 
@@ -375,10 +379,15 @@ administrative/business criteria and required answers.
 5. A `lead.qualified` event feeds notifications/analytics without changing the
    authoritative lead again.
 
-**Exceptions and safety:** Ambiguous answers remain unknown and prompt
-clarification. Medical suitability is never evaluated. Disqualifying rules
-transition to `disqualified` only with a configured reason and can be reopened
-by authorized staff/new evidence under the state machine.
+**Exceptions and safety:** Missing, ambiguous, or unconfirmed required evidence
+produces `incomplete`: the Lead remains active and the system requests the
+missing information. Lack of information alone is never disqualification.
+`disqualified` requires exactly one applicable deterministic V1 reason:
+`service_not_offered`, `location_not_served`, `not_interested`,
+`outside_business_scope`, or `spam_or_abuse`. Unknown price, missing preferred
+time, clinical uncertainty, a human-support request, AI uncertainty, or missing
+optional information does not disqualify. Clinical/safety uncertainty and an
+explicit human request route to handoff; AI never evaluates medical eligibility.
 
 **Evidence:** evaluation input values, policy/version, result/reason codes, and
 transition actor (`system` or staff), with sensitive free text excluded.
@@ -644,15 +653,22 @@ to audit records.
 
 **Happy path:**
 
-1. The administrator creates or updates a structured service, effective price,
-   FAQ, location hours/closures, or business policy through validated private
-   APIs.
+1. The administrator creates or updates a structured service, price draft, FAQ
+   draft, location candidate/hours/closure, or business-policy draft through
+   validated private APIs. Location and Service candidates are not represented
+   as persisted drafts when their accepted schema has no draft lifecycle.
 2. The server derives the organization from authentication and checks location
    scope; supplied ownership fields cannot override it.
-3. A transaction stores the new row/version, actor, and audit event. Existing
-   historical message provenance continues to reference the prior version.
-4. Cache invalidation/configuration events are sent through the outbox.
-5. Only active, effective records are eligible for subsequent responses.
+3. A separate operation requiring `configuration.publish` immediately publishes
+   the validated candidate/draft when its transaction commits; a write alone
+   never makes publication-required content authoritative.
+4. The publication transaction stores the new row/version, advances or closes
+   the applicable current state, and writes actor/audit and applicable canonical
+   outbox evidence atomically. Existing historical provenance continues to
+   reference the prior version.
+5. Only active, published, effective records are eligible for subsequent
+   responses. S7 has no scheduled publication, delayed activation, or automatic
+   retirement.
 
 **Exceptions and safety:** Currency/minor-unit validation, overlapping price
 effective periods, invalid time zones/hours, unsafe HTML, overlong content, and
@@ -660,7 +676,14 @@ cross-tenant references fail validation. Published knowledge is data, never
 instructions that can change AI/system policy.
 
 **Evidence:** resource/version, redacted before/after or field-change set,
-actor, reason where required, and effective interval.
+actor, reason where required, publication instant, and effective interval.
+
+The Organization Owner is operationally accountable for published business
+knowledge. Services and FAQs are reviewed at least every 90 days and immediately
+when their business facts change; prices are reviewed at least every 30 days and
+immediately whenever a price changes. Admins remain authorized to prepare, edit,
+and publish. These are operating expectations, not scheduler, reminder, or
+automatic-retirement requirements.
 
 ## 14. Success metrics and event definitions
 
@@ -745,23 +768,21 @@ cost.
 
 ## 16. Product open questions
 
-1. Which exact qualification fields and disqualification reason codes will the
-   first clinic cohort configure?
-2. Is a phone number mandatory for all appointment requests, or may the
+1. Is a phone number mandatory for all appointment requests, or may the
    originating Telegram/widget session be sufficient for some tenants?
-3. Which notification channels and staff-review response targets are promised
+2. Which notification channels and staff-review response targets are promised
    at launch?
-4. What customer action counts as legally sufficient confirmation per channel,
+3. What customer action counts as legally sufficient confirmation per channel,
    and how long is an offer valid?
-5. May staff edit a previously accepted offer, or must they cancel and create a
+4. May staff edit a previously accepted offer, or must they cancel and create a
    new request/offer version? The safer initial design requires a new offer
    version.
-6. Which jurisdictions, consent wording, privacy roles, and retention periods
+5. Which jurisdictions, consent wording, privacy roles, and retention periods
    apply to the first tenants?
-7. Which fields are required for P0 manual attendance/revenue entry, and which
+6. Which fields are required for P0 manual attendance/revenue entry, and which
    approved import sources should be added after P0?
-8. What pre-launch baselines and minimum sample sizes will be used for conversion
+7. What pre-launch baselines and minimum sample sizes will be used for conversion
    claims?
-9. What tenant-specific AI cost budget makes the product economically viable?
-10. Which emergency/safety wording is approved for each launch jurisdiction and
+8. What tenant-specific AI cost budget makes the product economically viable?
+9. Which emergency/safety wording is approved for each launch jurisdiction and
     language?

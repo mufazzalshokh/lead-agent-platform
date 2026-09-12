@@ -545,8 +545,9 @@ in V1.
   `sequence_no`); exclusion/application validation prevents overlaps.
 - **Indexes:** (`organization_id`, `location_version_id`, `day_of_week`).
 - **Sensitive:** S0.
-- **Deletion/RLS:** forced RLS; inseparable version child may cascade only when
-  an unreferenced draft version is purged; published history is restricted.
+- **Deletion/RLS:** forced RLS; inseparable child of its location version. S7
+  persists no draft `location_versions`; published version/hour history is not
+  deleted through the business-configuration API.
 
 ### 4.4 `location_closures`
 
@@ -663,6 +664,58 @@ in V1.
 - **Sensitive:** S1; approved public wording inside may be S0.
 - **Deletion/RLS:** forced RLS; published versions immutable and retained while
   referenced.
+
+### 4.10.1 S7 publication and trusted-read interpretation
+
+S7 uses immediate-only publication. A successful explicit Publish command makes
+its complete validated change authoritative at the transaction commit instant.
+S7 accepts no `publish_at`, delayed activation, future publication queue, or
+automatic retirement instruction. A business fact can describe a future local
+date, such as a closure, without making its publication scheduled.
+
+The existing tables have these distinct lifecycle forms:
+
+- `locations` and `services` are stable roots. Their version tables contain only
+  immutable published snapshots; there is no persisted draft
+  `location_versions` or `service_versions` state. A Publish command validates a
+  complete request candidate, inserts the version and inseparable children, and
+  atomically activates the stable root and advances `current_version_id`.
+- `location_business_hours` are children of the published Location version.
+  `location_closures` use `active|superseded|cancelled`; corrections supersede or
+  cancel history rather than edit or delete it.
+- `service_locations` use `active|inactive` effective records. S7 opens or closes
+  their interval at the publication transaction instant; it does not accept a
+  client-selected future activation.
+- `service_prices`, `faqs`, and `business_policies` retain their canonical
+  `draft -> published -> retired` lifecycle. Publication and retirement take
+  effect at commit; S7 does not use their effective columns to schedule future
+  visibility or automatic expiry.
+
+Scheduled publication is deferred to a separate architecture/schema review.
+It would require approved Location/Service scheduling persistence and revised
+FAQ/Business Policy uniqueness capable of representing both a current and a
+future publication for the same key/scope. S7 must not work around those
+constraints.
+
+A trusted business-knowledge read runs in one tenant-bound transaction at one
+explicit application-clock `effective_at` instant. It selects active roots,
+current published versions, and only applicable published/effective children;
+excludes drafts, inactive facts and future-scheduled publications while still
+allowing already-published facts about a future local date such as a closure;
+preserves exact IDs, versions, content hashes and effective provenance; and
+applies the authorized location scope before returning content. There is no
+tenant-wide configuration-release revision: consistency is transaction-level
+plus entity-publication-level.
+
+The Organization Owner is operationally accountable for freshness. Services
+and FAQs are reviewed at least every 90 days and immediately on relevant
+business change; prices are reviewed at least every 30 days and immediately on
+price change. These expectations add no freshness worker, review scheduler,
+reminder table, `review_due_at` column, or automatic retirement behavior.
+
+S7 requires no new production table. A later implementation migration may add
+only a demonstrated constraint, index, or function required by this
+already-frozen model.
 
 ### 4.11 `channel_connections`
 

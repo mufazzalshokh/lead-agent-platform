@@ -168,6 +168,56 @@ approved safety wording, consent notice references.
 - Medical diagnosis/suitability rules and model-authorized actions are invalid.
 - An appointment request stores the policy version used at submission.
 
+### 3.6.1 V1 qualification policy
+
+The launch qualification policy has `schema_version = 1` and a finite
+runtime-validated representation. Its default required evidence is exactly:
+
+- `service_interest`: the expressed interest resolves to an active Service with
+  a current published version;
+- `service_location_fit`: an active Location effectively offers that Service,
+  and an explicitly selected Location must be one of those Locations;
+- `positive_next_step_intent`: the customer expresses intent to proceed toward
+  booking, discussing booking, staff follow-up, or the relevant legitimate
+  service/appointment next step; and
+- `contactability`: the current inbound interaction supplies a usable bound
+  channel/Conversation identity through which the Lead can continue.
+
+The default policy does not require preferred time, budget, age,
+medical/clinical information, detailed personal information, or medical
+eligibility. The corresponding conceptual switches are
+`require_service_interest = true`, `require_supported_service_location = true`,
+`require_positive_next_step_intent = true`, `require_contactability = true`,
+`require_preferred_time = false`, `require_budget = false`, and
+`require_medical_eligibility = false`.
+
+All required evidence deterministically satisfied yields `qualified`. Missing,
+ambiguous, or unconfirmed required evidence yields `incomplete`; the Lead stays
+active and the system requests the missing information. It does not imply
+disqualification. `disqualified` requires one of exactly these V1 reason codes:
+
+- `service_not_offered`;
+- `location_not_served`;
+- `not_interested`;
+- `outside_business_scope`; or
+- `spam_or_abuse`.
+
+The lower-level `LeadReasonCode` value remains a bounded code because other Lead
+commands and future versioned policies use it. The S7 qualification evaluator is
+the enforcing boundary that may pass only the five V1 disqualification codes
+above to `disqualifyLead`.
+
+Unknown price, missing preferred time, clinical uncertainty, a request for
+human help, AI uncertainty, and missing optional information never become
+automatic disqualification reasons. Clinical/safety uncertainty and explicit
+human requests produce a safe Handoff. Neither AI nor provider/customer text
+may introduce a reason code or executable qualification rule.
+
+The Organization Owner is the accountable policy reviewer. Owner and Admin
+retain their existing `configuration.write` and `configuration.publish`
+permissions; Staff and Analyst remain read-only. Accountability does not create
+a new role, permission, or persistence table.
+
 ### 3.7 ChannelConnection
 
 **Root:** `ChannelConnection`

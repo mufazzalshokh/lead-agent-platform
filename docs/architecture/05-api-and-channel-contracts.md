@@ -250,20 +250,31 @@ request's tenant.
 | `POST /membership-invitations/{id}/resend` | `memberships.invite` | Revokes the active token before issuing a replacement; never returns or logs stored token material. |
 | `DELETE /membership-invitations/{id}` | `memberships.invite` | Explicit revocation; idempotent and audited. |
 | `PATCH, DELETE /memberships/{id}` | `memberships.manage`; `ownership.transfer` for owner operations | Delete means audited revocation, not hard deletion; cannot suspend, revoke, or demote the final active owner; `If-Match`. |
-| `GET, POST /locations` | `configuration.read` / `configuration.write` | Location name, IANA time zone, address, contact details. |
-| `GET, PATCH /locations/{id}` | `configuration.read` / `configuration.write` | Configuration changes are versioned and audited. |
-| `GET, PUT /locations/{id}/business-hours` | `configuration.read` / `configuration.write` | Versioned weekly local-time schedule evaluated in the location IANA zone; `If-Match`. |
-| `GET, POST /locations/{id}/closures` | `configuration.read` / `configuration.write` | Date/time closures with reason and effective interval; idempotent create. |
-| `DELETE /locations/{id}/closures/{closure_id}` | `configuration.write` | Versioned retire/cancel semantics; no destructive history loss. |
-| `GET, POST /services` | `configuration.read` / `configuration.write` | Service facts only; no free-form authoritative price. |
-| `GET, PATCH /services/{id}` | `configuration.read` / `configuration.write` | Disable rather than silently remove referenced services. |
-| `GET, PUT /services/{id}/locations` | `configuration.read` / `configuration.write` | Active/effective service-location mappings; all referenced locations are same-tenant. |
-| `GET, POST /services/{id}/prices` | `configuration.read` / `configuration.write` | Integer minor units, currency, effective range; overlap rule is domain-validated. |
-| `GET, POST /faqs` | `configuration.read` / `configuration.write` | Lists immutable versions or creates a `draft` with stable `faq_key`, optional service/location scope, effective interval, and atomic `question_i18n`/`answer_i18n` maps whose only locale keys are `uz`, `ru`, and `en`; content remains untrusted data. |
-| `GET /faqs/{id}` | `configuration.read` | Returns one exact version, including `version_no` and `draft`, `published`, or `retired` status; it never silently substitutes a different version. |
-| `POST /faqs/{id}/publish` | `configuration.publish` | Publishes a draft with `If-Match`; validates both bounded locale maps and the organization default locale, then atomically retires any current version for the same key/scope. Published content is immutable. |
-| `POST /faqs/{id}/retire` | `configuration.publish` | Idempotently retires a published version with `If-Match`; referenced history remains immutable. |
-| `GET, PUT /business-policy` | `configuration.read` / `configuration.write` | Qualification, handoff, appointment, and response policies; `If-Match`. |
+| `GET, POST /locations` | `configuration.read` / `configuration.write` | Lists authorized Location roots or creates a stable inactive root. POST does not persist a Location-version draft and does not publish business facts. |
+| `GET, PATCH /locations/{id}` | `configuration.read` / `configuration.write` | Reads the authorized root/current-version summary or changes only allowlisted stable-root metadata with `If-Match`; it cannot silently replace published presentation/hours or deactivate the Location. |
+| `POST /locations/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; validates a complete Location candidate, bounded locale maps, IANA zone and weekly hours, then immediately inserts one immutable version plus hours, activates the root and atomically advances `current_version_id` when the transaction commits. There is no persisted Location-version draft or scheduled publication. |
+| `POST /locations/{id}/deactivate` | `configuration.publish` | `If-Match` and `Idempotency-Key`; deactivates without deleting current or historical versions and emits the applicable authoritative change atomically. |
+| `GET /locations/{id}/business-hours` | `configuration.read` | Returns hours belonging to the exact current published Location version. Changes are submitted only as part of `/locations/{id}/publish`; hours are not independently published. |
+| `GET, POST /locations/{id}/closures` | `configuration.read` / `configuration.publish` | Lists applicable history or immediately publishes one same-tenant local-date `closed|override` record. POST requires Location `If-Match` and `Idempotency-Key`; a future closure date is authoritative knowledge published now, not scheduled publication. |
+| `POST /locations/{id}/closures/{closure_id}/supersede` | `configuration.publish` | Location `If-Match` and `Idempotency-Key`; atomically supersedes with a validated replacement while retaining history. |
+| `POST /locations/{id}/closures/{closure_id}/cancel` | `configuration.publish` | Location `If-Match` and `Idempotency-Key`; idempotently cancels without destructive deletion. |
+| `GET, POST /services` | `configuration.read` / `configuration.write` | Lists authorized Service roots or creates a stable inactive root. POST does not persist a Service-version draft and publishes no service facts or price. |
+| `GET, PATCH /services/{id}` | `configuration.read` / `configuration.write` | Reads the root/current-version summary or changes only allowlisted stable-root metadata with `If-Match`; published facts and status use explicit commands. |
+| `POST /services/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; validates a complete localized candidate, immediately creates one immutable Service version, activates the root, and advances `current_version_id` atomically. There is no persisted Service-version draft or scheduled publication. |
+| `POST /services/{id}/deactivate` | `configuration.publish` | `If-Match` and `Idempotency-Key`; deactivates without deleting referenced versions and emits `service.deactivated` atomically. |
+| `GET, PUT /services/{id}/locations` | `configuration.read` / `configuration.publish` | Service `If-Match` for PUT; immediately opens/closes same-tenant active Service/Location intervals at commit. It never claims slot availability and accepts no future activation time. |
+| `GET, POST /services/{id}/prices` | `configuration.read` / `configuration.write` | Lists authorized versions or creates a `draft` using an exact price type, integer minor units, uppercase currency, optional same-tenant Location and bounded localized display text. POST does not publish. |
+| `GET, PATCH /services/{id}/prices/{price_id}` | `configuration.read` / `configuration.write` | Returns one exact version or updates only a draft with `If-Match`; published/retired versions are immutable. |
+| `POST /services/{id}/prices/{price_id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes at commit after amount, scope, locale and non-overlap validation, atomically retiring/closing any replaced applicable version. Future activation is rejected. |
+| `POST /services/{id}/prices/{price_id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires without deleting price history. |
+| `GET, POST /faqs` | `configuration.read` / `configuration.write` | Lists authorized exact versions or creates a `draft` with stable `faq_key`, optional same-tenant Service/Location scope, and atomic bounded `question_i18n`/`answer_i18n` maps whose only locale keys are `uz`, `ru`, and `en`; content remains untrusted data. |
+| `GET, PATCH /faqs/{id}` | `configuration.read` / `configuration.write` | Returns one exact version or updates only a draft with `If-Match`; it never substitutes a different version or mutates published content. |
+| `POST /faqs/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes a draft, validates both bounded locale maps and the organization default locale, and atomically retires any current version for the same key/scope. No future activation is accepted. |
+| `POST /faqs/{id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires a published version while retaining referenced history. |
+| `GET, POST /business-policies` | `configuration.read` / `configuration.write` | Lists authorized exact versions or creates a finite schema-versioned `draft`; qualification, booking, handoff, safety and consent are the only policy types. POST does not publish. |
+| `GET, PATCH /business-policies/{id}` | `configuration.read` / `configuration.write` | Returns one exact version or updates only a draft with `If-Match`; no executable rule language or arbitrary evaluator is accepted. |
+| `POST /business-policies/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes a validated draft and atomically retires the current version for the same key/type. No future activation is accepted. |
+| `POST /business-policies/{id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires while preserving referenced policy history. |
 | `GET, POST /channel-connections` | `integrations.read` / `integrations.manage` | Metadata returned; credentials accepted only through secret-specific write fields and never echoed. |
 | `PATCH /channel-connections/{id}` | `integrations.manage` | Versioned allowlisted metadata/status change; secret values are never returned. |
 | `POST /channel-connections/{id}/rotate-credential` | `integrations.manage` | Step-up, idempotency and audit required; encrypted replacement with bounded overlap/revocation. |
@@ -314,6 +325,55 @@ request's tenant.
 service fact, price, FAQ, business policy, hours, or other authoritative content
 active/effective; a write route cannot silently publish using only
 `configuration.write`.
+
+S7 publication is immediate-only: the new authoritative state becomes visible
+when the explicit publication transaction commits. Configuration commands do
+not accept `publish_at`, future activation/retirement timestamps, or scheduled
+publication. A Location/Service Publish request carries a complete candidate
+because the accepted schema has no persisted draft version for those roots;
+Price, FAQ and Business Policy retain `draft -> published -> retired`. Successful
+publication commits its version/effective change, required audit record and
+applicable canonical outbox event together. Failed or stale publication exposes
+none of the candidate change and maps to the canonical validation, business-rule
+or `version_conflict` problem.
+
+Location publication/status/closure commands compare and advance the Location
+root integer version; Service publication/status/Location commands do the same
+to the Service root. Price, FAQ and Business Policy drafts use their integer
+`version_no` as the optimistic token: a successful draft edit advances it, while
+publication validates that exact draft version and content. Published content is
+never patched. Every stale token uses the same non-retrying
+`409 version_conflict` contract.
+
+The applicable canonical event is `location.changed` for committed Location
+details/time-zone/hours/closure/status authority, `service.published` for a new
+Service version, `service.deactivated` for deactivation,
+`service_price.published`, `faq.published`, or `business_policy.published` for
+their corresponding publication. Draft-only edits emit no authoritative event.
+S7 does not invent retirement or Service/Location event types: a direct change
+without an exact canonical event remains transactionally audited, and any later
+asynchronous consumer that requires a new semantic event must pass explicit
+contract review first.
+
+The S7 `BusinessPolicy` contract for `policy_type=qualification` is finite and
+runtime validated. Schema version 1 has the conceptual flags
+`require_service_interest=true`, `require_supported_service_location=true`,
+`require_positive_next_step_intent=true`, `require_contactability=true`,
+`require_preferred_time=false`, `require_budget=false`, and
+`require_medical_eligibility=false`. Its only disqualification reason codes are
+`service_not_offered`, `location_not_served`, `not_interested`,
+`outside_business_scope`, and `spam_or_abuse`. It accepts no executable
+expression/evaluator or arbitrary reason-code string. The future TypeBox schema
+and persisted `rules_jsonb` representation must preserve those exact semantics.
+
+Business-knowledge list endpoints use the shared opaque keyset cursor (default
+50, maximum 100), a documented stable sort with a unique tiebreaker, and finite
+filters only. `configuration.read` exposes business knowledge, never integration
+credentials, Auth0 configuration, webhook/API secrets, database configuration,
+or encrypted material. Restricted Staff/Analyst reads require a deterministic
+authorized Location scope; organization-wide or otherwise location-ambiguous
+knowledge is denied unless an authorized location-filtered projection proves
+applicability. Owner/Admin retain all-location access.
 
 The three privacy routes above are contracts reserved for P1 and are not exposed
 in P0. In P0, an explicit withdrawal received by widget, Telegram, or staff

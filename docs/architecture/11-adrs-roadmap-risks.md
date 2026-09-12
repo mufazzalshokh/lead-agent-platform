@@ -281,7 +281,7 @@ Each stage is a focused, reviewable change and must follow `AGENTS.md`. â€œGateâ
 | **S4c Reliability/governance database foundation:** final initial-schema slice | S4a-S4b | database receipts/idempotency/outbox/AI/audit/privacy/analytics schema | Reliable processing, governance and analytics fact tables/indexes exist with bounded sensitive payloads | clean/upgrade migration, atomicity/uniqueness/retention constraints | Full initial schema maps to data specification and migrates cleanly |
 | **S5 Tenant-safe persistence:** scoped repositories + RLS | S4a,S4b,S4c | database repositories/transactions/RLS, role/context and exact inbound-resolver migrations, security test helpers | Transaction-bound one-tenant sessions; tenant-qualified repositories; active Lead/Conversation partial uniqueness; forced RLS across the exact 47-table classification; non-owner/no-bypass runtime; global/platform paths separate; atomic CAS/history/audit/outbox writes | missing-context CRUD, two-tenant hostile CRUD/FK/repository/CAS matrix, pooled commit/rollback reuse, runtime-role/FORCE RLS, exact inbound resolver, polymorphic ownership, global-table denial | Zero cross-tenant access/mutation or pool-context leakage; active grouping conflicts deterministic; business write/outbox atomicity proven |
 | **S6 Staff identity/RBAC:** Auth0 OIDC-to-membership path | S2,S5 | exactly `external_identities`, `membership_invitations`, `auth_sessions`, `membership_location_scopes`; security, integrations/identity, API auth plugin | Auth0 Authorization Code + PKCE maps exact `(issuer, subject)` to an application User; active Membership plus closed role/location policy authorizes; seven-day invitations and 60m-idle/12h-absolute app sessions; all production roles use MFA; no email/org-claim authority or provider-token persistence | Auth0 issuer/audience/signature/nonce/state/JWKS/outage, identity-link, invitation/session/revocation, exhaustive role/location/final-owner/IDOR/CSRF tests | Every private route uses current trusted actor/tenant context; local session and Membership revocation work; no provider claim establishes tenancy |
-| **S7 Business knowledge configuration API:** authoritative tenant facts | S3,S5,S6 | domain/application knowledge, private API | Owner/admin manage locations/services/prices/FAQs/hours/policies with revisions/audit | auth matrix, exact money/timezone, tenant/revision integration | AI-independent API returns only active authoritative tenant facts |
+| **S7 Business knowledge configuration API:** authoritative tenant facts | S3,S5,S6 | configuration contracts/ports, domain/application knowledge, private API; no new production table expected | Owner/admin use entity-specific write versus publish commands for locations/services/prices/FAQs/hours/closures/policies; immediate-only atomic publication creates immutable/effective authority with audit and applicable outbox evidence; qualification policy V1 is finite and deterministic | auth/location-scope matrix, exact money/timezone/locale, qualification outcomes, stale/racing CAS, write-without-publish, rollback/no-partial-visibility, tenant/revision integration | AI-independent trusted read returns only active current published/effective tenant facts with exact provenance; no draft, scheduled publication, secret configuration, medical eligibility or AI-authored truth |
 | **S8 Reliable async substrate:** outbox and pg-boss | S4c,S5 | database outbox, integrations/jobs, worker | Atomic intent, claims/leases/retry/DLQ/replay/reconciliation; workload queues | crash-point, duplicate, poison, fairness, replay audit tests | One logical effect under retries/restarts |
 | **S9 Conversation/lead/contact application:** deterministic persistence | S3,S5,S8 | domain/application conversations/leads, API queries | One lead/conversation/message per logical inbound; approved active-lead/conversation grouping, phone/session sufficiency, contact/consent semantics; no AI yet | state/concurrency/idempotency/PII/grouping tests | Duplicate/reordered canonical messages cannot regress state or identity |
 | **S10 Widget trust and intake:** secure widget vertical ingress | S2,S6,S8-S9 | web widget bootstrap, API widget routes, channel adapter | Opaque session/public credential + allowed origin resolves server-side tenant; approved session/reopen/body/rate/idempotency settings; message durably accepted | origin/forgery/replay/oversize/duplicate/reopen E2E | Tenant cannot be selected or crossed by widget input |
@@ -309,6 +309,44 @@ S6.5 invitation/onboarding/revocation/recovery; S6.6 API/web authentication plus
 CSRF/staff-origin integration; and S6.7 the hostile-auth/RBAC/session final gate.
 No unit may add a fifth S6 table or implement the deferred platform-support
 grant without separate owner review.
+
+S7 executes as seven separately reviewed units: S7.1 configuration contracts
+and application ports; S7.2 Location/business-hours/closure use cases; S7.3
+Service/service-location/price use cases; S7.4 FAQ/Business Policy/
+qualification-policy use cases; S7.5 atomic publication and the trusted
+business-knowledge read model; S7.6 the private Fastify staff configuration API;
+and S7.7 the hostile authorization/concurrency/atomicity final gate. Small
+dependency-order changes must be reported; they cannot expand the frozen scope.
+
+### S7 approved business-knowledge decisions
+
+S7 publication is immediate-only. An explicit `configuration.publish` command
+makes the validated entity change authoritative when its transaction commits;
+`configuration.write` alone cannot do so. There is no `publish_at`, delayed
+activation, scheduled queue, automatic retirement, or persisted Location/Service
+version draft. Scheduled publication requires a separate architecture/schema
+review because Location/Service scheduling needs new semantics and current FAQ/
+Business Policy uniqueness cannot represent both current and future published
+versions for one key/scope. S7 expects no new production table.
+
+Qualification Business Policy schema version 1 requires exactly Service
+interest resolved to an active current-published Service, effective active
+Service/Location fit, positive next-step intent, and a usable bound interaction
+identity for contactability. Preferred time, budget, age, clinical information,
+detailed personal information, and medical eligibility are optional/not required
+by default. Missing evidence yields `incomplete` and keeps the Lead active.
+Disqualification is limited to `service_not_offered`, `location_not_served`,
+`not_interested`, `outside_business_scope`, and `spam_or_abuse`. Clinical/safety
+uncertainty, AI uncertainty without a safe answer, and human requests route to
+Handoff; AI never decides medical eligibility or invents policy reasons.
+
+Owner/Admin retain `configuration.read|write|publish`; Staff/Analyst retain
+`configuration.read` only, subject to accepted Location resource scope. The
+Organization Owner is operationally accountable for qualification-policy and
+business-knowledge review, while Admin may edit and publish. Services and FAQs
+are reviewed at least every 90 days and immediately on relevant business change;
+prices at least every 30 days and immediately on price change. These are
+operating expectations, not persistence, scheduler, reminder or worker scope.
 
 Optional external staff-alert adapters are separate P1 tasks. Instagram/WhatsApp, calendar/CRM sync, billing, and other P2 capabilities are separate later tasks; none is silently appended to an existing stage.
 
@@ -407,7 +445,7 @@ Probability and impact are qualitative launch estimates (`L`, `M`, `H`) and must
 | R19 | Reliability | Ambiguous provider timeout sends duplicate customer messages | M | M-H | High | Provider idempotency/external reference, status reconciliation, logical notification uniqueness, attempt audit and contract tests |
 | R20 | Scalability | PostgreSQL queue/analytics/transactions contend under load | M | M-H | Medium-High | Separate pools/workload queues, indexes/batching/retention, capacity/pool/lock metrics; introduce partition/broker only via evidence/ADR |
 | R21 | Security | Widget credential/origin/rate control is abused for cost or data enumeration | H | M | High | Public opaque credential not tenant authority alone, domain allowlist, sessions/nonces, layered rates/budgets, non-enumerating errors, abuse metrics |
-| R22 | Product | Configured knowledge is stale/wrong, causing grounded but bad answers | M | H | High | Revision/audit/publish workflow, staff ownership/freshness indicators, effective dates, easy handoff; do not label AI as source of truth |
+| R22 | Product | Configured knowledge is stale/wrong, causing grounded but bad answers | M | H | High | Revision/audit/explicit-publish workflow; Owner accountability; Service/FAQ review at least every 90 days and Price review at least every 30 days plus immediate review on change; easy handoff; do not label AI as source of truth |
 | R23 | Integration | Telegram/Meta/provider API or policy changes break adapters | M | M-H | Medium-High | Capability/contract adapters, pinned/tested APIs, sandbox fixtures, deprecation monitoring, breaker/fallback, provider-specific runbook |
 | R24 | Operations | High-cardinality/verbose telemetry causes cost spike or outage | M | M | Medium | Attribute allowlist, no tenant IDs in metrics, sampling/retention/budgets, cardinality/cost CI and dashboards |
 | R25 | Security | Platform operator path becomes an unaudited tenant bypass | L-M | H | High | Separate identity/audience/repository, mandatory MFA, 15-minute step-up, two-operator approval, 30-minute scoped support grant or 15-minute break-glass, immutable platform audit, no impersonation/generic bypass |
@@ -438,6 +476,12 @@ The following apparent contradictions are resolved as normative rules:
     alone establish tenant authorization. Email/Auth0 Organization claims and
     persisted session navigation state never do. Application-owned sessions and
     local revocation remain authoritative even when upstream logout occurs.
+13. **Configuration write versus authoritative publication:** S7 uses explicit,
+    immediate-only entity publication. Location/Service candidates are validated
+    request data rather than persisted version drafts; Price/FAQ/Business Policy
+    use `draft -> published -> retired`. A write cannot publish, a publish becomes
+    visible only on atomic commit, and no tenant-wide release revision or
+    scheduled-publication workaround exists.
 
 ## Stage entry and release gates
 
@@ -453,7 +497,6 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | --- | --- | --- | --- |
 | Which launch country/jurisdiction, data residency, consent wording, retention/deletion/legal-hold rules apply? | Product + privacy/legal | Legal/privacy obligations and data model operations depend on it | Before S21a; preferably before the affected S4a-S4c fields |
 | Does launch-jurisdiction counsel require productized automated subject export/deletion/retention in P0, or is the verified audited operator runbook sufficient until P1/FR-023? | Privacy/legal + product | The architecture must fulfill applicable rights, but product priority cannot override launch law | Decide before S21a scope; verify before S23 |
-| What exact qualification fields/rules are the launch defaults, and who may edit/publish them? | Product + clinic operations | Changes lead conversion semantics and eval fixtures | Before S7/S15 |
 | Is a phone number mandatory for an appointment request, or can a bound widget/Telegram identity suffice for selected tenants? | Product + privacy | Contact sufficiency changes validation, consent, and reachability behavior | Before S9/S16 |
 | What exact channel-specific resolved-conversation reopen/new-cycle and Widget session windows apply within the frozen active grouping identity? | Product + integrations | Timing changes whether an inactive thread is reopened or a later Conversation is created, but does not change the approved grouping key | Before S10-S11 |
 | Is Telegram one platform bot or a tenant-owned bot per connection, and who handles token rotation/ownership? | Product + integrations | Affects onboarding, provider limits, credentials, and support | Before S11 |
@@ -466,7 +509,6 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | What live-model quality/latency/cost thresholds, per-turn/conversation limits, tenant budgets, overage behavior, and reviewers are approved? | AI engineering + product/finance | Model selection and commercial margin require measured tradeoffs | Before S13 and final budgets before S20 |
 | What widget allowed-origin/bootstrap/session/reopen policy, message-size/rate/idempotency-retention defaults, and supported browsers apply beyond the fixed WCAG 2.2 AA target? | Product + frontend/security | Security, API configuration, storage, and E2E matrices depend on embedding requirements | Before S10/S19b |
 | What staff data-visibility rules apply to sensitive conversation/health-adjacent content, exports, and support access? | Privacy + security + product | Least privilege and privacy UI cannot be inferred from generic roles | Before S17/S19a/S21b |
-| Who owns service/price/FAQ freshness and publishing, and are changes effective immediately or scheduled? | Product + clinic operations | Grounded AI can still repeat stale authoritative data | Before S7/S14 |
 | Which reviewed emergency/medical safety wording is approved in Uzbek, Russian, and English for each launch jurisdiction? | Clinical safety + privacy/legal + product | The system is administrative, but unsafe wording cannot be improvised by a model or engineer | Before S14/S21b |
 | Are the OpenAI processor terms, region, retention/data controls, and production-data suitability approved for launch content? | Privacy/legal + security + AI engineering | `store:false` does not itself answer processor, residency, or healthcare suitability questions | Before live data; gate S13/S21a |
 | At launch volume, do message/provider payloads remain in encrypted PostgreSQL or is separately governed object storage required? | Data/platform + privacy | It affects retention, deletion, backups, threat surface, and cost | Decide before S4b storage schema is frozen |

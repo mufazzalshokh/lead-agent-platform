@@ -235,6 +235,49 @@ separation. Platform tests prove tenant roles cannot become platform operators,
 generic impersonation is impossible, support grants remain a separate deferred
 capability, and platform actions use platform audit.
 
+### S7 business-knowledge configuration contract
+
+Authorization tests prove Owner/Admin can read, write and publish; Staff/Analyst
+can read only; restricted readers receive only deterministic allowed-Location
+projections; and cross-tenant or location-ambiguous identifiers disclose no
+resource existence. `configuration.read` never exposes integration, identity,
+secret or database configuration.
+
+Lifecycle/concurrency tests cover candidate or draft creation as applicable,
+explicit publication, immutable historical retention, current/effective
+selection, stale expected-version conflict, racing publication and absence of
+partial visibility. They prove write alone cannot expose publication-required
+content, successful publication becomes authoritative immediately on commit,
+failed publication exposes none of its candidate, scheduled/future publication
+inputs are rejected, and trusted reads exclude draft/inactive content. Failure
+injection rolls back the version/effective change, audit and required canonical
+outbox event together.
+
+Qualification-policy schema-version-1 tests prove:
+
+- `qualified` requires resolved active/published Service interest, an effective
+  active Service/Location fit, positive next-step intent and contactability;
+- missing or ambiguous required evidence yields `incomplete`, leaves the Lead
+  active and requests the missing fact;
+- each of `service_not_offered`, `location_not_served`, `not_interested`,
+  `outside_business_scope` and `spam_or_abuse` is a valid deterministic
+  disqualification reason, and no arbitrary reason string is accepted;
+- missing budget, preferred time or price never disqualifies; and
+- clinical/safety uncertainty, AI uncertainty without a safe grounded answer,
+  and an explicit human request produce Handoff behavior rather than medical
+  evaluation or AI disqualification.
+
+Money tests cover every canonical price type, uppercase currency, non-negative
+integer minor units, range shapes, same-tenant optional Location scope,
+published interval exclusion, exact trusted amounts and missing-price
+non-synthesis. Time tests cover IANA zones, multiple non-overlapping intervals,
+closed days, forbidden single overnight intervals, closure supersession and DST
+boundaries. FAQ/Policy tests cover bounded locales, default-locale publication,
+scope, draft/published/retired history, prompt-like content as data and
+published-only trusted reads. Command tests cover idempotent create/publish/
+retire/cancel replay and conflicting key reuse; list tests cover signed
+tenant-and-filter-bound keyset cursors with default 50 and maximum 100.
+
 ## End-to-end journeys
 
 The production-like E2E harness starts web, API, worker, and PostgreSQL with deterministic fake AI/channel/OIDC adapters. It observes customer-visible output, staff state, database state through supported APIs, outbox delivery, audit events, and funnel facts.
