@@ -2,6 +2,7 @@ export * from "./appointments.js";
 export * from "./configuration.js";
 export * from "./conversations.js";
 export * from "./customers.js";
+export * from "./faq-policy-configuration.js";
 export * from "./handoffs.js";
 export * from "./leads.js";
 export * from "./membership-lifecycle.js";

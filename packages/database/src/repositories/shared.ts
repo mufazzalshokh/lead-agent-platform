@@ -57,6 +57,7 @@ export type RepositoryResource =
   | "channel_connection"
   | "contact"
   | "conversation"
+  | "faq"
   | "handoff"
   | "lead"
   | "location"

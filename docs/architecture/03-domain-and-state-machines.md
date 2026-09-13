@@ -163,8 +163,15 @@ approved safety wording, consent notice references.
 
 - Published versions are immutable; an edit creates a new version/effective
   record.
+- The five canonical policy-type identifiers remain `qualification`, `booking`,
+  `handoff`, `safety`, and `consent`, but S7 launch defines mutable and
+  publishable structured rules only for Qualification Policy schema version 1.
+  The other four identifiers are reserved until each receives a separate
+  architecture and contract freeze.
 - Rules use a restricted deterministic representation, not executable code or
   model prose.
+- Arbitrary `rules_jsonb` for an unsupported type or schema is never trusted as
+  authoritative policy, even if a database row is marked published.
 - Medical diagnosis/suitability rules and model-authorized actions are invalid.
 - An appointment request stores the policy version used at submission.
 
@@ -203,9 +210,10 @@ disqualification. `disqualified` requires one of exactly these V1 reason codes:
 - `spam_or_abuse`.
 
 The lower-level `LeadReasonCode` value remains a bounded code because other Lead
-commands and future versioned policies use it. The S7 qualification evaluator is
-the enforcing boundary that may pass only the five V1 disqualification codes
-above to `disqualifyLead`.
+commands and future versioned policies use it. A future qualification evaluator
+boundary may pass only the five V1 disqualification codes above to
+`disqualifyLead`; S7.4 owns configuration lifecycle and runtime rule validation,
+not evidence evaluation.
 
 Unknown price, missing preferred time, clinical uncertainty, a request for
 human help, AI uncertainty, and missing optional information never become

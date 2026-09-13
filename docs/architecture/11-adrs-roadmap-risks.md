@@ -329,6 +329,13 @@ review because Location/Service scheduling needs new semantics and current FAQ/
 Business Policy uniqueness cannot represent both current and future published
 versions for one key/scope. S7 expects no new production table.
 
+All five Business Policy identifiers (`qualification`, `booking`, `handoff`,
+`safety`, and `consent`) remain reserved canonical vocabulary. S7 launch freezes
+mutable and publishable structured rules only for Qualification Policy schema
+version 1. Booking, handoff, safety, and consent rules each require a future
+architecture and contract freeze; arbitrary stored JSON for those unsupported
+schemas is never a trusted authoritative policy projection.
+
 Qualification Business Policy schema version 1 requires exactly Service
 interest resolved to an active current-published Service, effective active
 Service/Location fit, positive next-step intent, and a usable bound interaction

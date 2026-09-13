@@ -664,6 +664,11 @@ in V1.
 - **Sensitive:** S1; approved public wording inside may be S0.
 - **Deletion/RLS:** forced RLS; published versions immutable and retained while
   referenced.
+- **S7 authority:** all five `policy_type` values are reserved canonical
+  identifiers, but only `qualification` with `schema_version = 1` has a frozen
+  mutable/publishable rules schema. Booking, handoff, safety, and consent rules
+  require future architecture and contract freezes. Generic storage capacity or
+  a published status never makes arbitrary unsupported `rules_jsonb` trusted.
 
 ### 4.10.1 S7 publication and trusted-read interpretation
 

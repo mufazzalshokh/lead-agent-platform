@@ -271,10 +271,10 @@ request's tenant.
 | `GET, PATCH /faqs/{id}` | `configuration.read` / `configuration.write` | Returns one exact version or updates only a draft with `If-Match`; it never substitutes a different version or mutates published content. |
 | `POST /faqs/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes a draft, validates both bounded locale maps and the organization default locale, and atomically retires any current version for the same key/scope. No future activation is accepted. |
 | `POST /faqs/{id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires a published version while retaining referenced history. |
-| `GET, POST /business-policies` | `configuration.read` / `configuration.write` | Lists authorized exact versions or creates a finite schema-versioned `draft`; qualification, booking, handoff, safety and consent are the only policy types. POST does not publish. |
-| `GET, PATCH /business-policies/{id}` | `configuration.read` / `configuration.write` | Returns one exact version or updates only a draft with `If-Match`; no executable rule language or arbitrary evaluator is accepted. |
-| `POST /business-policies/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes a validated draft and atomically retires the current version for the same key/type. No future activation is accepted. |
-| `POST /business-policies/{id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires while preserving referenced policy history. |
+| `GET, POST /business-policies` | `configuration.read` / `configuration.write` | Lists trusted supported exact versions or creates a finite schema-versioned `draft`. The five canonical identifiers are qualification, booking, handoff, safety and consent, but S7 launch accepts mutable rules only for qualification schema version 1. POST does not publish. |
+| `GET, PATCH /business-policies/{id}` | `configuration.read` / `configuration.write` | Returns one trusted supported exact version or updates only a qualification-v1 draft with `If-Match`; no executable rule language, arbitrary evaluator, or unsupported `rules_jsonb` is accepted. |
+| `POST /business-policies/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes a validated qualification-v1 draft and atomically retires the current version for the same key/type. Booking, handoff, safety and consent rule publication requires a future architecture and contract freeze. No future activation is accepted. |
+| `POST /business-policies/{id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires a supported qualification-v1 policy while preserving referenced policy history. |
 | `GET, POST /channel-connections` | `integrations.read` / `integrations.manage` | Metadata returned; credentials accepted only through secret-specific write fields and never echoed. |
 | `PATCH /channel-connections/{id}` | `integrations.manage` | Versioned allowlisted metadata/status change; secret values are never returned. |
 | `POST /channel-connections/{id}/rotate-credential` | `integrations.manage` | Step-up, idempotency and audit required; encrypted replacement with bounded overlap/revocation. |
@@ -365,6 +365,12 @@ runtime validated. Schema version 1 has the conceptual flags
 `outside_business_scope`, and `spam_or_abuse`. It accepts no executable
 expression/evaluator or arbitrary reason-code string. The future TypeBox schema
 and persisted `rules_jsonb` representation must preserve those exact semantics.
+
+The `booking`, `handoff`, `safety`, and `consent` identifiers remain reserved;
+S7 launch does not define mutable/publishable structured rules for them.
+Arbitrary database JSON for an unsupported type or schema is excluded from
+trusted policy reads regardless of row status. Each requires a future
+architecture and contract freeze before mutation or publication is enabled.
 
 Business-knowledge list endpoints use the shared opaque keyset cursor (default
 50, maximum 100), a documented stable sort with a unique tiebreaker, and finite
