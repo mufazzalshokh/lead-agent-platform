@@ -112,6 +112,7 @@ import { registerSessionLifecycleTests } from "./session-lifecycle.test-suite.js
 import { registerAuthorizationResolutionTests } from "./authorization-resolution.test-suite.js";
 import { registerMembershipLifecycleTests } from "./membership-lifecycle.test-suite.js";
 import { registerLocationConfigurationTests } from "./location-configuration.test-suite.js";
+import { registerServicePricingConfigurationTests } from "./service-pricing-configuration.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -560,6 +561,7 @@ let upgradeTablesAfterS63: string[] = [];
 let upgradeTablesAfterS64: string[] = [];
 let upgradeTablesAfterS65: string[] = [];
 let upgradeTablesAfterS72: string[] = [];
+let upgradeTablesAfterS73: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
 let upgradeRejectedConversationConflict = false;
 let upgradeRejectedLeadConflict = false;
@@ -848,6 +850,10 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0018_s7_location_history_integrity.sql");
   await applyMigrationSql(testPool, "0018_s7_location_history_integrity.sql");
   upgradeTablesAfterS72 = await productionTables(testPool);
+
+  await applyMigrationSql(testPool, "0019_s7_service_pricing_history_integrity.sql");
+  await applyMigrationSql(testPool, "0019_s7_service_pricing_history_integrity.sql");
+  upgradeTablesAfterS73 = await productionTables(testPool);
 
   await testPool.query(
     `drop table membership_location_scopes, membership_invitations,
@@ -2663,6 +2669,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(upgradeTablesAfterS64).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS65).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS72).toEqual(S6_1_TABLES);
+    expect(upgradeTablesAfterS73).toEqual(S6_1_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
     expect(upgradeRejectedLeadConflict).toBe(true);
     expect(upgradeRejectedConversationConflict).toBe(true);
@@ -2678,7 +2685,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(19);
+    expect(migrationCount.rows[0]?.count).toBe(20);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -9932,6 +9939,10 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     },
   });
   registerLocationConfigurationTests({
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+  });
+  registerServicePricingConfigurationTests({
     privilegedPool: database,
     runtime: requireTenantRuntime,
   });

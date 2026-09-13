@@ -134,6 +134,13 @@
       "when": 1789286400000,
       "tag": "0018_s7_location_history_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789372800000,
+      "tag": "0019_s7_service_pricing_history_integrity",
+      "breakpoints": true
     }
   ]
 }

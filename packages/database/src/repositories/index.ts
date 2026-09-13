@@ -7,6 +7,7 @@ export * from "./leads.js";
 export * from "./membership-lifecycle.js";
 export * from "./location-configuration.js";
 export * from "./mutations.js";
+export * from "./service-configuration.js";
 export {
   InvalidRepositoryMutationPlanError,
   InvalidRepositoryQueryError,
