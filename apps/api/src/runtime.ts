@@ -24,6 +24,7 @@ import {
 import type { FastifyInstance } from "fastify";
 
 import { createApi, STAFF_AUTH_LOG_REDACTION_PATHS } from "./auth/plugin.js";
+import { createStaffConfigurationDependencies } from "./configuration/composition.js";
 
 const requireEnvironment = (environment: NodeJS.ProcessEnv, name: string): string => {
   const value = environment[name];
@@ -96,6 +97,7 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
       oidcVerifier,
       sessions: createApplicationSessionLifecycle(sessionRuntime),
     },
+    staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
   });
   api.addHook("onClose", async () => {
     await Promise.all([

@@ -49,6 +49,12 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from "fastify";
 import Fastify, { LogController } from "fastify";
 
+import {
+  registerStaffConfiguration,
+  StaffConfigurationHttpError,
+  type StaffConfigurationDependencies,
+} from "../configuration/plugin.js";
+
 const STAFF_AUTH_PREFIX = "/v1/staff/auth";
 const CSRF_HEADER = "x-csrf-token";
 const COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
@@ -57,6 +63,7 @@ const MAX_INVITATION_TOKEN_LENGTH = 512;
 export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.authorization",
   "req.headers.cookie",
+  "req.headers.idempotency-key",
   "req.headers.x-csrf-token",
   "res.headers.set-cookie",
   "body.authorization_code",
@@ -88,9 +95,10 @@ export type StaffAuthDependencies = Readonly<{
   clock?: () => Date;
 }>;
 
-type ApiOptions = Readonly<{
+export type ApiOptions = Readonly<{
   logger?: FastifyServerOptions["logger"];
   staffAuth?: StaffAuthDependencies;
+  staffConfiguration?: StaffConfigurationDependencies;
 }>;
 
 type SessionResolution = Readonly<{
@@ -276,6 +284,35 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
   } else if (error instanceof OidcProviderUnavailableError) {
     code = "dependency_unavailable";
     status = 503;
+  } else if (error instanceof StaffConfigurationHttpError) {
+    code = error.code;
+    status =
+      error.code === "validation_failed"
+        ? 400
+        : error.code === "permission_denied"
+          ? 403
+          : error.code === "resource_not_found"
+            ? 404
+            : error.code === "version_conflict" || error.code === "idempotency_conflict"
+              ? 409
+              : error.code === "business_rule_failed"
+                ? 422
+                : 429;
+  } else if (
+    typeof error === "object" &&
+    error !== null &&
+    Array.isArray(Reflect.get(error, "validation"))
+  ) {
+    code = "validation_failed";
+    status = 400;
+  } else if (
+    typeof error === "object" &&
+    error !== null &&
+    typeof Reflect.get(error, "code") === "string" &&
+    String(Reflect.get(error, "code")).startsWith("FST_ERR_CTP_")
+  ) {
+    code = "request_malformed";
+    status = 400;
   }
   const requestId = "request:" + request.id;
   return {
@@ -301,6 +338,7 @@ const requireMutationBrowserProof = (request: FastifyRequest, config: StaffWebAu
 const registerStaffAuth = async (
   api: FastifyInstance,
   dependencies: StaffAuthDependencies,
+  staffConfiguration?: StaffConfigurationDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -349,8 +387,8 @@ const registerStaffAuth = async (
     reply: FastifyReply,
     rotateWhenDue = true,
   ): Promise<SessionResolution> => {
-    requireMutationBrowserProof(request, dependencies.config);
     const resolved = await resolveSession(request, reply, false);
+    requireMutationBrowserProof(request, dependencies.config);
     requireSessionBoundCsrf(
       request.headers[CSRF_HEADER],
       request.cookies[BROWSER_AUTH_COOKIE_NAMES.csrf],
@@ -380,18 +418,23 @@ const registerStaffAuth = async (
     }
     if (request.method === "OPTIONS") {
       if (origin === undefined) throw new BrowserOriginNotAllowedError();
-      reply.header("access-control-allow-methods", "GET, HEAD, POST");
-      reply.header("access-control-allow-headers", "Content-Type, X-CSRF-Token");
+      reply.header("access-control-allow-methods", "GET, HEAD, POST, PUT, PATCH");
+      reply.header(
+        "access-control-allow-headers",
+        "Content-Type, X-CSRF-Token, X-Organization-Context, X-Request-Id, If-Match, Idempotency-Key",
+      );
       await reply.code(204).send();
     }
   });
+
+  api.options("/v1/staff/*", async (_request, reply) => reply.code(204).send());
 
   api.setErrorHandler((error, request, reply) => {
     if (request.url.startsWith(STAFF_AUTH_PREFIX + "/callback")) {
       reply.clearCookie(BROWSER_AUTH_COOKIE_NAMES.loginTransaction, baseCookie);
     }
     const problem = safeProblem(request, error);
-    void reply.code(problem.status).send(problem.body);
+    void reply.type("application/problem+json").code(problem.status).send(problem.body);
   });
 
   const begin = async (
@@ -638,10 +681,23 @@ const registerStaffAuth = async (
     setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
     return { membership_id: accepted.membershipId, outcome: accepted.outcome };
   });
+
+  if (staffConfiguration !== undefined) {
+    registerStaffConfiguration(api, staffConfiguration, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
 };
 
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
+  if (options.staffConfiguration !== undefined && options.staffAuth === undefined) {
+    throw new TypeError("Staff configuration routes require the staff authentication boundary");
+  }
   const api = Fastify({
+    ajv: { customOptions: { removeAdditional: false, strict: false } },
     logController: new LogController({ disableRequestLogging: true }),
     logger: options.logger ?? false,
   });
@@ -655,8 +711,11 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
     });
   }
   api.get("/health", () => ({ service: "api", status: "ok" }));
-  if (options.staffAuth !== undefined) {
-    void api.register(registerStaffAuth, options.staffAuth);
+  const staffAuth = options.staffAuth;
+  if (staffAuth !== undefined) {
+    void api.register((staffApi) =>
+      registerStaffAuth(staffApi, staffAuth, options.staffConfiguration),
+    );
   }
   return api;
 };

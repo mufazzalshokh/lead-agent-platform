@@ -62,6 +62,9 @@ importers:
       '@fastify/cookie':
         specifier: 11.1.2
         version: 11.1.2
+      '@lead-agent/application':
+        specifier: workspace:*
+        version: link:../../packages/application
       '@lead-agent/config':
         specifier: workspace:*
         version: link:../../packages/config
