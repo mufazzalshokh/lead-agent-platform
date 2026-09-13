@@ -114,6 +114,7 @@ import { registerMembershipLifecycleTests } from "./membership-lifecycle.test-su
 import { registerLocationConfigurationTests } from "./location-configuration.test-suite.js";
 import { registerServicePricingConfigurationTests } from "./service-pricing-configuration.test-suite.js";
 import { registerFaqPolicyConfigurationTests } from "./faq-policy-configuration.test-suite.js";
+import { registerPublishedBusinessKnowledgeTests } from "./published-business-knowledge.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -9954,6 +9955,10 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     runtime: requireTenantRuntime,
   });
   registerFaqPolicyConfigurationTests({
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+  });
+  registerPublishedBusinessKnowledgeTests({
     privilegedPool: database,
     runtime: requireTenantRuntime,
   });

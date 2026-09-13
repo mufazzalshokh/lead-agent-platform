@@ -147,12 +147,12 @@ describe("public contract inventory and snapshot", () => {
       ]),
     );
 
-    expect(snapshot.contracts).toHaveLength(271);
+    expect(snapshot.contracts).toHaveLength(272);
     expect(counts).toEqual({
       ai: 16,
       api: 8,
       channel: 24,
-      configuration: 64,
+      configuration: 65,
       event: 131,
       shared: 28,
     });
@@ -194,8 +194,8 @@ describe("public contract inventory and snapshot", () => {
     };
     const findings = compareContractSnapshots(baseline, candidate);
 
-    expect(configurationContracts).toHaveLength(64);
-    expect(findings).toHaveLength(64);
+    expect(configurationContracts).toHaveLength(65);
+    expect(findings).toHaveLength(65);
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 

@@ -41654,6 +41654,1302 @@
     },
     {
       "category": "configuration",
+      "export_name": "PublishedBusinessKnowledgeV2Schema",
+      "schema": {
+        "$id": "PublishedBusinessKnowledge.v2",
+        "additionalProperties": false,
+        "description": "Location-scoped authoritative business knowledge with per-Location price resolution at one instant.",
+        "properties": {
+          "effective_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "faqs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "answer_i18n": {
+                  "additionalProperties": false,
+                  "description": "Non-empty localized business text using only supported V1 locale keys.",
+                  "maxProperties": 3,
+                  "minProperties": 1,
+                  "properties": {
+                    "en": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "ru": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "uz": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "content_hash": {
+                  "description": "Lowercase hexadecimal digest identifying exact published content.",
+                  "maxLength": 256,
+                  "minLength": 2,
+                  "pattern": "^(?:[0-9a-f]{2}){1,128}$",
+                  "type": "string"
+                },
+                "effective_from": {
+                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                  "format": "date-time",
+                  "maxLength": 30,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                  "type": "string"
+                },
+                "effective_to": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                      "format": "date-time",
+                      "maxLength": 30,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "faq_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "faq_key": {
+                  "description": "Stable normalized FAQ or Business Policy key.",
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+                  "type": "string"
+                },
+                "location_id": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "published_by_user_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "question_i18n": {
+                  "additionalProperties": false,
+                  "description": "Non-empty localized business text using only supported V1 locale keys.",
+                  "maxProperties": 3,
+                  "minProperties": 1,
+                  "properties": {
+                    "en": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "ru": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "uz": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "service_id": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "version_no": {
+                  "description": "Positive safe integer used for optimistic concurrency.",
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "answer_i18n",
+                "content_hash",
+                "effective_from",
+                "effective_to",
+                "faq_id",
+                "faq_key",
+                "location_id",
+                "published_by_user_id",
+                "question_i18n",
+                "service_id",
+                "version_no"
+              ],
+              "type": "object",
+              "x-less-than-properties": [
+                [
+                  "effective_from",
+                  "effective_to"
+                ]
+              ]
+            },
+            "maxItems": 500,
+            "type": "array"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "const": "uz",
+                "type": "string"
+              },
+              {
+                "const": "ru",
+                "type": "string"
+              },
+              {
+                "const": "en",
+                "type": "string"
+              }
+            ],
+            "description": "Supported V1 customer presentation locale."
+          },
+          "locations": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "address_i18n": {
+                  "additionalProperties": false,
+                  "description": "Non-empty localized business text using only supported V1 locale keys.",
+                  "maxProperties": 3,
+                  "minProperties": 1,
+                  "properties": {
+                    "en": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "ru": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "uz": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "business_hours": {
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "One non-overnight Location-local opening interval.",
+                    "properties": {
+                      "closes_at_local": {
+                        "description": "Location-local wall-clock time at whole-second precision.",
+                        "maxLength": 8,
+                        "minLength": 8,
+                        "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+                        "type": "string"
+                      },
+                      "day_of_week": {
+                        "description": "ISO weekday where Monday is 1 and Sunday is 7.",
+                        "maximum": 7,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "opens_at_local": {
+                        "description": "Location-local wall-clock time at whole-second precision.",
+                        "maxLength": 8,
+                        "minLength": 8,
+                        "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+                        "type": "string"
+                      },
+                      "sequence_no": {
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "closes_at_local",
+                      "day_of_week",
+                      "opens_at_local",
+                      "sequence_no"
+                    ],
+                    "type": "object",
+                    "x-less-than-properties": [
+                      [
+                        "opens_at_local",
+                        "closes_at_local"
+                      ]
+                    ]
+                  },
+                  "maxItems": 224,
+                  "type": "array"
+                },
+                "closures": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "closure_id": {
+                            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                            "maxLength": 36,
+                            "minLength": 36,
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "closed",
+                            "type": "string"
+                          },
+                          "local_date": {
+                            "description": "Valid proleptic Gregorian local calendar date in YYYY-MM-DD form.",
+                            "maxLength": 10,
+                            "minLength": 10,
+                            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                            "type": "string",
+                            "x-local-date": true
+                          },
+                          "reason_i18n": {
+                            "additionalProperties": false,
+                            "description": "Non-empty localized business text using only supported V1 locale keys.",
+                            "maxProperties": 3,
+                            "minProperties": 1,
+                            "properties": {
+                              "en": {
+                                "maxLength": 4000,
+                                "minLength": 1,
+                                "pattern": "^[^\\u0000]*$",
+                                "type": "string"
+                              },
+                              "ru": {
+                                "maxLength": 4000,
+                                "minLength": 1,
+                                "pattern": "^[^\\u0000]*$",
+                                "type": "string"
+                              },
+                              "uz": {
+                                "maxLength": 4000,
+                                "minLength": 1,
+                                "pattern": "^[^\\u0000]*$",
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "closure_id",
+                          "kind",
+                          "local_date",
+                          "reason_i18n"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "closes_at_local": {
+                            "description": "Location-local wall-clock time at whole-second precision.",
+                            "maxLength": 8,
+                            "minLength": 8,
+                            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+                            "type": "string"
+                          },
+                          "closure_id": {
+                            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                            "maxLength": 36,
+                            "minLength": 36,
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "const": "override",
+                            "type": "string"
+                          },
+                          "local_date": {
+                            "description": "Valid proleptic Gregorian local calendar date in YYYY-MM-DD form.",
+                            "maxLength": 10,
+                            "minLength": 10,
+                            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                            "type": "string",
+                            "x-local-date": true
+                          },
+                          "opens_at_local": {
+                            "description": "Location-local wall-clock time at whole-second precision.",
+                            "maxLength": 8,
+                            "minLength": 8,
+                            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$",
+                            "type": "string"
+                          },
+                          "reason_i18n": {
+                            "additionalProperties": false,
+                            "description": "Non-empty localized business text using only supported V1 locale keys.",
+                            "maxProperties": 3,
+                            "minProperties": 1,
+                            "properties": {
+                              "en": {
+                                "maxLength": 4000,
+                                "minLength": 1,
+                                "pattern": "^[^\\u0000]*$",
+                                "type": "string"
+                              },
+                              "ru": {
+                                "maxLength": 4000,
+                                "minLength": 1,
+                                "pattern": "^[^\\u0000]*$",
+                                "type": "string"
+                              },
+                              "uz": {
+                                "maxLength": 4000,
+                                "minLength": 1,
+                                "pattern": "^[^\\u0000]*$",
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "closes_at_local",
+                          "closure_id",
+                          "kind",
+                          "local_date",
+                          "opens_at_local",
+                          "reason_i18n"
+                        ],
+                        "type": "object",
+                        "x-less-than-properties": [
+                          [
+                            "opens_at_local",
+                            "closes_at_local"
+                          ]
+                        ]
+                      }
+                    ]
+                  },
+                  "maxItems": 366,
+                  "type": "array"
+                },
+                "code": {
+                  "description": "Stable normalized Location or Service code.",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                  "type": "string"
+                },
+                "location_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "name_i18n": {
+                  "additionalProperties": false,
+                  "description": "Non-empty localized business text using only supported V1 locale keys.",
+                  "maxProperties": 3,
+                  "minProperties": 1,
+                  "properties": {
+                    "en": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "ru": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "uz": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "provenance": {
+                  "additionalProperties": false,
+                  "description": "Minimum immutable provenance for an authoritative published snapshot.",
+                  "properties": {
+                    "content_hash": {
+                      "description": "Lowercase hexadecimal digest identifying exact published content.",
+                      "maxLength": 256,
+                      "minLength": 2,
+                      "pattern": "^(?:[0-9a-f]{2}){1,128}$",
+                      "type": "string"
+                    },
+                    "published_at": {
+                      "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                      "format": "date-time",
+                      "maxLength": 30,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                      "type": "string"
+                    },
+                    "published_by_user_id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "record_id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "version_no": {
+                      "description": "Positive safe integer used for optimistic concurrency.",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "content_hash",
+                    "published_at",
+                    "published_by_user_id",
+                    "record_id",
+                    "version_no"
+                  ],
+                  "type": "object"
+                },
+                "public_contact": {
+                  "additionalProperties": false,
+                  "description": "Deliberately public Location contact fields; internal contact metadata is excluded.",
+                  "maxProperties": 3,
+                  "properties": {
+                    "email": {
+                      "format": "email",
+                      "maxLength": 254,
+                      "minLength": 3,
+                      "type": "string"
+                    },
+                    "phone": {
+                      "maxLength": 64,
+                      "minLength": 3,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "website": {
+                      "format": "uri",
+                      "maxLength": 2048,
+                      "minLength": 8,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "root_version": {
+                  "description": "Positive safe integer used for optimistic concurrency.",
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "time_zone": {
+                  "description": "Runtime-validated named IANA time zone; numeric UTC offsets are not accepted.",
+                  "maxLength": 255,
+                  "minLength": 3,
+                  "pattern": "^(?:UTC|[A-Za-z_+-]+(?:/[A-Za-z0-9_+-]+)+)$",
+                  "type": "string",
+                  "x-iana-time-zone": true
+                }
+              },
+              "required": [
+                "address_i18n",
+                "business_hours",
+                "closures",
+                "code",
+                "location_id",
+                "name_i18n",
+                "provenance",
+                "public_contact",
+                "root_version",
+                "time_zone"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "policies": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "content_hash": {
+                  "description": "Lowercase hexadecimal digest identifying exact published content.",
+                  "maxLength": 256,
+                  "minLength": 2,
+                  "pattern": "^(?:[0-9a-f]{2}){1,128}$",
+                  "type": "string"
+                },
+                "effective_from": {
+                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                  "format": "date-time",
+                  "maxLength": 30,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                  "type": "string"
+                },
+                "effective_to": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                      "format": "date-time",
+                      "maxLength": 30,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "policy_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "policy_key": {
+                  "description": "Stable normalized FAQ or Business Policy key.",
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$",
+                  "type": "string"
+                },
+                "policy_type": {
+                  "const": "qualification",
+                  "type": "string"
+                },
+                "published_by_user_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "rules": {
+                  "additionalProperties": false,
+                  "description": "Exact deterministic launch qualification rules; no executable evaluator or medical judgment.",
+                  "properties": {
+                    "disqualification_reasons": {
+                      "additionalItems": false,
+                      "items": [
+                        {
+                          "const": "service_not_offered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "location_not_served",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_interested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "outside_business_scope",
+                          "type": "string"
+                        },
+                        {
+                          "const": "spam_or_abuse",
+                          "type": "string"
+                        }
+                      ],
+                      "maxItems": 5,
+                      "minItems": 5,
+                      "type": "array"
+                    },
+                    "require_budget": {
+                      "const": false,
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "require_contactability": {
+                      "const": true,
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "require_medical_eligibility": {
+                      "const": false,
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "require_positive_next_step_intent": {
+                      "const": true,
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "require_preferred_time": {
+                      "const": false,
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "require_service_interest": {
+                      "const": true,
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "require_supported_service_location": {
+                      "const": true,
+                      "default": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "disqualification_reasons",
+                    "require_budget",
+                    "require_contactability",
+                    "require_medical_eligibility",
+                    "require_positive_next_step_intent",
+                    "require_preferred_time",
+                    "require_service_interest",
+                    "require_supported_service_location"
+                  ],
+                  "type": "object"
+                },
+                "schema_version": {
+                  "const": 1,
+                  "type": "number"
+                },
+                "version_no": {
+                  "description": "Positive safe integer used for optimistic concurrency.",
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "content_hash",
+                "effective_from",
+                "effective_to",
+                "policy_id",
+                "policy_key",
+                "policy_type",
+                "published_by_user_id",
+                "rules",
+                "schema_version",
+                "version_no"
+              ],
+              "type": "object",
+              "x-less-than-properties": [
+                [
+                  "effective_from",
+                  "effective_to"
+                ]
+              ]
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "services": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "description": "Stable normalized Location or Service code.",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                  "type": "string"
+                },
+                "description_i18n": {
+                  "additionalProperties": false,
+                  "description": "Non-empty localized business text using only supported V1 locale keys.",
+                  "maxProperties": 3,
+                  "minProperties": 1,
+                  "properties": {
+                    "en": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "ru": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "uz": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "disclaimer_i18n": {
+                  "additionalProperties": false,
+                  "description": "Non-empty localized business text using only supported V1 locale keys.",
+                  "maxProperties": 3,
+                  "minProperties": 1,
+                  "properties": {
+                    "en": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "ru": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "uz": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "duration_guidance_minutes": {
+                  "anyOf": [
+                    {
+                      "maximum": 10080,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "location_offerings": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "effective_from": {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      },
+                      "effective_to": {
+                        "anyOf": [
+                          {
+                            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                            "format": "date-time",
+                            "maxLength": 30,
+                            "minLength": 20,
+                            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "location_id": {
+                        "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                        "maxLength": 36,
+                        "minLength": 36,
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "effective_from",
+                      "effective_to",
+                      "location_id"
+                    ],
+                    "type": "object",
+                    "x-less-than-properties": [
+                      [
+                        "effective_from",
+                        "effective_to"
+                      ]
+                    ]
+                  },
+                  "maxItems": 100,
+                  "type": "array"
+                },
+                "name_i18n": {
+                  "additionalProperties": false,
+                  "description": "Non-empty localized business text using only supported V1 locale keys.",
+                  "maxProperties": 3,
+                  "minProperties": 1,
+                  "properties": {
+                    "en": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "ru": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "uz": {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "price_resolutions": {
+                  "items": {
+                    "additionalProperties": false,
+                    "description": "Authoritative prices resolved independently for one target Location; an empty prices array means no authoritative price.",
+                    "properties": {
+                      "location_id": {
+                        "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                        "maxLength": 36,
+                        "minLength": 36,
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      },
+                      "prices": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "display_text_i18n": {
+                              "additionalProperties": false,
+                              "description": "Non-empty localized business text using only supported V1 locale keys.",
+                              "maxProperties": 3,
+                              "minProperties": 1,
+                              "properties": {
+                                "en": {
+                                  "maxLength": 4000,
+                                  "minLength": 1,
+                                  "pattern": "^[^\\u0000]*$",
+                                  "type": "string"
+                                },
+                                "ru": {
+                                  "maxLength": 4000,
+                                  "minLength": 1,
+                                  "pattern": "^[^\\u0000]*$",
+                                  "type": "string"
+                                },
+                                "uz": {
+                                  "maxLength": 4000,
+                                  "minLength": 1,
+                                  "pattern": "^[^\\u0000]*$",
+                                  "type": "string"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "effective_from": {
+                              "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                              "format": "date-time",
+                              "maxLength": 30,
+                              "minLength": 20,
+                              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                              "type": "string"
+                            },
+                            "effective_to": {
+                              "anyOf": [
+                                {
+                                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                                  "format": "date-time",
+                                  "maxLength": 30,
+                                  "minLength": 20,
+                                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "location_id": {
+                              "anyOf": [
+                                {
+                                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                                  "maxLength": 36,
+                                  "minLength": 36,
+                                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "price_id": {
+                              "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                              "maxLength": 36,
+                              "minLength": 36,
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                              "type": "string"
+                            },
+                            "pricing": {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "amount": {
+                                      "additionalProperties": false,
+                                      "description": "Exact wire money representation; domain commands impose sign-specific rules.",
+                                      "properties": {
+                                        "amount_minor": {
+                                          "description": "Authoritative amount in integer currency minor units.",
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "currency": {
+                                          "description": "Uppercase three-letter ISO 4217 currency code.",
+                                          "maxLength": 3,
+                                          "minLength": 3,
+                                          "pattern": "^[A-Z]{3}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "amount_minor",
+                                        "currency"
+                                      ],
+                                      "type": "object",
+                                      "x-non-negative-money": true
+                                    },
+                                    "price_type": {
+                                      "const": "fixed",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "amount",
+                                    "price_type"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "minimum": {
+                                      "additionalProperties": false,
+                                      "description": "Exact wire money representation; domain commands impose sign-specific rules.",
+                                      "properties": {
+                                        "amount_minor": {
+                                          "description": "Authoritative amount in integer currency minor units.",
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "currency": {
+                                          "description": "Uppercase three-letter ISO 4217 currency code.",
+                                          "maxLength": 3,
+                                          "minLength": 3,
+                                          "pattern": "^[A-Z]{3}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "amount_minor",
+                                        "currency"
+                                      ],
+                                      "type": "object",
+                                      "x-non-negative-money": true
+                                    },
+                                    "price_type": {
+                                      "const": "from",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "minimum",
+                                    "price_type"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "maximum": {
+                                      "additionalProperties": false,
+                                      "description": "Exact wire money representation; domain commands impose sign-specific rules.",
+                                      "properties": {
+                                        "amount_minor": {
+                                          "description": "Authoritative amount in integer currency minor units.",
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "currency": {
+                                          "description": "Uppercase three-letter ISO 4217 currency code.",
+                                          "maxLength": 3,
+                                          "minLength": 3,
+                                          "pattern": "^[A-Z]{3}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "amount_minor",
+                                        "currency"
+                                      ],
+                                      "type": "object",
+                                      "x-non-negative-money": true
+                                    },
+                                    "minimum": {
+                                      "additionalProperties": false,
+                                      "description": "Exact wire money representation; domain commands impose sign-specific rules.",
+                                      "properties": {
+                                        "amount_minor": {
+                                          "description": "Authoritative amount in integer currency minor units.",
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "currency": {
+                                          "description": "Uppercase three-letter ISO 4217 currency code.",
+                                          "maxLength": 3,
+                                          "minLength": 3,
+                                          "pattern": "^[A-Z]{3}$",
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "amount_minor",
+                                        "currency"
+                                      ],
+                                      "type": "object",
+                                      "x-non-negative-money": true
+                                    },
+                                    "price_type": {
+                                      "const": "range",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "maximum",
+                                    "minimum",
+                                    "price_type"
+                                  ],
+                                  "type": "object",
+                                  "x-money-range": true
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "currency": {
+                                      "maxLength": 3,
+                                      "minLength": 3,
+                                      "pattern": "^[A-Z]{3}$",
+                                      "type": "string"
+                                    },
+                                    "price_type": {
+                                      "const": "quote_required",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "currency",
+                                    "price_type"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            "published_by_user_id": {
+                              "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                              "maxLength": 36,
+                              "minLength": 36,
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                              "type": "string"
+                            },
+                            "version_no": {
+                              "description": "Positive safe integer used for optimistic concurrency.",
+                              "maximum": 9007199254740991,
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "display_text_i18n",
+                            "effective_from",
+                            "effective_to",
+                            "location_id",
+                            "price_id",
+                            "pricing",
+                            "published_by_user_id",
+                            "version_no"
+                          ],
+                          "type": "object",
+                          "x-less-than-properties": [
+                            [
+                              "effective_from",
+                              "effective_to"
+                            ]
+                          ]
+                        },
+                        "maxItems": 300,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "location_id",
+                      "prices"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 100,
+                  "type": "array"
+                },
+                "provenance": {
+                  "additionalProperties": false,
+                  "description": "Minimum immutable provenance for an authoritative published snapshot.",
+                  "properties": {
+                    "content_hash": {
+                      "description": "Lowercase hexadecimal digest identifying exact published content.",
+                      "maxLength": 256,
+                      "minLength": 2,
+                      "pattern": "^(?:[0-9a-f]{2}){1,128}$",
+                      "type": "string"
+                    },
+                    "published_at": {
+                      "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                      "format": "date-time",
+                      "maxLength": 30,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                      "type": "string"
+                    },
+                    "published_by_user_id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "record_id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "version_no": {
+                      "description": "Positive safe integer used for optimistic concurrency.",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "content_hash",
+                    "published_at",
+                    "published_by_user_id",
+                    "record_id",
+                    "version_no"
+                  ],
+                  "type": "object"
+                },
+                "root_version": {
+                  "description": "Positive safe integer used for optimistic concurrency.",
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "service_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "description_i18n",
+                "disclaimer_i18n",
+                "duration_guidance_minutes",
+                "location_offerings",
+                "name_i18n",
+                "price_resolutions",
+                "provenance",
+                "root_version",
+                "service_id"
+              ],
+              "type": "object"
+            },
+            "maxItems": 500,
+            "type": "array"
+          }
+        },
+        "required": [
+          "effective_at",
+          "faqs",
+          "locale",
+          "locations",
+          "policies",
+          "services"
+        ],
+        "type": "object"
+      },
+      "schema_id": "PublishedBusinessKnowledge.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "configuration",
       "export_name": "PublishedConfigurationProvenanceSchema",
       "schema": {
         "$id": "PublishedConfigurationProvenance.v1",

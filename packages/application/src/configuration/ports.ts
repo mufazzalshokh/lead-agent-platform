@@ -22,7 +22,7 @@ import type {
   OpaqueCursor,
   PaginationRequest,
   PublishBusinessPolicyInput,
-  PublishedBusinessKnowledge,
+  PublishedBusinessKnowledgeV2,
   PublishedBusinessKnowledgeRequest,
   PublishFaqInput,
   PublishLocationInput,
@@ -227,5 +227,5 @@ export interface BusinessPolicyConfigurationUseCases {
 export interface PublishedBusinessKnowledgeReader {
   getPublishedBusinessKnowledge(
     query: AuthorizedConfigurationQuery<PublishedBusinessKnowledgeRequest>,
-  ): Promise<ConfigurationResult<PublishedBusinessKnowledge>>;
+  ): Promise<ConfigurationResult<PublishedBusinessKnowledgeV2>>;
 }

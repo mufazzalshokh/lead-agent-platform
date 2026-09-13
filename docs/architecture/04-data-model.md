@@ -712,6 +712,13 @@ applies the authorized location scope before returning content. There is no
 tenant-wide configuration-release revision: consistency is transaction-level
 plus entity-publication-level.
 
+Price projection resolves independently for every authorized target Location
+and currency. An applicable published Location-specific price is the complete
+override; otherwise the applicable published tenant-wide Service price is the
+fallback. If neither exists, the projection records no authoritative price—it
+does not synthesize zero or `quote_required`. Multi-Location reads retain each
+target Location and the exact winning persisted Price provenance.
+
 The Organization Owner is operationally accountable for freshness. Services
 and FAQs are reviewed at least every 90 days and immediately on relevant
 business change; prices are reviewed at least every 30 days and immediately on

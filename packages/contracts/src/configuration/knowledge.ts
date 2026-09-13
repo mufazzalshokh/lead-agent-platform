@@ -154,6 +154,37 @@ const trustedService = Type.Object(
   { additionalProperties: false },
 );
 
+const resolvedPricesForLocation = Type.Object(
+  {
+    location_id: embedSchemaAs<LocationId>(LocationIdSchema),
+    prices: Type.Array(publishedPrice, { maxItems: 300 }),
+  },
+  {
+    additionalProperties: false,
+    description:
+      "Authoritative prices resolved independently for one target Location; an empty prices array means no authoritative price.",
+  },
+);
+
+const trustedServiceV2 = Type.Object(
+  {
+    code: embedSchemaAs<ConfigurationCode>(ConfigurationCodeSchema),
+    description_i18n: embedSchemaAs<LocalizedText>(LocalizedTextSchema),
+    disclaimer_i18n: embedSchemaAs<LocalizedText>(LocalizedTextSchema),
+    duration_guidance_minutes: Type.Union([
+      Type.Integer({ maximum: 10_080, minimum: 1 }),
+      Type.Null(),
+    ]),
+    location_offerings: Type.Array(activeServiceLocation, { maxItems: 100 }),
+    name_i18n: embedSchemaAs<LocalizedText>(LocalizedTextSchema),
+    price_resolutions: Type.Array(resolvedPricesForLocation, { maxItems: 100 }),
+    provenance: embedSchema(PublishedConfigurationProvenanceSchema),
+    root_version: embedSchemaAs<ResourceVersion>(ResourceVersionSchema),
+    service_id: embedSchemaAs<ServiceId>(ServiceIdSchema),
+  },
+  { additionalProperties: false },
+);
+
 const publishedFaq = Type.Object(
   {
     answer_i18n: embedSchemaAs<LocalizedText>(LocalizedTextSchema),
@@ -216,3 +247,21 @@ export const PublishedBusinessKnowledgeSchema = Type.Object(
   },
 );
 export type PublishedBusinessKnowledge = Type.Static<typeof PublishedBusinessKnowledgeSchema>;
+
+export const PublishedBusinessKnowledgeV2Schema = Type.Object(
+  {
+    effective_at: embedSchemaAs<JsonWire<UtcTimestamp>>(UtcTimestampSchema),
+    faqs: Type.Array(publishedFaq, { maxItems: 500 }),
+    locale: embedSchemaAs<Locale>(LocaleSchema),
+    locations: Type.Array(trustedLocation, { maxItems: 100 }),
+    policies: Type.Array(publishedQualificationPolicy, { maxItems: 50 }),
+    services: Type.Array(trustedServiceV2, { maxItems: 500 }),
+  },
+  {
+    $id: "PublishedBusinessKnowledge.v2",
+    additionalProperties: false,
+    description:
+      "Location-scoped authoritative business knowledge with per-Location price resolution at one instant.",
+  },
+);
+export type PublishedBusinessKnowledgeV2 = Type.Static<typeof PublishedBusinessKnowledgeV2Schema>;

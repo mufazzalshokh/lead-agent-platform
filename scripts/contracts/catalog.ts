@@ -92,6 +92,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "PublishBusinessPolicyInputSchema",
     "PublishedBusinessKnowledgeRequestSchema",
     "PublishedBusinessKnowledgeSchema",
+    "PublishedBusinessKnowledgeV2Schema",
     "PublishedConfigurationProvenanceSchema",
     "PublishFaqInputSchema",
     "PublishLocationInputSchema",

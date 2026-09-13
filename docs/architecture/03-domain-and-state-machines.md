@@ -134,6 +134,10 @@ interval, location override, display disclaimer.
   point.
 - Applicable price intervals for the same service/location/currency do not
   overlap.
+- At one target Location and effective instant, an applicable published
+  Location-specific price completely overrides the tenant-wide published price
+  for the same Service and currency. Tenant-wide price is fallback only when no
+  applicable Location-specific price exists; currencies resolve independently.
 - Inactive/unpublished records cannot ground a new customer answer, but old
   provenance remains resolvable.
 

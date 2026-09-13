@@ -20,6 +20,7 @@ import {
   PublishServiceInputSchema,
   PublishedBusinessKnowledgeRequestSchema,
   PublishedBusinessKnowledgeSchema,
+  PublishedBusinessKnowledgeV2Schema,
   PublishedConfigurationProvenanceSchema,
   QualificationDisqualificationReasonSchema,
   QualificationEvidenceKeySchema,
@@ -34,6 +35,7 @@ import {
 } from "../../packages/contracts/src/index.js";
 
 const LOCATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
+const LOCATION_B_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2f";
 const SERVICE_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
 const RECORD_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2d";
 const USER_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2e";
@@ -421,6 +423,57 @@ describe("FAQ, policy, provenance, trusted-read, and filter contracts", () => {
         services: [],
       }),
     ).toBe(true);
+  });
+
+  it("adds a backward-compatible V2 shape for per-Location price resolution", () => {
+    const tenantWidePrice = {
+      display_text_i18n: { en: "Consultation price" },
+      effective_from: NOW,
+      effective_to: null,
+      location_id: null,
+      price_id: RECORD_ID,
+      pricing: {
+        amount: { amount_minor: 100_000, currency: "UZS" },
+        price_type: "fixed",
+      },
+      published_by_user_id: USER_ID,
+      version_no: 1,
+    };
+    const service = {
+      code: "consultation",
+      description_i18n: { en: "Initial consultation" },
+      disclaimer_i18n: { en: "Exact published price" },
+      duration_guidance_minutes: 30,
+      location_offerings: [
+        { effective_from: NOW, effective_to: null, location_id: LOCATION_ID },
+        { effective_from: NOW, effective_to: null, location_id: LOCATION_B_ID },
+      ],
+      name_i18n: { en: "Consultation" },
+      price_resolutions: [
+        { location_id: LOCATION_ID, prices: [tenantWidePrice] },
+        { location_id: LOCATION_B_ID, prices: [] },
+      ],
+      provenance,
+      root_version: 2,
+      service_id: SERVICE_ID,
+    };
+    const knowledge = {
+      effective_at: NOW,
+      faqs: [],
+      locale: "en",
+      locations: [],
+      policies: [],
+      services: [service],
+    };
+
+    expect(isSchemaValue(PublishedBusinessKnowledgeV2Schema, knowledge)).toBe(true);
+    expect(
+      isSchemaValue(PublishedBusinessKnowledgeV2Schema, {
+        ...knowledge,
+        services: [{ ...service, prices: [tenantWidePrice] }],
+      }),
+    ).toBe(false);
+    expect(isSchemaValue(PublishedBusinessKnowledgeSchema, knowledge)).toBe(false);
   });
 
   it("keeps filters finite and reuses shared pagination bounds", () => {
