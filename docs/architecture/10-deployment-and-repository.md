@@ -83,13 +83,13 @@ Seed data includes multiple tenants with visibly fictional Uzbek, Russian, and E
 
 `packages/config` owns a runtime-validated configuration schema. Each app declares the subset it consumes. Unknown/missing/contradictory production settings fail startup with a safe key name and error code, never a secret value. Checked-in `.env.example` files contain names and non-secret examples only.
 
-Configuration categories include environment/release, public origins, database pool and deadlines, exact Auth0 OIDC issuer/audience/client and callback/logout/staff-origin references, encryption key references, channel/provider endpoints, OpenAI provider/model alias and deadlines, job concurrency/retry profiles, telemetry exporter, retention controls, feature flags, and budget guardrails.
+Configuration categories include environment/release, public origins, database pool and deadlines, exact Auth0 OIDC issuer/audience/client and callback/logout/staff-origin references, encryption key references, channel/provider endpoints, OpenAI provider/model alias and deadlines, job concurrency/retry/lease/poll/drain profiles, telemetry exporter, retention controls, feature flags, and budget guardrails. S8's initial values are validated configuration rather than hard-coded capacity or SLA claims.
 
 ### Secret handling
 
 - Production secrets reside in the deployment platform's secret manager and are injected at runtime by workload identity or short-lived credentials.
 - CI uses GitHub OIDC/workload federation where the target permits it; long-lived cloud credentials are not repository secrets.
-- Database credentials are least-privilege and separate for runtime, worker, migration, read-only operations, and break-glass administration as supported.
+- Database credentials are least-privilege and separate for API tenant runtime, worker queue infrastructure, worker tenant runtime, migration, read-only operations, and break-glass administration. The queue and worker tenant pools never use the migration owner.
 - Integration tokens stored in PostgreSQL use application-level envelope encryption with a managed key reference, key version, and auditable rotation path.
 - Webhook signing secrets support a bounded dual-key rotation window. Verification identifies the key version without logging the signature.
 - Public browser configuration is explicitly allowlisted. Server secrets can never be included in Next.js public bundles or source maps.
@@ -159,6 +159,8 @@ Rules:
 
 - Never edit a migration that has reached a shared/production environment. Correct it with a new migration.
 - No application instance auto-migrates on startup. A single one-shot migrator with a database advisory lock runs before compatible application rollout.
+- pg-boss uses a dedicated `pgboss` schema in the same PostgreSQL 17 database. Its pinned-version installation and upgrades are emitted/reviewed as explicit migrations owned by the migration owner; runtime starts with `migrate: false`, cannot create or alter its schema, and fails readiness if the installed pg-boss schema is incompatible. pg-boss objects are infrastructure tables and do not change the 51-table business manifest.
+- Queue definitions are installed or changed through the reviewed infrastructure migration path. Runtime pg-boss auto-migration and use of the `public` schema are forbidden. Initial operation uses polling; `LISTEN/NOTIFY` remains deferred until connection-pooling and latency evidence justify it.
 - CI creates a database from zero and migrates representative snapshots from every supported prior release.
 - Use expand/migrate/contract: add nullable/backward-compatible structures, deploy dual-compatible code, backfill in bounded resumable jobs, enforce constraints, then remove old structures in a later release.
 - Large indexes/constraints use PostgreSQL-safe online/concurrent techniques when supported and are rehearsed against representative data.
@@ -198,13 +200,14 @@ All health endpoints return minimal status/code and release metadata; they expos
 
 Making AI or Telegram part of readiness would remove all instances during a provider outage and prevent safe handoff/intake. Provider health is represented by breakers, metrics, and degraded behavior.
 
-On shutdown, web/API stop readiness and new requests, finish bounded in-flight work, and close pools. Workers stop claiming, finish effects within the grace period, or release/allow leases to expire safely. Deployments set a grace period longer than normal transaction duration but shorter than job lease/deadline assumptions.
+On shutdown, web/API stop readiness and new requests, finish bounded in-flight work, and close pools. On `SIGTERM` or `SIGINT`, a worker sets readiness false, stops new outbox claims, stops new pg-boss polling, drains active work for at most 25 seconds, leaves unfinished work recoverable through leases/heartbeat/expiration, flushes observability where practical, closes its separate queue and tenant database pools, and exits within a deployment termination grace of at least 30 seconds. These values are configurable initial defaults rather than SLAs; shutdown cannot leave a permanent application lock.
 
 ## Runtime security and networking
 
 - TLS terminates at trusted ingress and is used internally where the platform boundary requires it. Security headers, bounded body sizes, route-specific rate controls, and origin/CORS policies apply at edge and application.
 - Public paths expose only widget bootstrap/message and verified webhook contracts. Staff/admin and operator routes are separated and authenticated.
-- Services run as non-root with minimal filesystem/network permission. API/web do not receive provider credentials they do not need; worker queue types can later use separate credentials if risk warrants it.
+- Services run as non-root with minimal filesystem/network permission. API/web do not receive provider credentials they do not need. The worker queue-infrastructure login is `LOGIN`, `NOSUPERUSER`, and `NOBYPASSRLS`, can access only required `pgboss` runtime objects and narrow outbox claim/recovery/finalization functions, and has no generic tenant-table access. The separate worker tenant-runtime login uses ordinary `TenantDbSession` and `FORCE ROW LEVEL SECURITY` controls.
+- A narrow cross-tenant outbox claim definer may be `NOLOGIN SECURITY DEFINER` only with a fixed safe `search_path`, explicitly qualified objects, minimal reference-only results, narrow `EXECUTE` grants, and no arbitrary table/function capability. It is not a runtime administrative bypass.
 - Database and internal telemetry endpoints are not internet-public. Runtime egress is restricted to approved OIDC, OpenAI, channel, notification, and telemetry endpoints where feasible.
 - Debug endpoints, source maps, interactive consoles, and development error pages are disabled or protected in production.
 - Infrastructure/deployment changes receive the same review, scanning, and audit trail as application changes.
@@ -322,7 +325,9 @@ Code ownership/review rules require security review for tenant context/RLS/auth/
 - cost spike/budget kill switch;
 - analytics reconciliation and incorrect funnel definition rollback.
 
-Each runbook names required role, safe read-only diagnostics, decision points, rollback/containment action, audit requirements, customer communication owner, and verification.
+Each runbook names required role, safe read-only diagnostics, decision points, rollback/containment action, audit requirements, customer communication owner, and verification. S8 outbox/job replay is platform-operator-only and audited: automatic recovery is limited to undispatched or lease-expired work; dead-letter requeue/redrive requires root-cause repair, current validation, an operator reason, and bounded scope; and already-successful external effects have no generic replay path.
+
+Published outbox payloads use an initial 30-day retention after durable queue publication/resolution; unresolved dead letters remain until resolution/discard and then use 30 days; completed/cancelled pg-boss jobs use 7 days; failed/dead-letter jobs remain until operational resolution and then use 30 days. Legal holds override deletion. These are engineering defaults for local/development/staging and do not authorize production customer processing without explicit privacy/legal approval or replacement for the actual launch jurisdictions.
 
 ## Open questions
 

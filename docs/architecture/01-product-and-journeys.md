@@ -198,7 +198,7 @@ end-to-end user SLIs. Final contractual SLAs remain an open commercial decision.
 | NFR-005 | First response | p50 <= 4 s and p95 <= 10 s from accepted inbound message to outbound send attempt when the AI and channel provider are healthy. |
 | NFR-006 | Staff API latency | p95 <= 500 ms and p99 <= 1 s for indexed list/detail reads at the stated launch load; mutations p95 <= 800 ms excluding external delivery. |
 | NFR-007 | Duplicate safety | 100% of tested duplicate webhook/idempotency scenarios produce one canonical message and at most one requested domain effect. |
-| NFR-008 | Side-effect reliability | 99% of non-failing-provider outbox items reach a terminal delivered state within 60 s; no item is silently discarded; dead letters alert. |
+| NFR-008 | Side-effect reliability | 99% of non-failing provider-bound effects originating from outbox events reach a terminal external-delivery outcome within 60 s; outbox `published` itself means durable queue enqueue only; no item is silently discarded; dead letters alert. |
 | NFR-009 | Recovery | Planning targets: RPO <= 5 min and RTO <= 60 min for the primary database; validate through restore drills before launch. |
 | NFR-010 | Security | Signature verification, authorization, runtime validation, rate limits, and audit attribution cover 100% of applicable endpoints in contract/security tests. |
 | NFR-011 | Privacy | No raw message body, phone, email, access token, or prompt content in standard logs; automated log scanning and field allowlists gate release. |

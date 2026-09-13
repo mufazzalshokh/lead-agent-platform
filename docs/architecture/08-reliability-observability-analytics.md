@@ -72,8 +72,9 @@ The intake path performs only bounded validation and durable acceptance. Slow AI
 1. **Webhook acceptance transaction:** insert `webhook_receipts`, normalized inbound message/envelope, and an outbox event that requests processing. A unique constraint wins duplicate races.
 2. **Domain command transaction:** lock or version-check the conversation/aggregate, re-read current state, apply one deterministic command, append transition/domain records, and insert outbox events.
 3. **Outbox claim transaction:** claim a bounded batch using leases/row locking. Network calls happen after commit.
-4. **Delivery result transaction:** record the attempt and terminal/transient result. On success mark the outbox item delivered; on transient failure schedule the next attempt; on permanent exhaustion mark it dead-lettered.
-5. **Analytics projection transaction:** consume a stable domain event and insert one versioned analytics fact using a uniqueness constraint. Analytics failure never rolls back the original business action.
+4. **Queue-publication result transaction:** after the pg-boss enqueue is durably committed, mark the outbox row `published` and set `published_at`. On transient relay failure, release/reschedule the outbox row; on permanent exhaustion, mark it `dead_lettered`.
+5. **Handler result transaction:** record each workload attempt and its terminal, transient, permanent, or ambiguous result in pg-boss and the applicable domain attempt/evidence records. Handler or provider success does not change the meaning of outbox `published`.
+6. **Analytics projection transaction:** consume a stable domain event and insert one versioned analytics fact using a uniqueness constraint. Analytics failure never rolls back the original business action.
 
 No transaction remains open while calling OpenAI, Telegram, email/SMS, or another remote service. Domain transactions are intentionally short. PostgreSQL deadlocks and serialization failures may be retried only by a wrapper that re-executes the entire idempotent transaction with a small, bounded attempt count and jitter.
 
@@ -109,18 +110,44 @@ The system assumes webhooks can arrive out of order. `provider_occurred_at` is u
 
 `outbox_events` is the durable record of side-effect intent. It contains IDs and minimal typed payloads or references, never access tokens and preferably no raw customer text. Required fields include event ID, organization ID, aggregate reference, event type/schema version, trace context, availability time, attempt count, state, and timestamps.
 
-`pg-boss` is the initial PostgreSQL-backed job mechanism. The outbox remains explicit rather than relying on an implicit enqueue-after-commit convention:
+`pg-boss` is the initial PostgreSQL-backed job mechanism. Model A is authoritative: the outbox remains explicit rather than relying on direct pg-boss enqueue from a normal business transaction or an implicit enqueue-after-commit convention:
 
 1. A business transaction inserts an outbox row.
-2. A dispatcher claims pending rows fairly and publishes/executes the corresponding job.
-3. A handler performs an idempotent effect and records an attempt.
-4. Success marks delivery. Retryable failure schedules another attempt. Exhaustion dead-letters the row/job.
+2. A dispatcher claims pending rows fairly and durably enqueues the corresponding pg-boss job.
+3. The durable enqueue changes the outbox row to `published` and sets `published_at`.
+4. A handler validates the internal envelope, re-establishes tenant context, performs an idempotent effect through the application boundary, and records an attempt.
+5. Retryable handler failure schedules another attempt. Exhaustion dead-letters the job; final effect/provider delivery remains represented by pg-boss plus workload/domain attempt or evidence records, idempotency/reconciliation, audit, and observability.
+
+`outbox_events.status = published` means only that the dispatcher successfully committed the durable pg-boss enqueue. `published_at` is the time that queue publication became durable. Neither field means that a handler completed, a provider accepted a message, a customer received anything, an external delivery succeeded, or the final business side effect completed. The outbox is the durable relay source, not a complete external-delivery ledger. Because pg-boss job identity is derived deterministically from the immutable `outbox_event.id`, S8 adds no `job_id` or `dispatched_at` merely to identify that enqueue.
+
+Physical dispatch and job execution are **at least once**. The logical effect is effectively once through stable identities, current-state/version guards, provider idempotency where available, and reconciliation; the system does not claim distributed exactly-once delivery. Duplicate dispatches, queue jobs, attempts, and process restarts are expected and must not create a second logical effect.
 
 The dispatcher and handler may collapse into one worker implementation in V1, but the durable states and separation of responsibilities remain. A periodic sweeper recovers expired leases. A reconciliation job compares stuck domain states, outbox states, and provider receipts.
 
-Global due-work claiming is the only anticipated cross-tenant worker discovery operation. Its exact mechanism is deferred to the reliability/worker stage, where it must be a narrow, explicitly reviewed, least-privilege boundary that returns only minimal outbox references and never grants generic `BYPASSRLS`. Before reading or mutating tenant business data, the handler opens a fresh transaction, establishes the stored `organization_id` as transaction-local RLS context, and verifies every referenced record belongs to it. A mismatched/missing scope is quarantined and security-alerted, never retried as ordinary provider failure.
+Global due-work claiming is the only cross-tenant worker discovery operation. It uses a narrow, explicitly reviewed, least-privilege claim/recovery/finalization boundary that returns only minimal outbox references and never grants generic `BYPASSRLS` or tenant-table access. Its `SECURITY DEFINER` owner is `NOLOGIN`; functions use a fixed safe `search_path`, bounded inputs/results, explicit object qualification, and narrow `EXECUTE` grants. Before reading or mutating tenant business data, the handler opens a fresh `TenantDbSession` transaction, establishes the stored `organization_id` as transaction-local RLS context, reloads the canonical outbox event under `FORCE ROW LEVEL SECURITY`, and verifies the job envelope's tenant, event, aggregate, and trace provenance against it. A mismatched/missing scope is permanently quarantined and security-alerted, never retried as ordinary provider failure.
+
+The queue-infrastructure login and pool are separate from the worker tenant-runtime login and pool. The queue login is `LOGIN`, `NOSUPERUSER`, and `NOBYPASSRLS`; it can use only the required pg-boss runtime objects and approved narrow outbox functions. The tenant-runtime connection uses the same `TenantDbSession` and RLS model as ordinary application work. Neither connection uses the migration owner.
+
+The private S8 queue-envelope V1 contains only `job_schema_version`, `outbox_event_id`, `organization_id`, `event_type`, `event_schema_version`, `aggregate_type`, `aggregate_id`, `correlation_id`, and optional `causation_id`. It is runtime validated before use, selects a handler only through a finite queue-to-handler registry, and is compared with the tenant-loaded canonical outbox event. It contains no raw customer message, access token, prompt, provider secret, arbitrary URL, SQL, or payload-selected module/handler. Unsupported versions, invalid canonical payloads, forged references, and tenant mismatches fail permanently before any business effect.
+
+Identity is stable at every layer: the immutable outbox event ID is the dispatcher identity and deterministically derives the pg-boss job identity; handler identity is `(handler version, outbox_event.id)`; and the external provider receives the outbox ID or a stable logical delivery key where it supports idempotency. Providers without native idempotency require persistent attempt/evidence plus reconciliation before an ambiguous result may be retried. S8 must verify the pinned pg-boss version's duplicate-ID behavior rather than assuming its API result.
 
 Queue names and handler concurrency are separated by workload class (`inbound`, `ai`, `outbound_message`, `staff_notification`, `analytics`, `maintenance`) so a slow AI provider cannot starve confirmations or security work. Tenant-aware concurrency/rate limits prevent a noisy tenant from consuming all workers.
+
+Initial dispatcher defaults are configuration, validated at startup, and are not SLAs or proven capacity limits:
+
+| Control | Initial default |
+| --- | --- |
+| Claim batch | 50 |
+| Per-tenant contribution per batch | 5 |
+| Poll interval and jitter | 1 second plus full jitter from 0 through 250 milliseconds |
+| Claim lease | 60 seconds |
+| Lease renewal | No later than 20 seconds after claim/previous renewal |
+| Enqueue concurrency | 10 |
+| Dispatcher loops | One per worker process |
+| Handler concurrency | One per workload queue per process until measured |
+
+Claims order eligible work by due/available time and then immutable outbox ID while applying the per-tenant cap. Concurrent replicas use row locking such as `FOR UPDATE SKIP LOCKED` plus leases; there is no global serialization. A crash after claim is recovered after lease expiry. A crash after enqueue but before the outbox marker is reconciled through the deterministic job identity and idempotent handler. Same-aggregate correctness remains enforced by current state/version/CAS checks; per-aggregate FIFO or concurrency restrictions are introduced only for a workload that proves it needs them. One poison item cannot block unrelated tenants or aggregates.
 
 ### Retry policy
 
@@ -132,6 +159,10 @@ Retries are based on typed failure classification, not on a blanket catch:
 - **Unknown:** initially retry only when the operation is demonstrably idempotent, then dead-letter and alert.
 
 Attempt counts, maximum age, and delays are configuration, validated at startup. Initial operational profiles must be load-tested rather than treated as product promises. Recommended envelopes are:
+
+The frozen generic initial profile permits five total executions, starts retry delay at five seconds, and uses exponential full jitter in the range `0..min(300 seconds, 5 * 2^retry)`. Maximum generic job age is 24 hours. Active-job expiration is 15 minutes, with a 60-second heartbeat for long-running handlers. Validation failure, unsupported payload/event version, tenant-integrity violation, and a forged or mismatched queue envelope receive zero retries. A bounded `Retry-After` is honored only while it remains inside the job's and business operation's remaining deadline. Workload/provider profiles may narrow these limits; no profile may make retry infinite or multiply the application-owned end-to-end attempt budget.
+
+The implementation must not accept pg-boss retry defaults implicitly. In particular, it must prove that the retry adapter provides the required full-jitter distribution rather than assuming a library's generic backoff setting has identical semantics.
 
 | Work | Initial envelope | Exhaustion behavior |
 | --- | --- | --- |
@@ -148,11 +179,27 @@ Retries preserve the original correlation, tenant, and idempotency identities wh
 A dead-letter record is a state, not a place where work disappears. It records the source ID, tenant ID, handler/version, safe error code, first/last failure time, attempt count, and next operator action. Raw payloads are referenced through access-controlled records rather than copied into logs or queue metadata.
 
 - Critical dead letters (customer confirmations, staff notifications, webhook intake processing) alert immediately according to severity.
-- Operators can inspect, resolve, discard with reason, or replay through a protected command.
+- Only authenticated platform operators can inspect, resolve, discard with reason, or replay through an audited runbook-driven command in S8. S8 exposes no tenant Owner/Admin replay permission or public replay endpoint.
 - Replay re-runs current authorization, schema, policy, and state checks; it does not bypass them.
 - Every replay/discard is audited with actor and reason.
 - Poison events can be quarantined by handler/schema version while unrelated tenant work continues.
 - Dead-letter age, count, and oldest-item gauges are deployment gates and operational alerts.
+
+Undispatched and lease-expired outbox rows recover automatically. A dead-lettered outbox row may be manually requeued only after root-cause repair, event revalidation, an operator reason, and audit evidence. A failed pg-boss job may be redriven only in a bounded operator action after root-cause repair. An already-successful external effect has no generic replay path; any exceptional repeat is provider/effect-specific, reconciled first, explicitly approved, idempotency-aware, and audited.
+
+### S8 outbox and job retention
+
+Initial engineering retention defaults are:
+
+- published outbox rows and payloads: 30 days after durable queue publication/resolution;
+- unresolved dead-letter outbox rows: until resolved or explicitly discarded;
+- resolved/discarded dead-letter payloads: 30 days after resolution/discard;
+- completed or cancelled pg-boss jobs: 7 days;
+- failed or dead-letter pg-boss jobs: until operational resolution, then 30 days;
+- non-PII operational outcome/audit facts: separately under the existing audit/retention policy; and
+- applicable legal holds override deletion.
+
+These are configurable engineering defaults for local, development, and staging architecture, not legal approval. Production customer workloads cannot launch solely on this provisional policy: privacy/legal owners must approve or replace it for every actual launch jurisdiction.
 
 ### Timeouts, backpressure, and circuit breakers
 
@@ -167,6 +214,8 @@ When capacity is constrained:
 - Priority order is security/confirmation work, inbound persistence, human handoff, ordinary replies, then analytics/maintenance.
 - Non-critical analytics may lag, but accepted customer messages and booking state are never silently dropped.
 - Tenant quotas and fair scheduling limit noisy-neighbor effects.
+
+On `SIGTERM` or `SIGINT`, the worker follows one idempotent shutdown path: set readiness false; stop new outbox claims; stop new pg-boss work polling; drain active work for at most 25 seconds; leave unfinished work recoverable through outbox leases or pg-boss heartbeat/expiration; flush observability where practical; close queue and tenant database pools; and exit inside a deployment termination grace of at least 30 seconds. These are configurable initial defaults, not SLAs. Shutdown must never leave a permanent application lock.
 
 ### Graceful degradation matrix
 
@@ -225,7 +274,7 @@ Operational metrics use bounded labels such as environment, service, route templ
 | Area | Required metrics / SLIs |
 | --- | --- |
 | API/webhooks | request count, accepted/rejected/duplicate receipts, latency histogram, body/signature/rate-limit failures |
-| Queue/outbox | ready count, oldest age, processing latency, attempts, lease recovery, throughput, dead-letter count |
+| Queue/outbox | pending/ready/active counts, oldest undispatched age, claim/lease recovery, dispatch attempts/failures/latency, throughput, completed/retry/failed/dead-letter counts, handler latency, workload saturation, reconciliation mismatch count |
 | Database | pool utilization/wait, query latency by named operation, transaction rollback/deadlock, storage/replica/backup health |
 | Channels | send latency, accepted/delivered/failed where provider supports it, connection authorization failures |
 | AI | calls, latency, timeout/rate-limit/provider error, schema-invalid/repair, policy rejection, fallback/handoff, input/output/cached/reasoning tokens when reported |
@@ -239,7 +288,7 @@ Stage 0 establishes these planning targets, which must be validated and approved
 - valid widget message to durable acceptance: p95 <= 750 ms;
 - accepted inbound to outbound send attempt while AI/channel are healthy: p50 <= 4 seconds and p95 <= 10 seconds;
 - indexed staff list/detail reads: p95 <= 500 ms and p99 <= 1 second; mutations excluding external delivery: p95 <= 800 ms;
-- 99% of provider-bound outbox items with a non-failing provider reach terminal delivered state within 60 seconds;
+- 99% of non-failing provider-bound effects originating from outbox events reach a terminal external-delivery outcome within 60 seconds; outbox `published` itself means durable queue enqueue only;
 - database recovery planning targets: RPO <= 5 minutes and RTO <= 60 minutes.
 
 Alert windows and error-budget policies remain operational decisions. Dashboards must show both rates and absolute volume so a quiet outage is not hidden by percentages, and must separate provider failure/exclusion conditions from application failure without hiding customer impact.
@@ -388,7 +437,7 @@ These decisions cannot be safely inferred and must be resolved before the named 
 2. Do owners approve or replace the provisional database targets of RPO <= 5 minutes and RTO <= 60 minutes, and what backup retention and data-residency regions apply?
 3. Which staff notification and customer-confirmation channels/providers ship in V1, and what delivery evidence do they expose?
 4. What are the customer-confirmation and request-expiry windows, and may staff extend them?
-5. What exact retention windows apply to idempotency records, webhook receipts, dead letters, AI metadata, audit events, and analytics facts in the launch jurisdictions?
+5. Do launch-jurisdiction privacy/legal owners approve or replace the provisional S8 outbox/job retention defaults, and what exact retention windows apply to idempotency records, webhook receipts, AI metadata, audit events, and analytics facts?
 6. How is attendance and recognized revenue entered in V1, and how are cancellations, refunds, currencies, taxes, and attribution treated?
 7. What tenant/platform AI budgets, warning thresholds, hard-limit behavior, and commercial overage policy are approved?
 8. Which telemetry backend and on-call/incident tooling will receive OTLP data and alerts?

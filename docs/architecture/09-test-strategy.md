@@ -436,7 +436,7 @@ Before production, test the Stage 0 launch hypothesis—100 organizations, 1,000
 - telemetry volume/cardinality and cost under peak load;
 - backup restore into an isolated environment followed by integrity and smoke tests.
 
-Performance gates use percentile distributions and error/duplicate rates, not averages alone. They validate the Stage 0 planning targets: webhook p95 <= 500 ms, widget acceptance p95 <= 750 ms, healthy first-send attempt p50 <= 4 seconds/p95 <= 10 seconds, staff reads p95 <= 500 ms/p99 <= 1 second, staff mutations excluding delivery p95 <= 800 ms, 99% non-failing-provider outbox delivery within 60 seconds, and 99.9% monthly availability by its defined synthetic/error-budget model. Production approval may replace a target explicitly; tests and dashboards change together.
+Performance gates use percentile distributions and error/duplicate rates, not averages alone. They validate the Stage 0 planning targets: webhook p95 <= 500 ms, widget acceptance p95 <= 750 ms, healthy first-send attempt p50 <= 4 seconds/p95 <= 10 seconds, staff reads p95 <= 500 ms/p99 <= 1 second, staff mutations excluding delivery p95 <= 800 ms, 99% of non-failing provider-bound effects originating from outbox events reaching a terminal external-delivery outcome within 60 seconds, and 99.9% monthly availability by its defined synthetic/error-budget model. Outbox `published` means durable queue enqueue only. Production approval may replace a target explicitly; tests and dashboards change together.
 
 ## CI and release gates
 

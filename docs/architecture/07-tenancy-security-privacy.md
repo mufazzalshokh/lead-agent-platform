@@ -652,7 +652,10 @@ launch-jurisdiction approval replaces or explicitly adopts them:
 | Raw webhook body | Receipt | Do not retain on success; encrypted failure quarantine up to 7 days | Purge. |
 | AI raw prompt/response debug capture | AI run completion | Off by default; exceptional capture up to 7 days | Purge automatically. |
 | `ai_runs` operational metadata and redacted decision | AI run completion | 365 days | Purge or aggregate non-identifying cost/quality facts. |
-| Outbox/job payload and dead letter | Terminal completion/failure | 30 days after resolution | Purge payload; retain non-PII outcome metric. |
+| Published outbox payload | Durable queue publication/resolution | 30 days | Purge payload; retain non-PII outcome metric. |
+| Dead-letter outbox payload | Resolution or explicit discard | Retain while unresolved, then 30 days | Purge payload; retain audit and non-PII outcome metric. |
+| Completed/cancelled pg-boss job | Terminal job state | 7 days | Purge queue-operational payload/metadata not required elsewhere. |
+| Failed/dead-letter pg-boss job | Operational resolution | Retain while unresolved, then 30 days | Purge queue payload; retain audit and non-PII outcome metric. |
 | Application/security logs and traces | Emission | 30 days online; security archive only if approved | Purge by storage lifecycle. |
 | Audit events | Event time | 365 days | Purge/anonymize subject fields unless security/legal requirement extends it. |
 | Consent/notice evidence | End of subject relationship or withdrawal | Related data lifetime plus 365 days | Retain minimal evidence or purge per approved legal schedule. |

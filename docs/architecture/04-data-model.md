@@ -1404,9 +1404,12 @@ decision.
   unrestricted model content.
 - **Deletion/RLS:** forced RLS for tenant readers/writers. A dedicated worker
   claims work through a reviewed function/role, sets per-item tenant context,
-  and cannot query application tables outside that tenant. Published rows are
-  retained through consumer replay window then purged; dead letters require
-  resolution/audit.
+  and cannot query application tables outside that tenant. `published` and
+  `published_at` mean the durable pg-boss enqueue only, not handler/provider or
+  final-effect completion. Published payloads use the provisional 30-day S8
+  retention; unresolved dead letters require resolution/audit and are retained
+  until resolved/discarded, then for 30 days. Legal hold and launch-jurisdiction
+  approval remain authoritative.
 
 ## 10. Governance, privacy, and analytics tables
 

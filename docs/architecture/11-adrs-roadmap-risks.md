@@ -102,7 +102,7 @@ security gate. Auth0 access/refresh tokens are not persisted by default.
 
 **Context:** AI calls, outbound delivery, analytics, notification, reconciliation, and maintenance cannot block webhook/API requests and must survive restarts. V1 should avoid operating a separate broker.
 
-**Decision:** Use pg-boss as the initial job runtime. Separate queues/concurrency by workload class, use bounded retries/leases/dead letters, and pass references/minimal typed payloads. Handlers are idempotent and re-check tenant/state/policy.
+**Decision:** Use pg-boss as the initial job runtime in a dedicated `pgboss` schema in the same PostgreSQL 17 database. Install and upgrade the pinned schema through reviewed migration-owner migrations; runtime uses `migrate: false`, starts with polling, and cannot perform DDL. Separate the six logical workload queues (`inbound`, `ai`, `outbound_message`, `staff_notification`, `analytics`, `maintenance`), concurrency, and least-privilege queue/tenant database pools. Pass only a private versioned reference envelope. Handlers are selected from a finite registry, runtime-validate the envelope/canonical event, establish a fresh `TenantDbSession`, and re-check tenant/state/policy. Physical execution is at least once; stable identities, idempotency and reconciliation make the logical effect effectively once.
 
 **Consequences:** Jobs share PostgreSQL operations/backups and reduce infrastructure cost. Queue load competes with transactional load, so age, locks, connections, fairness, and dead letters must be observed. Kafka/SQS/another broker is a future adapter only after measured contention or delivery requirements justify it.
 
@@ -112,7 +112,7 @@ security gate. Auth0 access/refresh tokens are not persisted by default.
 
 **Context:** A crash between a business commit and provider/job call can lose an action; calling a provider inside a transaction creates long locks and still cannot atomically commit two systems.
 
-**Decision:** Commit domain state and an `outbox_events` intent in the same PostgreSQL transaction. A worker claims, dispatches, retries, and records delivery/dead-letter status. Consumers use stable event IDs and idempotent effects. Analytics is an idempotent projection from the same durable source.
+**Decision:** Use Model A: commit domain state and an `outbox_events` intent in the same PostgreSQL tenant transaction; after commit, a dispatcher fairly claims the row and durably enqueues a pg-boss job whose deterministic identity derives from `outbox_event.id`. Only that durable enqueue changes the outbox row to `published` and sets `published_at`. Those fields do not mean handler completion, provider acceptance, customer receipt, external delivery, or final business-effect completion; downstream lifecycle belongs to pg-boss, workload/domain attempt/evidence records, idempotency/reconciliation, audit, and observability. Direct pg-boss enqueue from normal business transactions is forbidden. Consumers use stable event IDs and idempotent effects. Analytics is an idempotent projection from the same durable source.
 
 **Consequences:** Important effects are recoverable and auditable with at-least-once delivery. The outbox requires dispatch/reconciliation/retention tooling and can duplicate physical attempts. It does not promise distributed exactly-once delivery.
 
@@ -282,7 +282,7 @@ Each stage is a focused, reviewable change and must follow `AGENTS.md`. â€œGateâ
 | **S5 Tenant-safe persistence:** scoped repositories + RLS | S4a,S4b,S4c | database repositories/transactions/RLS, role/context and exact inbound-resolver migrations, security test helpers | Transaction-bound one-tenant sessions; tenant-qualified repositories; active Lead/Conversation partial uniqueness; forced RLS across the exact 47-table classification; non-owner/no-bypass runtime; global/platform paths separate; atomic CAS/history/audit/outbox writes | missing-context CRUD, two-tenant hostile CRUD/FK/repository/CAS matrix, pooled commit/rollback reuse, runtime-role/FORCE RLS, exact inbound resolver, polymorphic ownership, global-table denial | Zero cross-tenant access/mutation or pool-context leakage; active grouping conflicts deterministic; business write/outbox atomicity proven |
 | **S6 Staff identity/RBAC:** Auth0 OIDC-to-membership path | S2,S5 | exactly `external_identities`, `membership_invitations`, `auth_sessions`, `membership_location_scopes`; security, integrations/identity, API auth plugin | Auth0 Authorization Code + PKCE maps exact `(issuer, subject)` to an application User; active Membership plus closed role/location policy authorizes; seven-day invitations and 60m-idle/12h-absolute app sessions; all production roles use MFA; no email/org-claim authority or provider-token persistence | Auth0 issuer/audience/signature/nonce/state/JWKS/outage, identity-link, invitation/session/revocation, exhaustive role/location/final-owner/IDOR/CSRF tests | Every private route uses current trusted actor/tenant context; local session and Membership revocation work; no provider claim establishes tenancy |
 | **S7 Business knowledge configuration API:** authoritative tenant facts | S3,S5,S6 | configuration contracts/ports, domain/application knowledge, private API; no new production table expected | Owner/admin use entity-specific write versus publish commands for locations/services/prices/FAQs/hours/closures/policies; immediate-only atomic publication creates immutable/effective authority with audit and applicable outbox evidence; qualification policy V1 is finite and deterministic | auth/location-scope matrix, exact money/timezone/locale, qualification outcomes, stale/racing CAS, write-without-publish, rollback/no-partial-visibility, tenant/revision integration | AI-independent trusted read returns only active current published/effective tenant facts with exact provenance; no draft, scheduled publication, secret configuration, medical eligibility or AI-authored truth |
-| **S8 Reliable async substrate:** outbox and pg-boss | S4c,S5 | database outbox, integrations/jobs, worker | Atomic intent, claims/leases/retry/DLQ/replay/reconciliation; workload queues | crash-point, duplicate, poison, fairness, replay audit tests | One logical effect under retries/restarts |
+| **S8 Reliable async substrate:** outbox and pg-boss | S4c,S5 | database outbox, integrations/jobs, worker | Model A atomic intent; dedicated migration-owned `pgboss` schema with runtime `migrate: false`; narrow fair claims/leases; private versioned envelope; bounded retry/DLQ/platform-operator replay/reconciliation; six workload queues; separate queue and tenant pools under no-bypass RLS | install/upgrade/rerun and runtime-DDL denial; crash-point, duplicate, poison, tenant fairness/isolation, privilege drift, replay audit and shutdown tests | Durable enqueue makes outbox `published`; physical at-least-once execution produces one logical effect under retries/restarts |
 | **S9 Conversation/lead/contact application:** deterministic persistence | S3,S5,S8 | domain/application conversations/leads, API queries | One lead/conversation/message per logical inbound; approved active-lead/conversation grouping, phone/session sufficiency, contact/consent semantics; no AI yet | state/concurrency/idempotency/PII/grouping tests | Duplicate/reordered canonical messages cannot regress state or identity |
 | **S10 Widget trust and intake:** secure widget vertical ingress | S2,S6,S8-S9 | web widget bootstrap, API widget routes, channel adapter | Opaque session/public credential + allowed origin resolves server-side tenant; approved session/reopen/body/rate/idempotency settings; message durably accepted | origin/forgery/replay/oversize/duplicate/reopen E2E | Tenant cannot be selected or crossed by widget input |
 | **S11 Telegram adapter:** verified Telegram ingress/outbound | S2,S8-S9 | integrations/channels/telegram, webhook routes | Authenticated connection resolves tenant; approved bot ownership/limits and canonical chat/thread hash derivation within the frozen grouping identity; canonical normalize/send/status/errors | recorded contract fixtures, forgery/retry/reorder/thread/ambiguous send | Shared channel contract suite passes unchanged |
@@ -356,6 +356,83 @@ prices at least every 30 days and immediately on price change. These are
 operating expectations, not persistence, scheduler, reminder or worker scope.
 
 Optional external staff-alert adapters are separate P1 tasks. Instagram/WhatsApp, calendar/CRM sync, billing, and other P2 capabilities are separate later tasks; none is silently appended to an existing stage.
+
+### S8 approved reliable-async decisions
+
+S8 uses Model A only: the tenant business transaction atomically commits its
+canonical outbox event, and a later dispatcher durably enqueues pg-boss. The
+outbox then becomes `published`; that state means queue publication only, not
+handler/provider/final-effect completion. Physical execution is at least once
+and the logical effect is effectively once through stable identity, idempotency,
+state/version checks and reconciliation. Distributed exactly-once is not
+claimed. No normal business transaction directly enqueues pg-boss.
+
+The existing public contract surface remains 272 contracts, the event registry
+remains 63 semantic names and 64 versioned variants, and S8 adds no business
+event merely for queue infrastructure. The private queue-envelope V1 contains
+only `job_schema_version`, `outbox_event_id`, `organization_id`, `event_type`,
+`event_schema_version`, `aggregate_type`, `aggregate_id`, `correlation_id`, and
+optional `causation_id`. The worker reloads and validates the canonical outbox
+event under a fresh tenant session; queue/handler selection is finite and never
+payload-driven.
+
+Initial dispatcher and worker controls are configurable engineering defaults,
+not SLAs or proven capacity limits:
+
+| Control | Initial default |
+| --- | --- |
+| Claim batch / per-tenant cap | 50 / 5 |
+| Poll interval / jitter | 1 second / full jitter from 0 through 250 milliseconds |
+| Claim lease / renewal | 60 seconds / no later than 20 seconds |
+| Enqueue concurrency / dispatcher loops | 10 / one per worker process |
+| Initial handler concurrency | One per workload queue per process |
+| Executions / initial retry delay | Five total / 5 seconds |
+| Retry jitter | `0..min(300 seconds, 5 * 2^retry)` |
+| Maximum generic age / active expiration | 24 hours / 15 minutes |
+| Long-running heartbeat | 60 seconds |
+| Shutdown drain / minimum termination grace | 25 seconds / 30 seconds |
+
+Validation failure, unsupported event/job version, tenant-integrity violation,
+and forged/mismatched envelopes receive zero retry. Bounded provider
+`Retry-After` is honored only inside the remaining job/business deadline;
+workload profiles may narrow the generic bounds but cannot introduce infinite or
+nested retry budgets. Claims order due/available time then immutable outbox ID,
+apply the per-tenant cap, and use row locking plus recoverable leases. There is
+no global serialization; state/version/CAS and idempotency protect each
+aggregate, while workload-specific FIFO remains evidence-driven.
+
+Undispatched/lease-expired outbox work recovers automatically. Exhausted relay
+failure dead-letters the outbox; exhausted handler failure enters its workload
+DLQ. S8 replay is platform-operator-only, audited and runbook-driven. Dead-letter
+requeue/redrive requires root-cause repair, current validation, an operator
+reason and bounded scope. Already-successful external effects have no generic
+replay path and S8 adds no tenant replay API or permission.
+
+Published outbox payloads use 30 days after durable queue
+publication/resolution; unresolved dead letters remain until resolution/discard
+and then use 30 days; completed/cancelled pg-boss jobs use 7 days; failed/DLQ
+jobs remain until operational resolution and then use 30 days. Legal holds
+override deletion. These defaults permit local/development/staging engineering
+but do not authorize production customer processing without explicit
+privacy/legal approval or replacement for the actual launch jurisdictions.
+
+The roadmap contains no pre-existing S8 unit numbering. The approved sequence,
+without implying authoritative unit numbers, is:
+
+1. pg-boss dependency, explicit infrastructure-schema migration, roles, grants,
+   and configuration;
+2. narrow outbox claim, lease, and reconciliation persistence;
+3. dispatcher and private versioned queue envelope;
+4. worker lifecycle and finite handler registry;
+5. retries, failure classification, idempotency seam, DLQ, and operator-only
+   replay;
+6. observability, backpressure, and graceful shutdown; and
+7. hostile PostgreSQL, crash, duplicate, and replay final acceptance.
+
+No new business/domain table is expected; pg-boss infrastructure objects stay
+outside the 51-table business manifest. The exact pinned pg-boss duplicate-ID,
+schema, migration and privilege behavior must be proved in the first
+implementation slice before it is relied upon.
 
 ## Cost architecture and Stage 13 model-selection gate
 
@@ -489,6 +566,12 @@ The following apparent contradictions are resolved as normative rules:
     use `draft -> published -> retired`. A write cannot publish, a publish becomes
     visible only on atomic commit, and no tenant-wide release revision or
     scheduled-publication workaround exists.
+14. **Outbox `published` versus final external delivery:** `published` and
+    `published_at` mean only that the dispatcher durably committed the pg-boss
+    enqueue. Handler/provider/customer completion belongs to the job,
+    workload/domain evidence, idempotency/reconciliation, audit, and
+    observability. Physical work may repeat under at-least-once delivery, while
+    stable identities and current-state checks permit only one logical effect.
 
 ## Stage entry and release gates
 
