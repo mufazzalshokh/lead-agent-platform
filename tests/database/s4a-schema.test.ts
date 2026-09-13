@@ -111,6 +111,7 @@ import { registerIdentityResolutionTests } from "./identity-resolution.test-suit
 import { registerSessionLifecycleTests } from "./session-lifecycle.test-suite.js";
 import { registerAuthorizationResolutionTests } from "./authorization-resolution.test-suite.js";
 import { registerMembershipLifecycleTests } from "./membership-lifecycle.test-suite.js";
+import { registerLocationConfigurationTests } from "./location-configuration.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -558,6 +559,7 @@ let upgradeTablesAfterS62: string[] = [];
 let upgradeTablesAfterS63: string[] = [];
 let upgradeTablesAfterS64: string[] = [];
 let upgradeTablesAfterS65: string[] = [];
+let upgradeTablesAfterS72: string[] = [];
 let upgradeRlsTablesAfterS5: string[] = [];
 let upgradeRejectedConversationConflict = false;
 let upgradeRejectedLeadConflict = false;
@@ -842,6 +844,10 @@ const verifyUpgradeAndReset = async (testPool: Pool): Promise<void> => {
   await applyMigrationSql(testPool, "0017_s6_membership_lifecycle.sql");
   await applyMigrationSql(testPool, "0017_s6_membership_lifecycle.sql");
   upgradeTablesAfterS65 = await productionTables(testPool);
+
+  await applyMigrationSql(testPool, "0018_s7_location_history_integrity.sql");
+  await applyMigrationSql(testPool, "0018_s7_location_history_integrity.sql");
+  upgradeTablesAfterS72 = await productionTables(testPool);
 
   await testPool.query(
     `drop table membership_location_scopes, membership_invitations,
@@ -2374,7 +2380,7 @@ beforeAll(async () => {
   tenantRuntime = createTenantDatabaseRuntime(
     createTenantDatabaseRuntimeConfig({
       connectionString: runtimeConnectionString,
-      maxConnections: 1,
+      maxConnections: 8,
       statementTimeoutMilliseconds: 30_000,
     }),
     {
@@ -2637,7 +2643,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(isHandoffTriggerReason("prompt_requested")).toBe(false);
   });
 
-  it("upgrades S4 through S6.4, bootstraps head, and reruns safely", async () => {
+  it("upgrades S4 through S7.2, bootstraps head, and reruns safely", async () => {
     expect(upgradeTablesAfterS4a).toEqual(S4A_TABLES);
     expect(upgradeTablesAfterS4b1).toEqual(S4B1_TABLES);
     expect(upgradeTablesAfterS4b2).toEqual(S4B2_TABLES);
@@ -2656,6 +2662,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(upgradeTablesAfterS63).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS64).toEqual(S6_1_TABLES);
     expect(upgradeTablesAfterS65).toEqual(S6_1_TABLES);
+    expect(upgradeTablesAfterS72).toEqual(S6_1_TABLES);
     expect(upgradeRlsTablesAfterS5).toEqual(S5_RLS_TABLES);
     expect(upgradeRejectedLeadConflict).toBe(true);
     expect(upgradeRejectedConversationConflict).toBe(true);
@@ -2671,7 +2678,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(18);
+    expect(migrationCount.rows[0]?.count).toBe(19);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -9923,5 +9930,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       }
       return membershipLifecycleRuntime;
     },
+  });
+  registerLocationConfigurationTests({
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
   });
 });

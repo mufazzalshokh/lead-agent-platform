@@ -116,6 +116,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@lead-agent/application':
+        specifier: workspace:*
+        version: link:../application
       '@lead-agent/config':
         specifier: workspace:*
         version: link:../config

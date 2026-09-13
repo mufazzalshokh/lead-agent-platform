@@ -5,6 +5,7 @@ export * from "./customers.js";
 export * from "./handoffs.js";
 export * from "./leads.js";
 export * from "./membership-lifecycle.js";
+export * from "./location-configuration.js";
 export * from "./mutations.js";
 export {
   InvalidRepositoryMutationPlanError,
