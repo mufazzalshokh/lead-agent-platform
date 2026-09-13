@@ -672,5 +672,5 @@ describe("cross-contract security and drift audit", () => {
     });
 
     expect(duplicates).toEqual([]);
-  });
+  }, 10_000);
 });

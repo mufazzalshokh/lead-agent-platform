@@ -997,6 +997,80 @@ export const registerFaqPolicyConfigurationTests = (harness: Harness): void => {
       ).rejects.toMatchObject({ code: "23514" });
     });
 
+    it("rolls back prior FAQ retirement, publication, audit, Outbox, and idempotency together", async () => {
+      const pool = harness.privilegedPool();
+      const owner = await seedOwner(
+        pool,
+        ORGANIZATION_A,
+        OWNER_A,
+        OWNER_A_MEMBERSHIP,
+        "s74-faq-rollback",
+      );
+      const initial = applications(harness.runtime());
+      const firstFaqId = await createFaq(initial.faqs, owner, "rollback-first");
+      const firstPublication = await initial.faqs.publishFaq({
+        authorization: owner,
+        expectedVersion: 1,
+        idempotencyKey: idempotencyKey("faq-rollback-first-publish"),
+        input: {},
+        target: firstFaqId,
+      });
+      expect(firstPublication.ok).toBe(true);
+
+      const later = applications(harness.runtime(), () => new Date(CLOCK.getTime() + 60_000));
+      const secondFaqId = await createFaq(later.faqs, owner, "rollback-second");
+      const before = await pool.query<{
+        audit_count: number;
+        idempotency_count: number;
+        outbox_count: number;
+      }>(`select
+          (select count(*)::int from audit_events) as audit_count,
+          (select count(*)::int from idempotency_keys) as idempotency_count,
+          (select count(*)::int from outbox_events) as outbox_count`);
+
+      await pool.query(`create or replace function app.s74_faq_injected_failure()
+        returns trigger language plpgsql as $body$
+        begin raise exception using errcode = '40001', message = 'synthetic S7.7 failure'; end
+        $body$`);
+      await pool.query(
+        `create trigger s74_faq_injected_failure before insert on outbox_events
+         for each row execute function app.s74_faq_injected_failure()`,
+      );
+      try {
+        await expect(
+          later.faqs.publishFaq({
+            authorization: owner,
+            expectedVersion: 2,
+            idempotencyKey: idempotencyKey("faq-rollback-second-publish"),
+            input: {},
+            target: secondFaqId,
+          }),
+        ).resolves.toEqual({ error: { code: "version_conflict" }, ok: false });
+      } finally {
+        await pool.query("drop trigger if exists s74_faq_injected_failure on outbox_events");
+        await pool.query("drop function if exists app.s74_faq_injected_failure()");
+      }
+
+      const faqs = await pool.query<{
+        effective_to: Date | null;
+        id: string;
+        status: string;
+      }>("select id::text, status, effective_to from faqs where id in ($1, $2) order by id", [
+        firstFaqId,
+        secondFaqId,
+      ]);
+      expect(Object.fromEntries(faqs.rows.map((row) => [row.id, row]))).toMatchObject({
+        [firstFaqId]: { effective_to: null, status: "published" },
+        [secondFaqId]: { effective_to: null, status: "draft" },
+      });
+      await expect(
+        pool.query(`select
+          (select count(*)::int from audit_events) as audit_count,
+          (select count(*)::int from idempotency_keys) as idempotency_count,
+          (select count(*)::int from outbox_events) as outbox_count`),
+      ).resolves.toMatchObject({ rows: before.rows });
+    });
+
     it("rolls back qualification-policy publication if Outbox insertion fails", async () => {
       const pool = harness.privilegedPool();
       const owner = await seedOwner(

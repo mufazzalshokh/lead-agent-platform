@@ -44,6 +44,7 @@ import {
   STAFF_CONFIGURATION_ROUTE_MANIFEST,
   type StaffAuthDependencies,
   type StaffConfigurationDependencies,
+  type StaffConfigurationOperation,
 } from "../src/app.js";
 
 const NOW = new Date("2026-09-13T08:00:00.000Z");
@@ -404,7 +405,127 @@ const routeUrl = (path: string): string =>
   path
     .replaceAll("{closure_id}", CLOSURE_ID)
     .replaceAll("{price_id}", PRICE_ID)
-    .replaceAll("{id}", LOCATION_ID);
+    .replaceAll(
+      "{id}",
+      path.includes("/services/")
+        ? SERVICE_ID
+        : path.includes("/faqs/")
+          ? FAQ_ID
+          : path.includes("/business-policies/")
+            ? POLICY_ID
+            : LOCATION_ID,
+    );
+
+const mutationBody = (operation: StaffConfigurationOperation): Record<string, unknown> => {
+  switch (operation) {
+    case "createLocation":
+      return { code: "tashkent-clinic" };
+    case "publishLocation":
+      return {
+        address_i18n: { en: "Tashkent" },
+        business_hours: { intervals: [] },
+        name_i18n: { en: "Clinic" },
+        public_contact: {},
+        time_zone: "Asia/Tashkent",
+      };
+    case "createClosure":
+    case "supersedeClosure":
+      return {
+        kind: "closed",
+        local_date: "2026-12-25",
+        reason_i18n: { en: "Holiday" },
+      };
+    case "createService":
+      return { code: "implant-consultation" };
+    case "publishService":
+      return {
+        description_i18n: { en: "Consultation" },
+        disclaimer_i18n: { en: "Clinical assessment required" },
+        duration_guidance_minutes: 45,
+        name_i18n: { en: "Implant consultation" },
+      };
+    case "changeServiceLocation":
+      return { location_id: LOCATION_ID, status: "active" };
+    case "createPriceDraft":
+    case "updatePriceDraft":
+      return {
+        display_text_i18n: { en: "Request a quote" },
+        location_id: null,
+        pricing: { currency: "UZS", price_type: "quote_required" },
+      };
+    case "createFaqDraft":
+      return {
+        answer_i18n: { en: "Yes" },
+        faq_key: "parking",
+        location_id: null,
+        question_i18n: { en: "Is parking available?" },
+        service_id: null,
+      };
+    case "updateFaqDraft":
+      return {
+        answer_i18n: { en: "Yes" },
+        location_id: null,
+        question_i18n: { en: "Is parking available?" },
+        service_id: null,
+      };
+    case "createPolicyDraft":
+      return {
+        policy_key: "lead-qualification",
+        policy_type: "qualification",
+        rules: qualificationRules,
+        schema_version: 1,
+      };
+    case "updatePolicyDraft":
+      return {
+        policy_type: "qualification",
+        rules: qualificationRules,
+        schema_version: 1,
+      };
+    case "cancelClosure":
+    case "deactivateLocation":
+    case "deactivateService":
+    case "publishFaq":
+    case "publishPolicy":
+    case "publishPrice":
+    case "retireFaq":
+    case "retirePolicy":
+    case "retirePrice":
+      return {};
+    case "getFaq":
+    case "getLocation":
+    case "getPolicy":
+    case "getPrice":
+    case "getService":
+    case "listFaqs":
+    case "listLocations":
+    case "listPolicies":
+    case "listPrices":
+    case "listServices":
+      throw new TypeError(`Not a mutation operation: ${operation}`);
+  }
+};
+
+const mutationVersion = (path: string): number =>
+  path.includes("/prices/")
+    ? 4
+    : path.includes("/faqs/")
+      ? 5
+      : path.includes("/business-policies/")
+        ? 6
+        : path.includes("/services/")
+          ? 3
+          : 2;
+
+const mutationTarget = (path: string): LocationId | ResourceId | ServiceId =>
+  path.includes("/prices/")
+    ? PRICE_ID
+    : path.includes("/faqs/")
+      ? FAQ_ID
+      : path.includes("/business-policies/")
+        ? POLICY_ID
+        : path.includes("/services/")
+          ? SERVICE_ID
+          : LOCATION_ID;
 
 const withoutHeader = (
   headers: Readonly<Record<string, string>>,
@@ -527,21 +648,19 @@ describe("S7.6 private staff configuration API", { timeout: 30_000 }, () => {
             })
           ).statusCode,
         ).toBe(200);
-        for (const request of [
-          {
-            body: { code: "new-location" },
-            headers: fixture.mutationHeaders(LOCATION_ID, 2),
-            method: "POST" as const,
-            url: "/v1/staff/locations",
-          },
-          {
+        for (const route of STAFF_CONFIGURATION_ROUTE_MANIFEST.filter(
+          ({ mutation: isMutation }) => isMutation,
+        )) {
+          const response = await fixture.api.inject({
             body: {},
-            headers: fixture.mutationHeaders(LOCATION_ID, 2),
-            method: "POST" as const,
-            url: `/v1/staff/locations/${LOCATION_ID}/deactivate`,
-          },
-        ]) {
-          expect((await fixture.api.inject(request)).statusCode).toBe(403);
+            headers: fixture.mutationHeaders(
+              mutationTarget(route.path),
+              mutationVersion(route.path),
+            ),
+            method: route.method,
+            url: routeUrl(route.path),
+          });
+          expect(response.statusCode, `${role}: ${route.method} ${route.path}`).toBe(403);
         }
       } finally {
         await fixture.api.close();
@@ -648,6 +767,57 @@ describe("S7.6 private staff configuration API", { timeout: 30_000 }, () => {
           })
         ).statusCode,
       ).toBe(200);
+    } finally {
+      await fixture.api.close();
+    }
+  });
+
+  it("enforces common CSRF and every declared concurrency header on all 22 mutations", async () => {
+    const fixture = createFixture();
+    try {
+      for (const route of STAFF_CONFIGURATION_ROUTE_MANIFEST.filter(
+        ({ mutation: isMutation }) => isMutation,
+      )) {
+        const target = mutationTarget(route.path);
+        const allHeaders = fixture.mutationHeaders(target, mutationVersion(route.path));
+        const headers = route.ifMatch ? allHeaders : withoutHeader(allHeaders, "if-match");
+        const request = {
+          body: mutationBody(route.operation),
+          method: route.method,
+          url: routeUrl(route.path),
+        } as const;
+
+        fixture.controls.calls.length = 0;
+        const missingCsrf = await fixture.api.inject({
+          ...request,
+          headers: withoutHeader(headers, "x-csrf-token"),
+        });
+        expect(missingCsrf.statusCode, `CSRF: ${route.method} ${route.path}`).toBe(403);
+        expect(fixture.controls.calls).toHaveLength(0);
+
+        const missingIdempotency = await fixture.api.inject({
+          ...request,
+          headers: withoutHeader(headers, "idempotency-key"),
+        });
+        expect(
+          missingIdempotency.statusCode,
+          `Idempotency-Key: ${route.method} ${route.path}`,
+        ).toBe(400);
+        expect(fixture.controls.calls).toHaveLength(0);
+
+        if (route.ifMatch) {
+          const missingIfMatch = await fixture.api.inject({
+            ...request,
+            headers: withoutHeader(headers, "if-match"),
+          });
+          expect(missingIfMatch.statusCode, `If-Match: ${route.method} ${route.path}`).toBe(400);
+          expect(fixture.controls.calls).toHaveLength(0);
+        }
+
+        const valid = await fixture.api.inject({ ...request, headers });
+        expect(valid.statusCode, `valid: ${route.method} ${route.path}`).toBeLessThan(400);
+        expect(fixture.controls.calls.map(({ operation }) => operation)).toEqual([route.operation]);
+      }
     } finally {
       await fixture.api.close();
     }
