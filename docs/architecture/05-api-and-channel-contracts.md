@@ -42,8 +42,8 @@ defines contracts, not handlers or integration code.
 | `Content-Type: application/json` | request | Required when a body is present. Webhook adapters may require the provider's exact media type. |
 | `Accept: application/json` | request | Default response representation. Errors use `application/problem+json`. |
 | `X-Request-Id` | both | Client may supply a valid non-PII identifier; otherwise the API creates one. It is returned and propagated to traces/jobs. |
-| `Idempotency-Key` | request | Required on the designated create/command operations below. 8-128 printable ASCII characters; never contains PII. |
-| `If-Match` | request | Required for configuration updates and state-changing staff commands. Value is the resource version ETag. |
+| `Idempotency-Key` | request | Required exactly where the accepted application command metadata requires persisted idempotency. The HTTP method alone does not decide this. Values are 8-128 printable ASCII characters and never contain PII. |
+| `If-Match` | request | Required exactly where the accepted application operation carries an expected resource version/state. Value is the resource version ETag. |
 | `ETag` | response | Returned for mutable resources. |
 | `Retry-After` | response | Included for `429` and temporary `503` responses when known. |
 
@@ -158,6 +158,17 @@ identity and version. `If-Match` plus a transactional version predicate prevents
 lost updates and double staff decisions. Idempotency does not replace optimistic
 concurrency.
 
+For S7 configuration routes, retry-sensitive create and command-style `POST`
+operations require `Idempotency-Key` when their accepted application command
+does. `GET` and `HEAD` do not. `PATCH` and `PUT` use `If-Match` as their primary
+concurrency control and do not require idempotency merely because of the HTTP
+method; however, the already-accepted Service/Location `PUT`, Price-draft
+`PATCH`, FAQ-draft `PATCH`, and Business-Policy-draft `PATCH` operations also
+require `Idempotency-Key`. The adapter never generates a synthetic key.
+`If-Match` asks whether the command targets the expected current state;
+`Idempotency-Key` asks whether it replays an already-submitted command. A route
+may therefore legitimately require both.
+
 ## Authentication and authorization
 
 ### Principal types
@@ -242,6 +253,17 @@ tenant context before any repository call. Single-organization clients still
 send or negotiate this context; no default can accidentally inherit another
 request's tenant.
 
+The S7 V1 staff-configuration surface is exactly the 32 individual
+`configuration.*` routes in the resource table below. It intentionally omits
+generic `PATCH /locations/{id}` and `PATCH /services/{id}` mutations: stable-root
+business content changes only through explicit immutable-version publication.
+`GET /locations/{id}/business-hours` is redundant because `LocationRoot` already
+contains the current published version's hours. Closure-list and standalone
+Service/Location-list routes are deferred until a finite canonical read contract
+and framework-neutral application operation are separately approved. These
+omissions do not remove the explicit closure lifecycle commands or the
+Service/Location lifecycle command.
+
 ### Resource surface
 
 | Method and path | Permission | Contract/notes |
@@ -254,31 +276,38 @@ request's tenant.
 | `POST /membership-invitations/{id}/resend` | `memberships.invite` | Revokes the active token before issuing a replacement; never returns or logs stored token material. |
 | `DELETE /membership-invitations/{id}` | `memberships.invite` | Explicit revocation; idempotent and audited. |
 | `PATCH, DELETE /memberships/{id}` | `memberships.manage`; `ownership.transfer` for owner operations | Delete means audited revocation, not hard deletion; cannot suspend, revoke, or demote the final active owner; `If-Match`. |
-| `GET, POST /locations` | `configuration.read` / `configuration.write` | Lists authorized Location roots or creates a stable inactive root. POST does not persist a Location-version draft and does not publish business facts. |
-| `GET, PATCH /locations/{id}` | `configuration.read` / `configuration.write` | Reads the authorized root/current-version summary or changes only allowlisted stable-root metadata with `If-Match`; it cannot silently replace published presentation/hours or deactivate the Location. |
-| `POST /locations/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; validates a complete Location candidate, bounded locale maps, IANA zone and weekly hours, then immediately inserts one immutable version plus hours, activates the root and atomically advances `current_version_id` when the transaction commits. There is no persisted Location-version draft or scheduled publication. |
-| `POST /locations/{id}/deactivate` | `configuration.publish` | `If-Match` and `Idempotency-Key`; deactivates without deleting current or historical versions and emits the applicable authoritative change atomically. |
-| `GET /locations/{id}/business-hours` | `configuration.read` | Returns hours belonging to the exact current published Location version. Changes are submitted only as part of `/locations/{id}/publish`; hours are not independently published. |
-| `GET, POST /locations/{id}/closures` | `configuration.read` / `configuration.publish` | Lists applicable history or immediately publishes one same-tenant local-date `closed|override` record. POST requires Location `If-Match` and `Idempotency-Key`; a future closure date is authoritative knowledge published now, not scheduled publication. |
-| `POST /locations/{id}/closures/{closure_id}/supersede` | `configuration.publish` | Location `If-Match` and `Idempotency-Key`; atomically supersedes with a validated replacement while retaining history. |
-| `POST /locations/{id}/closures/{closure_id}/cancel` | `configuration.publish` | Location `If-Match` and `Idempotency-Key`; idempotently cancels without destructive deletion. |
-| `GET, POST /services` | `configuration.read` / `configuration.write` | Lists authorized Service roots or creates a stable inactive root. POST does not persist a Service-version draft and publishes no service facts or price. |
-| `GET, PATCH /services/{id}` | `configuration.read` / `configuration.write` | Reads the root/current-version summary or changes only allowlisted stable-root metadata with `If-Match`; published facts and status use explicit commands. |
-| `POST /services/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; validates a complete localized candidate, immediately creates one immutable Service version, activates the root, and advances `current_version_id` atomically. There is no persisted Service-version draft or scheduled publication. |
-| `POST /services/{id}/deactivate` | `configuration.publish` | `If-Match` and `Idempotency-Key`; deactivates without deleting referenced versions and emits `service.deactivated` atomically. |
-| `GET, PUT /services/{id}/locations` | `configuration.read` / `configuration.publish` | Service `If-Match` for PUT; immediately opens/closes same-tenant active Service/Location intervals at commit. It never claims slot availability and accepts no future activation time. |
-| `GET, POST /services/{id}/prices` | `configuration.read` / `configuration.write` | Lists authorized versions or creates a `draft` using an exact price type, integer minor units, uppercase currency, optional same-tenant Location and bounded localized display text. POST does not publish. |
-| `GET, PATCH /services/{id}/prices/{price_id}` | `configuration.read` / `configuration.write` | Returns one exact version or updates only a draft with `If-Match`; published/retired versions are immutable. |
-| `POST /services/{id}/prices/{price_id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes at commit after amount, scope, locale and non-overlap validation, atomically retiring/closing any replaced applicable version. Future activation is rejected. |
-| `POST /services/{id}/prices/{price_id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires without deleting price history. |
-| `GET, POST /faqs` | `configuration.read` / `configuration.write` | Lists authorized exact versions or creates a `draft` with stable `faq_key`, optional same-tenant Service/Location scope, and atomic bounded `question_i18n`/`answer_i18n` maps whose only locale keys are `uz`, `ru`, and `en`; content remains untrusted data. |
-| `GET, PATCH /faqs/{id}` | `configuration.read` / `configuration.write` | Returns one exact version or updates only a draft with `If-Match`; it never substitutes a different version or mutates published content. |
-| `POST /faqs/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes a draft, validates both bounded locale maps and the organization default locale, and atomically retires any current version for the same key/scope. No future activation is accepted. |
-| `POST /faqs/{id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires a published version while retaining referenced history. |
-| `GET, POST /business-policies` | `configuration.read` / `configuration.write` | Lists trusted supported exact versions or creates a finite schema-versioned `draft`. The five canonical identifiers are qualification, booking, handoff, safety and consent, but S7 launch accepts mutable rules only for qualification schema version 1. POST does not publish. |
-| `GET, PATCH /business-policies/{id}` | `configuration.read` / `configuration.write` | Returns one trusted supported exact version or updates only a qualification-v1 draft with `If-Match`; no executable rule language, arbitrary evaluator, or unsupported `rules_jsonb` is accepted. |
-| `POST /business-policies/{id}/publish` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately publishes a validated qualification-v1 draft and atomically retires the current version for the same key/type. Booking, handoff, safety and consent rule publication requires a future architecture and contract freeze. No future activation is accepted. |
-| `POST /business-policies/{id}/retire` | `configuration.publish` | `If-Match` and `Idempotency-Key`; immediately and idempotently retires a supported qualification-v1 policy while preserving referenced policy history. |
+| `GET /locations` | `configuration.read` | `listLocations`; `LocationListFilter` + `PaginationRequest` → collection of `LocationRoot`; no `If-Match`; no `Idempotency-Key`. |
+| `POST /locations` | `configuration.write` | `createLocation`; `CreateLocationInput` → `LocationRoot`; no `If-Match`; `Idempotency-Key` required. Creates only an inactive stable root. |
+| `GET /locations/{id}` | `configuration.read` | `getLocation`; `LocationId` → `LocationRoot`; no `If-Match`; no `Idempotency-Key`. The current published version includes business hours. |
+| `POST /locations/{id}/publish` | `configuration.publish` | `publishLocation`; `LocationId` + `PublishLocationInput` → `LocationRoot`; Location `If-Match` and `Idempotency-Key` required. Publishes one complete immutable version plus hours immediately at commit. |
+| `POST /locations/{id}/deactivate` | `configuration.publish` | `deactivateLocation`; `LocationId` + `DeactivateLocationInput` → `LocationRoot`; Location `If-Match` and `Idempotency-Key` required. History is retained. |
+| `POST /locations/{id}/closures` | `configuration.publish` | `createClosure`; `LocationId` + `CreateLocationClosureInput` → `LocationClosureRecord`; Location `If-Match` and `Idempotency-Key` required. A future local date is knowledge published now, not scheduled publication. |
+| `POST /locations/{id}/closures/{closure_id}/supersede` | `configuration.publish` | `supersedeClosure`; `LocationId` + `ResourceId` + `SupersedeLocationClosureInput` → `LocationClosureRecord`; Location `If-Match` and `Idempotency-Key` required. |
+| `POST /locations/{id}/closures/{closure_id}/cancel` | `configuration.publish` | `cancelClosure`; `LocationId` + `ResourceId` + `CancelLocationClosureInput` → `LocationClosureRecord`; Location `If-Match` and `Idempotency-Key` required. No destructive delete. |
+| `GET /services` | `configuration.read` | `listServices`; `ServiceListFilter` + `PaginationRequest` → collection of `ServiceRoot`; no `If-Match`; no `Idempotency-Key`. Location projection remains application-authorized. |
+| `POST /services` | `configuration.write` | `createService`; `CreateServiceInput` → `ServiceRoot`; no `If-Match`; `Idempotency-Key` required. Creates only an inactive stable root. |
+| `GET /services/{id}` | `configuration.read` | `getService`; `ServiceId` → `ServiceRoot`; no `If-Match`; no `Idempotency-Key`. |
+| `POST /services/{id}/publish` | `configuration.publish` | `publishService`; `ServiceId` + `PublishServiceInput` → `ServiceRoot`; Service `If-Match` and `Idempotency-Key` required. Publishes one immutable version immediately at commit. |
+| `POST /services/{id}/deactivate` | `configuration.publish` | `deactivateService`; `ServiceId` + `DeactivateServiceInput` → `ServiceRoot`; Service `If-Match` and `Idempotency-Key` required. |
+| `PUT /services/{id}/locations` | `configuration.publish` | `changeServiceLocation`; `ServiceId` + `ChangeServiceLocationInput` → `ServiceLocationRecord`; Service `If-Match` and operation-specific `Idempotency-Key` required. Opens/closes an effective relation at commit and never claims availability. |
+| `GET /prices` | `configuration.read` | `listPrices`; `ServicePriceListFilter` + `PaginationRequest` → collection of `ServicePriceRecord`; no `If-Match`; no `Idempotency-Key`. No decorative Service parent. |
+| `POST /services/{id}/prices` | `configuration.write` | `createPriceDraft`; `ServiceId` + `CreateServicePriceDraftInput` → `ServicePriceRecord`; Service `If-Match` and `Idempotency-Key` required. The body cannot select another Service. |
+| `GET /prices/{price_id}` | `configuration.read` | `getPrice`; `ResourceId` → `ServicePriceRecord`; no `If-Match`; no `Idempotency-Key`. |
+| `PATCH /prices/{price_id}` | `configuration.write` | `updatePriceDraft`; `ResourceId` + `UpdateServicePriceDraftInput` → `ServicePriceRecord`; Price `If-Match` and operation-specific `Idempotency-Key` required. Only drafts are mutable. |
+| `POST /prices/{price_id}/publish` | `configuration.publish` | `publishPrice`; `ResourceId` + `PublishServicePriceInput` → `ServicePriceRecord`; Price `If-Match` and `Idempotency-Key` required. Publication is immediate; future activation is rejected. |
+| `POST /prices/{price_id}/retire` | `configuration.publish` | `retirePrice`; `ResourceId` + `RetireServicePriceInput` → `ServicePriceRecord`; Price `If-Match` and `Idempotency-Key` required. History is retained. |
+| `GET /faqs` | `configuration.read` | `listFaqs`; `FaqListFilter` + `PaginationRequest` → collection of `Faq`; no `If-Match`; no `Idempotency-Key`. |
+| `POST /faqs` | `configuration.write` | `createFaqDraft`; `CreateFaqDraftInput` → `Faq`; no `If-Match`; `Idempotency-Key` required. FAQ content remains inert untrusted data. |
+| `GET /faqs/{id}` | `configuration.read` | `getFaq`; `ResourceId` → `Faq`; no `If-Match`; no `Idempotency-Key`. |
+| `PATCH /faqs/{id}` | `configuration.write` | `updateFaqDraft`; `ResourceId` + `UpdateFaqDraftInput` → `Faq`; FAQ `If-Match` and operation-specific `Idempotency-Key` required. Only drafts are mutable. |
+| `POST /faqs/{id}/publish` | `configuration.publish` | `publishFaq`; `ResourceId` + `PublishFaqInput` → `Faq`; FAQ `If-Match` and `Idempotency-Key` required. Publication validates bounded locale maps and the organization default locale. |
+| `POST /faqs/{id}/retire` | `configuration.publish` | `retireFaq`; `ResourceId` + `RetireFaqInput` → `Faq`; FAQ `If-Match` and `Idempotency-Key` required. History is retained. |
+| `GET /business-policies` | `configuration.read` | `listPolicies`; `BusinessPolicyListFilter` + `PaginationRequest` → collection of `BusinessPolicy`; no `If-Match`; no `Idempotency-Key`. Restricted organization-wide reads fail closed. |
+| `POST /business-policies` | `configuration.write` | `createPolicyDraft`; `CreateBusinessPolicyDraftInput` → `BusinessPolicy`; no `If-Match`; `Idempotency-Key` required. Mutable launch support is qualification schema version 1 only. |
+| `GET /business-policies/{id}` | `configuration.read` | `getPolicy`; `ResourceId` → `BusinessPolicy`; no `If-Match`; no `Idempotency-Key`. |
+| `PATCH /business-policies/{id}` | `configuration.write` | `updatePolicyDraft`; `ResourceId` + `UpdateBusinessPolicyDraftInput` → `BusinessPolicy`; Policy `If-Match` and operation-specific `Idempotency-Key` required. Only qualification-v1 drafts are mutable. |
+| `POST /business-policies/{id}/publish` | `configuration.publish` | `publishPolicy`; `ResourceId` + `PublishBusinessPolicyInput` → `BusinessPolicy`; Policy `If-Match` and `Idempotency-Key` required. Unsupported booking, handoff, safety, or consent rule publication fails closed. |
+| `POST /business-policies/{id}/retire` | `configuration.publish` | `retirePolicy`; `ResourceId` + `RetireBusinessPolicyInput` → `BusinessPolicy`; Policy `If-Match` and `Idempotency-Key` required. History is retained. |
 | `GET, POST /channel-connections` | `integrations.read` / `integrations.manage` | Metadata returned; credentials accepted only through secret-specific write fields and never echoed. |
 | `PATCH /channel-connections/{id}` | `integrations.manage` | Versioned allowlisted metadata/status change; secret values are never returned. |
 | `POST /channel-connections/{id}/rotate-credential` | `integrations.manage` | Step-up, idempotency and audit required; encrypted replacement with bounded overlap/revocation. |
