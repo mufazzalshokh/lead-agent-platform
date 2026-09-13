@@ -18,6 +18,10 @@ defines contracts, not handlers or integration code.
   UUIDv7 strings. Canonical timestamps are UTC RFC 3339 strings; business time
   input includes an IANA time-zone identifier or is interpreted using the
   selected location's configured time zone.
+- Canonical API and database local dates remain ISO 8601 `YYYY-MM-DD`. User-facing
+  Uzbek/Russian presentation, including locations in `Asia/Tashkent`, displays
+  calendar dates as `DD-MM-YYYY`; presentation formatting never changes the
+  canonical wire or persistence value.
 - Money is `{ "amount_minor": integer, "currency": "ISO-4217" }`; floating-point
   amounts are invalid. API clients never submit an authoritative price when
   creating an appointment request.
