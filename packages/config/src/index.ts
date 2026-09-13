@@ -15,6 +15,13 @@ export {
   type IdentityDatabaseRuntimeConfigInput,
 } from "./identity-database.js";
 export {
+  createQueueDatabaseRuntimeConfig,
+  loadQueueDatabaseRuntimeConfig,
+  QUEUE_DATABASE_URL_ENVIRONMENT_KEY,
+  type QueueDatabaseRuntimeConfig,
+  type QueueDatabaseRuntimeConfigInput,
+} from "./queue-database.js";
+export {
   createStaffWebAuthConfig,
   loadStaffWebAuthConfig,
   type ApplicationEnvironment,

@@ -148,6 +148,13 @@
       "when": 1789459200000,
       "tag": "0020_s7_faq_policy_history_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789545600000,
+      "tag": "0021_s8_pgboss_infrastructure",
+      "breakpoints": true
     }
   ]
 }
