@@ -155,6 +155,13 @@
       "when": 1789545600000,
       "tag": "0021_s8_pgboss_infrastructure",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789632000000,
+      "tag": "0022_s8_outbox_relay_persistence",
+      "breakpoints": true
     }
   ]
 }

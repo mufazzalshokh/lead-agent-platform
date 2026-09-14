@@ -1689,7 +1689,8 @@ const insertOutboxEvent = async (
       (id, organization_id, event_type, schema_version, aggregate_type,
        aggregate_id, aggregate_version, payload_jsonb, correlation_id,
        causation_id, occurred_at, status, attempt_count, available_at,
-       locked_by, locked_until, published_at, last_error_category)
+       locked_by, locked_until, lease_token, published_at,
+       published_claim_token, last_error_category)
      values ($1, $2, $3, $4, $5, $6, $7::bigint, $8::jsonb, $9, $10,
        timestamptz '2026-01-01 00:10:00+00', $11,
        case when $11::varchar = 'pending' then 0 else 1 end,
@@ -1697,8 +1698,12 @@ const insertOutboxEvent = async (
        case when $11::varchar = 'processing' then 'worker:test-1' else null end,
        case when $11::varchar = 'processing'
          then timestamptz '2026-01-01 00:20:00+00' else null end,
+       case when $11::varchar = 'processing'
+         then '123e4567-e89b-42d3-a456-426614174000'::uuid else null end,
        case when $11::varchar = 'published'
          then timestamptz '2026-01-01 00:11:00+00' else null end,
+       case when $11::varchar = 'published'
+         then '123e4567-e89b-42d3-a456-426614174000'::uuid else null end,
        case when $11::varchar = 'dead_lettered' then 'synthetic_failure' else null end)`,
     [
       id,
@@ -2911,7 +2916,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       "available_at",
       "locked_by",
       "locked_until",
+      "lease_token",
       "published_at",
+      "published_claim_token",
       "last_error_category",
     ]);
     expect(namesByTable["audit_events"]?.map(({ column_name }) => column_name)).toEqual([
@@ -8738,14 +8745,17 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       `update outbox_events
           set status = 'processing', attempt_count = 1,
               locked_by = 'worker:test-1',
-              locked_until = timestamptz '2026-01-01 00:20:00+00'
+              locked_until = timestamptz '2026-01-01 00:20:00+00',
+              lease_token = '123e4567-e89b-42d3-a456-426614174000'::uuid
         where id = $1`,
       [OUTBOX_EVENT_A],
     );
     await database().query(
       `update outbox_events
           set status = 'published', locked_by = null, locked_until = null,
-              published_at = timestamptz '2026-01-01 00:21:00+00'
+              lease_token = null,
+              published_at = timestamptz '2026-01-01 00:21:00+00',
+              published_claim_token = '123e4567-e89b-42d3-a456-426614174000'::uuid
         where id = $1`,
       [OUTBOX_EVENT_A],
     );

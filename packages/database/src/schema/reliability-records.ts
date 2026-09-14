@@ -286,7 +286,9 @@ export const outboxEvents = pgTable(
     availableAt: timestamp("available_at", { mode: "date", withTimezone: true }).notNull(),
     lockedBy: varchar("locked_by", { length: 128 }),
     lockedUntil: timestamp("locked_until", { mode: "date", withTimezone: true }),
+    leaseToken: uuid("lease_token"),
     publishedAt: timestamp("published_at", { mode: "date", withTimezone: true }),
+    publishedClaimToken: uuid("published_claim_token"),
     lastErrorCategory: varchar("last_error_category", { length: 100 }),
   },
   (table): PgTableExtraConfigValue[] => [
@@ -365,6 +367,16 @@ export const outboxEvents = pgTable(
         or ${table.lastErrorCategory} ~ '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$'`,
     ),
     check(
+      "outbox_events_lease_token_uuid_v4_check",
+      sql`${table.leaseToken} is null
+        or ${table.leaseToken}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "outbox_events_published_claim_token_uuid_v4_check",
+      sql`${table.publishedClaimToken} is null
+        or ${table.publishedClaimToken}::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
       "outbox_events_timestamps_check",
       sql`${table.availableAt} >= ${table.occurredAt}
         and (${table.lockedUntil} is null or ${table.lockedUntil} >= ${table.availableAt})
@@ -375,20 +387,28 @@ export const outboxEvents = pgTable(
       sql`(${table.status} = 'pending'
           and ${table.lockedBy} is null
           and ${table.lockedUntil} is null
-          and ${table.publishedAt} is null)
+          and ${table.leaseToken} is null
+          and ${table.publishedAt} is null
+          and ${table.publishedClaimToken} is null)
         or (${table.status} = 'processing'
           and ${table.lockedBy} is not null
           and ${table.lockedUntil} is not null
-          and ${table.publishedAt} is null)
+          and ${table.leaseToken} is not null
+          and ${table.publishedAt} is null
+          and ${table.publishedClaimToken} is null)
         or (${table.status} = 'published'
           and ${table.lockedBy} is null
           and ${table.lockedUntil} is null
+          and ${table.leaseToken} is null
           and ${table.publishedAt} is not null
+          and ${table.publishedClaimToken} is not null
           and ${table.lastErrorCategory} is null)
         or (${table.status} = 'dead_lettered'
           and ${table.lockedBy} is null
           and ${table.lockedUntil} is null
+          and ${table.leaseToken} is null
           and ${table.publishedAt} is null
+          and ${table.publishedClaimToken} is null
           and ${table.lastErrorCategory} is not null)`,
     ),
     foreignKey({
@@ -409,6 +429,12 @@ export const outboxEvents = pgTable(
     index("outbox_events_pending_available_idx")
       .on(table.status, table.availableAt, table.id)
       .where(sql`${table.status} = 'pending'`),
+    index("outbox_events_relay_pending_tenant_idx")
+      .on(table.organizationId, table.availableAt, table.id)
+      .where(sql`${table.status} = 'pending'`),
+    index("outbox_events_relay_processing_tenant_idx")
+      .on(table.organizationId, table.lockedUntil, table.id)
+      .where(sql`${table.status} = 'processing'`),
     index("outbox_events_organization_occurred_idx").on(
       table.organizationId,
       table.occurredAt.desc(),
