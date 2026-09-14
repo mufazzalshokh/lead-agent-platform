@@ -1647,7 +1647,7 @@ added speculatively.
 | Knowledge load | tenant + active service/location/policy + effective instant | catalog tenant/status/effective indexes described above |
 | Provider dedupe | tenant + connection + exact external ID | webhook/message unique indexes |
 | Contact resolution | tenant + identity type/connection + exact tenant-peppered hash | contact identity expression unique index |
-| Outbox claim | global worker due pending items | partial `outbox_events(status, available_at, id)` through a later-approved narrow claim boundary; tenant context set before processing |
+| Outbox claim | global worker due pending items whose exact event type/version has an active finite handler capability | partial `outbox_events(status, available_at, id)` through the narrow claim boundary; inactive/unconsumed valid events remain pending and unleased, and tenant context is set before processing |
 | Notification claim | tenant/worker + due state | `notifications(organization_id, status, available_at)` |
 | Funnel report | tenant + event type + occurred range, optional dimensions | `analytics_events(organization_id, occurred_at, event_type)` and subject indexes |
 | Audit target history | tenant + target + reverse time | audit target composite index |

@@ -71,7 +71,9 @@ The intake path performs only bounded validation and durable acceptance. Slow AI
 
 1. **Webhook acceptance transaction:** insert `webhook_receipts`, normalized inbound message/envelope, and an outbox event that requests processing. A unique constraint wins duplicate races.
 2. **Domain command transaction:** lock or version-check the conversation/aggregate, re-read current state, apply one deterministic command, append transition/domain records, and insert outbox events.
-3. **Outbox claim transaction:** claim a bounded batch using leases/row locking. Network calls happen after commit.
+3. **Outbox claim transaction:** claim a bounded batch of exact active
+   event/version routes using leases/row locking. Network calls happen after
+   commit; inactive routes remain pending and unleased.
 4. **Queue-publication result transaction:** after the pg-boss enqueue is durably committed, mark the outbox row `published` and set `published_at`. On transient relay failure, release/reschedule the outbox row; on permanent exhaustion, mark it `dead_lettered`.
 5. **Handler result transaction:** record each workload attempt and its terminal, transient, permanent, or ambiguous result in pg-boss and the applicable domain attempt/evidence records. Handler or provider success does not change the meaning of outbox `published`.
 6. **Analytics projection transaction:** consume a stable domain event and insert one versioned analytics fact using a uniqueness constraint. Analytics failure never rolls back the original business action.
@@ -113,7 +115,9 @@ The system assumes webhooks can arrive out of order. `provider_occurred_at` is u
 `pg-boss` is the initial PostgreSQL-backed job mechanism. Model A is authoritative: the outbox remains explicit rather than relying on direct pg-boss enqueue from a normal business transaction or an implicit enqueue-after-commit convention:
 
 1. A business transaction inserts an outbox row.
-2. A dispatcher claims pending rows fairly and durably enqueues the corresponding pg-boss job.
+2. A dispatcher claims only pending rows whose exact `event_type` and
+   `schema_version` have an active finite handler capability, then fairly and
+   durably enqueues the corresponding pg-boss job.
 3. The durable enqueue changes the outbox row to `published` and sets `published_at`.
 4. A handler validates the internal envelope, re-establishes tenant context, performs an idempotent effect through the application boundary, and records an attempt.
 5. Retryable handler failure schedules another attempt. Exhaustion dead-letters the job; final effect/provider delivery remains represented by pg-boss plus workload/domain attempt or evidence records, idempotency/reconciliation, audit, and observability.
@@ -124,15 +128,79 @@ Physical dispatch and job execution are **at least once**. The logical effect is
 
 The dispatcher and handler may collapse into one worker implementation in V1, but the durable states and separation of responsibilities remain. A periodic sweeper recovers expired leases. A reconciliation job compares stuck domain states, outbox states, and provider receipts.
 
-Global due-work claiming is the only cross-tenant worker discovery operation. It uses a narrow, explicitly reviewed, least-privilege claim/recovery/finalization boundary that returns only minimal outbox references and never grants generic `BYPASSRLS` or tenant-table access. Its `SECURITY DEFINER` owner is `NOLOGIN`; functions use a fixed safe `search_path`, bounded inputs/results, explicit object qualification, and narrow `EXECUTE` grants. Before reading or mutating tenant business data, the handler opens a fresh `TenantDbSession` transaction, establishes the stored `organization_id` as transaction-local RLS context, reloads the canonical outbox event under `FORCE ROW LEVEL SECURITY`, and verifies the job envelope's tenant, event, aggregate, and trace provenance against it. A mismatched/missing scope is permanently quarantined and security-alerted, never retried as ordinary provider failure.
+Global eligible-due-work claiming is the only cross-tenant worker discovery
+operation. Claim eligibility includes an exact active `event_type` plus
+`schema_version` capability before a lease is created. The claim path uses a
+narrow, explicitly reviewed, least-privilege claim/recovery/finalization
+boundary that returns only minimal outbox references and never grants generic
+`BYPASSRLS` or tenant-table access. Its `SECURITY DEFINER` owner is `NOLOGIN`;
+functions use a fixed safe `search_path`, bounded inputs/results, explicit
+object qualification, and narrow `EXECUTE` grants. Before reading or mutating
+tenant business data, the handler opens a fresh `TenantDbSession` transaction,
+establishes the stored `organization_id` as transaction-local RLS context,
+reloads the canonical outbox event under `FORCE ROW LEVEL SECURITY`, and
+verifies the job envelope's tenant, event, aggregate, and trace provenance
+against it. A mismatched/missing scope is permanently quarantined and
+security-alerted, never retried as ordinary provider failure.
 
 The queue-infrastructure login and pool are separate from the worker tenant-runtime login and pool. The queue login is `LOGIN`, `NOSUPERUSER`, and `NOBYPASSRLS`; it can use only the required pg-boss runtime objects and approved narrow outbox functions. The tenant-runtime connection uses the same `TenantDbSession` and RLS model as ordinary application work. Neither connection uses the migration owner.
 
-The private S8 queue-envelope V1 contains only `job_schema_version`, `outbox_event_id`, `organization_id`, `event_type`, `event_schema_version`, `aggregate_type`, `aggregate_id`, `correlation_id`, and optional `causation_id`. It is runtime validated before use, selects a handler only through a finite queue-to-handler registry, and is compared with the tenant-loaded canonical outbox event. It contains no raw customer message, access token, prompt, provider secret, arbitrary URL, SQL, or payload-selected module/handler. Unsupported versions, invalid canonical payloads, forged references, and tenant mismatches fail permanently before any business effect.
+The private S8 queue-envelope V1 contains only `job_schema_version`, `outbox_event_id`, `organization_id`, `event_type`, `event_schema_version`, `aggregate_type`, `aggregate_id`, `correlation_id`, and optional `causation_id`. It is runtime validated before use, selects a handler only through a finite queue-to-handler registry, and is compared with the tenant-loaded canonical outbox event. It contains no raw customer message, access token, prompt, provider secret, arbitrary URL, SQL, or payload-selected module/handler. An inactive or unsupported persisted event/version is not claimable and remains pending. If an event that was claimed through an active capability nevertheless has an invalid canonical payload, forged reference, tenant mismatch, or unsupported envelope because of corruption or drift, it fails permanently before any business effect.
 
 Identity is stable at every layer: the immutable outbox event ID is the dispatcher identity and deterministically derives the pg-boss job identity; handler identity is `(handler version, outbox_event.id)`; and the external provider receives the outbox ID or a stable logical delivery key where it supports idempotency. Providers without native idempotency require persistent attempt/evidence plus reconciliation before an ambiguous result may be retried. S8 must verify the pinned pg-boss version's duplicate-ID behavior rather than assuming its API result.
 
-Queue names and handler concurrency are separated by workload class (`inbound`, `ai`, `outbound_message`, `staff_notification`, `analytics`, `maintenance`) so a slow AI provider cannot starve confirmations or security work. Tenant-aware concurrency/rate limits prevent a noisy tenant from consuming all workers.
+Queue names and handler concurrency are separated by workload class (`inbound`,
+`ai`, `outbound_message`, `staff_notification`, `analytics`, `maintenance`) so
+a slow AI provider cannot starve confirmations or security work. Tenant-aware
+concurrency/rate limits prevent a noisy tenant from consuming all workers.
+
+Queue ownership and dispatch activation are separate. Every canonical semantic
+event has exactly one logical owning queue, but that ownership does not
+authorize dispatch or imply that a customer-visible effect exists. An event is
+claimable only when a finite trusted handler registry enables its exact
+`event_type` and `schema_version`. The private ownership catalog is:
+
+| Queue | Count | Canonical semantic events |
+| --- | ---: | --- |
+| `maintenance` | 21 | `organization.created`, `organization.status_changed`, `membership.activated`, `membership.scope_changed`, `membership.revoked`, `location.changed`, `service.published`, `service.deactivated`, `service_price.published`, `faq.published`, `business_policy.published`, `channel_connection.activated`, `channel_connection.disabled`, `channel_connection.credential_rotated`, `contact.created`, `contact.identity_added`, `contact.anonymized`, `consent.granted`, `consent.declined`, `consent.withdrawn`, `consent.not_required_recorded` |
+| `ai` | 1 | `message.received` |
+| `outbound_message` | 1 | `message.response_queued` |
+| `staff_notification` | 1 | `notification.created` |
+| `analytics` | 39 | `lead.created`, `lead.engaged`, `lead.qualified`, `lead.disqualified`, `lead.booking_requested`, `lead.converted`, `lead.closed`, `lead.reopened`, `conversation.started`, `message.sent`, `conversation.status_changed`, `conversation.automation_mode_changed`, `conversation.active_handoff_changed`, `conversation.resolved`, `conversation.closed`, `appointment_request.created`, `appointment_request.staff_accepted`, `appointment_request.customer_confirmation_requested`, `appointment_request.confirmed`, `appointment_request.rejected`, `appointment_request.cancelled`, `appointment_request.expired`, `appointment.attendance_recorded`, `appointment.attendance_corrected`, `appointment.revenue_attributed`, `appointment.revenue_reversed`, `handoff.requested`, `handoff.assigned`, `handoff.started`, `handoff.resolved`, `handoff.cancelled`, `handoff.expired`, `notification.delivered`, `notification.failed`, `notification.dead_lettered`, `ai_run.completed`, `ai_run.failed`, `ai_run.schema_rejected`, `ai_run.policy_denied` |
+| `inbound` | 0 | None. This queue is reserved for future channel-ingress work before a canonical inbound message is persisted. Once trusted ingestion emits `message.received`, ownership is `ai`. No event is invented merely to populate `inbound`. |
+
+This catalog contains all 63 semantic names exactly once. `lead.reopened` V1
+and V2 share the one semantic `analytics` owner, while activation remains
+version-specific. There is no fallback queue: a missing catalog entry is an
+architecture/programming invariant failure and is never enqueued.
+
+A domain or state event does not implicitly authorize an unrelated external
+effect. Customer communication requires the explicit
+`message.response_queued` effect-intent event; for example,
+`appointment_request.customer_confirmation_requested` alone does not authorize
+sending a customer message. Staff notification requires the explicit
+`notification.created` effect-intent event; `handoff.requested` alone does not
+authorize one. Queue ownership identifies the future workload boundary, while
+the registered handler/application use case defines the actual effect.
+
+A valid canonical event with known queue ownership but no active handler for its
+exact event/version remains `pending` and is not claimable. It receives no
+lease or attempt increment, creates no pg-boss job, and is neither published,
+dead-lettered, nor classified as a relay failure. In particular it is not routed
+to a maintenance, analytics, or inbound fallback. The production active set is
+empty at the S8.3 boundary; S8.3 may use an explicit finite test capability set,
+while S8.4 owns production handler registration and activation. Before real
+customer processing, every emit-capable event/version needs an active reviewed
+consumer or an explicitly approved durable deferral.
+
+The claim boundary receives only a finite, validated set of exact
+`(event_type, schema_version)` pairs from trusted worker infrastructure; it does
+not accept SQL fragments, arbitrary predicates, payload-derived routes, queue
+names, or client input. If the existing claim function cannot filter those
+pairs before leasing, S8.3 may add a minimal function-only migration to replace
+or version that boundary. Such a migration may not add a business table,
+lifecycle state, payload access, broad grant, RLS bypass, or pg-boss schema
+change.
 
 Initial dispatcher defaults are configuration, validated at startup, and are not SLAs or proven capacity limits:
 
@@ -147,7 +215,15 @@ Initial dispatcher defaults are configuration, validated at startup, and are not
 | Dispatcher loops | One per worker process |
 | Handler concurrency | One per workload queue per process until measured |
 
-Claims order eligible work by due/available time and then immutable outbox ID while applying the per-tenant cap. Concurrent replicas use row locking such as `FOR UPDATE SKIP LOCKED` plus leases; there is no global serialization. A crash after claim is recovered after lease expiry. A crash after enqueue but before the outbox marker is reconciled through the deterministic job identity and idempotent handler. Same-aggregate correctness remains enforced by current state/version/CAS checks; per-aggregate FIFO or concurrency restrictions are introduced only for a workload that proves it needs them. One poison item cannot block unrelated tenants or aggregates.
+Claims order eligible active-route work by due/available time and then immutable
+outbox ID while applying the per-tenant cap. Concurrent replicas use row locking
+such as `FOR UPDATE SKIP LOCKED` plus leases; there is no global serialization.
+A crash after claim is recovered after lease expiry. A crash after enqueue but
+before the outbox marker is reconciled through the deterministic job identity
+and idempotent handler. Same-aggregate correctness remains enforced by current
+state/version/CAS checks; per-aggregate FIFO or concurrency restrictions are
+introduced only for a workload that proves it needs them. One poison item cannot
+block unrelated tenants or aggregates.
 
 ### Retry policy
 
@@ -160,7 +236,7 @@ Retries are based on typed failure classification, not on a blanket catch:
 
 Attempt counts, maximum age, and delays are configuration, validated at startup. Initial operational profiles must be load-tested rather than treated as product promises. Recommended envelopes are:
 
-The frozen generic initial profile permits five total executions, starts retry delay at five seconds, and uses exponential full jitter in the range `0..min(300 seconds, 5 * 2^retry)`. Maximum generic job age is 24 hours. Active-job expiration is 15 minutes, with a 60-second heartbeat for long-running handlers. Validation failure, unsupported payload/event version, tenant-integrity violation, and a forged or mismatched queue envelope receive zero retries. A bounded `Retry-After` is honored only while it remains inside the job's and business operation's remaining deadline. Workload/provider profiles may narrow these limits; no profile may make retry infinite or multiply the application-owned end-to-end attempt budget.
+The frozen generic initial profile permits five total executions, starts retry delay at five seconds, and uses exponential full jitter in the range `0..min(300 seconds, 5 * 2^retry)`. Maximum generic job age is 24 hours. Active-job expiration is 15 minutes, with a 60-second heartbeat for long-running handlers. After an exact active route has been claimed or enqueued, validation failure, unsupported payload/job-envelope version, tenant-integrity violation, and a forged or mismatched queue envelope receive zero retries. This does not convert an inactive persisted event/version into claimable work or a dead letter. A bounded `Retry-After` is honored only while it remains inside the job's and business operation's remaining deadline. Workload/provider profiles may narrow these limits; no profile may make retry infinite or multiply the application-owned end-to-end attempt budget.
 
 The implementation must not accept pg-boss retry defaults implicitly. In particular, it must prove that the retry adapter provides the required full-jitter distribution rather than assuming a library's generic backoff setting has identical semantics.
 

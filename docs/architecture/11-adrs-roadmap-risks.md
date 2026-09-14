@@ -360,12 +360,14 @@ Optional external staff-alert adapters are separate P1 tasks. Instagram/WhatsApp
 ### S8 approved reliable-async decisions
 
 S8 uses Model A only: the tenant business transaction atomically commits its
-canonical outbox event, and a later dispatcher durably enqueues pg-boss. The
-outbox then becomes `published`; that state means queue publication only, not
-handler/provider/final-effect completion. Physical execution is at least once
-and the logical effect is effectively once through stable identity, idempotency,
-state/version checks and reconciliation. Distributed exactly-once is not
-claimed. No normal business transaction directly enqueues pg-boss.
+canonical outbox event, and a later dispatcher durably enqueues pg-boss only
+when the exact event type and schema version have an active finite handler
+capability. The outbox then becomes `published`; that state means queue
+publication only, not handler/provider/final-effect completion. Physical
+execution is at least once and the logical effect is effectively once through
+stable identity, idempotency, state/version checks and reconciliation.
+Distributed exactly-once is not claimed. No normal business transaction directly
+enqueues pg-boss.
 
 The existing public contract surface remains 272 contracts, the event registry
 remains 63 semantic names and 64 versioned variants, and S8 adds no business
@@ -375,6 +377,33 @@ only `job_schema_version`, `outbox_event_id`, `organization_id`, `event_type`,
 optional `causation_id`. The worker reloads and validates the canonical outbox
 event under a fresh tenant session; queue/handler selection is finite and never
 payload-driven.
+
+Queue ownership is architectural metadata, not dispatch activation. The
+normative 63-event ownership catalog in
+`08-reliability-observability-analytics.md` assigns exactly 21 events to
+`maintenance`, one to `ai`, one to `outbound_message`, one to
+`staff_notification`, 39 to `analytics`, and zero to `inbound`. `inbound` is
+reserved for future pre-canonical channel-ingress work; the persisted
+`message.received` event belongs to `ai`. There is no default or fallback queue.
+`lead.reopened` versions 1 and 2 share one semantic owner but are activated as
+separate exact event/version capabilities.
+
+A domain state event never implies a separate external effect. Customer output
+requires `message.response_queued`, and staff notification requires
+`notification.created`; appointment and Handoff state events do not silently
+fan out. A valid canonical event without an active exact handler remains pending
+and unclaimed, with no lease, attempt increment, enqueue, publication,
+dead-letter, or failure classification. The production active set is empty until
+S8.4 installs the finite handler registry. S8.3 may use only an explicit finite
+test capability set.
+
+Claim eligibility therefore includes the trusted finite set of active
+`(event_type, schema_version)` pairs before lease creation. If the S8.2 claim
+function cannot enforce that condition, the owner-approved S8.3 exception is a
+minimal `0023` function-only migration that replaces or versions the narrow
+claim boundary and its required grants. It may add no business table, outbox
+state, payload access, broad privilege, RLS bypass, public contract/event, or
+pg-boss schema change. The business-table count remains 51.
 
 Initial dispatcher and worker controls are configurable engineering defaults,
 not SLAs or proven capacity limits:
@@ -392,8 +421,10 @@ not SLAs or proven capacity limits:
 | Long-running heartbeat | 60 seconds |
 | Shutdown drain / minimum termination grace | 25 seconds / 30 seconds |
 
-Validation failure, unsupported event/job version, tenant-integrity violation,
-and forged/mismatched envelopes receive zero retry. Bounded provider
+After an exact active route has been claimed or enqueued, validation failure,
+unsupported payload/job-envelope version, tenant-integrity violation, and
+forged/mismatched envelopes receive zero retry. This does not make an inactive
+persisted event/version claimable or dead-letter it. Bounded provider
 `Retry-After` is honored only inside the remaining job/business deadline;
 workload profiles may narrow the generic bounds but cannot introduce infinite or
 nested retry budgets. Claims order due/available time then immutable outbox ID,
