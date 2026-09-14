@@ -130,5 +130,3 @@ export const createActiveEventRoutes = (candidates: unknown): readonly ActiveEve
   });
   return Object.freeze(routes);
 };
-
-export const PRODUCTION_ACTIVE_EVENT_ROUTES = createActiveEventRoutes([]);

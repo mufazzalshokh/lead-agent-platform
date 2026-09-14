@@ -42,6 +42,7 @@ export type TenantDatabaseRuntimeObservability = Readonly<{
 
 export type TenantDatabaseRuntime = Readonly<{
   close: () => Promise<void>;
+  verifyReady: () => Promise<void>;
   withTenantTransaction: <Result>(
     organizationId: OrganizationId,
     callback: TenantTransactionCallback<Result>,
@@ -144,6 +145,35 @@ class TenantDatabaseRuntimeImplementation implements TenantDatabaseRuntime {
     }
     this.#closed = true;
     await this.#pool.end();
+  }
+
+  async verifyReady(): Promise<void> {
+    if (this.#closed) {
+      throw new TenantDatabaseRuntimeClosedError();
+    }
+    const client = await this.#pool.connect();
+    let releaseError: Error | undefined;
+    try {
+      const result = await client.query<{
+        database_role: string;
+        inherited_context: string | null;
+      }>(
+        `select current_user as database_role,
+                nullif(current_setting('app.organization_id', true), '') as inherited_context`,
+      );
+      const readiness = result.rows[0];
+      if (readiness?.database_role !== REQUIRED_RUNTIME_ROLE) {
+        throw new TenantRuntimeRoleError();
+      }
+      if (readiness.inherited_context !== null) {
+        throw new TenantContextInitializationError();
+      }
+    } catch (error) {
+      releaseError = error instanceof Error ? error : new Error("Unknown tenant readiness failure");
+      throw error;
+    } finally {
+      client.release(releaseError);
+    }
   }
 
   async withTenantTransaction<Result>(

@@ -6,13 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   EVENT_QUEUE_OWNERSHIP,
-  PRODUCTION_ACTIVE_EVENT_ROUTES,
   createActiveEventRoutes,
   isRoutedEventType,
   queueForEvent,
   type ActiveEventRoute,
   type RoutedEventType,
 } from "../../apps/worker/src/event-routing.js";
+import { PRODUCTION_HANDLER_REGISTRY } from "../../apps/worker/src/handler-registry.js";
 import {
   createOutboxDispatcher,
   type CanonicalDispatchEvent,
@@ -167,7 +167,7 @@ describe("S8.3 finite routing and private queue envelope", () => {
   });
 
   it("keeps production activation empty and versions independently activated", () => {
-    expect(PRODUCTION_ACTIVE_EVENT_ROUTES).toEqual([]);
+    expect(PRODUCTION_HANDLER_REGISTRY.activeRoutes).toEqual([]);
     expect(
       createActiveEventRoutes([
         { eventType: "lead.reopened", schemaVersion: "1" },
@@ -226,7 +226,9 @@ describe("S8.3 bounded outbox dispatcher", () => {
       relay: relay.relay,
       tenantEvents: { loadCanonicalEvent },
     });
-    await expect(dispatcher.dispatchOnce(PRODUCTION_ACTIVE_EVENT_ROUTES)).resolves.toEqual({
+    await expect(
+      dispatcher.dispatchOnce(PRODUCTION_HANDLER_REGISTRY.activeRoutes),
+    ).resolves.toEqual({
       claimed: 0,
       deadLettered: 0,
       deferred: 0,

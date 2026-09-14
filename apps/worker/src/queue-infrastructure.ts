@@ -18,6 +18,21 @@ export type ExistingQueueJob = Readonly<{
   queue: QueueName;
 }>;
 
+export type QueueWorkItem = Readonly<{
+  data: unknown;
+  id: string;
+  queue: QueueName;
+  retryCount: number;
+  retryLimit: number;
+}>;
+
+export type QueueWorkRegistration = Readonly<{
+  id: string;
+  queue: QueueName;
+}>;
+
+export type QueueWorkHandler = (job: QueueWorkItem) => Promise<void>;
+
 export class QueueInfrastructureDatabaseError extends Error {
   readonly code = "queue_infrastructure_database_error" as const;
 
@@ -49,7 +64,9 @@ export type QueueInfrastructure = Readonly<{
     envelope: PrivateQueueEnvelopeV1,
   ) => Promise<string | null>;
   inspectExistingJobForReconciliation: (jobId: string) => Promise<readonly ExistingQueueJob[]>;
+  registerWorker: (queue: QueueName, handler: QueueWorkHandler) => Promise<QueueWorkRegistration>;
   start: () => Promise<void>;
+  stopWorker: (registration: QueueWorkRegistration) => Promise<void>;
   stop: () => Promise<void>;
 }>;
 
@@ -111,11 +128,70 @@ export const createQueueInfrastructure = (
         throw mapped;
       }
     },
+    registerWorker: async (
+      queue: QueueName,
+      handler: QueueWorkHandler,
+    ): Promise<QueueWorkRegistration> => {
+      if (!(QUEUE_NAMES as readonly string[]).includes(queue) || typeof handler !== "function") {
+        throw new QueueInfrastructureValidationError();
+      }
+      try {
+        const options = {
+          batchSize: 1,
+          includeMetadata: true,
+          localConcurrency: 1,
+          pollingIntervalSeconds: 1,
+        } as const;
+        const id = await boss.work<unknown, void, typeof options>(
+          queue,
+          options,
+          async (jobs): Promise<void> => {
+            const job = jobs[0];
+            if (jobs.length !== 1 || job === undefined || job.name !== queue) {
+              throw new QueueInfrastructureValidationError();
+            }
+            await handler(
+              Object.freeze({
+                data: job.data,
+                id: job.id,
+                queue,
+                retryCount: job.retryCount,
+                retryLimit: job.retryLimit,
+              }),
+            );
+          },
+        );
+        return Object.freeze({ id, queue });
+      } catch (error) {
+        if (error instanceof QueueInfrastructureValidationError) throw error;
+        const mapped = new QueueInfrastructureDatabaseError();
+        queueInfrastructureDatabaseCauses.set(mapped, error);
+        throw mapped;
+      }
+    },
     start: async (): Promise<void> => {
       await boss.start();
     },
     stop: async (): Promise<void> => {
       await boss.stop();
+    },
+    stopWorker: async (registration: QueueWorkRegistration): Promise<void> => {
+      if (
+        typeof registration !== "object" ||
+        registration === null ||
+        typeof registration.id !== "string" ||
+        registration.id.length === 0 ||
+        !(QUEUE_NAMES as readonly string[]).includes(registration.queue)
+      ) {
+        throw new QueueInfrastructureValidationError();
+      }
+      try {
+        await boss.offWork(registration.queue, { id: registration.id, wait: true });
+      } catch (error) {
+        const mapped = new QueueInfrastructureDatabaseError();
+        queueInfrastructureDatabaseCauses.set(mapped, error);
+        throw mapped;
+      }
     },
   });
 };

@@ -23,9 +23,14 @@ import {
 } from "../../packages/database/src/index.js";
 import { createActiveEventRoutes } from "../../apps/worker/src/event-routing.js";
 import {
+  createWorkerHandlerRegistry,
+  type WorkerHandlerContext,
+} from "../../apps/worker/src/handler-registry.js";
+import {
   createOutboxDispatcher,
   type DispatchClaim,
   type DispatcherRelayPort,
+  type OutboxDispatcher,
 } from "../../apps/worker/src/outbox-dispatcher.js";
 import {
   createPrivateQueueEnvelopeV1,
@@ -35,6 +40,7 @@ import {
   createQueueInfrastructure,
   type QueueInfrastructure,
 } from "../../apps/worker/src/queue-infrastructure.js";
+import { createWorkerRuntime, type WorkerRuntime } from "../../apps/worker/src/worker-runtime.js";
 
 const QUEUE_RUNTIME_ROLE = "lead_agent_queue_runtime";
 const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
@@ -54,6 +60,7 @@ let ownerConnectionString: string | undefined;
 let relayRuntime: OutboxRelayDatabaseRuntime | undefined;
 let tenantRuntime: TenantDatabaseRuntime | undefined;
 let queueInfrastructure: QueueInfrastructure | undefined;
+let queueConnectionString: string | undefined;
 let serverVersion = "";
 
 const database = (): Pool => {
@@ -263,6 +270,36 @@ const persistedJobs = async () =>
     )
   ).rows;
 
+const jobState = async (eventId: string): Promise<string | undefined> => {
+  const result = await database().query<{ state: string }>(
+    "select state::text from pgboss.job where id = $1::uuid",
+    [eventId],
+  );
+  return result.rows[0]?.state;
+};
+
+const idleDispatcher: OutboxDispatcher = Object.freeze({
+  dispatchOnce: () =>
+    Promise.resolve({
+      claimed: 0,
+      deadLettered: 0,
+      deferred: 0,
+      enqueued: 0,
+      published: 0,
+      reconciled: 0,
+      retryReleased: 0,
+    }),
+});
+
+const waitFor = async (condition: () => Promise<boolean>, timeoutMilliseconds = 15_000) => {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Timed out waiting for S8.4 worker integration state");
+};
+
 beforeAll(async () => {
   const externalUrl = requireTestDatabaseUrl();
   if (externalUrl === undefined) {
@@ -311,7 +348,7 @@ beforeAll(async () => {
   const tenantPassword = "s83-local-test-only-tenant-password";
   await configureDisposableRolePassword(ownerPool, QUEUE_RUNTIME_ROLE, queuePassword);
   await configureDisposableRolePassword(ownerPool, TENANT_RUNTIME_ROLE, tenantPassword);
-  const queueConnectionString = connectionStringForRole(QUEUE_RUNTIME_ROLE, queuePassword);
+  queueConnectionString = connectionStringForRole(QUEUE_RUNTIME_ROLE, queuePassword);
   const tenantConnectionString = connectionStringForRole(TENANT_RUNTIME_ROLE, tenantPassword);
   relayRuntime = createOutboxRelayDatabaseRuntime(
     createQueueDatabaseRuntimeConfig({
@@ -581,5 +618,264 @@ describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_
       status: "pending",
     });
     expect(await persistedJobs()).toEqual([]);
+  });
+});
+
+describe("S8.4 PostgreSQL 17 worker lifecycle and finite registry", { timeout: 30_000 }, () => {
+  it("dispatches, validates, tenant-reloads, and invokes the exact registered handler", async () => {
+    if (queueConnectionString === undefined) throw new Error("Queue connection is not initialized");
+    const eventId = syntheticUuid(0x240);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId,
+      organizationId: ORGANIZATION_A,
+    });
+
+    const contexts: WorkerHandlerContext[] = [];
+    const registry = createWorkerHandlerRegistry([
+      {
+        eventType: "organization.created",
+        handler: (context: WorkerHandlerContext) => {
+          contexts.push(context);
+          return Promise.resolve();
+        },
+        handlerVersion: "v1",
+        queue: "maintenance",
+        schemaVersion: "1",
+      },
+    ]);
+    const workerQueue = createQueueInfrastructure(
+      createQueueDatabaseRuntimeConfig({
+        connectionString: queueConnectionString,
+        maxConnections: 6,
+      }),
+    );
+    const tenantEvents = createTenantCanonicalOutboxEventSource(tenant());
+    let runtime: WorkerRuntime | undefined;
+    try {
+      runtime = createWorkerRuntime({
+        dispatcher: createOutboxDispatcher({
+          clock: { now: () => new Date() },
+          dispatcherId: "dispatcher.s84-real",
+          queue: workerQueue,
+          relay: createRelayPort("dispatcher.s84-real"),
+          tenantEvents,
+        }),
+        observability: { onDispatcherError: (error) => void error },
+        queue: workerQueue,
+        registry,
+        tenantEvents,
+        tenantRuntime: tenant(),
+      });
+      await runtime.start();
+      await waitFor(() => Promise.resolve(contexts.length === 1));
+      await waitFor(async () => {
+        return (await jobState(eventId)) === "completed";
+      });
+
+      expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
+      expect(await outboxState(eventId)).toMatchObject({ attempt_count: 1, status: "published" });
+      expect(contexts).toHaveLength(1);
+      expect(contexts[0]).toMatchObject({
+        canonicalEvent: {
+          event_id: eventId,
+          event_type: "organization.created",
+          organization_id: ORGANIZATION_A,
+          schema_version: "1",
+        },
+        identity: {
+          handlerVersion: "v1",
+          idempotencyKey: `v1:${eventId}`,
+          outboxEventId: eventId,
+        },
+        organizationId: ORGANIZATION_A,
+        tenant: { organizationId: ORGANIZATION_A },
+      });
+      expect(contexts[0]).not.toHaveProperty("database");
+      expect(contexts[0]).not.toHaveProperty("job");
+      expect(runtime.readiness()).toMatchObject({ ready: true, state: "ready" });
+    } finally {
+      await runtime?.stop();
+    }
+    expect(runtime?.readiness()).toMatchObject({ ready: false, state: "stopped" });
+  });
+
+  it("fails a stale queued schema version instead of silently acknowledging it", async () => {
+    if (queueConnectionString === undefined) throw new Error("Queue connection is not initialized");
+    const eventId = syntheticUuid(0x241);
+    const workerQueue = createQueueInfrastructure(
+      createQueueDatabaseRuntimeConfig({ connectionString: queueConnectionString }),
+    );
+    const tenantEvents = createTenantCanonicalOutboxEventSource(tenant());
+    const runtime = createWorkerRuntime({
+      dispatcher: idleDispatcher,
+      observability: { onDispatcherError: (error) => void error },
+      queue: workerQueue,
+      registry: createWorkerHandlerRegistry([
+        {
+          eventType: "lead.reopened",
+          handler: () => Promise.resolve(),
+          handlerVersion: "v1",
+          queue: "analytics",
+          schemaVersion: "1",
+        },
+      ]),
+      tenantEvents,
+      tenantRuntime: tenant(),
+    });
+    try {
+      await runtime.start();
+      const staleEnvelope = createPrivateQueueEnvelopeV1({
+        aggregateId: syntheticUuid(0x242),
+        aggregateType: "lead",
+        causationId: null,
+        correlationId: syntheticUuid(0x243),
+        eventSchemaVersion: "2",
+        eventType: "lead.reopened",
+        organizationId: ORGANIZATION_A,
+        outboxEventId: eventId,
+      });
+      expect(await queue().enqueueDurably("analytics", eventId, staleEnvelope)).toBe(eventId);
+      await waitFor(async () => (await jobState(eventId)) === "failed");
+      expect(await jobState(eventId)).toBe("failed");
+    } finally {
+      await runtime.stop();
+    }
+  });
+
+  it("propagates handler failure through pg-boss with a stable attempt identity", async () => {
+    if (queueConnectionString === undefined) throw new Error("Queue connection is not initialized");
+    const eventId = syntheticUuid(0x244);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId,
+      organizationId: ORGANIZATION_A,
+    });
+    const identities: string[] = [];
+    const workerQueue = createQueueInfrastructure(
+      createQueueDatabaseRuntimeConfig({ connectionString: queueConnectionString }),
+    );
+    const tenantEvents = createTenantCanonicalOutboxEventSource(tenant());
+    const runtime = createWorkerRuntime({
+      dispatcher: idleDispatcher,
+      observability: { onDispatcherError: (error) => void error },
+      queue: workerQueue,
+      registry: createWorkerHandlerRegistry([
+        {
+          eventType: "organization.created",
+          handler: (context: WorkerHandlerContext) => {
+            identities.push(context.identity.idempotencyKey);
+            return Promise.reject(new Error("synthetic S8.4 handler failure"));
+          },
+          handlerVersion: "v1",
+          queue: "maintenance",
+          schemaVersion: "1",
+        },
+      ]),
+      tenantEvents,
+      tenantRuntime: tenant(),
+    });
+    try {
+      await runtime.start();
+      const queued = createPrivateQueueEnvelopeV1({
+        aggregateId: ORGANIZATION_A,
+        aggregateType: "organization",
+        causationId: null,
+        correlationId: eventId,
+        eventSchemaVersion: "1",
+        eventType: "organization.created",
+        organizationId: ORGANIZATION_A,
+        outboxEventId: eventId,
+      });
+      expect(await queue().enqueueDurably("maintenance", eventId, queued)).toBe(eventId);
+      await waitFor(async () => (await jobState(eventId)) === "failed");
+      expect(identities.length).toBeGreaterThan(0);
+      expect(new Set(identities)).toEqual(new Set([`v1:${eventId}`]));
+      expect(await jobState(eventId)).toBe("failed");
+    } finally {
+      await runtime.stop();
+    }
+  });
+
+  it("fails queue mismatch and cross-tenant provenance before invoking the handler", async () => {
+    if (queueConnectionString === undefined) throw new Error("Queue connection is not initialized");
+    const wrongQueueId = syntheticUuid(0x245);
+    const crossTenantId = syntheticUuid(0x246);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId: crossTenantId,
+      organizationId: ORGANIZATION_A,
+    });
+    const contexts: WorkerHandlerContext[] = [];
+    const workerQueue = createQueueInfrastructure(
+      createQueueDatabaseRuntimeConfig({ connectionString: queueConnectionString }),
+    );
+    const tenantEvents = createTenantCanonicalOutboxEventSource(tenant());
+    const runtime = createWorkerRuntime({
+      dispatcher: idleDispatcher,
+      observability: { onDispatcherError: (error) => void error },
+      queue: workerQueue,
+      registry: createWorkerHandlerRegistry([
+        {
+          eventType: "organization.created",
+          handler: (context: WorkerHandlerContext) => {
+            contexts.push(context);
+            return Promise.resolve();
+          },
+          handlerVersion: "v1",
+          queue: "maintenance",
+          schemaVersion: "1",
+        },
+        {
+          eventType: "lead.created",
+          handler: (context: WorkerHandlerContext) => {
+            contexts.push(context);
+            return Promise.resolve();
+          },
+          handlerVersion: "v1",
+          queue: "analytics",
+          schemaVersion: "1",
+        },
+      ]),
+      tenantEvents,
+      tenantRuntime: tenant(),
+    });
+    try {
+      const wrongQueueEnvelope = createPrivateQueueEnvelopeV1({
+        aggregateId: ORGANIZATION_A,
+        aggregateType: "organization",
+        causationId: null,
+        correlationId: wrongQueueId,
+        eventSchemaVersion: "1",
+        eventType: "organization.created",
+        organizationId: ORGANIZATION_A,
+        outboxEventId: wrongQueueId,
+      });
+      const crossTenantEnvelope = createPrivateQueueEnvelopeV1({
+        aggregateId: ORGANIZATION_A,
+        aggregateType: "organization",
+        causationId: null,
+        correlationId: crossTenantId,
+        eventSchemaVersion: "1",
+        eventType: "organization.created",
+        organizationId: ORGANIZATION_B,
+        outboxEventId: crossTenantId,
+      });
+      expect(await queue().enqueueDurably("analytics", wrongQueueId, wrongQueueEnvelope)).toBe(
+        wrongQueueId,
+      );
+      expect(await queue().enqueueDurably("maintenance", crossTenantId, crossTenantEnvelope)).toBe(
+        crossTenantId,
+      );
+      await runtime.start();
+      await waitFor(
+        async () =>
+          (await jobState(wrongQueueId)) === "failed" &&
+          (await jobState(crossTenantId)) === "failed",
+      );
+      expect(contexts).toEqual([]);
+    } finally {
+      await runtime.stop();
+    }
   });
 });
