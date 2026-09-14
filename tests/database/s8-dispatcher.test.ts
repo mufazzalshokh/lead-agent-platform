@@ -1,0 +1,585 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { URL } from "node:url";
+
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { Pool } from "pg";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  createQueueDatabaseRuntimeConfig,
+  createTenantDatabaseRuntimeConfig,
+} from "../../packages/config/src/index.js";
+import {
+  createOutboxDispatcherId,
+  createOutboxRelayDatabaseRuntime,
+  createTenantCanonicalOutboxEventSource,
+  createTenantDatabaseRuntime,
+  migrationsFolder,
+  runMigrations,
+  type OutboxRelayClaim,
+  type OutboxRelayDatabaseRuntime,
+  type TenantDatabaseRuntime,
+} from "../../packages/database/src/index.js";
+import { createActiveEventRoutes } from "../../apps/worker/src/event-routing.js";
+import {
+  createOutboxDispatcher,
+  type DispatchClaim,
+  type DispatcherRelayPort,
+} from "../../apps/worker/src/outbox-dispatcher.js";
+import {
+  createPrivateQueueEnvelopeV1,
+  type PrivateQueueEnvelopeV1,
+} from "../../apps/worker/src/queue-envelope.js";
+import {
+  createQueueInfrastructure,
+  type QueueInfrastructure,
+} from "../../apps/worker/src/queue-infrastructure.js";
+
+const QUEUE_RUNTIME_ROLE = "lead_agent_queue_runtime";
+const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
+const BUSINESS_TABLE_COUNT = 51;
+const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-000000000001";
+const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-000000000002";
+const ACTIVE_ORGANIZATION_CREATED = createActiveEventRoutes([
+  { eventType: "organization.created", schemaVersion: "1" },
+]);
+
+const syntheticUuid = (suffix: number): string =>
+  `0193f1a8-7f65-7c28-a434-${suffix.toString(16).padStart(12, "0")}`;
+
+let container: StartedPostgreSqlContainer | undefined;
+let ownerPool: Pool | undefined;
+let ownerConnectionString: string | undefined;
+let relayRuntime: OutboxRelayDatabaseRuntime | undefined;
+let tenantRuntime: TenantDatabaseRuntime | undefined;
+let queueInfrastructure: QueueInfrastructure | undefined;
+let serverVersion = "";
+
+const database = (): Pool => {
+  if (ownerPool === undefined) throw new Error("S8.3 owner pool is not initialized");
+  return ownerPool;
+};
+
+const relay = (): OutboxRelayDatabaseRuntime => {
+  if (relayRuntime === undefined) throw new Error("S8.3 relay runtime is not initialized");
+  return relayRuntime;
+};
+
+const tenant = (): TenantDatabaseRuntime => {
+  if (tenantRuntime === undefined) throw new Error("S8.3 tenant runtime is not initialized");
+  return tenantRuntime;
+};
+
+const queue = (): QueueInfrastructure => {
+  if (queueInfrastructure === undefined) throw new Error("S8.3 queue runtime is not initialized");
+  return queueInfrastructure;
+};
+
+const requireTestDatabaseUrl = (): string | undefined => {
+  const value = process.env["TEST_DATABASE_URL"];
+  if (value === undefined) return undefined;
+  const parsed = new URL(value);
+  const databaseName = decodeURIComponent(parsed.pathname.slice(1));
+  if (
+    !["postgres:", "postgresql:"].includes(parsed.protocol) ||
+    !/(^|[_-])test([_-]|$)/iu.test(databaseName)
+  ) {
+    throw new Error("TEST_DATABASE_URL must identify an explicitly named PostgreSQL test database");
+  }
+  return value;
+};
+
+const requireEmptyExternalTestDatabase = async (testPool: Pool): Promise<void> => {
+  const tables = await testPool.query<{ count: number }>(
+    `select count(*)::integer as count
+       from information_schema.tables
+      where table_type = 'BASE TABLE'
+        and table_schema not in ('information_schema', 'pg_catalog')`,
+  );
+  if (tables.rows[0]?.count !== 0) {
+    throw new Error("TEST_DATABASE_URL must point to a fresh, empty disposable test database");
+  }
+};
+
+const configureDisposableRolePassword = async (
+  testPool: Pool,
+  role: string,
+  password: string,
+): Promise<void> => {
+  const result = await testPool.query<{ statement: string }>(
+    "select pg_catalog.format('alter role %I password %L', $1::text, $2::text) as statement",
+    [role, password],
+  );
+  const statement = result.rows[0]?.statement;
+  if (statement === undefined) throw new Error("Unable to configure disposable runtime role");
+  await testPool.query(statement);
+};
+
+const connectionStringForRole = (role: string, password: string): string => {
+  if (ownerConnectionString === undefined) throw new Error("Owner connection is not initialized");
+  const url = new URL(ownerConnectionString);
+  url.username = role;
+  url.password = password;
+  return url.toString();
+};
+
+const insertOrganization = async (id: string, slug: string): Promise<void> => {
+  await database().query(
+    `insert into organizations
+      (id, slug, display_name, status, default_locale, default_time_zone)
+     values ($1::uuid, $2::varchar, $3::varchar, 'active', 'en', 'Asia/Tashkent')`,
+    [id, slug, `S8.3 ${slug}`],
+  );
+};
+
+const organizationCreatedEnvelope = (input: {
+  aggregateVersion: number;
+  eventId: string;
+  organizationId: string;
+}): Record<string, unknown> => ({
+  actor: { actor_id: null, actor_type: "system" },
+  aggregate_id: input.organizationId,
+  aggregate_type: "organization",
+  aggregate_version: input.aggregateVersion,
+  causation_id: null,
+  correlation_id: input.eventId,
+  event_id: input.eventId,
+  event_type: "organization.created",
+  occurred_at: "2026-09-14T10:00:00.000Z",
+  organization_id: input.organizationId,
+  payload: { default_locale: "en", organization_status: "active" },
+  request_id: null,
+  schema_id: "OrganizationCreatedDomainEvent.v1",
+  schema_version: "1",
+});
+
+const insertOrganizationCreatedOutbox = async (input: {
+  aggregateVersion: number;
+  eventId: string;
+  malformedPayload?: boolean;
+  organizationId: string;
+  payloadOrganizationId?: string;
+}): Promise<void> => {
+  const envelope = organizationCreatedEnvelope({
+    aggregateVersion: input.aggregateVersion,
+    eventId: input.eventId,
+    organizationId: input.payloadOrganizationId ?? input.organizationId,
+  });
+  await database().query(
+    `insert into outbox_events
+      (id, organization_id, event_type, schema_version, aggregate_type,
+       aggregate_id, aggregate_version, payload_jsonb, correlation_id,
+       causation_id, occurred_at, status, attempt_count, available_at)
+     values ($1::uuid, $2::uuid, 'organization.created', '1', 'organization',
+       $2::uuid, $3::bigint, $4::jsonb, $1::uuid, null,
+       '2026-09-14T10:00:00.000Z'::timestamptz, 'pending', 0,
+       '2026-09-14T10:00:00.000Z'::timestamptz)`,
+    [
+      input.eventId,
+      input.organizationId,
+      input.aggregateVersion,
+      JSON.stringify(input.malformedPayload === true ? { malformed: true } : envelope),
+    ],
+  );
+};
+
+const requireClaim = (
+  claims: Map<string, OutboxRelayClaim>,
+  input: { leaseToken: string; organizationId: string; outboxEventId: string },
+): OutboxRelayClaim => {
+  const claim = claims.get(input.outboxEventId);
+  if (
+    claim === undefined ||
+    claim.organizationId !== input.organizationId ||
+    claim.leaseToken !== input.leaseToken
+  ) {
+    throw new Error("S8.3 test relay received an unknown claim identity");
+  }
+  return claim;
+};
+
+const createRelayPort = (
+  dispatcherId: string,
+  publicationOverride?: (claim: OutboxRelayClaim) => Promise<"lease_lost" | "published">,
+): DispatcherRelayPort => {
+  const claims = new Map<string, OutboxRelayClaim>();
+  return {
+    claimBatch: async (input): Promise<readonly DispatchClaim[]> => {
+      const claimed = await relay().claimBatch({
+        activeRoutes: input.activeRoutes,
+        batchSize: input.batchSize,
+        dispatcherId: createOutboxDispatcherId(dispatcherId),
+        leaseSeconds: input.leaseSeconds,
+      });
+      for (const claim of claimed) claims.set(claim.outboxEventId, claim);
+      return claimed;
+    },
+    markDeadLettered: (input) =>
+      relay().markDeadLettered({
+        ...requireClaim(claims, input),
+        errorCategory: input.errorCategory,
+      }),
+    markPublished: (input) => {
+      const claim = requireClaim(claims, input);
+      return publicationOverride === undefined
+        ? relay().markPublished(claim)
+        : publicationOverride(claim);
+    },
+    releaseForRetry: (input) =>
+      relay().releaseForRetry({
+        ...requireClaim(claims, input),
+        availableAt: input.availableAt,
+        errorCategory: input.errorCategory,
+      }),
+  };
+};
+
+const createRealDispatcher = (
+  dispatcherId: string,
+  publicationOverride?: (claim: OutboxRelayClaim) => Promise<"lease_lost" | "published">,
+) =>
+  createOutboxDispatcher({
+    clock: { now: () => new Date() },
+    dispatcherId,
+    queue: queue(),
+    relay: createRelayPort(dispatcherId, publicationOverride),
+    tenantEvents: createTenantCanonicalOutboxEventSource(tenant()),
+  });
+
+const outboxState = async (eventId: string) => {
+  const result = await database().query<{
+    attempt_count: number;
+    lease_token: string | null;
+    status: string;
+  }>("select status, attempt_count, lease_token from outbox_events where id = $1::uuid", [eventId]);
+  return result.rows[0];
+};
+
+const persistedJobs = async () =>
+  (
+    await database().query<{ data: unknown; id: string; name: string }>(
+      "select id, name, data from pgboss.job order by name, id",
+    )
+  ).rows;
+
+beforeAll(async () => {
+  const externalUrl = requireTestDatabaseUrl();
+  if (externalUrl === undefined) {
+    const { PostgreSqlContainer } = await import("@testcontainers/postgresql");
+    container = await new PostgreSqlContainer("postgres:17")
+      .withDatabase("lead_agent_s83_test")
+      .withUsername("lead_agent_s83_owner")
+      .withPassword("s83-local-test-only-owner-password")
+      .start();
+    ownerConnectionString = container.getConnectionUri();
+  } else {
+    ownerConnectionString = externalUrl;
+  }
+  ownerPool = new Pool({ connectionString: ownerConnectionString, max: 12 });
+  if (externalUrl !== undefined) await requireEmptyExternalTestDatabase(ownerPool);
+
+  const version = await ownerPool.query<{ server_version: string; server_version_num: string }>(
+    "select current_setting('server_version') as server_version, current_setting('server_version_num') as server_version_num",
+  );
+  const versionNumber = Number(version.rows[0]?.server_version_num);
+  if (versionNumber < 170_000 || versionNumber >= 180_000) {
+    throw new Error("S8.3 integration tests require PostgreSQL major version 17");
+  }
+  serverVersion = version.rows[0]?.server_version ?? "";
+  await runMigrations(ownerPool);
+  await runMigrations(ownerPool);
+
+  const journal: unknown = JSON.parse(
+    await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
+  );
+  const entries: unknown =
+    typeof journal === "object" && journal !== null ? Reflect.get(journal, "entries") : undefined;
+  const finalEntry: unknown = Array.isArray(entries) ? entries.at(-1) : undefined;
+  if (
+    typeof journal !== "object" ||
+    journal === null ||
+    !Array.isArray(entries) ||
+    typeof finalEntry !== "object" ||
+    finalEntry === null ||
+    Reflect.get(finalEntry, "tag") !== "0023_s8_active_route_claim"
+  ) {
+    throw new Error("S8.3 migration journal is invalid");
+  }
+
+  const queuePassword = "s83-local-test-only-queue-password";
+  const tenantPassword = "s83-local-test-only-tenant-password";
+  await configureDisposableRolePassword(ownerPool, QUEUE_RUNTIME_ROLE, queuePassword);
+  await configureDisposableRolePassword(ownerPool, TENANT_RUNTIME_ROLE, tenantPassword);
+  const queueConnectionString = connectionStringForRole(QUEUE_RUNTIME_ROLE, queuePassword);
+  const tenantConnectionString = connectionStringForRole(TENANT_RUNTIME_ROLE, tenantPassword);
+  relayRuntime = createOutboxRelayDatabaseRuntime(
+    createQueueDatabaseRuntimeConfig({
+      connectionString: queueConnectionString,
+      maxConnections: 6,
+    }),
+    { onUnexpectedPoolError: () => undefined },
+  );
+  tenantRuntime = createTenantDatabaseRuntime(
+    createTenantDatabaseRuntimeConfig({
+      connectionString: tenantConnectionString,
+      maxConnections: 12,
+      statementTimeoutMilliseconds: 30_000,
+    }),
+    { onUnexpectedPoolError: () => undefined },
+  );
+  queueInfrastructure = createQueueInfrastructure(
+    createQueueDatabaseRuntimeConfig({
+      connectionString: queueConnectionString,
+      maxConnections: 6,
+    }),
+  );
+  await queueInfrastructure.start();
+}, 180_000);
+
+beforeEach(async () => {
+  await database().query("delete from pgboss.job");
+  await database().query("truncate table outbox_events, organizations cascade");
+  await insertOrganization(ORGANIZATION_A, "s83-tenant-a");
+  await insertOrganization(ORGANIZATION_B, "s83-tenant-b");
+});
+
+afterAll(async () => {
+  await queueInfrastructure?.stop();
+  await tenantRuntime?.close();
+  await relayRuntime?.close();
+  await ownerPool?.end();
+  await container?.stop();
+}, 60_000);
+
+describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_000 }, () => {
+  it("bootstraps 0023 twice without changing the 51-table business manifest", async () => {
+    expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
+    const tables = await database().query<{ count: number }>(
+      `select count(*)::integer as count
+         from information_schema.tables
+        where table_schema = 'public' and table_type = 'BASE TABLE'`,
+    );
+    expect(tables.rows).toEqual([{ count: BUSINESS_TABLE_COUNT }]);
+    const migrations = await database().query<{ count: number }>(
+      "select count(*)::integer as count from drizzle.__drizzle_migrations",
+    );
+    expect(migrations.rows).toEqual([{ count: 24 }]);
+  });
+
+  it("observes pg-boss 12.31.0 returning null for an exact duplicate queue and ID", async () => {
+    const claim: DispatchClaim = {
+      ...organizationCreatedEnvelope({
+        aggregateVersion: 1,
+        eventId: syntheticUuid(0x200),
+        organizationId: ORGANIZATION_A,
+      }),
+      aggregateId: ORGANIZATION_A,
+      aggregateType: "organization",
+      attemptNumber: 1,
+      causationId: null,
+      correlationId: syntheticUuid(0x200),
+      eventType: "organization.created",
+      leaseToken: "123e4567-e89b-42d3-a456-426614174000",
+      lockedUntil: new Date(),
+      organizationId: ORGANIZATION_A,
+      outboxEventId: syntheticUuid(0x200),
+      schemaVersion: "1",
+    };
+    const envelope = createPrivateQueueEnvelopeV1({
+      aggregateId: claim.aggregateId,
+      aggregateType: claim.aggregateType,
+      causationId: claim.causationId,
+      correlationId: claim.correlationId,
+      eventSchemaVersion: claim.schemaVersion,
+      eventType: "organization.created",
+      organizationId: claim.organizationId,
+      outboxEventId: claim.outboxEventId,
+    });
+    expect(await queue().enqueueDurably("maintenance", claim.outboxEventId, envelope)).toBe(
+      claim.outboxEventId,
+    );
+    expect(await queue().enqueueDurably("maintenance", claim.outboxEventId, envelope)).toBeNull();
+    expect(await persistedJobs()).toHaveLength(1);
+  });
+
+  it("reloads under tenant RLS, persists identifiers only, then publishes", async () => {
+    const eventId = syntheticUuid(0x201);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId,
+      organizationId: ORGANIZATION_A,
+    });
+    const result = await createRealDispatcher("dispatcher.s83-real").dispatchOnce(
+      ACTIVE_ORGANIZATION_CREATED,
+    );
+    expect(result).toMatchObject({ claimed: 1, enqueued: 1, published: 1 });
+    expect(await outboxState(eventId)).toMatchObject({ attempt_count: 1, status: "published" });
+    const jobs = await persistedJobs();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ id: eventId, name: "maintenance" });
+    const envelope = jobs[0]?.data;
+    expect(envelope).toEqual(
+      createPrivateQueueEnvelopeV1({
+        aggregateId: ORGANIZATION_A,
+        aggregateType: "organization",
+        causationId: null,
+        correlationId: eventId,
+        eventSchemaVersion: "1",
+        eventType: "organization.created",
+        organizationId: ORGANIZATION_A,
+        outboxEventId: eventId,
+      }),
+    );
+    expect(JSON.stringify(envelope)).not.toMatch(
+      /payload|lease|customer|message|prompt|token|password|database_url/iu,
+    );
+  });
+
+  it("recovers the enqueue-to-marker crash window by exact reconciliation", async () => {
+    const eventId = syntheticUuid(0x202);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId,
+      organizationId: ORGANIZATION_A,
+    });
+    const first = createRealDispatcher("dispatcher.s83-crash-a", () =>
+      Promise.reject(new Error("synthetic marker outage")),
+    );
+    expect(await first.dispatchOnce(ACTIVE_ORGANIZATION_CREATED)).toMatchObject({
+      claimed: 1,
+      deferred: 1,
+      published: 0,
+    });
+    expect(await persistedJobs()).toHaveLength(1);
+    expect(await outboxState(eventId)).toMatchObject({ attempt_count: 1, status: "processing" });
+    await database().query(
+      "update outbox_events set locked_until = clock_timestamp() - interval '1 second' where id = $1",
+      [eventId],
+    );
+
+    const second = createRealDispatcher("dispatcher.s83-crash-b");
+    expect(await second.dispatchOnce(ACTIVE_ORGANIZATION_CREATED)).toMatchObject({
+      claimed: 1,
+      published: 1,
+      reconciled: 1,
+    });
+    expect(await outboxState(eventId)).toMatchObject({ attempt_count: 2, status: "published" });
+    expect(await persistedJobs()).toHaveLength(1);
+  });
+
+  it("fails closed and dead-letters a mismatched deterministic job collision", async () => {
+    const eventId = syntheticUuid(0x203);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId,
+      organizationId: ORGANIZATION_A,
+    });
+    const mismatched: PrivateQueueEnvelopeV1 = createPrivateQueueEnvelopeV1({
+      aggregateId: ORGANIZATION_B,
+      aggregateType: "organization",
+      causationId: null,
+      correlationId: eventId,
+      eventSchemaVersion: "1",
+      eventType: "organization.created",
+      organizationId: ORGANIZATION_B,
+      outboxEventId: eventId,
+    });
+    await queue().enqueueDurably("maintenance", eventId, mismatched);
+
+    expect(
+      await createRealDispatcher("dispatcher.s83-collision").dispatchOnce(
+        ACTIVE_ORGANIZATION_CREATED,
+      ),
+    ).toMatchObject({
+      claimed: 1,
+      deadLettered: 1,
+      published: 0,
+    });
+    expect(await outboxState(eventId)).toMatchObject({ attempt_count: 1, status: "dead_lettered" });
+    expect(await persistedJobs()).toEqual([
+      expect.objectContaining({ data: mismatched, id: eventId, name: "maintenance" }),
+    ]);
+  });
+
+  it("quarantines malformed and tenant-mismatched canonical payloads per item", async () => {
+    const malformedId = syntheticUuid(0x204);
+    const mismatchId = syntheticUuid(0x205);
+    const validId = syntheticUuid(0x206);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId: malformedId,
+      malformedPayload: true,
+      organizationId: ORGANIZATION_A,
+    });
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 2,
+      eventId: mismatchId,
+      organizationId: ORGANIZATION_A,
+      payloadOrganizationId: ORGANIZATION_B,
+    });
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 3,
+      eventId: validId,
+      organizationId: ORGANIZATION_A,
+    });
+
+    expect(
+      await createRealDispatcher("dispatcher.s83-poison").dispatchOnce(ACTIVE_ORGANIZATION_CREATED),
+    ).toMatchObject({
+      claimed: 3,
+      deadLettered: 2,
+      enqueued: 1,
+      published: 1,
+    });
+    expect(await outboxState(malformedId)).toMatchObject({ status: "dead_lettered" });
+    expect(await outboxState(mismatchId)).toMatchObject({ status: "dead_lettered" });
+    expect(await outboxState(validId)).toMatchObject({ status: "published" });
+    expect((await persistedJobs()).map(({ id }) => id)).toEqual([validId]);
+  });
+
+  it("lets two dispatchers claim disjoint work and create one job per event", async () => {
+    const eventIds: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const eventId = syntheticUuid(0x220 + index);
+      eventIds.push(eventId);
+      await insertOrganizationCreatedOutbox({
+        aggregateVersion: index + 1,
+        eventId,
+        organizationId: ORGANIZATION_A,
+      });
+    }
+
+    const [first, second] = await Promise.all([
+      createRealDispatcher("dispatcher.s83-concurrent-a").dispatchOnce(ACTIVE_ORGANIZATION_CREATED),
+      createRealDispatcher("dispatcher.s83-concurrent-b").dispatchOnce(ACTIVE_ORGANIZATION_CREATED),
+    ]);
+    expect(first.claimed + second.claimed).toBe(10);
+    expect(first.published + second.published).toBe(10);
+    const jobs = await persistedJobs();
+    expect(jobs).toHaveLength(10);
+    expect(new Set(jobs.map(({ id }) => id))).toEqual(new Set(eventIds));
+    const published = await database().query<{ count: number }>(
+      "select count(*)::integer as count from outbox_events where status = 'published'",
+    );
+    expect(published.rows).toEqual([{ count: 10 }]);
+  });
+
+  it("keeps inactive pending work entirely untouched in the production-empty state", async () => {
+    const eventId = syntheticUuid(0x230);
+    await insertOrganizationCreatedOutbox({
+      aggregateVersion: 1,
+      eventId,
+      organizationId: ORGANIZATION_A,
+    });
+    expect(await createRealDispatcher("dispatcher.s83-inactive").dispatchOnce([])).toMatchObject({
+      claimed: 0,
+    });
+    expect(await outboxState(eventId)).toEqual({
+      attempt_count: 0,
+      lease_token: null,
+      status: "pending",
+    });
+    expect(await persistedJobs()).toEqual([]);
+  });
+});

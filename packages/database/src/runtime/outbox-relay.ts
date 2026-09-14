@@ -61,7 +61,13 @@ export type OutboxRelayClaim = Readonly<{
   attemptNumber: number;
 }>;
 
+export type OutboxActiveRoute = Readonly<{
+  eventType: DomainEventName;
+  schemaVersion: SchemaVersion;
+}>;
+
 export type OutboxClaimBatchInput = Readonly<{
+  activeRoutes: readonly OutboxActiveRoute[];
   dispatcherId: OutboxDispatcherId;
   batchSize?: number;
   leaseSeconds?: number;
@@ -195,6 +201,55 @@ const isRetryErrorCategory = (value: unknown): value is OutboxRetryErrorCategory
 const isKnownEventVersion = (eventType: DomainEventName, schemaVersion: string): boolean =>
   Object.hasOwn(DomainEventSchemasByVersion[eventType], schemaVersion);
 
+const requireActiveRoutes = (
+  activeRoutes: unknown,
+): Readonly<{
+  eventTypes: readonly DomainEventName[];
+  schemaVersions: readonly SchemaVersion[];
+}> => {
+  if (!Array.isArray(activeRoutes) || activeRoutes.length > 64) {
+    throw new OutboxRelayValidationError();
+  }
+
+  const eventTypes: DomainEventName[] = [];
+  const schemaVersions: SchemaVersion[] = [];
+  const identities = new Set<string>();
+  const routeValues: readonly unknown[] = activeRoutes;
+  for (const route of routeValues) {
+    if (
+      typeof route !== "object" ||
+      route === null ||
+      Array.isArray(route) ||
+      Object.keys(route).length !== 2 ||
+      !Object.hasOwn(route, "eventType") ||
+      !Object.hasOwn(route, "schemaVersion")
+    ) {
+      throw new OutboxRelayValidationError();
+    }
+    const eventType: unknown = Reflect.get(route, "eventType");
+    const schemaVersion: unknown = Reflect.get(route, "schemaVersion");
+    if (
+      !isSchemaValue(DomainEventNameSchema, eventType) ||
+      !isSchemaValue(SchemaVersionSchema, schemaVersion) ||
+      !isKnownEventVersion(eventType, schemaVersion)
+    ) {
+      throw new OutboxRelayValidationError();
+    }
+    const identity = `${eventType}\u0000${schemaVersion}`;
+    if (identities.has(identity)) {
+      throw new OutboxRelayValidationError();
+    }
+    identities.add(identity);
+    eventTypes.push(eventType);
+    schemaVersions.push(schemaVersion);
+  }
+
+  return Object.freeze({
+    eventTypes: Object.freeze(eventTypes),
+    schemaVersions: Object.freeze(schemaVersions),
+  });
+};
+
 const expectedAggregateType = (eventType: DomainEventName): DomainAggregateType =>
   DomainEventSchemasByVersion[eventType]["1"].properties.aggregate_type.const;
 
@@ -302,11 +357,20 @@ class OutboxRelayDatabaseRuntimeImplementation implements OutboxRelayDatabaseRun
       input.leaseSeconds ?? OUTBOX_RELAY_DEFAULT_LEASE_SECONDS,
       OUTBOX_RELAY_MAX_LEASE_SECONDS,
     );
+    const activeRoutes = requireActiveRoutes(input.activeRoutes);
 
     return await this.#withClient(async (client) => {
       const result = await client.query<OutboxRelayClaimRow>(
-        "select * from app.claim_outbox_events($1::varchar, $2::integer, $3::integer)",
-        [input.dispatcherId, batchSize, leaseSeconds],
+        `select * from app.claim_outbox_events(
+          $1::varchar, $2::varchar[], $3::varchar[], $4::integer, $5::integer
+        )`,
+        [
+          input.dispatcherId,
+          activeRoutes.eventTypes,
+          activeRoutes.schemaVersions,
+          batchSize,
+          leaseSeconds,
+        ],
       );
       return Object.freeze(result.rows.map(mapClaim));
     });

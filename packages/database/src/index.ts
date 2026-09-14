@@ -40,6 +40,7 @@ export {
   createOutboxRelayDatabaseRuntime,
   readOutboxRelayDatabaseCause,
   type OutboxClaimBatchInput,
+  type OutboxActiveRoute,
   type OutboxDeadLetterInput,
   type OutboxDispatcherId,
   type OutboxLeaseInput,

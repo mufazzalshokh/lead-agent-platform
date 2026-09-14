@@ -162,6 +162,13 @@
       "when": 1789632000000,
       "tag": "0022_s8_outbox_relay_persistence",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789718400000,
+      "tag": "0023_s8_active_route_claim",
+      "breakpoints": true
     }
   ]
 }

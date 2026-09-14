@@ -19,6 +19,7 @@ import {
 } from "../../packages/database/src/index.js";
 
 const S8_RELAY_MIGRATION = "0022_s8_outbox_relay_persistence.sql";
+const S8_ACTIVE_ROUTE_MIGRATION = "0023_s8_active_route_claim.sql";
 const QUEUE_RUNTIME_ROLE = "lead_agent_queue_runtime";
 const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
 const RELAY_DEFINER_ROLE = "lead_agent_outbox_relay_definer";
@@ -27,6 +28,9 @@ const BUSINESS_TABLE_COUNT = 51;
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-000000000001";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-000000000002";
 const ORGANIZATION_C = "0193f1a8-7f65-7c28-a434-000000000003";
+const ORGANIZATION_CREATED_ACTIVE_ROUTE = Object.freeze([
+  Object.freeze({ eventType: "organization.created" as const, schemaVersion: "1" }),
+]);
 
 const syntheticUuid = (suffix: number): string =>
   `0193f1a8-7f65-7c28-a434-${suffix.toString(16).padStart(12, "0")}`;
@@ -135,8 +139,8 @@ const loadMigrationNames = async (): Promise<readonly string[]> => {
     if (typeof tag !== "string") throw new Error("Invalid Drizzle migration tag");
     return `${tag}.sql`;
   });
-  if (names.at(-1) !== S8_RELAY_MIGRATION || names.length !== 23) {
-    throw new Error("S8.2 must be the only migration after the accepted 0021 baseline");
+  if (names.at(-1) !== S8_ACTIVE_ROUTE_MIGRATION || names.length !== 24) {
+    throw new Error("S8.3 must be the only migration after the accepted 0022 baseline");
   }
   return names;
 };
@@ -230,6 +234,35 @@ const insertOutboxEvent = async (
   );
 };
 
+const insertRoutedOutboxEvent = async (input: {
+  aggregateType: string;
+  eventType: string;
+  id: string;
+  organizationId: string;
+  schemaVersion: string;
+  version: number;
+}): Promise<void> => {
+  await database().query(
+    `insert into outbox_events
+      (id, organization_id, event_type, schema_version, aggregate_type,
+       aggregate_id, aggregate_version, payload_jsonb, correlation_id,
+       causation_id, occurred_at, status, attempt_count, available_at)
+     values ($1::uuid, $2::uuid, $3::varchar, $4::varchar, $5::varchar,
+       $1::uuid, $6::bigint, $7::jsonb, $1::uuid, null,
+       clock_timestamp() - interval '2 seconds', 'pending', 0,
+       clock_timestamp() - interval '1 second')`,
+    [
+      input.id,
+      input.organizationId,
+      input.eventType,
+      input.schemaVersion,
+      input.aggregateType,
+      input.version,
+      JSON.stringify({ fixture: "s8.3-active-route" }),
+    ],
+  );
+};
+
 const insertOutboxEvents = async (
   organizationId: string,
   count: number,
@@ -265,8 +298,10 @@ const claimRaw = async (
   leaseSeconds = 60,
 ): Promise<readonly RawClaim[]> => {
   const result = await queueDatabase().query<RawClaim>(
-    "select * from app.claim_outbox_events($1::varchar, $2::integer, $3::integer)",
-    [dispatcherId, batchSize, leaseSeconds],
+    `select * from app.claim_outbox_events(
+      $1::varchar, $2::varchar[], $3::varchar[], $4::integer, $5::integer
+    )`,
+    [dispatcherId, ["organization.created"], ["1"], batchSize, leaseSeconds],
   );
   return result.rows;
 };
@@ -324,11 +359,12 @@ beforeAll(async () => {
   serverVersion = versionResult.rows[0]?.server_version ?? "";
 
   const migrationNames = await loadMigrationNames();
-  for (const filename of migrationNames.slice(0, -1)) {
+  for (const filename of migrationNames.slice(0, migrationNames.indexOf(S8_RELAY_MIGRATION))) {
     await applyMigrationSql(ownerPool, filename);
   }
-  const beforeUpgrade = await pgbossFingerprint(ownerPool);
   await applyMigrationSql(ownerPool, S8_RELAY_MIGRATION);
+  const beforeUpgrade = await pgbossFingerprint(ownerPool);
+  await applyMigrationSql(ownerPool, S8_ACTIVE_ROUTE_MIGRATION);
   pgbossUpgradeUnchanged = beforeUpgrade === (await pgbossFingerprint(ownerPool));
 
   await resetDatabaseSchemas(ownerPool);
@@ -369,20 +405,21 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
-describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000 }, () => {
-  it("upgrades 0021 to 0022 without changing business tables or pg-boss", async () => {
+describe("S8.2/S8.3 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000 }, () => {
+  it("upgrades 0022 to 0023 without changing business tables or pg-boss", async () => {
     expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     expect(pgbossUpgradeUnchanged).toBe(true);
     expect(await publicTableCount(database())).toBe(BUSINESS_TABLE_COUNT);
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 23 }]);
+    expect(migrations.rows).toEqual([{ count: 24 }]);
   });
 
   it("exposes only the minimal typed claim result without payload", async () => {
     await insertOutboxEvent(syntheticUuid(0x100), ORGANIZATION_A, 1);
     const claims = await runtime().claimBatch({
+      activeRoutes: ORGANIZATION_CREATED_ACTIVE_ROUTE,
       dispatcherId: createOutboxDispatcherId("dispatcher.s82-a"),
       batchSize: 1,
     });
@@ -407,6 +444,130 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     expect(claim.attemptNumber).toBe(1);
     expect("payload_jsonb" in claim).toBe(false);
     expect("payload" in claim).toBe(false);
+  });
+
+  it("leaves every pending event untouched when the active route set is empty", async () => {
+    const id = syntheticUuid(0x101);
+    await insertOutboxEvent(id, ORGANIZATION_A, 1);
+    await expect(
+      runtime().claimBatch({
+        activeRoutes: [],
+        dispatcherId: createOutboxDispatcherId("dispatcher.empty-routes"),
+      }),
+    ).resolves.toEqual([]);
+    expect(await relayRow(id)).toMatchObject({
+      attempt_count: 0,
+      lease_token: null,
+      locked_by: null,
+      locked_until: null,
+      status: "pending",
+    });
+  });
+
+  it("treats an unknown exact pair as ineligible and rejects malformed route arrays", async () => {
+    const id = syntheticUuid(0x105);
+    await insertOutboxEvent(id, ORGANIZATION_A, 1);
+    const unknown = await queueDatabase().query<RawClaim>(
+      `select * from app.claim_outbox_events(
+        'dispatcher.unknown-route', array['future.event']::varchar[],
+        array['1']::varchar[], 1, 60
+      )`,
+    );
+    expect(unknown.rows).toEqual([]);
+    expect(await relayRow(id)).toMatchObject({ attempt_count: 0, status: "pending" });
+
+    await expect(
+      queueDatabase().query(
+        `select * from app.claim_outbox_events(
+          'dispatcher.bad-cardinality', array['organization.created']::varchar[],
+          array[]::varchar[], 1, 60
+        )`,
+      ),
+    ).rejects.toMatchObject({ code: "22023" });
+    await expect(
+      queueDatabase().query(
+        `select * from app.claim_outbox_events(
+          'dispatcher.duplicate-route',
+          array['organization.created', 'organization.created']::varchar[],
+          array['1', '1']::varchar[], 1, 60
+        )`,
+      ),
+    ).rejects.toMatchObject({ code: "22023" });
+  });
+
+  it("activates lead.reopened V1 and V2 independently before leasing", async () => {
+    const v1Id = syntheticUuid(0x102);
+    const v2Id = syntheticUuid(0x103);
+    await insertRoutedOutboxEvent({
+      aggregateType: "lead",
+      eventType: "lead.reopened",
+      id: v1Id,
+      organizationId: ORGANIZATION_A,
+      schemaVersion: "1",
+      version: 1,
+    });
+    await insertRoutedOutboxEvent({
+      aggregateType: "lead",
+      eventType: "lead.reopened",
+      id: v2Id,
+      organizationId: ORGANIZATION_A,
+      schemaVersion: "2",
+      version: 2,
+    });
+
+    const v1Claims = await runtime().claimBatch({
+      activeRoutes: [{ eventType: "lead.reopened", schemaVersion: "1" }],
+      dispatcherId: createOutboxDispatcherId("dispatcher.reopened-v1"),
+    });
+    expect(v1Claims.map(({ outboxEventId }) => outboxEventId)).toEqual([v1Id]);
+    expect(await relayRow(v2Id)).toMatchObject({ attempt_count: 0, status: "pending" });
+    const v1Claim = v1Claims[0];
+    if (v1Claim === undefined) throw new Error("Expected V1 claim");
+    await runtime().markDeadLettered({ ...v1Claim, errorCategory: "permanent" });
+
+    const v2Claims = await runtime().claimBatch({
+      activeRoutes: [{ eventType: "lead.reopened", schemaVersion: "2" }],
+      dispatcherId: createOutboxDispatcherId("dispatcher.reopened-v2"),
+    });
+    expect(v2Claims.map(({ outboxEventId }) => outboxEventId)).toEqual([v2Id]);
+    expect(await relayRow(v2Id)).toMatchObject({ attempt_count: 1, status: "processing" });
+  });
+
+  it("reclaims an expired lease only when its exact route is active", async () => {
+    const id = syntheticUuid(0x104);
+    await insertRoutedOutboxEvent({
+      aggregateType: "lead",
+      eventType: "lead.reopened",
+      id,
+      organizationId: ORGANIZATION_A,
+      schemaVersion: "2",
+      version: 1,
+    });
+    await database().query(
+      `update outbox_events
+          set status = 'processing', attempt_count = 1,
+              locked_by = 'dispatcher.expired-seed',
+              locked_until = clock_timestamp() - interval '1 second',
+              lease_token = '123e4567-e89b-42d3-a456-426614174000'::uuid
+        where id = $1::uuid`,
+      [id],
+    );
+
+    expect(
+      await runtime().claimBatch({
+        activeRoutes: [{ eventType: "lead.reopened", schemaVersion: "1" }],
+        dispatcherId: createOutboxDispatcherId("dispatcher.expired-wrong"),
+      }),
+    ).toEqual([]);
+    expect(await relayRow(id)).toMatchObject({ attempt_count: 1, status: "processing" });
+
+    const claims = await runtime().claimBatch({
+      activeRoutes: [{ eventType: "lead.reopened", schemaVersion: "2" }],
+      dispatcherId: createOutboxDispatcherId("dispatcher.expired-right"),
+    });
+    expect(
+      claims.map(({ outboxEventId, attemptNumber }) => [outboxEventId, attemptNumber]),
+    ).toEqual([[id, 2]]);
   });
 
   it("installs a narrow NOLOGIN definer and exact queue-only function grants", async () => {
@@ -533,7 +694,9 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
       ]),
     ).rejects.toMatchObject({ code: "42501" });
     await expect(
-      tenantDatabase().query("select * from app.claim_outbox_events('tenant-forbidden', 1, 60)"),
+      tenantDatabase().query(
+        "select * from app.claim_outbox_events('tenant-forbidden', array['organization.created']::varchar[], array['1']::varchar[], 1, 60)",
+      ),
     ).rejects.toMatchObject({ code: "42501" });
 
     const privileges = await database().query<{
@@ -621,6 +784,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     const id = syntheticUuid(0x300);
     await insertOutboxEvent(id, ORGANIZATION_A, 1);
     const [claim] = await runtime().claimBatch({
+      activeRoutes: ORGANIZATION_CREATED_ACTIVE_ROUTE,
       dispatcherId: createOutboxDispatcherId("dispatcher.renewal"),
       batchSize: 1,
     });
@@ -698,6 +862,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     const id = syntheticUuid(0x320);
     await insertOutboxEvent(id, ORGANIZATION_A, 1);
     const [claim] = await runtime().claimBatch({
+      activeRoutes: ORGANIZATION_CREATED_ACTIVE_ROUTE,
       dispatcherId: createOutboxDispatcherId("dispatcher.retry-release"),
       batchSize: 1,
     });
@@ -732,6 +897,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     const id = syntheticUuid(0x330);
     await insertOutboxEvent(id, ORGANIZATION_A, 1);
     const [claim] = await runtime().claimBatch({
+      activeRoutes: ORGANIZATION_CREATED_ACTIVE_ROUTE,
       dispatcherId: createOutboxDispatcherId("dispatcher.dead-letter"),
       batchSize: 1,
     });
@@ -755,6 +921,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     const id = syntheticUuid(0x340);
     await insertOutboxEvent(id, ORGANIZATION_A, 1);
     const [claim] = await runtime().claimBatch({
+      activeRoutes: ORGANIZATION_CREATED_ACTIVE_ROUTE,
       dispatcherId: createOutboxDispatcherId("dispatcher.publication"),
       batchSize: 1,
     });
@@ -789,15 +956,20 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
 
   it("fails closed on malformed and unbounded function inputs", async () => {
     await expect(
-      queueDatabase().query("select * from app.claim_outbox_events('short', 1, 60)"),
+      queueDatabase().query(
+        "select * from app.claim_outbox_events('short', array['organization.created']::varchar[], array['1']::varchar[], 1, 60)",
+      ),
     ).rejects.toMatchObject({ code: "22023" });
     await expect(
-      queueDatabase().query("select * from app.claim_outbox_events($1::varchar, 51, 60)", [
-        "dispatcher.sql');drop table outbox_events;--",
-      ]),
+      queueDatabase().query(
+        "select * from app.claim_outbox_events($1::varchar, array['organization.created']::varchar[], array['1']::varchar[], 51, 60)",
+        ["dispatcher.sql');drop table outbox_events;--"],
+      ),
     ).rejects.toMatchObject({ code: "22023" });
     await expect(
-      queueDatabase().query("select * from app.claim_outbox_events('dispatcher.invalid', 1, 0)"),
+      queueDatabase().query(
+        "select * from app.claim_outbox_events('dispatcher.invalid', array['organization.created']::varchar[], array['1']::varchar[], 1, 0)",
+      ),
     ).rejects.toMatchObject({ code: "22023" });
     await expect(
       queueDatabase().query(
@@ -830,6 +1002,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     expect(() => createOutboxDispatcherId("short")).toThrow(OutboxRelayValidationError);
     await expect(
       runtime().claimBatch({
+        activeRoutes: ORGANIZATION_CREATED_ACTIVE_ROUTE,
         dispatcherId: createOutboxDispatcherId("dispatcher.invalid-batch"),
         batchSize: 51,
       }),
@@ -842,7 +1015,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     try {
       await client.query("set search_path = public, app, pg_catalog");
       const claims = await client.query<RawClaim>(
-        "select * from app.claim_outbox_events('dispatcher.search-path', 1, 60)",
+        "select * from app.claim_outbox_events('dispatcher.search-path', array['organization.created']::varchar[], array['1']::varchar[], 1, 60)",
       );
       expect(claims.rows).toHaveLength(1);
     } finally {
@@ -857,6 +1030,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     try {
       await expect(
         wrongRoleRuntime.claimBatch({
+          activeRoutes: ORGANIZATION_CREATED_ACTIVE_ROUTE,
           dispatcherId: createOutboxDispatcherId("dispatcher.wrong-role"),
           batchSize: 1,
         }),
@@ -893,7 +1067,7 @@ describe("S8.2 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000
     try {
       await client.query("begin");
       const claimed = await client.query<RawClaim>(
-        "select * from app.claim_outbox_events('dispatcher.rollback', 1, 60)",
+        "select * from app.claim_outbox_events('dispatcher.rollback', array['organization.created']::varchar[], array['1']::varchar[], 1, 60)",
       );
       expect(claimed.rows).toHaveLength(1);
       await client.query("rollback");
