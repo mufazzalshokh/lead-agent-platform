@@ -239,6 +239,7 @@ describe("S8.4 fail-closed queue job execution", () => {
     expect(context).not.toHaveProperty("database");
     expect(context).not.toHaveProperty("job");
     expect(context).not.toHaveProperty("leaseToken");
+    expect(context?.signal).toBeInstanceOf(AbortSignal);
     expect(Object.isFrozen(context)).toBe(true);
   });
 
@@ -392,7 +393,7 @@ describe("S8.4 worker lifecycle", () => {
     expect(runtime.readiness()).toMatchObject({ ready: true, state: "ready" });
     expect(memory.started).toEqual(["start"]);
     expect(memory.handlers.size).toBe(0);
-    expect(dispatchOnce).toHaveBeenCalledWith([]);
+    expect(dispatchOnce).toHaveBeenCalledWith([], expect.any(AbortSignal));
     expect(sleeps).toEqual([WORKER_DISPATCH_POLL_MILLISECONDS]);
     await runtime.stop();
     expect(memory.stopped).toEqual(["stop"]);

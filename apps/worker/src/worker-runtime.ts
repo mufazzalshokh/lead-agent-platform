@@ -2,12 +2,28 @@ import type { WorkerHandlerRegistry } from "./handler-registry.js";
 import { createWorkerJobExecutor } from "./job-executor.js";
 import type { OutboxDispatcher, TenantCanonicalEventSourcePort } from "./outbox-dispatcher.js";
 import type { QueueInfrastructure, QueueWorkRegistration } from "./queue-infrastructure.js";
+import {
+  WORKER_OPERATIONS_POLL_MILLISECONDS,
+  collectWorkerOperationalMetrics,
+  type WorkerOutboxBacklogProbe,
+  type WorkerQueueDepthProbe,
+} from "./worker-operations.js";
+import {
+  NOOP_WORKER_TELEMETRY,
+  createSafeWorkerTelemetry,
+  type WorkerTelemetry,
+} from "./worker-telemetry.js";
 
 export const WORKER_DISPATCH_POLL_MILLISECONDS = 1_000;
 export const WORKER_DISPATCH_JITTER_MAX_MILLISECONDS = 250;
+export const WORKER_SHUTDOWN_DRAIN_MILLISECONDS = 25_000;
+export const WORKER_TELEMETRY_FLUSH_MILLISECONDS = 1_000;
+export const WORKER_QUEUE_RECOVERY_STOP_MILLISECONDS = 1_000;
 
 export type WorkerLifecycleState =
   "created" | "starting" | "ready" | "stopping" | "stopped" | "failed";
+
+export type WorkerLiveness = Readonly<{ live: true }>;
 
 export type WorkerReadiness = Readonly<{
   activeHandlerCount: number;
@@ -26,6 +42,7 @@ export type WorkerTenantRuntimeReadiness = Readonly<{
 }>;
 
 export type WorkerRuntime = Readonly<{
+  liveness: () => WorkerLiveness;
   readiness: () => WorkerReadiness;
   start: () => Promise<void>;
   stop: () => Promise<void>;
@@ -41,6 +58,11 @@ export class WorkerLifecycleError extends Error {
 }
 
 type Sleeper = (milliseconds: number, signal: AbortSignal) => Promise<void>;
+type DrainResult = "drained" | "timed_out";
+type DrainWaiter = (
+  pending: readonly Promise<void>[],
+  timeoutMilliseconds: number,
+) => Promise<DrainResult>;
 
 const asError = (error: unknown): Error =>
   error instanceof Error ? error : new Error("Unknown worker resource cleanup failure");
@@ -60,18 +82,54 @@ const defaultSleeper: Sleeper = async (milliseconds, signal): Promise<void> => {
   });
 };
 
+const defaultDrainWaiter: DrainWaiter = async (
+  pending,
+  timeoutMilliseconds,
+): Promise<DrainResult> => {
+  if (pending.length === 0) return "drained";
+  return new Promise<DrainResult>((resolve) => {
+    let settled = false;
+    const finish = (result: DrainResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish("timed_out"), timeoutMilliseconds);
+    void Promise.allSettled(pending).then(() => finish("drained"));
+  });
+};
+
+const waitAtMost = async (operation: Promise<void>, timeoutMilliseconds: number): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMilliseconds);
+    void operation.then(finish, finish);
+  });
+};
+
 class WorkerRuntimeImplementation implements WorkerRuntime {
   readonly #closeTenantRuntime: (() => Promise<void>) | undefined;
   readonly #dispatcher: OutboxDispatcher | undefined;
+  readonly #drainWaiter: DrainWaiter;
   readonly #observability: WorkerRuntimeObservability;
+  readonly #outboxBacklog: WorkerOutboxBacklogProbe | undefined;
   readonly #queue: QueueInfrastructure;
   readonly #random: () => number;
   readonly #registry: WorkerHandlerRegistry;
   readonly #sleeper: Sleeper;
+  readonly #telemetry: WorkerTelemetry;
   readonly #tenantEvents: TenantCanonicalEventSourcePort | undefined;
   readonly #tenantRuntime: WorkerTenantRuntimeReadiness | undefined;
   #abortController: AbortController | undefined;
   #dispatcherLoop: Promise<void> | undefined;
+  #operationsLoop: Promise<void> | undefined;
   #queueStarted = false;
   #registrations: QueueWorkRegistration[] = [];
   #startPromise: Promise<void> | undefined;
@@ -81,11 +139,14 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
   constructor(input: {
     closeTenantRuntime?: () => Promise<void>;
     dispatcher?: OutboxDispatcher;
+    drainWaiter?: DrainWaiter;
     observability: WorkerRuntimeObservability;
+    outboxBacklog?: WorkerOutboxBacklogProbe;
     queue: QueueInfrastructure;
     random?: () => number;
     registry: WorkerHandlerRegistry;
     sleeper?: Sleeper;
+    telemetry?: WorkerTelemetry;
     tenantEvents?: TenantCanonicalEventSourcePort;
     tenantRuntime?: WorkerTenantRuntimeReadiness;
   }) {
@@ -99,13 +160,20 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
     }
     this.#closeTenantRuntime = input.closeTenantRuntime;
     this.#dispatcher = input.dispatcher;
+    this.#drainWaiter = input.drainWaiter ?? defaultDrainWaiter;
     this.#observability = input.observability;
+    this.#outboxBacklog = input.outboxBacklog;
     this.#queue = input.queue;
     this.#random = input.random ?? Math.random;
     this.#registry = input.registry;
     this.#sleeper = input.sleeper ?? defaultSleeper;
+    this.#telemetry = createSafeWorkerTelemetry(input.telemetry ?? NOOP_WORKER_TELEMETRY);
     this.#tenantEvents = input.tenantEvents;
     this.#tenantRuntime = input.tenantRuntime;
+  }
+
+  liveness(): WorkerLiveness {
+    return Object.freeze({ live: true });
   }
 
   readiness(): WorkerReadiness {
@@ -123,7 +191,7 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
     if (this.#state === "ready") return Promise.resolve();
     if (this.#state !== "created") return Promise.reject(new WorkerLifecycleError());
 
-    this.#state = "starting";
+    this.#setState("starting");
     this.#startPromise = this.#startInternal();
     return this.#startPromise;
   }
@@ -133,6 +201,20 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
     if (this.#state === "stopped") return Promise.resolve();
     this.#stopPromise = this.#stopInternal();
     return this.#stopPromise;
+  }
+
+  #setState(state: WorkerLifecycleState): void {
+    this.#state = state;
+    this.#telemetry.metric({
+      labels: { state },
+      name: "worker.readiness",
+      value: state === "ready" ? 1 : 0,
+    });
+    this.#telemetry.log({
+      attributes: { state },
+      event: "worker.lifecycle.changed",
+      severity: state === "failed" ? "error" : "info",
+    });
   }
 
   async #startInternal(): Promise<void> {
@@ -145,6 +227,7 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
           random: this.#random,
           registry: this.#registry,
           reliability: this.#queue,
+          telemetry: this.#telemetry,
           tenantEvents: this.#tenantEvents,
         });
         for (const queue of this.#registry.activeQueues) {
@@ -157,9 +240,12 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
       if (this.#dispatcher !== undefined) {
         this.#dispatcherLoop = this.#runDispatcherLoop(this.#abortController.signal);
       }
-      this.#state = "ready";
+      if (this.#outboxBacklog !== undefined || this.#queue.observeQueueDepths !== undefined) {
+        this.#operationsLoop = this.#runOperationsLoop(this.#abortController.signal);
+      }
+      this.#setState("ready");
     } catch (error) {
-      this.#state = "failed";
+      this.#setState("failed");
       await this.#cleanup();
       throw error;
     }
@@ -167,7 +253,7 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
 
   async #stopInternal(): Promise<void> {
     if (this.#state === "created") {
-      this.#state = "stopped";
+      this.#setState("stopped");
       return;
     }
     if (this.#state === "starting" && this.#startPromise !== undefined) {
@@ -178,15 +264,20 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
       }
     }
     if (this.#state === "failed") return;
-    this.#state = "stopping";
-    await this.#cleanup();
-    this.#state = "stopped";
+    this.#setState("stopping");
+    try {
+      await this.#cleanup();
+      this.#setState("stopped");
+    } catch (error) {
+      this.#setState("failed");
+      throw error;
+    }
   }
 
   async #runDispatcherLoop(signal: AbortSignal): Promise<void> {
     while (!signal.aborted) {
       try {
-        await this.#dispatcher?.dispatchOnce(this.#registry.activeRoutes);
+        await this.#dispatcher?.dispatchOnce(this.#registry.activeRoutes, signal);
       } catch (error) {
         this.#observability.onDispatcherError(error);
       }
@@ -201,24 +292,69 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
     }
   }
 
+  async #runOperationsLoop(signal: AbortSignal): Promise<void> {
+    const observeQueueDepths = this.#queue.observeQueueDepths;
+    const queueProbe: WorkerQueueDepthProbe | undefined =
+      observeQueueDepths === undefined ? undefined : { observeQueueDepths };
+    while (!signal.aborted) {
+      await collectWorkerOperationalMetrics({
+        activeQueues: this.#registry.activeQueues,
+        activeRoutes: this.#registry.activeRoutes,
+        ...(this.#outboxBacklog === undefined ? {} : { outbox: this.#outboxBacklog }),
+        ...(queueProbe === undefined ? {} : { queue: queueProbe }),
+        telemetry: this.#telemetry,
+      });
+      if (signal.aborted) return;
+      await this.#sleeper(WORKER_OPERATIONS_POLL_MILLISECONDS, signal);
+    }
+  }
+
   async #cleanup(): Promise<void> {
     this.#abortController?.abort();
-    await this.#dispatcherLoop;
-    this.#dispatcherLoop = undefined;
-    this.#abortController = undefined;
 
     let firstError: Error | undefined;
-    for (const registration of this.#registrations.reverse()) {
+    const guard = async (operation: Promise<void>): Promise<void> => {
       try {
-        await this.#queue.stopWorker(registration);
+        await operation;
       } catch (error) {
         firstError ??= asError(error);
       }
+    };
+    const drainOperations: Promise<void>[] = [];
+    if (this.#dispatcherLoop !== undefined) drainOperations.push(guard(this.#dispatcherLoop));
+    if (this.#operationsLoop !== undefined) drainOperations.push(guard(this.#operationsLoop));
+    for (const registration of [...this.#registrations].reverse()) {
+      drainOperations.push(guard(this.#queue.stopWorker(registration, { waitForActive: true })));
     }
+    const drainResult = await this.#drainWaiter(
+      drainOperations,
+      WORKER_SHUTDOWN_DRAIN_MILLISECONDS,
+    );
+    if (drainResult === "timed_out") {
+      this.#telemetry.metric({
+        labels: { outcome: "timed_out" },
+        name: "worker.shutdown.drain_timeout_total",
+        value: 1,
+      });
+      this.#telemetry.log({
+        attributes: {},
+        event: "worker.shutdown.drain_timed_out",
+        severity: "warn",
+      });
+    }
+
+    this.#dispatcherLoop = undefined;
+    this.#operationsLoop = undefined;
+    this.#abortController = undefined;
     this.#registrations = [];
+
+    await waitAtMost(this.#telemetry.flush(), WORKER_TELEMETRY_FLUSH_MILLISECONDS);
     if (this.#queueStarted) {
       try {
-        await this.#queue.stop();
+        await this.#queue.stop({
+          recoveryTimeoutMilliseconds: WORKER_QUEUE_RECOVERY_STOP_MILLISECONDS,
+          unfinishedWork: "fail_for_retry",
+        });
       } catch (error) {
         firstError ??= asError(error);
       }
@@ -238,11 +374,14 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
 export const createWorkerRuntime = (input: {
   closeTenantRuntime?: () => Promise<void>;
   dispatcher?: OutboxDispatcher;
+  drainWaiter?: DrainWaiter;
   observability: WorkerRuntimeObservability;
+  outboxBacklog?: WorkerOutboxBacklogProbe;
   queue: QueueInfrastructure;
   random?: () => number;
   registry: WorkerHandlerRegistry;
   sleeper?: Sleeper;
+  telemetry?: WorkerTelemetry;
   tenantEvents?: TenantCanonicalEventSourcePort;
   tenantRuntime?: WorkerTenantRuntimeReadiness;
 }): WorkerRuntime => new WorkerRuntimeImplementation(input);

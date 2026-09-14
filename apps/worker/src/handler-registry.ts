@@ -36,6 +36,7 @@ export type WorkerHandlerContext = Readonly<{
   identity: WorkerHandlerIdentity;
   organizationId: string;
   outboxEventId: string;
+  signal: AbortSignal;
   tenant: WorkerTenantApplicationContext;
 }>;
 

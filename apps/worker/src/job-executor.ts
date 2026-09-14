@@ -24,6 +24,11 @@ import {
   decideWorkerRetry,
   type WorkerFailureCategory,
 } from "./reliability-policy.js";
+import {
+  NOOP_WORKER_TELEMETRY,
+  createSafeWorkerTelemetry,
+  type WorkerTelemetry,
+} from "./worker-telemetry.js";
 
 export class WorkerJobInvariantError extends Error {
   readonly code = "worker_job_invariant_failed" as const;
@@ -81,10 +86,16 @@ export const createWorkerJobExecutor = (input: {
   random?: () => number;
   registry: WorkerHandlerRegistry;
   reliability: WorkerReliabilityPersistencePort;
+  telemetry?: WorkerTelemetry;
   tenantEvents: TenantCanonicalEventSourcePort;
 }): WorkerJobExecutor => {
   const clock = input.clock ?? { now: () => new Date() };
   const random = input.random ?? Math.random;
+  const telemetry = createSafeWorkerTelemetry(input.telemetry ?? NOOP_WORKER_TELEMETRY);
+  const neverAbortedSignal = new AbortController().signal;
+  const reportReconciliationMismatch = (): void => {
+    telemetry.metric({ labels: {}, name: "worker.reconciliation.mismatch_total", value: 1 });
+  };
 
   const retryOrDeadLetter = async (
     job: QueueWorkItem,
@@ -128,6 +139,7 @@ export const createWorkerJobExecutor = (input: {
       identity: createWorkerHandlerIdentity(registration.handlerVersion, envelope.outbox_event_id),
       organizationId: envelope.organization_id,
       outboxEventId: envelope.outbox_event_id,
+      signal: job.signal ?? neverAbortedSignal,
       tenant,
     });
   };
@@ -219,22 +231,25 @@ export const createWorkerJobExecutor = (input: {
         category: null,
         resolution: "succeeded",
       });
+      if (!resolved) reportReconciliationMismatch();
       return resolved ? completed() : deadLetter("TENANT_INTEGRITY");
     }
     if (result.state === "permanent_failure") {
-      await input.reliability.resolveReconciliation({
+      const resolved = await input.reliability.resolveReconciliation({
         ...identity,
         category: "PERMANENT_BUSINESS",
         resolution: "permanent_failure",
       });
+      if (!resolved) reportReconciliationMismatch();
       return deadLetter("PERMANENT_BUSINESS");
     }
     if (result.state === "unresolved") {
-      await input.reliability.resolveReconciliation({
+      const resolved = await input.reliability.resolveReconciliation({
         ...identity,
         category: "AMBIGUOUS_EXTERNAL_EFFECT",
         resolution: "unresolved",
       });
+      if (!resolved) reportReconciliationMismatch();
       return deadLetter("AMBIGUOUS_EXTERNAL_EFFECT");
     }
 
@@ -243,6 +258,7 @@ export const createWorkerJobExecutor = (input: {
     }
 
     const leaseToken = await input.reliability.resumeAfterReconciliation(identity);
+    if (leaseToken === null) reportReconciliationMismatch();
     return leaseToken === null
       ? retryOrDeadLetter(job, new WorkerExecutionFailure("RETRYABLE_INFRASTRUCTURE"))
       : invokeHandler(job, registration, context, identity, leaseToken);
@@ -310,6 +326,7 @@ export const createWorkerJobExecutor = (input: {
         return deadLetter("PERMANENT_BUSINESS");
       }
       if (acquisition.state === "collision") {
+        reportReconciliationMismatch();
         return deadLetter("TENANT_INTEGRITY");
       }
       if (acquisition.state === "reconciliation_required") {

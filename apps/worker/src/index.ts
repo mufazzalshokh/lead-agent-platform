@@ -6,6 +6,8 @@ import { loadQueueDatabaseRuntimeConfig } from "@lead-agent/config";
 import { PRODUCTION_HANDLER_REGISTRY } from "./handler-registry.js";
 import { createQueueInfrastructure } from "./queue-infrastructure.js";
 import { createWorkerRuntime, type WorkerRuntime } from "./worker-runtime.js";
+import { createWorkerShutdownCoordinator } from "./worker-signals.js";
+import { createStructuredConsoleWorkerTelemetry } from "./worker-telemetry.js";
 
 const safeErrorMetadata = (error: unknown): Readonly<{ code?: string; name: string }> => {
   if (!(error instanceof Error)) return Object.freeze({ name: "UnknownError" });
@@ -18,16 +20,19 @@ const safeErrorMetadata = (error: unknown): Readonly<{ code?: string; name: stri
 
 export const createProductionWorkerRuntime = (
   environment: NodeJS.ProcessEnv = process.env,
-): WorkerRuntime =>
-  createWorkerRuntime({
+): WorkerRuntime => {
+  const telemetry = createStructuredConsoleWorkerTelemetry({ service: "lead-agent-worker" });
+  return createWorkerRuntime({
     observability: {
       onDispatcherError: (error) => {
         console.error("Worker dispatcher iteration failed", safeErrorMetadata(error));
       },
     },
-    queue: createQueueInfrastructure(loadQueueDatabaseRuntimeConfig(environment)),
+    queue: createQueueInfrastructure(loadQueueDatabaseRuntimeConfig(environment), { telemetry }),
     registry: PRODUCTION_HANDLER_REGISTRY,
+    telemetry,
   });
+};
 
 export const startWorker = async (
   environment: NodeJS.ProcessEnv = process.env,
@@ -44,17 +49,20 @@ const isMainModule = (): boolean => {
 };
 
 const runWorkerProcess = async (): Promise<void> => {
-  let runtime: WorkerRuntime | undefined;
-  const stop = (): void => {
-    void runtime?.stop().catch((error: unknown) => {
-      console.error("Lead Agent Platform worker shutdown failed", safeErrorMetadata(error));
-      process.exitCode = 1;
-    });
-  };
-  process.once("SIGTERM", stop);
-  process.once("SIGINT", stop);
   try {
-    runtime = createProductionWorkerRuntime();
+    const runtime = createProductionWorkerRuntime();
+    const shutdown = createWorkerShutdownCoordinator({
+      onShutdownError: (error) => {
+        console.error("Lead Agent Platform worker shutdown failed", safeErrorMetadata(error));
+        process.exitCode = 1;
+      },
+      runtime,
+    });
+    const stopFor = (signal: "SIGINT" | "SIGTERM") => (): void => {
+      void shutdown.request(signal).catch(() => undefined);
+    };
+    process.once("SIGTERM", stopFor("SIGTERM"));
+    process.once("SIGINT", stopFor("SIGINT"));
     await runtime.start();
     console.info("Lead Agent Platform worker is ready", runtime.readiness());
   } catch (error) {
@@ -76,6 +84,14 @@ export {
   type WorkerHandlerRegistry,
 } from "./handler-registry.js";
 export { createWorkerJobExecutor, type WorkerJobExecutor } from "./job-executor.js";
+export {
+  WORKER_OPERATIONS_POLL_MILLISECONDS,
+  collectWorkerOperationalMetrics,
+  type OutboxBacklogSnapshot,
+  type WorkerOutboxBacklogProbe,
+  type WorkerQueueDepth,
+  type WorkerQueueDepthProbe,
+} from "./worker-operations.js";
 export {
   OperatorMaintenanceDeniedError,
   createOperatorMaintenanceService,
@@ -101,9 +117,38 @@ export {
   type WorkerRetryDecision,
 } from "./reliability-policy.js";
 export {
+  WORKER_DISPATCH_JITTER_MAX_MILLISECONDS,
+  WORKER_DISPATCH_POLL_MILLISECONDS,
+  WORKER_QUEUE_RECOVERY_STOP_MILLISECONDS,
+  WORKER_SHUTDOWN_DRAIN_MILLISECONDS,
+  WORKER_TELEMETRY_FLUSH_MILLISECONDS,
   createWorkerRuntime,
+  type WorkerLiveness,
   type WorkerLifecycleState,
   type WorkerReadiness,
   type WorkerRuntime,
   type WorkerTenantRuntimeReadiness,
 } from "./worker-runtime.js";
+export {
+  WORKER_PROCESS_HARD_SHUTDOWN_MILLISECONDS,
+  WorkerShutdownConfigurationError,
+  createWorkerShutdownCoordinator,
+  type WorkerShutdownCoordinator,
+  type WorkerShutdownSignal,
+} from "./worker-signals.js";
+export {
+  WORKER_METRIC_NAMES,
+  createSafeWorkerTelemetry,
+  createStructuredConsoleWorkerTelemetry,
+  type WorkerLogRecord,
+  type WorkerMetricLabels,
+  type WorkerMetricName,
+  type WorkerMetricRecord,
+  type WorkerSafeTelemetryAttributes,
+  type WorkerSpanEnd,
+  type WorkerSpanStart,
+  type WorkerTelemetry,
+  type WorkerTelemetryOutcome,
+  type WorkerTelemetrySink,
+  type WorkerTraceLink,
+} from "./worker-telemetry.js";

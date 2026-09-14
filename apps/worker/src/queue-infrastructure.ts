@@ -8,6 +8,13 @@ import type {
 } from "./handler-reliability.js";
 import { isPrivateQueueEnvelopeV1, type PrivateQueueEnvelopeV1 } from "./queue-envelope.js";
 import { QUEUE_NAMES, type QueueName } from "./queue-names.js";
+import type { WorkerQueueDepth } from "./worker-operations.js";
+import {
+  NOOP_WORKER_TELEMETRY,
+  createSafeWorkerTelemetry,
+  type WorkerTelemetry,
+  type WorkerTelemetryOutcome,
+} from "./worker-telemetry.js";
 import {
   WORKER_ACTIVE_EXPIRATION_SECONDS,
   WORKER_HEARTBEAT_SECONDS,
@@ -39,6 +46,7 @@ export type QueueWorkItem = Readonly<{
   queue: QueueName;
   retryCount: number;
   retryLimit: number;
+  signal?: AbortSignal;
 }>;
 
 export type QueueWorkRegistration = Readonly<{
@@ -87,10 +95,19 @@ export type QueueInfrastructure = WorkerReliabilityPersistencePort &
       envelope: PrivateQueueEnvelopeV1,
     ) => Promise<string | null>;
     inspectExistingJobForReconciliation: (jobId: string) => Promise<readonly ExistingQueueJob[]>;
+    observeQueueDepths?: () => Promise<readonly WorkerQueueDepth[]>;
     registerWorker: (queue: QueueName, handler: QueueWorkHandler) => Promise<QueueWorkRegistration>;
     start: () => Promise<void>;
-    stopWorker: (registration: QueueWorkRegistration) => Promise<void>;
-    stop: () => Promise<void>;
+    stopWorker: (
+      registration: QueueWorkRegistration,
+      options?: Readonly<{ waitForActive?: boolean }>,
+    ) => Promise<void>;
+    stop: (
+      options?: Readonly<{
+        recoveryTimeoutMilliseconds: number;
+        unfinishedWork: "fail_for_retry";
+      }>,
+    ) => Promise<void>;
   }>;
 
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -110,10 +127,135 @@ const firstDatabaseRow = (result: unknown): unknown => {
 export const deadLetterQueueFor = (queue: QueueName): `${QueueName}_dlq` => `${queue}_dlq`;
 
 type QueueInfrastructureOptions = Readonly<{
+  clock?: Readonly<{ now: () => Date }>;
   heartbeatRefreshSeconds?: number;
   random?: () => number;
   superviseIntervalSeconds?: number;
+  telemetry?: WorkerTelemetry;
 }>;
+
+export const createObservedQueueWorkHandler = (input: {
+  clock?: Readonly<{ now: () => Date }>;
+  handler: QueueWorkHandler;
+  queue: QueueName;
+  telemetry?: WorkerTelemetry;
+}): QueueWorkHandler => {
+  const clock = input.clock ?? { now: () => new Date() };
+  const telemetry = createSafeWorkerTelemetry(input.telemetry ?? NOOP_WORKER_TELEMETRY);
+  let activeCount = 0;
+  const emitActive = (): void => {
+    telemetry.metric({
+      labels: { queue: input.queue },
+      name: "worker.queue.active",
+      value: activeCount,
+    });
+    telemetry.metric({
+      labels: { queue: input.queue },
+      name: "worker.workload.saturation",
+      value: activeCount >= 1 ? 1 : 0,
+    });
+  };
+
+  return async (job): Promise<QueueWorkResult> => {
+    if (job.queue !== input.queue) throw new QueueInfrastructureValidationError();
+    const startedAt = clock.now().getTime();
+    const envelope = isPrivateQueueEnvelopeV1(job.data) ? job.data : undefined;
+    const attributes = {
+      attempt: job.retryCount + 1,
+      ...(envelope === undefined
+        ? {}
+        : {
+            ...(envelope.causation_id === undefined ? {} : { causationId: envelope.causation_id }),
+            correlationId: envelope.correlation_id,
+            eventType: envelope.event_type,
+            eventVersion: envelope.event_schema_version,
+            organizationId: envelope.organization_id,
+            outboxEventId: envelope.outbox_event_id,
+          }),
+      physicalJobId: job.id,
+      queue: input.queue,
+    } as const;
+    const trace = telemetry.startSpan({
+      attributes,
+      links:
+        envelope === undefined
+          ? []
+          : [
+              {
+                ...(envelope.causation_id === undefined
+                  ? {}
+                  : { causationId: envelope.causation_id }),
+                correlationId: envelope.correlation_id,
+              },
+            ],
+      name: "worker.handler.execute",
+    });
+    activeCount += 1;
+    emitActive();
+    let disposition: QueueWorkResult;
+    try {
+      disposition = await input.handler(job);
+    } catch (error) {
+      const durationMilliseconds = Math.max(0, clock.now().getTime() - startedAt);
+      telemetry.metric({
+        labels: { outcome: "failed", queue: input.queue },
+        name: "worker.job.failed_total",
+        value: 1,
+      });
+      telemetry.metric({
+        labels: { outcome: "failed", queue: input.queue },
+        name: "worker.handler.latency_ms",
+        value: durationMilliseconds,
+      });
+      telemetry.log({ attributes, event: "worker.job.failed", severity: "error" });
+      trace.end({ durationMilliseconds, outcome: "failed" });
+      throw error;
+    } finally {
+      activeCount = Math.max(0, activeCount - 1);
+      emitActive();
+    }
+    const durationMilliseconds = Math.max(0, clock.now().getTime() - startedAt);
+    const outcome: WorkerTelemetryOutcome =
+      disposition.status === "completed"
+        ? "completed"
+        : disposition.status === "failed"
+          ? "retry"
+          : "deadletter";
+    telemetry.metric({
+      labels: { outcome, queue: input.queue },
+      name: "worker.handler.latency_ms",
+      value: durationMilliseconds,
+    });
+    telemetry.metric({
+      labels: { outcome, queue: input.queue },
+      name:
+        disposition.status === "completed"
+          ? "worker.job.completed_total"
+          : disposition.status === "failed"
+            ? "worker.job.retry_total"
+            : "worker.job.dlq_total",
+      value: 1,
+    });
+    if (disposition.status !== "completed") {
+      telemetry.metric({
+        labels: { failureCategory: disposition.category, outcome, queue: input.queue },
+        name: "worker.job.failed_total",
+        value: 1,
+      });
+      telemetry.log({
+        attributes: { ...attributes, failureCategory: disposition.category },
+        event: "worker.job.failed",
+        severity: disposition.status === "deadletter" ? "error" : "warn",
+      });
+    }
+    trace.end({
+      durationMilliseconds,
+      ...(disposition.status === "completed" ? {} : { failureCategory: disposition.category }),
+      outcome,
+    });
+    return disposition;
+  };
+};
 
 export const createQueueInfrastructure = (
   configuration: QueueDatabaseRuntimeConfig,
@@ -152,7 +294,8 @@ export const createQueueInfrastructure = (
     useListenNotify: false,
   });
   const random = options.random ?? Math.random;
-
+  const clock = options.clock ?? { now: () => new Date() };
+  const telemetry = createSafeWorkerTelemetry(options.telemetry ?? NOOP_WORKER_TELEMETRY);
   const databaseOperation = async <T>(operation: () => Promise<T>): Promise<T> => {
     try {
       return await operation();
@@ -296,6 +439,35 @@ export const createQueueInfrastructure = (
         return Object.freeze(jobs.filter((job): job is ExistingQueueJob => job !== undefined));
       });
     },
+    observeQueueDepths: async (): Promise<readonly WorkerQueueDepth[]> =>
+      databaseOperation(async () => {
+        const queues = await boss.getQueues([...QUEUE_NAMES]);
+        if (
+          queues.length !== QUEUE_NAMES.length ||
+          new Set(queues.map(({ name }) => name)).size !== QUEUE_NAMES.length
+        ) {
+          throw new QueueInfrastructureValidationError();
+        }
+        return Object.freeze(
+          QUEUE_NAMES.map((queue) => {
+            const observed = queues.find(({ name }) => name === queue);
+            if (
+              observed === undefined ||
+              !Number.isSafeInteger(observed.readyCount) ||
+              observed.readyCount < 0 ||
+              !Number.isSafeInteger(observed.activeCount) ||
+              observed.activeCount < 0
+            ) {
+              throw new QueueInfrastructureValidationError();
+            }
+            return Object.freeze({
+              activeCount: observed.activeCount,
+              queue,
+              readyCount: observed.readyCount,
+            });
+          }),
+        );
+      }),
     prepareRetry: async ({ delaySeconds, physicalJobId, queue, retryCount }): Promise<boolean> => {
       if (
         !(QUEUE_NAMES as readonly string[]).includes(queue) ||
@@ -329,6 +501,7 @@ export const createQueueInfrastructure = (
       if (!(QUEUE_NAMES as readonly string[]).includes(queue) || typeof handler !== "function") {
         throw new QueueInfrastructureValidationError();
       }
+      const observedHandler = createObservedQueueWorkHandler({ clock, handler, queue, telemetry });
       return databaseOperation(async () => {
         const options = {
           batchSize: 1,
@@ -347,7 +520,7 @@ export const createQueueInfrastructure = (
           if (jobs.length !== 1 || job === undefined || job.name !== queue) {
             throw new QueueInfrastructureValidationError();
           }
-          const disposition = await handler(
+          const disposition = await observedHandler(
             Object.freeze({
               createdOn: job.createdOn,
               data: job.data,
@@ -355,6 +528,7 @@ export const createQueueInfrastructure = (
               queue,
               retryCount: job.retryCount,
               retryLimit: job.retryLimit,
+              signal: job.signal,
             }),
           );
           return [
@@ -418,10 +592,26 @@ export const createQueueInfrastructure = (
     start: async (): Promise<void> => {
       await boss.start();
     },
-    stop: async (): Promise<void> => {
-      await boss.stop();
+    stop: async (stopOptions): Promise<void> => {
+      if (
+        stopOptions !== undefined &&
+        (stopOptions.unfinishedWork !== "fail_for_retry" ||
+          !Number.isSafeInteger(stopOptions.recoveryTimeoutMilliseconds) ||
+          stopOptions.recoveryTimeoutMilliseconds < 1 ||
+          stopOptions.recoveryTimeoutMilliseconds > 5_000)
+      ) {
+        throw new QueueInfrastructureValidationError();
+      }
+      await boss.stop(
+        stopOptions === undefined
+          ? undefined
+          : {
+              graceful: true,
+              timeout: stopOptions.recoveryTimeoutMilliseconds,
+            },
+      );
     },
-    stopWorker: async (registration: QueueWorkRegistration): Promise<void> => {
+    stopWorker: async (registration: QueueWorkRegistration, stopOptions): Promise<void> => {
       if (
         typeof registration !== "object" ||
         registration === null ||
@@ -432,7 +622,10 @@ export const createQueueInfrastructure = (
         throw new QueueInfrastructureValidationError();
       }
       try {
-        await boss.offWork(registration.queue, { id: registration.id, wait: true });
+        await boss.offWork(registration.queue, {
+          id: registration.id,
+          wait: stopOptions?.waitForActive ?? true,
+        });
       } catch (error) {
         const mapped = new QueueInfrastructureDatabaseError();
         queueInfrastructureDatabaseCauses.set(mapped, error);

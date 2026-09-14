@@ -30,6 +30,11 @@ import type {
   QueueInfrastructure,
   QueueName,
 } from "../../apps/worker/src/queue-infrastructure.js";
+import {
+  createSafeWorkerTelemetry,
+  type WorkerMetricRecord,
+  type WorkerSpanStart,
+} from "../../apps/worker/src/worker-telemetry.js";
 
 const ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-000000000001";
 const OUTBOX_EVENT_ID = "0193f1a8-7f65-7c28-a434-000000000002";
@@ -297,6 +302,13 @@ describe("S8.3 bounded outbox dispatcher", () => {
     const claim = claimFor(12);
     const relay = createRelay([claim]);
     const queue = createMemoryQueue();
+    const metrics: WorkerMetricRecord[] = [];
+    const telemetry = createSafeWorkerTelemetry({
+      flush: () => Promise.resolve(),
+      log: () => undefined,
+      metric: (record) => metrics.push(record),
+      startSpan: () => ({ end: () => undefined }),
+    });
     queue.jobs.set(
       claim.outboxEventId,
       Object.freeze({
@@ -310,6 +322,7 @@ describe("S8.3 bounded outbox dispatcher", () => {
       dispatcherId: "dispatcher.s83-collision",
       queue: queue.queue,
       relay: relay.relay,
+      telemetry,
       tenantEvents: { loadCanonicalEvent: () => Promise.resolve(canonicalFor(claim)) },
     });
 
@@ -320,6 +333,11 @@ describe("S8.3 bounded outbox dispatcher", () => {
     ).resolves.toMatchObject({ claimed: 1, deadLettered: 1, published: 0 });
     expect(relay.deadLettered).toEqual([claim.outboxEventId]);
     expect(relay.published).toEqual([]);
+    expect(metrics).toContainEqual({
+      labels: {},
+      name: "worker.reconciliation.mismatch_total",
+      value: 1,
+    });
   });
 
   it("rejects claim provenance mismatches as permanent before enqueue", async () => {
@@ -431,5 +449,60 @@ describe("S8.3 bounded outbox dispatcher", () => {
     ).resolves.toMatchObject({ claimed: 12, enqueued: 12, published: 12 });
     expect(maximum).toBeLessThanOrEqual(10);
     expect(maximum).toBeGreaterThan(1);
+  });
+
+  it("emits bounded dispatch telemetry with safe asynchronous trace linkage", async () => {
+    const baseClaim = claimFor(0x200);
+    const claim = Object.freeze({
+      ...baseClaim,
+      attemptNumber: 2,
+      causationId: "0193f1a8-7f65-7c28-a434-000000000099",
+    });
+    const relay = createRelay([claim]);
+    const queue = createMemoryQueue();
+    const metrics: WorkerMetricRecord[] = [];
+    const spans: WorkerSpanStart[] = [];
+    const telemetry = createSafeWorkerTelemetry({
+      flush: () => Promise.resolve(),
+      log: () => undefined,
+      metric: (record) => metrics.push(record),
+      startSpan: (record) => {
+        spans.push(record);
+        return { end: () => undefined };
+      },
+    });
+    const dispatcher = createOutboxDispatcher({
+      clock: { now: () => FIXED_NOW },
+      dispatcherId: "dispatcher.s86-telemetry",
+      queue: queue.queue,
+      relay: relay.relay,
+      telemetry,
+      tenantEvents: { loadCanonicalEvent: () => Promise.resolve(canonicalFor(claim)) },
+    });
+
+    await expect(
+      dispatcher.dispatchOnce(
+        createActiveEventRoutes([{ eventType: "organization.created", schemaVersion: "1" }]),
+      ),
+    ).resolves.toMatchObject({ claimed: 1, enqueued: 1, published: 1 });
+    expect(metrics).toEqual(
+      expect.arrayContaining([
+        { labels: {}, name: "worker.dispatch.attempt_total", value: 1 },
+        { labels: {}, name: "worker.outbox.claim_recovery_total", value: 1 },
+        { labels: { outcome: "enqueued" }, name: "worker.dispatch.latency_ms", value: 0 },
+      ]),
+    );
+    expect(spans).toEqual([
+      expect.objectContaining({
+        links: [
+          {
+            causationId: claim.causationId,
+            correlationId: claim.correlationId,
+          },
+        ],
+        name: "worker.outbox.dispatch",
+      }),
+    ]);
+    expect(JSON.stringify({ metrics, spans })).not.toContain("leaseToken");
   });
 });

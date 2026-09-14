@@ -18,6 +18,12 @@ import {
   type QueueInfrastructure,
   type QueueName,
 } from "./queue-infrastructure.js";
+import {
+  NOOP_WORKER_TELEMETRY,
+  createSafeWorkerTelemetry,
+  type WorkerTelemetry,
+  type WorkerTelemetryOutcome,
+} from "./worker-telemetry.js";
 
 export const OUTBOX_DISPATCH_MAX_ENQUEUE_CONCURRENCY = 10;
 export const OUTBOX_DISPATCH_RETRY_DELAY_MILLISECONDS = 5_000;
@@ -96,7 +102,10 @@ export type DispatchOnceResult = Readonly<{
 }>;
 
 export type OutboxDispatcher = Readonly<{
-  dispatchOnce: (activeRoutes: readonly ActiveEventRoute[]) => Promise<DispatchOnceResult>;
+  dispatchOnce: (
+    activeRoutes: readonly ActiveEventRoute[],
+    signal?: AbortSignal,
+  ) => Promise<DispatchOnceResult>;
 }>;
 
 export class OutboxDispatchIntegrityError extends Error {
@@ -107,6 +116,18 @@ export class OutboxDispatchIntegrityError extends Error {
     this.name = "OutboxDispatchIntegrityError";
   }
 }
+
+class OutboxReconciliationMismatchError extends OutboxDispatchIntegrityError {}
+
+const EMPTY_DISPATCH_RESULT: DispatchOnceResult = Object.freeze({
+  claimed: 0,
+  deadLettered: 0,
+  deferred: 0,
+  enqueued: 0,
+  published: 0,
+  reconciled: 0,
+  retryReleased: 0,
+});
 
 type ItemOutcome = "dead_lettered" | "deferred" | "enqueued" | "reconciled" | "retry_released";
 
@@ -139,26 +160,26 @@ const exactExistingEnvelope = (
   queue: QueueName,
   expected: PrivateQueueEnvelopeV1,
 ): boolean => {
-  if (existingJobs.length !== 1) throw new OutboxDispatchIntegrityError();
+  if (existingJobs.length !== 1) throw new OutboxReconciliationMismatchError();
   const existing = existingJobs[0];
   if (
     existing === undefined ||
     existing.id !== expected.outbox_event_id ||
     existing.queue !== queue
   ) {
-    throw new OutboxDispatchIntegrityError();
+    throw new OutboxReconciliationMismatchError();
   }
   let envelope: PrivateQueueEnvelopeV1;
   try {
     envelope = requirePrivateQueueEnvelopeV1(existing.data);
   } catch (error) {
     if (error instanceof PrivateQueueEnvelopeValidationError) {
-      throw new OutboxDispatchIntegrityError();
+      throw new OutboxReconciliationMismatchError();
     }
     throw error;
   }
   if (!privateQueueEnvelopesMatch(envelope, expected)) {
-    throw new OutboxDispatchIntegrityError();
+    throw new OutboxReconciliationMismatchError();
   }
   return true;
 };
@@ -211,11 +232,13 @@ export const createOutboxDispatcher = (input: {
   leaseSeconds?: number;
   queue: Pick<QueueInfrastructure, "enqueueDurably" | "inspectExistingJobForReconciliation">;
   relay: DispatcherRelayPort;
+  telemetry?: WorkerTelemetry;
   tenantEvents: TenantCanonicalEventSourcePort;
 }): OutboxDispatcher => {
   const batchSize = input.batchSize ?? 50;
   const leaseSeconds = input.leaseSeconds ?? 60;
   const concurrency = input.enqueueConcurrency ?? OUTBOX_DISPATCH_MAX_ENQUEUE_CONCURRENCY;
+  const telemetry = createSafeWorkerTelemetry(input.telemetry ?? NOOP_WORKER_TELEMETRY);
   if (
     !Number.isSafeInteger(batchSize) ||
     batchSize < 1 ||
@@ -233,9 +256,38 @@ export const createOutboxDispatcher = (input: {
   const processClaim = async (
     claim: DispatchClaim,
     activeRoutes: readonly ActiveEventRoute[],
+    signal?: AbortSignal,
   ): Promise<ItemOutcome> => {
+    const startedAt = input.clock.now().getTime();
+    const trace = telemetry.startSpan({
+      attributes: {
+        attempt: claim.attemptNumber,
+        ...(claim.causationId === null ? {} : { causationId: claim.causationId }),
+        correlationId: claim.correlationId,
+        eventType: claim.eventType,
+        eventVersion: claim.schemaVersion,
+        organizationId: claim.organizationId,
+        outboxEventId: claim.outboxEventId,
+      },
+      links: [
+        {
+          ...(claim.causationId === null ? {} : { causationId: claim.causationId }),
+          correlationId: claim.correlationId,
+        },
+      ],
+      name: "worker.outbox.dispatch",
+    });
+    telemetry.metric({ labels: {}, name: "worker.dispatch.attempt_total", value: 1 });
+    if (claim.attemptNumber > 1) {
+      telemetry.metric({ labels: {}, name: "worker.outbox.claim_recovery_total", value: 1 });
+    }
+
     let enqueueAttempted = false;
+    let outcome: ItemOutcome;
     try {
+      if (signal?.aborted === true) {
+        throw new Error("Outbox dispatch interrupted");
+      }
       if (!isActiveClaim(claim, activeRoutes)) throw new OutboxDispatchIntegrityError();
       const event = await input.tenantEvents.loadCanonicalEvent(
         claim.organizationId,
@@ -258,10 +310,10 @@ export const createOutboxDispatcher = (input: {
       });
 
       const before = await input.queue.inspectExistingJobForReconciliation(event.event_id);
-      let outcome: "enqueued" | "reconciled";
+      let publicationOutcome: "enqueued" | "reconciled";
       if (before.length > 0) {
         exactExistingEnvelope(before, queue, envelope);
-        outcome = "reconciled";
+        publicationOutcome = "reconciled";
       } else {
         enqueueAttempted = true;
         const enqueuedId = await input.queue.enqueueDurably(queue, event.event_id, envelope);
@@ -270,12 +322,19 @@ export const createOutboxDispatcher = (input: {
         }
         const after = await input.queue.inspectExistingJobForReconciliation(event.event_id);
         exactExistingEnvelope(after, queue, envelope);
-        outcome = enqueuedId === null ? "reconciled" : "enqueued";
+        publicationOutcome = enqueuedId === null ? "reconciled" : "enqueued";
       }
 
       const publication = await input.relay.markPublished(leaseIdentity(claim));
-      return publication === "lease_lost" ? "deferred" : outcome;
+      outcome = publication === "lease_lost" ? "deferred" : publicationOutcome;
     } catch (error) {
+      if (error instanceof OutboxReconciliationMismatchError) {
+        telemetry.metric({
+          labels: {},
+          name: "worker.reconciliation.mismatch_total",
+          value: 1,
+        });
+      }
       const permanent =
         error instanceof EventRoutingInvariantError ||
         error instanceof OutboxDispatchIntegrityError ||
@@ -288,31 +347,66 @@ export const createOutboxDispatcher = (input: {
             ...leaseIdentity(claim),
             errorCategory: "permanent",
           });
-          return deadLettered ? "dead_lettered" : "deferred";
+          outcome = deadLettered ? "dead_lettered" : "deferred";
         } catch {
-          return "deferred";
+          outcome = "deferred";
+        }
+      } else if (enqueueAttempted || signal?.aborted === true) {
+        outcome = "deferred";
+      } else {
+        try {
+          const released = await input.relay.releaseForRetry({
+            ...leaseIdentity(claim),
+            availableAt: new Date(
+              input.clock.now().getTime() + OUTBOX_DISPATCH_RETRY_DELAY_MILLISECONDS,
+            ),
+            errorCategory: "transient",
+          });
+          outcome = released ? "retry_released" : "deferred";
+        } catch {
+          outcome = "deferred";
         }
       }
-      if (enqueueAttempted) return "deferred";
-      try {
-        const released = await input.relay.releaseForRetry({
-          ...leaseIdentity(claim),
-          availableAt: new Date(
-            input.clock.now().getTime() + OUTBOX_DISPATCH_RETRY_DELAY_MILLISECONDS,
-          ),
-          errorCategory: "transient",
-        });
-        return released ? "retry_released" : "deferred";
-      } catch {
-        return "deferred";
-      }
     }
+
+    const durationMilliseconds = Math.max(0, input.clock.now().getTime() - startedAt);
+    const telemetryOutcome: WorkerTelemetryOutcome =
+      outcome === "dead_lettered" ? "deadletter" : outcome;
+    telemetry.metric({
+      labels: { outcome: telemetryOutcome },
+      name: "worker.dispatch.latency_ms",
+      value: durationMilliseconds,
+    });
+    if (outcome === "dead_lettered" || outcome === "deferred" || outcome === "retry_released") {
+      telemetry.metric({
+        labels: { outcome: telemetryOutcome },
+        name: "worker.dispatch.failure_total",
+        value: 1,
+      });
+      telemetry.log({
+        attributes: {
+          attempt: claim.attemptNumber,
+          ...(claim.causationId === null ? {} : { causationId: claim.causationId }),
+          correlationId: claim.correlationId,
+          eventType: claim.eventType,
+          eventVersion: claim.schemaVersion,
+          organizationId: claim.organizationId,
+          outboxEventId: claim.outboxEventId,
+        },
+        event: "worker.dispatch.failed",
+        severity: outcome === "dead_lettered" ? "error" : "warn",
+      });
+    }
+    trace.end({ durationMilliseconds, outcome: telemetryOutcome });
+    return outcome;
   };
 
   return Object.freeze({
     dispatchOnce: async (
       requestedActiveRoutes: readonly ActiveEventRoute[],
+      signal?: AbortSignal,
     ): Promise<DispatchOnceResult> => {
+      if (signal?.aborted === true) return EMPTY_DISPATCH_RESULT;
       const activeRoutes = createActiveEventRoutes(requestedActiveRoutes);
       const claims = await input.relay.claimBatch({
         activeRoutes,
@@ -321,19 +415,11 @@ export const createOutboxDispatcher = (input: {
         leaseSeconds,
       });
       const outcomes = await runBounded(claims, concurrency, (claim) =>
-        processClaim(claim, activeRoutes),
+        processClaim(claim, activeRoutes, signal),
       );
       return outcomes.reduce<DispatchOnceResult>(
         (result, outcome) => incrementOutcome(result, outcome),
-        Object.freeze({
-          claimed: claims.length,
-          deadLettered: 0,
-          deferred: 0,
-          enqueued: 0,
-          published: 0,
-          reconciled: 0,
-          retryReleased: 0,
-        }),
+        Object.freeze({ ...EMPTY_DISPATCH_RESULT, claimed: claims.length }),
       );
     },
   });
