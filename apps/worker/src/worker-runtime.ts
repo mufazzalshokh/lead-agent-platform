@@ -142,7 +142,9 @@ class WorkerRuntimeImplementation implements WorkerRuntime {
       await this.#tenantRuntime?.verifyReady();
       if (this.#tenantEvents !== undefined) {
         const executor = createWorkerJobExecutor({
+          random: this.#random,
           registry: this.#registry,
+          reliability: this.#queue,
           tenantEvents: this.#tenantEvents,
         });
         for (const queue of this.#registry.activeQueues) {

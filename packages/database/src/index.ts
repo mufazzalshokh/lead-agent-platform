@@ -1,5 +1,19 @@
 export { migrationsFolder, runMigrations } from "./migrations.js";
 export {
+  AsyncOperatorDatabaseError,
+  AsyncOperatorRoleError,
+  AsyncOperatorRuntimeClosedError,
+  AsyncOperatorValidationError,
+  createAsyncOperatorDatabaseRuntime,
+  readAsyncOperatorDatabaseCause,
+  type AsyncOperatorContext,
+  type AsyncOperatorDatabaseRuntime,
+  type AsyncOperatorDatabaseRuntimeObservability,
+  type AsyncWorkloadQueue,
+  type DeadOutboxRequeueInput,
+  type WorkerDlqRedriveInput,
+} from "./runtime/async-operator.js";
+export {
   AuthorizationResolutionDatabaseError,
   AuthorizationResolutionRoleError,
   AuthorizationResolutionRuntimeClosedError,

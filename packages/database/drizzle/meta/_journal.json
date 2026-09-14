@@ -169,6 +169,13 @@
       "when": 1789718400000,
       "tag": "0023_s8_active_route_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789804800000,
+      "tag": "0024_s8_handler_reliability",
+      "breakpoints": true
     }
   ]
 }

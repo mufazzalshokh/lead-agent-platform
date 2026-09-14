@@ -19,6 +19,7 @@ import type {
   QueueWorkItem,
   QueueWorkRegistration,
 } from "../../apps/worker/src/queue-infrastructure.js";
+import type { WorkerReliabilityPersistencePort } from "../../apps/worker/src/handler-reliability.js";
 import {
   WORKER_DISPATCH_POLL_MILLISECONDS,
   createWorkerRuntime,
@@ -70,7 +71,26 @@ const envelope = (overrides: { organizationId?: string } = {}) =>
   });
 
 const queueJob = (data: unknown = envelope(), queue: QueueName = "maintenance"): QueueWorkItem =>
-  Object.freeze({ data, id: OUTBOX_EVENT_ID, queue, retryCount: 1, retryLimit: 2 });
+  Object.freeze({
+    createdOn: new Date("2026-09-14T00:00:00.000Z"),
+    data,
+    id: OUTBOX_EVENT_ID,
+    queue,
+    retryCount: 1,
+    retryLimit: 4,
+  });
+
+const createMemoryReliability = (): WorkerReliabilityPersistencePort => ({
+  acquireExecution: () =>
+    Promise.resolve({
+      leaseToken: "123e4567-e89b-42d3-a456-426614174000",
+      state: "acquired",
+    }),
+  finishExecution: () => Promise.resolve(true),
+  prepareRetry: () => Promise.resolve(true),
+  resolveReconciliation: () => Promise.resolve(true),
+  resumeAfterReconciliation: () => Promise.resolve("123e4567-e89b-42d3-a456-426614174000"),
+});
 
 const createMemoryQueue = (failureQueue?: QueueName) => {
   const handlers = new Map<QueueName, QueueWorkHandler>();
@@ -78,6 +98,7 @@ const createMemoryQueue = (failureQueue?: QueueName) => {
   const stopped: string[] = [];
   const stoppedWorkers: QueueWorkRegistration[] = [];
   const queue: QueueInfrastructure = {
+    ...createMemoryReliability(),
     enqueueDurably: () => Promise.resolve(null),
     inspectExistingJobForReconciliation: () => Promise.resolve([]),
     registerWorker: (queueName, registeredHandler) => {
@@ -191,9 +212,11 @@ describe("S8.4 fail-closed queue job execution", () => {
     const registeredHandler = vi.fn<WorkerEventHandler>(() => Promise.resolve());
     const loadCanonicalEvent = vi.fn(() => Promise.resolve(canonicalEvent()));
     const executor = createWorkerJobExecutor({
+      clock: { now: () => new Date("2026-09-14T00:00:01.000Z") },
       registry: createWorkerHandlerRegistry([
         registration(undefined, "1", "maintenance", registeredHandler),
       ]),
+      reliability: createMemoryReliability(),
       tenantEvents: { loadCanonicalEvent },
     });
     await executor.execute(queueJob());
@@ -201,7 +224,7 @@ describe("S8.4 fail-closed queue job execution", () => {
     expect(registeredHandler).toHaveBeenCalledTimes(1);
     const context = registeredHandler.mock.calls[0]?.[0];
     expect(context).toMatchObject({
-      attempt: { attemptNumber: 2, jobId: OUTBOX_EVENT_ID, retryLimit: 2 },
+      attempt: { attemptNumber: 2, jobId: OUTBOX_EVENT_ID, retryLimit: 4 },
       causationId: null,
       correlationId: CORRELATION_ID,
       identity: {
@@ -223,11 +246,13 @@ describe("S8.4 fail-closed queue job execution", () => {
     const loadCanonicalEvent = vi.fn();
     const executor = createWorkerJobExecutor({
       registry: createWorkerHandlerRegistry([registration()]),
+      reliability: createMemoryReliability(),
       tenantEvents: { loadCanonicalEvent },
     });
-    await expect(executor.execute(queueJob({ malformed: true }))).rejects.toThrowError(
-      "Private queue envelope validation failed",
-    );
+    await expect(executor.execute(queueJob({ malformed: true }))).resolves.toEqual({
+      category: "PERMANENT_VALIDATION",
+      status: "deadletter",
+    });
     expect(loadCanonicalEvent).not.toHaveBeenCalled();
   });
 
@@ -235,11 +260,13 @@ describe("S8.4 fail-closed queue job execution", () => {
     const loadCanonicalEvent = vi.fn();
     const executor = createWorkerJobExecutor({
       registry: createWorkerHandlerRegistry([registration()]),
+      reliability: createMemoryReliability(),
       tenantEvents: { loadCanonicalEvent },
     });
-    await expect(executor.execute(queueJob(envelope(), "analytics"))).rejects.toThrowError(
-      "Worker job invariant validation failed",
-    );
+    await expect(executor.execute(queueJob(envelope(), "analytics"))).resolves.toEqual({
+      category: "TENANT_INTEGRITY",
+      status: "deadletter",
+    });
     expect(loadCanonicalEvent).not.toHaveBeenCalled();
   });
 
@@ -247,11 +274,13 @@ describe("S8.4 fail-closed queue job execution", () => {
     const loadCanonicalEvent = vi.fn();
     const executor = createWorkerJobExecutor({
       registry: PRODUCTION_HANDLER_REGISTRY,
+      reliability: createMemoryReliability(),
       tenantEvents: { loadCanonicalEvent },
     });
-    await expect(executor.execute(queueJob())).rejects.toThrowError(
-      "Worker job invariant validation failed",
-    );
+    await expect(executor.execute(queueJob())).resolves.toEqual({
+      category: "UNSUPPORTED_VERSION",
+      status: "deadletter",
+    });
     expect(loadCanonicalEvent).not.toHaveBeenCalled();
   });
 
@@ -261,6 +290,7 @@ describe("S8.4 fail-closed queue job execution", () => {
       registry: createWorkerHandlerRegistry([
         registration(undefined, "1", "maintenance", registeredHandler),
       ]),
+      reliability: createMemoryReliability(),
       tenantEvents: {
         loadCanonicalEvent: (organizationId) =>
           Promise.resolve(
@@ -270,9 +300,10 @@ describe("S8.4 fail-closed queue job execution", () => {
           ),
       },
     });
-    await expect(executor.execute(queueJob())).rejects.toThrowError(
-      "Worker job invariant validation failed",
-    );
+    await expect(executor.execute(queueJob())).resolves.toEqual({
+      category: "TENANT_INTEGRITY",
+      status: "deadletter",
+    });
     expect(registeredHandler).not.toHaveBeenCalled();
   });
 
@@ -286,10 +317,17 @@ describe("S8.4 fail-closed queue job execution", () => {
       registry: createWorkerHandlerRegistry([
         registration(undefined, "1", "maintenance", registeredHandler),
       ]),
+      reliability: createMemoryReliability(),
       tenantEvents: { loadCanonicalEvent: () => Promise.resolve(canonicalEvent()) },
     });
-    await expect(executor.execute(queueJob())).rejects.toThrowError("synthetic handler failure");
-    await expect(executor.execute(queueJob())).rejects.toThrowError("synthetic handler failure");
+    await expect(executor.execute(queueJob())).resolves.toEqual({
+      category: "AMBIGUOUS_EXTERNAL_EFFECT",
+      status: "deadletter",
+    });
+    await expect(executor.execute(queueJob())).resolves.toEqual({
+      category: "AMBIGUOUS_EXTERNAL_EFFECT",
+      status: "deadletter",
+    });
     expect(identities).toEqual([`v1:${OUTBOX_EVENT_ID}`, `v1:${OUTBOX_EVENT_ID}`]);
   });
 
@@ -302,11 +340,12 @@ describe("S8.4 fail-closed queue job execution", () => {
       registry: createWorkerHandlerRegistry([
         registration(undefined, "1", "maintenance", registeredHandler),
       ]),
+      reliability: createMemoryReliability(),
       tenantEvents: { loadCanonicalEvent },
     });
     await expect(
       executor.execute(queueJob(envelope({ organizationId: ORGANIZATION_B }))),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ status: "completed" });
     expect(loadCanonicalEvent).toHaveBeenCalledWith(ORGANIZATION_B, OUTBOX_EVENT_ID);
     expect(registeredHandler.mock.calls[0]?.[0].tenant.organizationId).toBe(ORGANIZATION_B);
   });

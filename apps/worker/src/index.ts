@@ -70,11 +70,36 @@ export {
   createWorkerHandlerIdentity,
   createWorkerHandlerRegistry,
   type WorkerEventHandler,
+  type WorkerEventReconciler,
   type WorkerHandlerContext,
   type WorkerHandlerRegistration,
   type WorkerHandlerRegistry,
 } from "./handler-registry.js";
 export { createWorkerJobExecutor, type WorkerJobExecutor } from "./job-executor.js";
+export {
+  OperatorMaintenanceDeniedError,
+  createOperatorMaintenanceService,
+  type OperatorAuditContext,
+  type OperatorMaintenancePersistencePort,
+  type OperatorMaintenanceService,
+  type OperatorOutboxRequeueRequest,
+  type OperatorWorkerRedriveRequest,
+} from "./operator-maintenance.js";
+export {
+  WORKER_ACTIVE_EXPIRATION_SECONDS,
+  WORKER_FAILURE_CATEGORIES,
+  WORKER_HEARTBEAT_SECONDS,
+  WORKER_INITIAL_RETRY_SECONDS,
+  WORKER_MAX_EXECUTIONS,
+  WORKER_MAX_GENERIC_AGE_MILLISECONDS,
+  WORKER_MAX_RETRY_SECONDS,
+  WorkerExecutionFailure,
+  decideWorkerRetry,
+  fullJitterCapSeconds,
+  sampleFullJitterSeconds,
+  type WorkerFailureCategory,
+  type WorkerRetryDecision,
+} from "./reliability-policy.js";
 export {
   createWorkerRuntime,
   type WorkerLifecycleState,

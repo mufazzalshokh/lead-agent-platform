@@ -21,6 +21,7 @@ export type WorkerHandlerIdentity = Readonly<{
   handlerVersion: string;
   idempotencyKey: string;
   outboxEventId: string;
+  providerIdempotencyKey: string;
 }>;
 
 export type WorkerTenantApplicationContext = Readonly<{
@@ -40,11 +41,22 @@ export type WorkerHandlerContext = Readonly<{
 
 export type WorkerEventHandler = (context: WorkerHandlerContext) => Promise<void>;
 
+export type WorkerReconciliationResult =
+  | Readonly<{ state: "not_executed" }>
+  | Readonly<{ state: "succeeded" }>
+  | Readonly<{ state: "permanent_failure" }>
+  | Readonly<{ state: "unresolved" }>;
+
+export type WorkerEventReconciler = (
+  context: WorkerHandlerContext,
+) => Promise<WorkerReconciliationResult>;
+
 export type WorkerHandlerRegistration = Readonly<{
   eventType: RoutedEventType;
   handler: WorkerEventHandler;
   handlerVersion: string;
   queue: QueueName;
+  reconcile?: WorkerEventReconciler;
   schemaVersion: string;
 }>;
 
@@ -67,7 +79,7 @@ export class WorkerHandlerRegistryError extends Error {
   }
 }
 
-const exactRegistrationKeys = Object.freeze([
+const requiredRegistrationKeys = Object.freeze([
   "eventType",
   "handler",
   "handlerVersion",
@@ -81,14 +93,20 @@ const registrationIdentity = (eventType: string, schemaVersion: string): string 
 const isWorkerEventHandler = (value: unknown): value is WorkerEventHandler =>
   typeof value === "function";
 
+const isWorkerEventReconciler = (value: unknown): value is WorkerEventReconciler =>
+  typeof value === "function";
+
 const requireRegistration = (candidate: unknown): WorkerHandlerRegistration => {
   if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
     throw new WorkerHandlerRegistryError();
   }
   const keys = Object.keys(candidate).sort();
+  const expectedKeys = Reflect.has(candidate, "reconcile")
+    ? [...requiredRegistrationKeys, "reconcile"].sort()
+    : requiredRegistrationKeys;
   if (
-    keys.length !== exactRegistrationKeys.length ||
-    keys.some((key, index) => key !== exactRegistrationKeys[index])
+    keys.length !== expectedKeys.length ||
+    keys.some((key, index) => key !== expectedKeys[index])
   ) {
     throw new WorkerHandlerRegistryError();
   }
@@ -98,6 +116,7 @@ const requireRegistration = (candidate: unknown): WorkerHandlerRegistration => {
   const queue: unknown = Reflect.get(candidate, "queue");
   const handlerVersion: unknown = Reflect.get(candidate, "handlerVersion");
   const handler: unknown = Reflect.get(candidate, "handler");
+  const reconcile: unknown = Reflect.get(candidate, "reconcile");
   if (
     !isRoutedEventType(eventType) ||
     !isKnownEventVersion(eventType, schemaVersion) ||
@@ -106,12 +125,20 @@ const requireRegistration = (candidate: unknown): WorkerHandlerRegistration => {
     queue !== queueForEvent(eventType) ||
     typeof handlerVersion !== "string" ||
     !HANDLER_VERSION_PATTERN.test(handlerVersion) ||
-    !isWorkerEventHandler(handler)
+    !isWorkerEventHandler(handler) ||
+    (reconcile !== undefined && !isWorkerEventReconciler(reconcile))
   ) {
     throw new WorkerHandlerRegistryError();
   }
 
-  return Object.freeze({ eventType, handler, handlerVersion, queue, schemaVersion });
+  return Object.freeze({
+    eventType,
+    handler,
+    handlerVersion,
+    queue,
+    ...(reconcile === undefined ? {} : { reconcile }),
+    schemaVersion,
+  });
 };
 
 export const createWorkerHandlerRegistry = (candidates: unknown): WorkerHandlerRegistry => {
@@ -154,4 +181,5 @@ export const createWorkerHandlerIdentity = (
     handlerVersion,
     idempotencyKey: `${handlerVersion}:${outboxEventId}`,
     outboxEventId,
+    providerIdempotencyKey: outboxEventId,
   });
