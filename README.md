@@ -9,6 +9,8 @@
 ![pnpm 11](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)
 ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Public contracts](https://img.shields.io/badge/Public%20contracts-301-6C5CE7)
+![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S9.B-00A86B)
 
 **Uzbek · Russian · English** · **Modular monolith** · **Human-controlled booking**
 
@@ -19,45 +21,59 @@ customer conversations into qualified leads and safe booking requests. The initi
 focus is dental and aesthetic clinics, while the domain and integration boundaries are
 designed for other high-value appointment businesses.
 
-The AI interprets language and proposes structured actions. Deterministic application
-policy remains responsible for authorization, tenant identity, business facts, state
-transitions, and side effects.
+The planned AI layer interprets language and proposes structured actions. Deterministic
+application policy remains responsible for authorization, tenant identity, business
+facts, state transitions, and side effects.
 
 > [!IMPORTANT]
 > This repository is under active development and is not production-ready. The core
 > architecture, contracts, domain kernel, PostgreSQL foundation, and tenant-safe
-> persistence are complete. S6 authentication and RBAC architecture is frozen and is
-> the next implementation stage. Customer-facing AI and provider integrations remain
-> later roadmap work.
+> persistence are complete. Staff authentication/RBAC, authoritative business-knowledge
+> configuration, the reliable async substrate, and the S9 deterministic inbound and
+> staff-query slices are implemented. S9.C is the next acceptance gate. Customer-facing
+> AI and provider integrations remain later roadmap work.
 
 ## Current progress
 
-| Milestone                    | Status | Delivered                                                                                         |
-| ---------------------------- | :----: | ------------------------------------------------------------------------------------------------- |
-| S0 — Architecture            |   ✅   | Audited product, security, data, AI, reliability, and delivery architecture                       |
-| S1 — Workspace baseline      |   ✅   | Reproducible pnpm monorepo, CI gate, strict TypeScript, lint, and boundaries                      |
-| S2 — Canonical contracts     |   ✅   | Runtime schemas, errors, pagination, events, channel contracts, and drift protection              |
-| S3 — Pure domain kernel      |   ✅   | Lead, Conversation, Handoff, AppointmentRequest, and cross-machine workflows                      |
-| S4 — Database foundation     |   ✅   | PostgreSQL 17 schema with 47 production tables and explicit migrations                            |
-| S5 — Tenant-safe persistence |   ✅   | FORCE RLS, tenant sessions, repositories, CAS, atomic audit/outbox writes, and inbound resolver   |
-| S6 — Staff identity and RBAC |   🟡   | Architecture frozen; Auth0, sessions, MFA, permissions, invitations, and location scopes are next |
-| S7+ — Product workflows      |   ⏳   | Knowledge APIs, messaging, AI orchestration, booking operations, UX, and launch readiness         |
+| Milestone                           | Status | Delivered                                                                                              |
+| ----------------------------------- | :----: | ------------------------------------------------------------------------------------------------------ |
+| S0 — Architecture                   |   ✅   | Audited product, security, data, AI, reliability, and delivery architecture                            |
+| S1 — Workspace baseline             |   ✅   | Reproducible pnpm monorepo, CI gate, strict TypeScript, lint, and boundaries                           |
+| S2 — Canonical contracts            |   ✅   | Runtime schemas, errors, pagination, events, channel contracts, and drift protection                   |
+| S3 — Pure domain kernel             |   ✅   | Lead, Conversation, Handoff, AppointmentRequest, and cross-machine workflows                           |
+| S4 — Database foundation            |   ✅   | PostgreSQL 17 initial schema with 47 production tables and explicit migrations                         |
+| S5 — Tenant-safe persistence        |   ✅   | FORCE RLS, tenant sessions, repositories, CAS, atomic audit/outbox writes, and inbound resolver        |
+| S6 — Staff identity and RBAC        |   ✅   | Auth0 OIDC, application sessions, MFA, RBAC, invitations, recovery, and location scopes                |
+| S7 — Business knowledge             |   ✅   | Versioned Location, Service, Price, FAQ, policy publication, trusted reads, and private staff API      |
+| S8 — Reliable async substrate       |   ✅   | pg-boss, Outbox relay/dispatcher, finite handlers, retry/DLQ/replay, observability, and safe shutdown  |
+| S9 — Conversation persistence + API |   🟡   | S9.A deterministic inbound and S9.B staff query surface accepted; final S9.C acceptance gate is next   |
+| S10+ — Product integrations         |   ⏳   | Widget/Telegram ingress, AI orchestration, booking operations, UX, observability, and launch readiness |
 
 ## What is already implemented
 
-- Versioned runtime contracts with compatibility snapshots and drift checks.
+- 301 versioned runtime contracts with compatibility snapshots and drift checks,
+  including 63 semantic events represented by 64 schema variants.
 - Pure TypeScript domain state machines with deterministic transitions and typed errors.
 - PostgreSQL 17 and Drizzle schema covering tenant configuration, contacts, leads,
   conversations, appointments, handoffs, notifications, reliability, audit, privacy,
   analytics, and AI provenance.
-- Thirteen explicit migrations (`0000` through `0012`) with fresh-install, upgrade,
-  rerun, structural, and hostile-tenant verification.
+- Fifty-one production business tables and 25 explicit migrations (`0000` through
+  `0024`) with fresh-install, upgrade, rerun, structural, and hostile-tenant verification.
 - FORCE RLS across the tenant table manifest with a non-owner, `NOBYPASSRLS` runtime
   role and transaction-local tenant context.
 - Immutable tenant database sessions, tenant-qualified repositories, active-record
   uniqueness, expected-version CAS, and atomic history/audit/outbox persistence.
 - A narrow, fail-closed pre-tenant inbound route resolver without general table access.
-- Web, API, and worker composition shells with a repository-wide CI verification gate.
+- Auth0 OIDC verification, application-owned sessions, MFA enforcement, current
+  Membership/Location authorization, invitations, revocation, and recovery workflows.
+- Versioned business-knowledge publication with trusted tenant/location-scoped reads and
+  a private Fastify staff configuration API.
+- A migration-owned pg-boss schema, transactional Outbox relay/dispatcher, finite worker
+  handlers, retry/DLQ/replay controls, backpressure, telemetry, and graceful shutdown.
+- Deterministic canonical inbound persistence for Contact, Lead, Conversation, Message,
+  consent, audit, and Outbox facts with duplicate/reordered delivery safety.
+- Purpose-separated AES-256-GCM customer-data protection plus six authenticated,
+  tenant/location-scoped staff Contact, Lead, Conversation, and Message read routes.
 
 ## Safety model
 
@@ -91,15 +107,17 @@ flowchart LR
 
 ## Technology
 
-| Area           | Stack                                                                          |
-| -------------- | ------------------------------------------------------------------------------ |
-| Runtime        | Node.js 24, TypeScript 6, pnpm workspaces                                      |
-| Web            | Next.js 16, React 19                                                           |
-| API            | Fastify 5                                                                      |
-| Database       | PostgreSQL 17, Drizzle ORM and explicit SQL migrations                         |
-| Contracts      | TypeBox runtime schemas and versioned compatibility snapshots                  |
-| Testing        | Vitest, real PostgreSQL integration tests, hostile-tenant security tests       |
-| Authentication | Auth0 OIDC Authorization Code + PKCE architecture; implementation begins in S6 |
+| Area           | Stack                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| Runtime        | Node.js 24, TypeScript 6, pnpm workspaces                                                   |
+| Web            | Next.js 16, React 19                                                                        |
+| API            | Fastify 5                                                                                   |
+| Database       | PostgreSQL 17, Drizzle ORM and explicit SQL migrations                                      |
+| Async          | Transactional Outbox and pg-boss with migration-owned infrastructure                        |
+| Contracts      | TypeBox runtime schemas and versioned compatibility snapshots                               |
+| Testing        | Vitest, real PostgreSQL integration tests, hostile-tenant and concurrency security tests    |
+| Authentication | Auth0 OIDC Authorization Code + PKCE, application-owned sessions, MFA, RBAC, Location scope |
+| Data security  | PostgreSQL FORCE RLS and purpose-separated AES-256-GCM customer-data protection             |
 
 ## Repository map
 
@@ -156,9 +174,10 @@ pnpm build              # all packages and applications
 pnpm ci:verify          # complete repository gate
 ```
 
-`pnpm test:database` requires a fresh, disposable PostgreSQL 17 database identified by
-`TEST_DATABASE_URL`. The harness rejects a database that is not explicitly test-named;
-never point it at shared, staging, or production data.
+`pnpm test:database` can use `TEST_DATABASE_ADMIN_URL` to create a distinct fresh
+database for every stateful suite and remove each database afterward. A focused suite
+may use `TEST_DATABASE_URL` directly. Both paths require explicitly test-named
+PostgreSQL 17 databases; never point them at shared, staging, or production data.
 
 ## Architecture and roadmap
 
