@@ -281,7 +281,9 @@ const scopeBinding = (authorization: AuthorizationContext): string =>
   stableJson({
     allowedLocationIds: [...authorization.allowedLocationIds].sort(),
     locationScope: authorization.locationScope,
+    membershipId: authorization.membershipId,
     organizationId: authorization.organizationId,
+    userId: authorization.userId,
   });
 const filterBinding = (authorization: AuthorizationContext, filter: unknown): string =>
   stableJson({ filter, scope: scopeBinding(authorization) });

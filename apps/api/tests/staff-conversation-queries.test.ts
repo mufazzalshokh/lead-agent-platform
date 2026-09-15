@@ -297,6 +297,17 @@ describe("S9.B private staff conversation query API", { timeout: 30_000 }, () =>
         expect(response.body).toContain('"data"');
         expect(response.body).toContain('"request_id"');
         expect(response.body).toContain(expectedId);
+        for (const forbiddenField of [
+          "body_ciphertext",
+          "body_hash",
+          "external_message_id",
+          "external_thread_hash",
+          "organization_id",
+          "provider_event_id",
+          "provider_payload",
+        ]) {
+          expect(response.body).not.toContain(forbiddenField);
+        }
         expect(fixture.controls.calls.at(-1)?.operation).toBe(operation);
         expect(fixture.controls.calls.at(-1)?.authorization).toMatchObject({
           allowedLocationIds: [LOCATION_ID],

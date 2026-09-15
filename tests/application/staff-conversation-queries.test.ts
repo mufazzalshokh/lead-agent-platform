@@ -54,6 +54,10 @@ const ids = {
   membership: "0199f1a8-7f65-7c28-a434-a10796c47607",
   message: "0199f1a8-7f65-7c28-a434-a10796c47608",
   organization: "0199f1a8-7f65-7c28-a434-a10796c47609",
+  otherLocation: "0199f1a8-7f65-7c28-a434-a10796c4760b",
+  otherMembership: "0199f1a8-7f65-7c28-a434-a10796c4760c",
+  otherOrganization: "0199f1a8-7f65-7c28-a434-a10796c4760d",
+  otherUser: "0199f1a8-7f65-7c28-a434-a10796c4760e",
   user: "0199f1a8-7f65-7c28-a434-a10796c4760a",
 } as const;
 const NOW_VALUE = "2026-09-15T08:00:00.000Z";
@@ -67,6 +71,10 @@ if (
   !isSchemaValue(MembershipIdSchema, ids.membership) ||
   !isSchemaValue(MessageIdSchema, ids.message) ||
   !isSchemaValue(OrganizationIdSchema, ids.organization) ||
+  !isSchemaValue(LocationIdSchema, ids.otherLocation) ||
+  !isSchemaValue(MembershipIdSchema, ids.otherMembership) ||
+  !isSchemaValue(OrganizationIdSchema, ids.otherOrganization) ||
+  !isSchemaValue(UserIdSchema, ids.otherUser) ||
   !isSchemaValue(UserIdSchema, ids.user) ||
   !isSchemaValue(UtcTimestampSchema, NOW_VALUE)
 )
@@ -83,7 +91,7 @@ const ORGANIZATION_ID: OrganizationId = ids.organization;
 const USER_ID: UserId = ids.user;
 const NOW: UtcTimestamp = NOW_VALUE;
 
-const session = (): AuthenticatedApplicationSession => ({
+const session = (userId: UserId = USER_ID): AuthenticatedApplicationSession => ({
   absoluteExpiresAt: new Date("2026-09-16T08:00:00.000Z"),
   authenticationLevel: "mfa",
   authenticationTime: new Date(NOW),
@@ -93,24 +101,33 @@ const session = (): AuthenticatedApplicationSession => ({
   rotatedAt: new Date(NOW),
   rotationDue: false,
   sessionId: ids.identity,
-  userId: USER_ID,
+  userId,
 });
 
 const authorizationFor = async (
   role: MembershipRole = "staff",
   locationScope: LocationScope = "all",
   allowedLocationIds: readonly LocationId[] = [],
+  actor: Readonly<{
+    membershipId: MembershipId;
+    organizationId: OrganizationId;
+    userId: UserId;
+  }> = {
+    membershipId: MEMBERSHIP_ID,
+    organizationId: ORGANIZATION_ID,
+    userId: USER_ID,
+  },
 ): Promise<AuthorizationContext> => {
   const current: CurrentMembershipAuthorization = {
     allowedLocationIds,
     locationScope,
-    membershipId: MEMBERSHIP_ID,
-    organizationId: ORGANIZATION_ID,
+    membershipId: actor.membershipId,
+    organizationId: actor.organizationId,
     role,
     status: "active",
-    userId: USER_ID,
+    userId: actor.userId,
   };
-  return resolveAuthorizationContext(session(), ORGANIZATION_ID, {
+  return resolveAuthorizationContext(session(actor.userId), actor.organizationId, {
     resolveCurrentMembership: () => Promise.resolve(current),
   });
 };
@@ -276,6 +293,28 @@ describe("S9.B staff conversation query application", () => {
     expect(fixture.mocks.revealContactIdentity).not.toHaveBeenCalled();
   });
 
+  it("never invokes reveal for absent protected Contact values", async () => {
+    const contact = storedContact();
+    const fixture = harness({
+      ...contact,
+      displayNameCiphertext: null,
+      identities: contact.identities.map((identity) => ({
+        ...identity,
+        valueCiphertext: null,
+      })),
+    });
+    const result = await fixture.useCases.getContact({
+      authorization: await authorizationFor(),
+      input: { id: CONTACT_ID },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { display_name: null, identities: [{ value: null }] },
+    });
+    expect(fixture.mocks.revealContactDisplayName).not.toHaveBeenCalled();
+    expect(fixture.mocks.revealContactIdentity).not.toHaveBeenCalled();
+  });
+
   it("returns masked Contact fields without invoking reveal when sensitive permission is absent", async () => {
     const fixture = harness();
     const useCases = createStaffConversationQueryUseCases(
@@ -327,6 +366,47 @@ describe("S9.B staff conversation query application", () => {
       }),
     ).toEqual({ error: { code: "validation_failed" }, ok: false });
     expect(fixture.mocks.listLeads.mock.calls).toHaveLength(1);
+  });
+
+  it("accepts a valid cursor only for the same tenant, actor, and Location scope", async () => {
+    const fixture = harness();
+    const authorization = await authorizationFor("staff", "restricted", [LOCATION_ID]);
+    const first = await fixture.useCases.listLeads({ authorization, input: { limit: 1 } });
+    if (!first.ok || first.value.nextCursor === null) throw new TypeError("Expected cursor");
+    const cursor = first.value.nextCursor;
+
+    expect(
+      await fixture.useCases.listLeads({ authorization, input: { cursor, limit: 1 } }),
+    ).toMatchObject({ ok: true });
+
+    const forged = `${cursor.slice(0, -1)}${cursor.endsWith("A") ? "B" : "A"}`;
+    const otherActor = await authorizationFor("staff", "restricted", [LOCATION_ID], {
+      membershipId: ids.otherMembership as MembershipId,
+      organizationId: ORGANIZATION_ID,
+      userId: ids.otherUser as UserId,
+    });
+    const otherTenant = await authorizationFor("staff", "restricted", [LOCATION_ID], {
+      membershipId: ids.otherMembership as MembershipId,
+      organizationId: ids.otherOrganization as OrganizationId,
+      userId: ids.otherUser as UserId,
+    });
+    const otherLocationScope = await authorizationFor("staff", "restricted", [
+      ids.otherLocation as LocationId,
+    ]);
+    for (const [candidateAuthorization, candidateCursor] of [
+      [authorization, forged],
+      [otherActor, cursor],
+      [otherTenant, cursor],
+      [otherLocationScope, cursor],
+    ] as const) {
+      expect(
+        await fixture.useCases.listLeads({
+          authorization: candidateAuthorization,
+          input: { cursor: candidateCursor, limit: 1 },
+        }),
+      ).toEqual({ error: { code: "validation_failed" }, ok: false });
+    }
+    expect(fixture.mocks.listLeads.mock.calls).toHaveLength(2);
   });
 
   it("returns only safe conversation summaries and supports keyset continuation", async () => {

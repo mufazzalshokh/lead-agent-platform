@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ConfigurationValidationError,
   createCustomerDataProtectionConfig,
+  loadCustomerDataProtectionConfig,
 } from "../../packages/config/src/index.js";
 import {
   CustomerDataProtectionError,
@@ -21,16 +22,19 @@ import {
 const ORGANIZATION_VALUE = "0199f1a8-7f65-7c28-a434-a10796c47501";
 const OTHER_ORGANIZATION_VALUE = "0199f1a8-7f65-7c28-a434-a10796c47502";
 const CHANNEL_VALUE = "0199f1a8-7f65-7c28-a434-a10796c47503";
+const OTHER_CHANNEL_VALUE = "0199f1a8-7f65-7c28-a434-a10796c47504";
 if (
   !isSchemaValue(OrganizationIdSchema, ORGANIZATION_VALUE) ||
   !isSchemaValue(OrganizationIdSchema, OTHER_ORGANIZATION_VALUE) ||
-  !isSchemaValue(ChannelConnectionIdSchema, CHANNEL_VALUE)
+  !isSchemaValue(ChannelConnectionIdSchema, CHANNEL_VALUE) ||
+  !isSchemaValue(ChannelConnectionIdSchema, OTHER_CHANNEL_VALUE)
 ) {
   throw new TypeError("Invalid customer data protection fixture");
 }
 const ORGANIZATION_ID: OrganizationId = ORGANIZATION_VALUE;
 const OTHER_ORGANIZATION_ID: OrganizationId = OTHER_ORGANIZATION_VALUE;
 const CHANNEL_ID: ChannelConnectionId = CHANNEL_VALUE;
+const OTHER_CHANNEL_ID: ChannelConnectionId = OTHER_CHANNEL_VALUE;
 const ENCRYPTION_KEY = randomBytes(32);
 const LOOKUP_KEY = randomBytes(32);
 
@@ -57,6 +61,18 @@ describe("S9 customer data protection", () => {
         currentEncryptionKey: encodedEncryption,
         currentKeyId: "customer-data-v1",
         lookupKey: encodedEncryption,
+      }),
+    ).toThrow(ConfigurationValidationError);
+  });
+
+  it("does not accept browser, authentication, or invitation keys as customer-data keys", () => {
+    const key = Buffer.alloc(32, 17).toString("base64url");
+    expect(() =>
+      loadCustomerDataProtectionConfig({
+        AUTH_BROWSER_ENVELOPE_KEY: key,
+        AUTH_SESSION_LOOKUP_KEY: key,
+        INVITATION_TARGET_ENCRYPTION_KEY: key,
+        INVITATION_TARGET_LOOKUP_KEY: key,
       }),
     ).toThrow(ConfigurationValidationError);
   });
@@ -157,7 +173,7 @@ describe("S9 customer data protection", () => {
     );
   });
 
-  it("fails closed for wrong tenant, purpose, identity context, and encryption key", () => {
+  it("fails closed for wrong tenant, purpose, identity, channel, message context, and encryption key", () => {
     const protection = protector();
     const envelope = protection.protectContactDisplayName({
       organizationId: ORGANIZATION_ID,
@@ -168,6 +184,12 @@ describe("S9 customer data protection", () => {
       identityType: "telegram_user",
       organizationId: ORGANIZATION_ID,
       value: "private-identity",
+    });
+    const message = protection.protectMessageBody({
+      channelConnectionId: CHANNEL_ID,
+      content: { locale_hint: "uz", text: "private-message", type: "text" },
+      contentType: "text",
+      organizationId: ORGANIZATION_ID,
     });
     const wrongKeyProtection = createCustomerDataProtection({
       currentEncryptionKey: randomBytes(32),
@@ -196,6 +218,27 @@ describe("S9 customer data protection", () => {
         }),
       () =>
         protection.revealContactIdentity({
+          channelConnectionId: OTHER_CHANNEL_ID,
+          ciphertext: identity,
+          identityType: "telegram_user",
+          organizationId: ORGANIZATION_ID,
+        }),
+      () =>
+        protection.revealMessageBody({
+          channelConnectionId: OTHER_CHANNEL_ID,
+          ciphertext: message.ciphertext,
+          contentType: "text",
+          organizationId: ORGANIZATION_ID,
+        }),
+      () =>
+        protection.revealMessageBody({
+          channelConnectionId: CHANNEL_ID,
+          ciphertext: message.ciphertext,
+          contentType: "quick_reply",
+          organizationId: ORGANIZATION_ID,
+        }),
+      () =>
+        protection.revealContactIdentity({
           channelConnectionId: null,
           ciphertext: identity,
           identityType: "telegram_user",
@@ -211,7 +254,7 @@ describe("S9 customer data protection", () => {
     }
   });
 
-  it("fails closed for tamper, unknown version/key, malformed envelope, and oversize input without logging sensitive material", () => {
+  it("fails closed for ciphertext/tag tamper, truncation, unknown version/key, malformed envelope, and oversize input without logging sensitive material", () => {
     const protection = protector();
     const envelope = protection.protectContactDisplayName({
       organizationId: ORGANIZATION_ID,
@@ -219,6 +262,10 @@ describe("S9 customer data protection", () => {
     });
     const tampered = Uint8Array.from(envelope);
     tampered[tampered.length - 1] = (tampered.at(-1) ?? 0) ^ 1;
+    const tagTampered = Uint8Array.from(envelope);
+    const tagStart = 6 + Buffer.byteLength("customer-data-v1") + 12;
+    tagTampered[tagStart] = (tagTampered[tagStart] ?? 0) ^ 1;
+    const truncated = envelope.subarray(0, envelope.byteLength - 1);
     const unknownVersion = Uint8Array.from(envelope);
     unknownVersion[4] = 2;
     const unknownKey = Uint8Array.from(envelope);
@@ -228,6 +275,16 @@ describe("S9 customer data protection", () => {
       () =>
         protection.revealContactDisplayName({
           ciphertext: tampered,
+          organizationId: ORGANIZATION_ID,
+        }),
+      () =>
+        protection.revealContactDisplayName({
+          ciphertext: tagTampered,
+          organizationId: ORGANIZATION_ID,
+        }),
+      () =>
+        protection.revealContactDisplayName({
+          ciphertext: truncated,
           organizationId: ORGANIZATION_ID,
         }),
       () =>

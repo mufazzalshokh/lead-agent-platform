@@ -281,16 +281,42 @@ export const registerStaffConversationQueryTests = (
     );
   };
 
-  beforeEach(async () => {
-    await seed();
-    useCases = createStaffConversationQueryUseCases(
-      createStaffConversationQueryStore(options.runtime()),
-      protection,
-      createStaffQueryCursorCodec(Uint8Array.from({ length: 32 }, () => 17)),
+  const readBusinessState = async (): Promise<Readonly<Record<string, unknown>>> => {
+    const result = await options.privilegedPool().query(
+      `select
+         (select coalesce(jsonb_agg(to_jsonb(c) order by c.id), '[]'::jsonb)
+            from contacts c where c.organization_id = $1) as contacts,
+         (select coalesce(jsonb_agg(to_jsonb(ci) order by ci.id), '[]'::jsonb)
+            from contact_identities ci where ci.organization_id = $1) as contact_identities,
+         (select coalesce(jsonb_agg(to_jsonb(l) order by l.id), '[]'::jsonb)
+            from leads l where l.organization_id = $1) as leads,
+         (select coalesce(jsonb_agg(to_jsonb(c) order by c.id), '[]'::jsonb)
+            from conversations c where c.organization_id = $1) as conversations,
+         (select coalesce(jsonb_agg(to_jsonb(m) order by m.id), '[]'::jsonb)
+            from messages m where m.organization_id = $1) as messages,
+         (select coalesce(jsonb_agg(to_jsonb(c) order by c.id), '[]'::jsonb)
+            from consent_records c where c.organization_id = $1) as consent_records,
+         (select coalesce(jsonb_agg(to_jsonb(a) order by a.id), '[]'::jsonb)
+            from audit_events a where a.organization_id = $1) as audit_events,
+         (select coalesce(jsonb_agg(to_jsonb(o) order by o.id), '[]'::jsonb)
+            from outbox_events o where o.organization_id = $1) as outbox_events`,
+      [ORGANIZATION_A],
     );
-  });
+    const state = result.rows[0] as Readonly<Record<string, unknown>> | undefined;
+    if (state === undefined) throw new TypeError("Expected S9 staff query business state");
+    return state;
+  };
 
   describe("S9.B tenant staff query repository", () => {
+    beforeEach(async () => {
+      await seed();
+      useCases = createStaffConversationQueryUseCases(
+        createStaffConversationQueryStore(options.runtime()),
+        protection,
+        createStaffQueryCursorCodec(Uint8Array.from({ length: 32 }, () => 17)),
+      );
+    });
+
     it("reads and reveals same-tenant contact data after location authorization", async () => {
       const result = await useCases.getContact({
         authorization: await authorizationFor(ORGANIZATION_A, [LOCATION_A]),
@@ -358,6 +384,23 @@ export const registerStaffConversationQueryTests = (
           input: { cursor: first.value.nextCursor, limit: 1 },
         }),
       ).toEqual({ error: { code: "validation_failed" }, ok: false });
+    });
+
+    it("leaves Contact, Lead, Conversation, Message, consent, audit, and Outbox state unchanged", async () => {
+      const authorization = await authorizationFor(ORGANIZATION_A, [LOCATION_A]);
+      const before = await readBusinessState();
+
+      const results = await Promise.all([
+        useCases.getContact({ authorization, input: { id: CONTACT_A } }),
+        useCases.getLead({ authorization, input: { id: LEAD_A } }),
+        useCases.listLeads({ authorization, input: {} }),
+        useCases.getConversation({ authorization, input: { id: CONVERSATION_A } }),
+        useCases.listConversations({ authorization, input: {} }),
+        useCases.listMessages({ authorization, conversationId: CONVERSATION_A, input: {} }),
+      ]);
+
+      expect(results.every(({ ok }) => ok)).toBe(true);
+      expect(await readBusinessState()).toEqual(before);
     });
   });
 };

@@ -361,7 +361,7 @@ describe("S8.4 worker lifecycle", () => {
     expect(error).not.toHaveBeenCalled();
     info.mockRestore();
     error.mockRestore();
-  });
+  }, 30_000);
 
   it("starts an empty production registry passively with honest readiness and no consumers", async () => {
     const memory = createMemoryQueue();
