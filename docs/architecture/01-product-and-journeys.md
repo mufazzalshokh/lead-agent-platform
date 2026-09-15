@@ -133,7 +133,8 @@ the model.
 - Answer supported FAQs and show authoritative service prices or price ranges.
 - Explain that unavailable or unknown facts need staff confirmation.
 - Collect policy-defined qualification facts without diagnosis.
-- Capture and normalize a phone number with explicit purpose/consent evidence.
+- Capture and normalize a phone number, when voluntarily supplied, with explicit
+  purpose/consent evidence.
 - Collect location, service, time-zone-aware date/time preference, and notes.
 - Create exactly one appointment request for one intentional submission.
 - Notify eligible staff and expose a prioritized request queue.
@@ -365,7 +366,9 @@ defines only administrative/business criteria and required evidence. The V1
 defaults require `service_interest`, `service_location_fit`,
 `positive_next_step_intent`, and `contactability`. Preferred time, budget, age,
 medical/clinical information, and detailed personal information are not
-required by default.
+required by default. A usable bound Telegram identity or valid bound Widget
+session satisfies contactability for a flow that can continue on that channel;
+a phone number is optional in P0.
 
 **Happy path:**
 
@@ -766,23 +769,26 @@ cost.
 - MVP exclusions are enforceable architecture boundaries, not roadmap prose.
 - Metrics derive from canonical events and never become a second source of truth.
 
-## 16. Product open questions
+## 16. Product decisions and open questions
 
-1. Is a phone number mandatory for all appointment requests, or may the
-   originating Telegram/widget session be sufficient for some tenants?
-2. Which notification channels and staff-review response targets are promised
+The S9 owner decision is that phone is not globally mandatory in P0. A trusted
+bound Telegram identity or valid bound Widget session is sufficient
+contactability where that channel can continue the customer flow. Phone remains
+optional, and S9 does not add a tenant-configurable mandatory-phone policy.
+
+1. Which notification channels and staff-review response targets are promised
    at launch?
-3. What customer action counts as legally sufficient confirmation per channel,
+2. What customer action counts as legally sufficient confirmation per channel,
    and how long is an offer valid?
-4. May staff edit a previously accepted offer, or must they cancel and create a
+3. May staff edit a previously accepted offer, or must they cancel and create a
    new request/offer version? The safer initial design requires a new offer
    version.
-5. Which jurisdictions, consent wording, privacy roles, and retention periods
+4. Which jurisdictions, consent wording, privacy roles, and retention periods
    apply to the first tenants?
-6. Which fields are required for P0 manual attendance/revenue entry, and which
+5. Which fields are required for P0 manual attendance/revenue entry, and which
    approved import sources should be added after P0?
-7. What pre-launch baselines and minimum sample sizes will be used for conversion
+6. What pre-launch baselines and minimum sample sizes will be used for conversion
    claims?
-8. What tenant-specific AI cost budget makes the product economically viable?
-9. Which emergency/safety wording is approved for each launch jurisdiction and
+7. What tenant-specific AI cost budget makes the product economically viable?
+8. Which emergency/safety wording is approved for each launch jurisdiction and
     language?

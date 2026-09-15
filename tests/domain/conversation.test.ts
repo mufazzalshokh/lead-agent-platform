@@ -320,6 +320,12 @@ const COMMAND_CASES = [
         message: INBOUND_MESSAGE,
       }),
     successes: {
+      open_ai: {
+        activeHandoff: "none",
+        eventTypes: ["message.received"],
+        toAutomationMode: "ai",
+        toStatus: "open",
+      },
       awaiting_lead_ai: {
         activeHandoff: "none",
         eventTypes: ["message.received", "conversation.status_changed"],
@@ -329,6 +335,18 @@ const COMMAND_CASES = [
       awaiting_lead_staff: {
         activeHandoff: "same",
         eventTypes: ["message.received", "conversation.status_changed"],
+        toAutomationMode: "staff",
+        toStatus: "awaiting_staff",
+      },
+      awaiting_staff_paused: {
+        activeHandoff: "same",
+        eventTypes: ["message.received"],
+        toAutomationMode: "paused",
+        toStatus: "awaiting_staff",
+      },
+      awaiting_staff_staff: {
+        activeHandoff: "same",
+        eventTypes: ["message.received"],
         toAutomationMode: "staff",
         toStatus: "awaiting_staff",
       },
@@ -725,12 +743,12 @@ describe("Conversation creation", () => {
 });
 
 describe("exhaustive Conversation state/ownership by command matrix", () => {
-  it("covers seven valid combinations, ten commands, eighteen legal edges, and fifty-two invalid pairs", () => {
+  it("covers seven valid combinations, ten commands, twenty-one legal edges, and forty-nine invalid pairs", () => {
     expect(CONVERSATION_STATES).toHaveLength(7);
     expect(COMMAND_CASES).toHaveLength(10);
     expect(MATRIX_CASES).toHaveLength(70);
-    expect(LEGAL_CASES).toHaveLength(18);
-    expect(INVALID_CASES).toHaveLength(52);
+    expect(LEGAL_CASES).toHaveLength(21);
+    expect(INVALID_CASES).toHaveLength(49);
   });
 
   it.each(MATRIX_CASES)(

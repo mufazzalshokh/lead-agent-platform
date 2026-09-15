@@ -202,9 +202,6 @@ const validateAggregate = (
   if (!validation.ok) {
     invalidPlan();
   }
-  if (mutation.mode === "create" && mutation.nextAggregate.version !== 1) {
-    invalidPlan();
-  }
   if (mutation.mode === "update" && mutation.nextAggregate.version <= mutation.expectedVersion) {
     invalidPlan();
   }
@@ -263,7 +260,6 @@ const expectedEventTypes = (transition: CoreTransitionPersistence): readonly str
     }
     case "conversation": {
       const byCommand = {
-        accept_customer_message: ["message.received", "conversation.status_changed"],
         close_conversation: ["conversation.closed"],
         create_conversation: ["conversation.started", "message.received"],
         queue_ai_response: ["message.response_queued", "conversation.status_changed"],
@@ -279,6 +275,11 @@ const expectedEventTypes = (transition: CoreTransitionPersistence): readonly str
             : "conversation.automation_mode_changed",
         ],
       } as const;
+      if (transition.record.command === "accept_customer_message") {
+        return transition.record.fromStatus === transition.record.toStatus
+          ? ["message.received"]
+          : ["message.received", "conversation.status_changed"];
+      }
       return byCommand[transition.record.command];
     }
     case "appointment_request": {
@@ -588,7 +589,7 @@ const insertLead = async (
       mutation.storage.assignedMembershipId,
       lead.qualification?.policyId ?? null,
       lead.qualification?.reasonCodes ?? [],
-      null,
+      lead.status === "engaged" ? occurredAt : null,
       null,
       null,
       null,
@@ -684,7 +685,7 @@ const updateConversation = async (
           when $3::varchar = 'closed' then resolved_at
          else null end,
        closed_at = case when $3::varchar = 'closed' then $6 else null end,
-       version = $7, updated_at = $6
+       version = $7, updated_at = greatest(updated_at, $6)
      where organization_id = $1 and id = $2 and version = $8`,
     [
       conversation.conversationId,

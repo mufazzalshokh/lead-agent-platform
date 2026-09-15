@@ -347,6 +347,11 @@ Disqualification is limited to `service_not_offered`, `location_not_served`,
 uncertainty, AI uncertainty without a safe answer, and human requests route to
 Handoff; AI never decides medical eligibility or invents policy reasons.
 
+The S9 owner decision freezes P0 contactability as channel-capable rather than
+phone-mandatory: a trusted bound Telegram identity or valid bound Widget session
+is sufficient where that channel can continue the customer flow. Phone remains
+optional, and S9 introduces no tenant-configurable mandatory-phone policy.
+
 Owner/Admin retain `configuration.read|write|publish`; Staff/Analyst retain
 `configuration.read` only, subject to accepted Location resource scope. The
 Organization Owner is operationally accountable for qualification-policy and
@@ -618,7 +623,6 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | --- | --- | --- | --- |
 | Which launch country/jurisdiction, data residency, consent wording, retention/deletion/legal-hold rules apply? | Product + privacy/legal | Legal/privacy obligations and data model operations depend on it | Before S21a; preferably before the affected S4a-S4c fields |
 | Does launch-jurisdiction counsel require productized automated subject export/deletion/retention in P0, or is the verified audited operator runbook sufficient until P1/FR-023? | Privacy/legal + product | The architecture must fulfill applicable rights, but product priority cannot override launch law | Decide before S21a scope; verify before S23 |
-| Is a phone number mandatory for an appointment request, or can a bound widget/Telegram identity suffice for selected tenants? | Product + privacy | Contact sufficiency changes validation, consent, and reachability behavior | Before S9/S16 |
 | What exact channel-specific resolved-conversation reopen/new-cycle and Widget session windows apply within the frozen active grouping identity? | Product + integrations | Timing changes whether an inactive thread is reopened or a later Conversation is created, but does not change the approved grouping key | Before S10-S11 |
 | Is Telegram one platform bot or a tenant-owned bot per connection, and who handles token rotation/ownership? | Product + integrations | Affects onboarding, provider limits, credentials, and support | Before S11 |
 | What customer-confirmation UX, legal sufficiency, offer/staff-review expiry, reminder, cancel/reschedule/new-offer rules apply per widget and Telegram? | Product + privacy/legal + domain | Determines valid state transitions and legal/audit evidence; configured values still need approved defaults | Before S16/S18 |

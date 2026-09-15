@@ -4,6 +4,7 @@ export * from "./conversations.js";
 export * from "./customers.js";
 export * from "./faq-policy-configuration.js";
 export * from "./handoffs.js";
+export * from "./inbound-conversations.js";
 export * from "./leads.js";
 export * from "./membership-lifecycle.js";
 export * from "./location-configuration.js";

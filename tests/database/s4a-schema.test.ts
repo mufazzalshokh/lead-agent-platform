@@ -8,11 +8,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   AgentDecisionActionSchema,
   AgentDecisionV1Schema,
+  ChannelConnectionIdSchema,
   DOMAIN_EVENT_NAMES,
   DomainEventSchemasByVersion,
   OrganizationIdSchema,
   isSchemaValue,
   type AgentActionType,
+  type ChannelConnectionId,
   type DomainAggregateType,
   type DomainEventName,
   type DomainEventPayloadByName,
@@ -115,6 +117,7 @@ import { registerLocationConfigurationTests } from "./location-configuration.tes
 import { registerServicePricingConfigurationTests } from "./service-pricing-configuration.test-suite.js";
 import { registerFaqPolicyConfigurationTests } from "./faq-policy-configuration.test-suite.js";
 import { registerPublishedBusinessKnowledgeTests } from "./published-business-knowledge.test-suite.js";
+import { registerInboundConversationPersistenceTests } from "./inbound-conversation-persistence.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -639,6 +642,13 @@ const requireRuntimeIdentityConfiguration = (): IdentityDatabaseRuntimeConfig =>
 const requireOrganizationId = (value: unknown): OrganizationId => {
   if (!isSchemaValue(OrganizationIdSchema, value)) {
     throw new Error("Invalid OrganizationId test fixture");
+  }
+  return value;
+};
+
+const requireChannelConnectionId = (value: unknown): ChannelConnectionId => {
+  if (!isSchemaValue(ChannelConnectionIdSchema, value)) {
+    throw new Error("Invalid ChannelConnectionId test fixture");
   }
   return value;
 };
@@ -9971,6 +9981,14 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     runtime: requireTenantRuntime,
   });
   registerPublishedBusinessKnowledgeTests({
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+  });
+  registerInboundConversationPersistenceTests({
+    channelA: requireChannelConnectionId(CHANNEL_CONNECTION_A),
+    channelB: requireChannelConnectionId(CHANNEL_CONNECTION_B),
+    organizationA: requireOrganizationId(ORGANIZATION_A),
+    organizationB: requireOrganizationId(ORGANIZATION_B),
     privilegedPool: database,
     runtime: requireTenantRuntime,
   });

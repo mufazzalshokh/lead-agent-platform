@@ -881,8 +881,11 @@ export const acceptCustomerMessage = (
   command: AcceptCustomerMessageCommand,
 ): ConversationCommandResult => {
   const context = beginTransition(conversation, command, "accept_customer_message", [
+    "open_ai",
     "awaiting_lead_ai",
     "awaiting_lead_staff",
+    "awaiting_staff_paused",
+    "awaiting_staff_staff",
   ]);
   if (!context.ok) {
     return transitionFailure(context.error);
@@ -898,8 +901,19 @@ export const acceptCustomerMessage = (
     return transitionFailure(message.error);
   }
 
-  const staffOwned = conversation.automationMode === "staff";
-  const toStatus: ConversationStatus = staffOwned ? "awaiting_staff" : "open";
+  const toStatus: ConversationStatus =
+    conversation.status === "awaiting_lead"
+      ? conversation.automationMode === "staff"
+        ? "awaiting_staff"
+        : "open"
+      : conversation.status;
+  const events: readonly ConversationEventDraft[] =
+    toStatus === conversation.status
+      ? [receivedEvent(context.value.nextVersion, message.value)]
+      : [
+          receivedEvent(context.value.nextVersion, message.value),
+          statusChangedEvent(context.value.nextVersion, conversation.status, toStatus),
+        ];
 
   return completeTransition(
     conversation,
@@ -908,10 +922,7 @@ export const acceptCustomerMessage = (
     toStatus,
     conversation.automationMode,
     conversation.activeHandoff,
-    [
-      receivedEvent(context.value.nextVersion, message.value),
-      statusChangedEvent(context.value.nextVersion, conversation.status, toStatus),
-    ],
+    events,
     { messageId: message.value },
   );
 };
