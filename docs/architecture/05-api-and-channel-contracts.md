@@ -593,6 +593,27 @@ tenant budget.
 | `POST /handoffs` | conversation-bound token | Explicit human request; idempotent and safe if one active handoff already exists. |
 | `POST /consents/{purpose}/withdraw` | conversation-bound token | **P1 reserved:** withdraws only consent bound to this subject/session/tenant and appends evidence without exposing other contact data. |
 
+S10 implements the first five routes in this table. Bootstrap alone persists
+only a `widget_session`. `POST /conversations` carries the first meaningful text
+message and atomically creates or reuses the S9 Contact, active Lead, active
+Conversation, and Message before binding the session and rotating its token.
+Resolved or closed conversations are not reopened in S10; a later cycle starts
+with a fresh Widget session.
+
+The S10 token is a dedicated HS256 JWS with issuer and audience
+`lead-agent-widget`, exact version/scope, a high-entropy JTI, and immutable
+session, tenant, channel, concrete-origin, and nullable conversation bindings.
+It expires after at most two hours; the database additionally enforces a
+30-minute idle limit and active/non-revoked state on every operation. The raw
+JTI is never persisted. Each authenticated request must present the exact
+concrete HTTPS Origin and the current server-side JTI binding.
+
+Widget message reads use the conversation sequence as an `after` keyset
+(`limit` defaults to 50 and is capped at 100). They return only customer inbound
+and customer-facing outbound projections. Staff-internal messages, protected
+bodies/hashes, provider identifiers, Contact/Lead identifiers, tenant IDs, and
+audit/outbox/AI internals are never serialized.
+
 Message input V1 is deliberately small:
 
 ```json
@@ -614,6 +635,14 @@ The unique tuple `(organization_id, channel_connection_id,
 client_message_id)` protects against browser retries in addition to the HTTP
 idempotency record. The service sanitizes output at render time; neither inbound
 text nor AI output is trusted HTML.
+
+S10 accepts text only, limits Widget JSON bodies to 32 KiB, and retains REST
+idempotency evidence for at least 24 hours. Its in-process limiter is bounded and
+testable: bootstrap uses 10/minute per trusted client-IP/key/origin tuple and
+100/minute per resolved tenant; authenticated mutations use 30/minute per
+session, reads 60/minute per session, and all authenticated activity shares a
+300/minute tenant budget. This limiter is instance-local; the deployment edge
+must provide aggregate/WAF defense in depth before production scale claims.
 
 ### Customer confirmation grants
 

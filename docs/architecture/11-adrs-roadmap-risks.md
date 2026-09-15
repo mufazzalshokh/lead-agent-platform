@@ -352,6 +352,24 @@ phone-mandatory: a trusted bound Telegram identity or valid bound Widget session
 is sufficient where that channel can continue the customer flow. Phone remains
 optional, and S9 introduces no tenant-configurable mandatory-phone policy.
 
+### S10 approved Widget trust decisions
+
+S10 bootstrap authority is the server-resolved SHA-256 hash of a high-entropy
+publishable Widget key plus an active Widget connection and active allowed
+concrete HTTPS Origin. The key is routing material, not a secret or tenant proof;
+`page_url`, request bodies, query strings, and forwarding headers never select a
+tenant. Exact origins and one-label subdomain wildcards are supported.
+
+Widget bearer tokens use a dedicated HS256 key, fixed `lead-agent-widget`
+issuer/audience, exact finite claims, a two-hour absolute limit, and a
+server-side 30-minute idle limit. First meaningful text runs the canonical S9
+inbound transaction, binds one immutable active Conversation, and rotates the
+JTI. Bootstrap creates no business aggregate; terminal conversations do not
+auto-reopen, and a later cycle requires a fresh session. Text is 1-4000 Unicode
+characters, request bodies are at most 32 KiB, REST idempotency is retained for
+at least 24 hours, and the documented S10 per-session/tenant limiter is
+process-local with edge/WAF aggregate enforcement deferred to S22.
+
 Owner/Admin retain `configuration.read|write|publish`; Staff/Analyst retain
 `configuration.read` only, subject to accepted Location resource scope. The
 Organization Owner is operationally accountable for qualification-policy and
@@ -624,7 +642,7 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | --- | --- | --- | --- |
 | Which launch country/jurisdiction, data residency, consent wording, retention/deletion/legal-hold rules apply? | Product + privacy/legal | Legal/privacy obligations and data model operations depend on it | Before S21a; preferably before the affected S4a-S4c fields |
 | Does launch-jurisdiction counsel require productized automated subject export/deletion/retention in P0, or is the verified audited operator runbook sufficient until P1/FR-023? | Privacy/legal + product | The architecture must fulfill applicable rights, but product priority cannot override launch law | Decide before S21a scope; verify before S23 |
-| What exact channel-specific resolved-conversation reopen/new-cycle and Widget session windows apply within the frozen active grouping identity? | Product + integrations | Timing changes whether an inactive thread is reopened or a later Conversation is created, but does not change the approved grouping key | Before S10-S11 |
+| What exact Telegram resolved-conversation reopen/new-cycle window applies within the frozen active grouping identity? | Product + integrations | Widget is frozen to no terminal auto-reopen and a fresh session for a later cycle; Telegram timing remains provider/product policy and does not change the approved grouping key | Before S11 |
 | Is Telegram one platform bot or a tenant-owned bot per connection, and who handles token rotation/ownership? | Product + integrations | Affects onboarding, provider limits, credentials, and support | Before S11 |
 | What customer-confirmation UX, legal sufficiency, offer/staff-review expiry, reminder, cancel/reschedule/new-offer rules apply per widget and Telegram? | Product + privacy/legal + domain | Determines valid state transitions and legal/audit evidence; configured values still need approved defaults | Before S16/S18 |
 | Which optional staff-alert provider(s) and preference/escalation rules are desired after the P0 in-app inbox? | Product + integrations | Provider/commercial/consent choice; not required for correctness | Before the relevant P1 stage |
@@ -633,7 +651,7 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | Do tests validate the Stage 0 load, availability/latency/outbox, and database RPO <= 5m/RTO <= 60m targets; which are approved/replaced, and what support/on-call, provider exclusions, skew, and backup retention apply? | SRE + product | Planning targets are not demonstrated capacity/SLA claims; sizing, restore evidence, and alerts need approved business objectives | Before S20/S22 |
 | Which cloud/region and managed PostgreSQL, container runtime, edge/WAF, secrets, and OTLP backend are approved? | Platform/SRE + security | Deployment/IaC and data residency cannot remain abstract for production | Before S22 |
 | What live-model quality/latency/cost thresholds, per-turn/conversation limits, tenant budgets, overage behavior, and reviewers are approved? | AI engineering + product/finance | Model selection and commercial margin require measured tradeoffs | Before S13 and final budgets before S20 |
-| What widget allowed-origin/bootstrap/session/reopen policy, message-size/rate/idempotency-retention defaults, and supported browsers apply beyond the fixed WCAG 2.2 AA target? | Product + frontend/security | Security, API configuration, storage, and E2E matrices depend on embedding requirements | Before S10/S19b |
+| What final Widget loader/iframe CSP, framing and host-page integration contract is required for the supported-browser UX? | Product + frontend/security | S10 freezes API trust/session/origin/body/rate/idempotency behavior; the embeddable visual boundary still needs browser E2E evidence | Before S19b |
 | What staff data-visibility rules apply to sensitive conversation/health-adjacent content, exports, and support access? | Privacy + security + product | Least privilege and privacy UI cannot be inferred from generic roles | Before S17/S19a/S21b |
 | Which reviewed emergency/medical safety wording is approved in Uzbek, Russian, and English for each launch jurisdiction? | Clinical safety + privacy/legal + product | The system is administrative, but unsafe wording cannot be improvised by a model or engineer | Before S14/S21b |
 | Are the OpenAI processor terms, region, retention/data controls, and production-data suitability approved for launch content? | Privacy/legal + security + AI engineering | `store:false` does not itself answer processor, residency, or healthcare suitability questions | Before live data; gate S13/S21a |

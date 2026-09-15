@@ -52940,6 +52940,1594 @@
       },
       "schema_id": "WeeklyBusinessHours.v1",
       "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetAcceptedMessageSchema",
+      "schema": {
+        "$id": "WidgetAcceptedMessage.v1",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "processing_status": {
+            "anyOf": [
+              {
+                "const": "accepted",
+                "type": "string"
+              },
+              {
+                "const": "suppressed",
+                "type": "string"
+              }
+            ]
+          },
+          "sequence_no": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "processing_status",
+          "sequence_no"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetAcceptedMessage.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetConversationCreateInputSchema",
+      "schema": {
+        "$id": "WidgetConversationCreateInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "client_message_id": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+            "type": "string"
+          },
+          "kind": {
+            "const": "text",
+            "type": "string"
+          },
+          "locale_hint": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_message_id",
+          "kind",
+          "locale_hint",
+          "text"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetConversationCreateInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetConversationCreateResponseSchema",
+      "schema": {
+        "$id": "WidgetConversationCreateResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "bearer_token": {
+                "maxLength": 4096,
+                "minLength": 80,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "type": "string"
+              },
+              "conversation": {
+                "additionalProperties": false,
+                "properties": {
+                  "closed_at": {
+                    "anyOf": [
+                      {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "last_activity_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "preferred_locale": {
+                    "anyOf": [
+                      {
+                        "const": "uz",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ru",
+                        "type": "string"
+                      },
+                      {
+                        "const": "en",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "Supported V1 customer presentation locale."
+                  },
+                  "resolved_at": {
+                    "anyOf": [
+                      {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "started_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "open",
+                        "type": "string"
+                      },
+                      {
+                        "const": "awaiting_lead",
+                        "type": "string"
+                      },
+                      {
+                        "const": "awaiting_staff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "resolved",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "closed_at",
+                  "id",
+                  "last_activity_at",
+                  "preferred_locale",
+                  "resolved_at",
+                  "started_at",
+                  "status"
+                ],
+                "type": "object"
+              },
+              "expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "message": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "processing_status": {
+                    "anyOf": [
+                      {
+                        "const": "accepted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suppressed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "sequence_no": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "processing_status",
+                  "sequence_no"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "bearer_token",
+              "conversation",
+              "expires_at",
+              "message"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetConversationCreateResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetConversationCreateResultSchema",
+      "schema": {
+        "$id": "WidgetConversationCreateResult.v1",
+        "additionalProperties": false,
+        "properties": {
+          "bearer_token": {
+            "maxLength": 4096,
+            "minLength": 80,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "type": "string"
+          },
+          "conversation": {
+            "additionalProperties": false,
+            "properties": {
+              "closed_at": {
+                "anyOf": [
+                  {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "last_activity_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "preferred_locale": {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              "resolved_at": {
+                "anyOf": [
+                  {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "started_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "const": "open",
+                    "type": "string"
+                  },
+                  {
+                    "const": "awaiting_lead",
+                    "type": "string"
+                  },
+                  {
+                    "const": "awaiting_staff",
+                    "type": "string"
+                  },
+                  {
+                    "const": "resolved",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closed",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "closed_at",
+              "id",
+              "last_activity_at",
+              "preferred_locale",
+              "resolved_at",
+              "started_at",
+              "status"
+            ],
+            "type": "object"
+          },
+          "expires_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "message": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "processing_status": {
+                "anyOf": [
+                  {
+                    "const": "accepted",
+                    "type": "string"
+                  },
+                  {
+                    "const": "suppressed",
+                    "type": "string"
+                  }
+                ]
+              },
+              "sequence_no": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "processing_status",
+              "sequence_no"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "bearer_token",
+          "conversation",
+          "expires_at",
+          "message"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetConversationCreateResult.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetConversationReadParamsSchema",
+      "schema": {
+        "$id": "WidgetConversationReadParams.v1",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetConversationReadParams.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetConversationResponseSchema",
+      "schema": {
+        "$id": "WidgetConversationResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "closed_at": {
+                "anyOf": [
+                  {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "last_activity_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "preferred_locale": {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              "resolved_at": {
+                "anyOf": [
+                  {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "started_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "const": "open",
+                    "type": "string"
+                  },
+                  {
+                    "const": "awaiting_lead",
+                    "type": "string"
+                  },
+                  {
+                    "const": "awaiting_staff",
+                    "type": "string"
+                  },
+                  {
+                    "const": "resolved",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closed",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "closed_at",
+              "id",
+              "last_activity_at",
+              "preferred_locale",
+              "resolved_at",
+              "started_at",
+              "status"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetConversationResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetConversationSchema",
+      "schema": {
+        "$id": "WidgetConversation.v1",
+        "additionalProperties": false,
+        "properties": {
+          "closed_at": {
+            "anyOf": [
+              {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "last_activity_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "preferred_locale": {
+            "anyOf": [
+              {
+                "const": "uz",
+                "type": "string"
+              },
+              {
+                "const": "ru",
+                "type": "string"
+              },
+              {
+                "const": "en",
+                "type": "string"
+              }
+            ],
+            "description": "Supported V1 customer presentation locale."
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "const": "open",
+                "type": "string"
+              },
+              {
+                "const": "awaiting_lead",
+                "type": "string"
+              },
+              {
+                "const": "awaiting_staff",
+                "type": "string"
+              },
+              {
+                "const": "resolved",
+                "type": "string"
+              },
+              {
+                "const": "closed",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "closed_at",
+          "id",
+          "last_activity_at",
+          "preferred_locale",
+          "resolved_at",
+          "started_at",
+          "status"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetConversation.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetMessageCollectionResponseSchema",
+      "schema": {
+        "$id": "WidgetMessageCollectionResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "body_text": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4000,
+                      "minLength": 1,
+                      "pattern": "^[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]*$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "conversation_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                  "format": "date-time",
+                  "maxLength": 30,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                  "type": "string"
+                },
+                "direction": {
+                  "anyOf": [
+                    {
+                      "const": "inbound",
+                      "type": "string"
+                    },
+                    {
+                      "const": "outbound",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "locale": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "const": "uz",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ru",
+                          "type": "string"
+                        },
+                        {
+                          "const": "en",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "Supported V1 customer presentation locale."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "redacted_at": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                      "format": "date-time",
+                      "maxLength": 30,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sequence_no": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "body_text",
+                "conversation_id",
+                "created_at",
+                "direction",
+                "id",
+                "locale",
+                "redacted_at",
+                "sequence_no"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "has_more": {
+                "type": "boolean"
+              },
+              "next_after": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "has_more",
+              "next_after",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetMessageCollectionResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetMessageCreateInputSchema",
+      "schema": {
+        "$id": "WidgetMessageCreateInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "client_message_id": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+            "type": "string"
+          },
+          "kind": {
+            "const": "text",
+            "type": "string"
+          },
+          "locale_hint": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_message_id",
+          "kind",
+          "locale_hint",
+          "text"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetMessageCreateInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetMessageCreateResponseSchema",
+      "schema": {
+        "$id": "WidgetMessageCreateResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "conversation_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "message": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "processing_status": {
+                    "anyOf": [
+                      {
+                        "const": "accepted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suppressed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "sequence_no": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "processing_status",
+                  "sequence_no"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "message"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetMessageCreateResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetMessageCreateResultSchema",
+      "schema": {
+        "$id": "WidgetMessageCreateResult.v1",
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "message": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "processing_status": {
+                "anyOf": [
+                  {
+                    "const": "accepted",
+                    "type": "string"
+                  },
+                  {
+                    "const": "suppressed",
+                    "type": "string"
+                  }
+                ]
+              },
+              "sequence_no": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "processing_status",
+              "sequence_no"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "message"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetMessageCreateResult.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetMessageListQuerySchema",
+      "schema": {
+        "$id": "WidgetMessageListQuery.v1",
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "schema_id": "WidgetMessageListQuery.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetMessageSchema",
+      "schema": {
+        "$id": "WidgetMessage.v1",
+        "additionalProperties": false,
+        "properties": {
+          "body_text": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "pattern": "^[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "conversation_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "const": "inbound",
+                "type": "string"
+              },
+              {
+                "const": "outbound",
+                "type": "string"
+              }
+            ]
+          },
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "redacted_at": {
+            "anyOf": [
+              {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sequence_no": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "body_text",
+          "conversation_id",
+          "created_at",
+          "direction",
+          "id",
+          "locale",
+          "redacted_at",
+          "sequence_no"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetMessage.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetPublicConfigurationSchema",
+      "schema": {
+        "$id": "WidgetPublicConfiguration.v1",
+        "additionalProperties": false,
+        "properties": {
+          "max_message_characters": {
+            "const": 4000,
+            "type": "number"
+          },
+          "supported_locales": {
+            "items": {
+              "anyOf": [
+                {
+                  "const": "uz",
+                  "type": "string"
+                },
+                {
+                  "const": "ru",
+                  "type": "string"
+                },
+                {
+                  "const": "en",
+                  "type": "string"
+                }
+              ],
+              "description": "Supported V1 customer presentation locale."
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "max_message_characters",
+          "supported_locales"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetPublicConfiguration.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetSessionCreateInputSchema",
+      "schema": {
+        "$id": "WidgetSessionCreateInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "page_url": {
+            "format": "uri",
+            "maxLength": 2048,
+            "minLength": 8,
+            "type": "string"
+          },
+          "requested_locale": {
+            "anyOf": [
+              {
+                "const": "uz",
+                "type": "string"
+              },
+              {
+                "const": "ru",
+                "type": "string"
+              },
+              {
+                "const": "en",
+                "type": "string"
+              }
+            ],
+            "description": "Supported V1 customer presentation locale."
+          },
+          "widget_key": {
+            "maxLength": 255,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_url",
+          "requested_locale",
+          "widget_key"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetSessionCreateInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetSessionCreateResponseSchema",
+      "schema": {
+        "$id": "WidgetSessionCreateResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "bearer_token": {
+                "maxLength": 4096,
+                "minLength": 80,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "type": "string"
+              },
+              "configuration": {
+                "additionalProperties": false,
+                "properties": {
+                  "max_message_characters": {
+                    "const": 4000,
+                    "type": "number"
+                  },
+                  "supported_locales": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "uz",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ru",
+                          "type": "string"
+                        },
+                        {
+                          "const": "en",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "Supported V1 customer presentation locale."
+                    },
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "max_message_characters",
+                  "supported_locales"
+                ],
+                "type": "object"
+              },
+              "expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "idle_timeout_seconds": {
+                "const": 1800,
+                "type": "number"
+              }
+            },
+            "required": [
+              "bearer_token",
+              "configuration",
+              "expires_at",
+              "idle_timeout_seconds"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetSessionCreateResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetSessionSchema",
+      "schema": {
+        "$id": "WidgetSession.v1",
+        "additionalProperties": false,
+        "properties": {
+          "bearer_token": {
+            "maxLength": 4096,
+            "minLength": 80,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "type": "string"
+          },
+          "configuration": {
+            "additionalProperties": false,
+            "properties": {
+              "max_message_characters": {
+                "const": 4000,
+                "type": "number"
+              },
+              "supported_locales": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "const": "uz",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ru",
+                      "type": "string"
+                    },
+                    {
+                      "const": "en",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "Supported V1 customer presentation locale."
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "max_message_characters",
+              "supported_locales"
+            ],
+            "type": "object"
+          },
+          "expires_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "idle_timeout_seconds": {
+            "const": 1800,
+            "type": "number"
+          }
+        },
+        "required": [
+          "bearer_token",
+          "configuration",
+          "expires_at",
+          "idle_timeout_seconds"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetSession.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetTextMessageInputSchema",
+      "schema": {
+        "$id": "WidgetTextMessageInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "client_message_id": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+            "type": "string"
+          },
+          "kind": {
+            "const": "text",
+            "type": "string"
+          },
+          "locale_hint": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "pattern": "^[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_message_id",
+          "kind",
+          "locale_hint",
+          "text"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetTextMessageInput.v1",
+      "schema_version": "1"
     }
   ],
   "snapshot_format_version": 1

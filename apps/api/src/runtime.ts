@@ -4,10 +4,12 @@ import {
   createTenantDatabaseRuntimeConfig,
   loadCustomerDataProtectionConfig,
   loadStaffWebAuthConfig,
+  loadWidgetSecurityConfig,
 } from "@lead-agent/config";
 import {
   createAuthorizationDatabaseRuntime,
   createIdentityDatabaseRuntime,
+  createInboundRouteDatabaseRuntime,
   createMembershipLifecycleDatabaseRuntime,
   createSessionDatabaseRuntime,
   createTenantDatabaseRuntime,
@@ -27,6 +29,7 @@ import type { FastifyInstance } from "fastify";
 import { createApi, STAFF_AUTH_LOG_REDACTION_PATHS } from "./auth/plugin.js";
 import { createStaffConfigurationDependencies } from "./configuration/composition.js";
 import { createS9ConversationComposition } from "./conversations/composition.js";
+import { createWidgetDependencies } from "./widget/composition.js";
 
 const requireEnvironment = (environment: NodeJS.ProcessEnv, name: string): string => {
   const value = environment[name];
@@ -47,6 +50,9 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
   const tenantDatabase = createTenantDatabaseRuntimeConfig({
     connectionString: requireEnvironment(environment, "DATABASE_URL"),
   });
+  const ingressDatabase = createTenantDatabaseRuntimeConfig({
+    connectionString: requireEnvironment(environment, "INGRESS_DATABASE_URL"),
+  });
   const identityRuntime = createIdentityDatabaseRuntime(authenticationDatabase, {
     onUnexpectedPoolError: observeDatabaseFailure,
   });
@@ -59,9 +65,13 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
   const tenantRuntime = createTenantDatabaseRuntime(tenantDatabase, {
     onUnexpectedPoolError: observeDatabaseFailure,
   });
+  const ingressRuntime = createInboundRouteDatabaseRuntime(ingressDatabase, {
+    onUnexpectedPoolError: observeDatabaseFailure,
+  });
+  const customerDataConfig = loadCustomerDataProtectionConfig(environment);
   const conversations = createS9ConversationComposition(
     tenantRuntime,
-    loadCustomerDataProtectionConfig(environment),
+    customerDataConfig,
     web.browserEnvelopeKey,
   );
   const membershipRuntime = createMembershipLifecycleDatabaseRuntime(
@@ -106,6 +116,12 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
     },
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffConversations: conversations.staff,
+    widget: createWidgetDependencies(
+      tenantRuntime,
+      ingressRuntime,
+      customerDataConfig,
+      loadWidgetSecurityConfig(environment),
+    ),
   });
   api.addHook("onClose", async () => {
     await Promise.all([
@@ -114,6 +130,7 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
       identityRuntime.close(),
       sessionRuntime.close(),
       tenantRuntime.close(),
+      ingressRuntime.close(),
     ]);
   });
   return api;

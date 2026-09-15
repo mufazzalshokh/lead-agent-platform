@@ -45,7 +45,11 @@ import {
   type MembershipLifecycleAuditContext,
   type OidcIdentityVerifier,
   type ValidatedOidcIdentity,
+  WidgetOriginInvalidError,
+  WidgetRateLimitError,
+  WidgetTokenInvalidError,
 } from "@lead-agent/security";
+import { WidgetApplicationError } from "@lead-agent/application";
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from "fastify";
 import Fastify, { LogController } from "fastify";
 
@@ -59,6 +63,7 @@ import {
   StaffConversationHttpError,
   type StaffConversationDependencies,
 } from "../conversations/plugin.js";
+import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
 
 const STAFF_AUTH_PREFIX = "/v1/staff/auth";
 const CSRF_HEADER = "x-csrf-token";
@@ -105,6 +110,7 @@ export type ApiOptions = Readonly<{
   staffAuth?: StaffAuthDependencies;
   staffConfiguration?: StaffConfigurationDependencies;
   staffConversations?: StaffConversationDependencies;
+  widget?: WidgetDependencies;
 }>;
 
 type SessionResolution = Readonly<{
@@ -314,6 +320,25 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
           : error.code === "resource_not_found"
             ? 404
             : 500;
+  } else if (error instanceof WidgetOriginInvalidError) {
+    code = "origin_not_allowed";
+    status = 403;
+  } else if (error instanceof WidgetTokenInvalidError) {
+    code = "token_invalid";
+    status = 401;
+  } else if (error instanceof WidgetRateLimitError) {
+    code = "rate_limited";
+    status = 429;
+  } else if (error instanceof WidgetApplicationError) {
+    code = error.code === "channel_unavailable" ? "resource_not_found" : error.code;
+    status =
+      code === "validation_failed"
+        ? 400
+        : code === "resource_not_found"
+          ? 404
+          : code === "idempotency_conflict"
+            ? 409
+            : 422;
   } else if (
     typeof error === "object" &&
     error !== null &&
@@ -451,6 +476,9 @@ const registerStaffAuth = async (
       reply.clearCookie(BROWSER_AUTH_COOKIE_NAMES.loginTransaction, baseCookie);
     }
     const problem = safeProblem(request, error);
+    if (error instanceof WidgetRateLimitError) {
+      reply.header("retry-after", String(error.retryAfterSeconds));
+    }
     void reply.type("application/problem+json").code(problem.status).send(problem.body);
   });
 
@@ -737,6 +765,22 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
     });
   }
   api.get("/health", () => ({ service: "api", status: "ok" }));
+  const widget = options.widget;
+  if (widget !== undefined) {
+    void api.register((widgetApi) => {
+      widgetApi.setErrorHandler((error, request, reply) => {
+        const problem = safeProblem(request, error);
+        reply.header("cache-control", "no-store");
+        reply.header("referrer-policy", "no-referrer");
+        reply.header("vary", "Origin");
+        if (error instanceof WidgetRateLimitError) {
+          reply.header("retry-after", String(error.retryAfterSeconds));
+        }
+        void reply.type("application/problem+json").code(problem.status).send(problem.body);
+      });
+      registerWidgetRoutes(widgetApi, widget);
+    });
+  }
   const staffAuth = options.staffAuth;
   if (staffAuth !== undefined) {
     void api.register((staffApi) =>

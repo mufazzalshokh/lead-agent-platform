@@ -69,6 +69,11 @@ export {
   type OutboxRetryReleaseInput,
 } from "./runtime/outbox-relay.js";
 export {
+  InboundRouteRuntimeError,
+  createInboundRouteDatabaseRuntime,
+  type InboundRouteDatabaseRuntime,
+} from "./runtime/inbound-route.js";
+export {
   TenantContextInitializationError,
   TenantContextMismatchError,
   TenantDatabaseRuntimeClosedError,

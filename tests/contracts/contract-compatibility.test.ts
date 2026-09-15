@@ -141,7 +141,7 @@ describe("public contract inventory and snapshot", () => {
   it("catalogs every intentional public schema exactly once", () => {
     const snapshot = buildContractSnapshot();
     const counts = Object.fromEntries(
-      ["ai", "api", "channel", "configuration", "conversation", "event", "shared"].map(
+      ["ai", "api", "channel", "configuration", "conversation", "event", "shared", "widget"].map(
         (category) => [
           category,
           snapshot.contracts.filter((contract) => contract.category === category).length,
@@ -149,7 +149,7 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(301);
+    expect(snapshot.contracts).toHaveLength(319);
     expect(counts).toEqual({
       ai: 16,
       api: 8,
@@ -158,10 +158,27 @@ describe("public contract inventory and snapshot", () => {
       conversation: 29,
       event: 131,
       shared: 28,
+      widget: 18,
     });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
     );
+  });
+
+  it("classifies the S10 Widget contracts as additive only", () => {
+    const candidate = buildContractSnapshot();
+    const widgetContracts = candidate.contracts.filter(
+      (contract) => contract.category === "widget",
+    );
+    const baseline: ContractSnapshot = {
+      ...candidate,
+      contracts: candidate.contracts.filter((contract) => contract.category !== "widget"),
+    };
+    const findings = compareContractSnapshots(baseline, candidate);
+
+    expect(widgetContracts).toHaveLength(18);
+    expect(findings).toHaveLength(18);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 
   it("keeps the runtime export surface explicit", () => {

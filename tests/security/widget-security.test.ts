@@ -1,0 +1,187 @@
+import { describe, expect, it } from "vitest";
+import { SignJWT } from "jose";
+
+import { createWidgetSecurityConfig } from "../../packages/config/src/index.js";
+import {
+  WidgetOriginInvalidError,
+  WidgetRateLimitError,
+  WidgetTokenInvalidError,
+  createWidgetRateLimiter,
+  createWidgetTokenService,
+  normalizeWidgetOrigin,
+  widgetOriginMatches,
+} from "../../packages/security/src/index.js";
+
+const ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2b" as never;
+const CHANNEL_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2c" as never;
+const SESSION_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2d" as never;
+const KEY = Buffer.alloc(32, 7).toString("base64url");
+const TOKEN_NOW = new Date("2026-09-15T10:00:00.000Z");
+
+const signCandidate = async (
+  overrides: Readonly<Record<string, unknown>> = {},
+  issuer = "lead-agent-widget",
+  audience = "lead-agent-widget",
+): Promise<string> =>
+  await new SignJWT({
+    channel_connection_id: CHANNEL_ID,
+    conversation_id: null,
+    organization_id: ORGANIZATION_ID,
+    origin: "https://clinic.example",
+    scope: "widget:conversation",
+    version: 1,
+    ...overrides,
+  })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer(issuer)
+    .setAudience(audience)
+    .setSubject(SESSION_ID)
+    .setJti(Buffer.alloc(32, 9).toString("base64url"))
+    .setIssuedAt(Math.floor(TOKEN_NOW.getTime() / 1_000))
+    .setExpirationTime(Math.floor(TOKEN_NOW.getTime() / 1_000) + 7_200)
+    .sign(Buffer.from(KEY, "base64url"));
+
+describe("S10 Widget Origin trust", () => {
+  it("normalizes exact HTTPS Origins and freezes one-label wildcard matching", () => {
+    expect(normalizeWidgetOrigin("https://CLINIC.example:8443")).toBe(
+      "https://clinic.example:8443",
+    );
+    const wildcard = {
+      matchType: "subdomain_wildcard",
+      normalizedHost: "clinic.example",
+      port: null,
+      scheme: "https",
+    } as const;
+    expect(widgetOriginMatches("https://booking.clinic.example", wildcard)).toBe(true);
+    expect(widgetOriginMatches("https://deeper.booking.clinic.example", wildcard)).toBe(false);
+    expect(widgetOriginMatches("https://clinic.example", wildcard)).toBe(false);
+    expect(widgetOriginMatches("https://evilclinic.example", wildcard)).toBe(false);
+    expect(widgetOriginMatches("https://clinic.example.evil.com", wildcard)).toBe(false);
+  });
+
+  it.each([
+    undefined,
+    "null",
+    "http://clinic.example",
+    "https://user@clinic.example",
+    "https://clinic.example/path",
+    "not an origin",
+  ])("rejects untrusted Origin %#", (value) => {
+    expect(() => normalizeWidgetOrigin(value)).toThrow(WidgetOriginInvalidError);
+  });
+});
+
+describe("S10 Widget bearer tokens", () => {
+  it("signs and validates exact purpose-bound claims and equality expiry", async () => {
+    const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
+    const now = TOKEN_NOW;
+    const claims = {
+      channelConnectionId: CHANNEL_ID,
+      conversationId: null,
+      expiresAt: new Date("2026-09-15T12:00:00.000Z"),
+      issuedAt: now,
+      jti: tokens.createJti(),
+      organizationId: ORGANIZATION_ID,
+      origin: "https://clinic.example",
+      sessionId: SESSION_ID,
+    };
+    const token = await tokens.issue(claims);
+    await expect(tokens.verify(token, now)).resolves.toMatchObject({
+      origin: claims.origin,
+      sessionId: SESSION_ID,
+    });
+    await expect(tokens.verify(token, claims.expiresAt)).rejects.toBeInstanceOf(
+      WidgetTokenInvalidError,
+    );
+    const wrong = createWidgetTokenService(
+      createWidgetSecurityConfig(Buffer.alloc(32, 8).toString("base64url")),
+    );
+    await expect(wrong.verify(token, now)).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+  });
+
+  it("rejects malformed and wrong-purpose tokens without accepting extension claims", async () => {
+    const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
+    await expect(tokens.verify("not-a-jwt", TOKEN_NOW)).rejects.toBeInstanceOf(
+      WidgetTokenInvalidError,
+    );
+    await expect(
+      tokens.verify(await signCandidate({}, "wrong-issuer"), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+    await expect(
+      tokens.verify(await signCandidate({}, undefined, "wrong-audience"), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+    await expect(
+      tokens.verify(await signCandidate({ version: 2 }), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+    await expect(
+      tokens.verify(await signCandidate({ extension: "forbidden" }), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+  });
+
+  it("rejects non-canonical trust bindings and future or overlong lifetimes", async () => {
+    const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
+    await expect(
+      tokens.verify(await signCandidate({ organization_id: "x".repeat(36) }), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+    await expect(
+      tokens.verify(await signCandidate({ origin: "https://CLINIC.example" }), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+
+    const future = await new SignJWT({
+      channel_connection_id: CHANNEL_ID,
+      conversation_id: null,
+      organization_id: ORGANIZATION_ID,
+      origin: "https://clinic.example",
+      scope: "widget:conversation",
+      version: 1,
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuer("lead-agent-widget")
+      .setAudience("lead-agent-widget")
+      .setSubject(SESSION_ID)
+      .setJti(Buffer.alloc(32, 10).toString("base64url"))
+      .setIssuedAt(Math.floor(TOKEN_NOW.getTime() / 1_000) + 1)
+      .setExpirationTime(Math.floor(TOKEN_NOW.getTime() / 1_000) + 7_202)
+      .sign(Buffer.from(KEY, "base64url"));
+    await expect(tokens.verify(future, TOKEN_NOW)).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+  });
+
+  it("rejects key reuse and derives stable rotation JTI material", () => {
+    expect(() => createWidgetSecurityConfig(KEY, [KEY])).toThrow(
+      "WIDGET_SIGNING_KEY_PURPOSE_SEPARATION",
+    );
+    const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
+    expect(tokens.deriveBoundJti(SESSION_ID, "request-key")).toBe(
+      tokens.deriveBoundJti(SESSION_ID, "request-key"),
+    );
+  });
+});
+
+describe("S10 bounded process-local rate limiter", () => {
+  it("enforces the threshold, deterministic Retry-After, bucket isolation, and cleanup", () => {
+    let now = new Date("2026-09-15T10:00:00.000Z");
+    const limiter = createWidgetRateLimiter({
+      clock: () => now,
+      maximumBuckets: 2,
+      salt: Buffer.alloc(32, 1),
+    });
+    limiter.consume(["session-a"], 2);
+    limiter.consume(["session-a"], 2);
+    expect(() => limiter.consume(["session-a"], 2)).toThrow(WidgetRateLimitError);
+    expect(() => limiter.consume(["session-b"], 1)).not.toThrow();
+    now = new Date("2026-09-15T10:01:00.000Z");
+    expect(() => limiter.consume(["session-a"], 2)).not.toThrow();
+    expect(limiter.size()).toBeLessThanOrEqual(2);
+  });
+
+  it("does not evict an active bucket merely because the map is at capacity", () => {
+    const limiter = createWidgetRateLimiter({
+      clock: () => TOKEN_NOW,
+      maximumBuckets: 2,
+      salt: Buffer.alloc(32, 1),
+    });
+    limiter.consume(["session-a"], 1);
+    limiter.consume(["session-b"], 1);
+    expect(() => limiter.consume(["session-a"], 1)).toThrow(WidgetRateLimitError);
+  });
+});

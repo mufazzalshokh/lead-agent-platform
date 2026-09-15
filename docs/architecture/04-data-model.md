@@ -764,8 +764,9 @@ already-frozen model.
 - **Deletion/RLS:** forced RLS; disable first; hard delete after audit/route
   replay window if unreferenced.
 
-Wildcard matching is opt-in and means one documented subdomain suffix boundary;
-it never uses substring matching. `null` origins, non-HTTPS production origins,
+Wildcard matching is opt-in and matches exactly one non-empty DNS label below
+the configured host. It does not match the apex or a deeper descendant and
+never uses substring matching. `null` origins, non-HTTPS production origins,
 IDNA ambiguity, and wildcard ports fail validation.
 
 ### 4.13 `widget_sessions`
@@ -791,6 +792,12 @@ IDNA ambiguity, and wildcard ports fail validation.
 - **Deletion/RLS:** forced RLS after route/token tenant resolution. Expire/revoke
   first; purge after replay/abuse window once any durable conversation binding
   is independently retained.
+
+The S10 Widget application enforces a 30-minute idle lifetime and a two-hour
+absolute lifetime, with equality at either boundary treated as expired. The
+session stores only the current JTI hash. First-message conversation binding is
+immutable and rotates that JTI atomically with canonical S9 persistence; opening
+the Widget by itself creates no Contact, Lead, Conversation, or Message.
 
 ## 5. Contact, lead, and conversation tables
 

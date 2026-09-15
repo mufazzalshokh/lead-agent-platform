@@ -190,6 +190,26 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "ResourceVersionSchema",
     "AggregateVersionSchema",
   ],
+  widget: [
+    "WidgetAcceptedMessageSchema",
+    "WidgetConversationCreateInputSchema",
+    "WidgetConversationCreateResponseSchema",
+    "WidgetConversationCreateResultSchema",
+    "WidgetConversationReadParamsSchema",
+    "WidgetConversationResponseSchema",
+    "WidgetConversationSchema",
+    "WidgetMessageCollectionResponseSchema",
+    "WidgetMessageCreateInputSchema",
+    "WidgetMessageCreateResponseSchema",
+    "WidgetMessageCreateResultSchema",
+    "WidgetMessageListQuerySchema",
+    "WidgetMessageSchema",
+    "WidgetPublicConfigurationSchema",
+    "WidgetSessionCreateInputSchema",
+    "WidgetSessionCreateResponseSchema",
+    "WidgetSessionSchema",
+    "WidgetTextMessageInputSchema",
+  ],
 } as const;
 
 export type ContractCategory = keyof typeof PUBLIC_STATIC_SCHEMA_NAMES;
@@ -209,6 +229,7 @@ const CONTRACT_CATEGORIES = [
   "conversation",
   "event",
   "shared",
+  "widget",
 ] as const;
 
 const requirePublicExport = (exportName: string) => {

@@ -19,6 +19,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@lead-agent/contracts": "workspace:*"
+    "@lead-agent/config": "workspace:*",
+    "@lead-agent/contracts": "workspace:*",
+    "jose": "6.2.12"
   }
 }

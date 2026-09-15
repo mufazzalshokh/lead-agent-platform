@@ -303,8 +303,9 @@ browser secret and does not prove a user is a clinic customer.
    and are rotatable; they authorize no staff/private read.
 2. Bootstrap requires a syntactically valid browser `Origin`. The server
    canonicalizes scheme, IDNA host, and port and compares exact origins. Wildcard
-   subdomains are opt-in and match one documented suffix boundary; arbitrary
-   substring, `null`, mixed-scheme, and production localhost matches are denied.
+   subdomains are opt-in and match exactly one non-empty DNS label below the
+   configured host, never the apex or a deeper descendant. Arbitrary substring,
+   `null`, mixed-scheme, and production localhost matches are denied.
 3. `page_url`, `Host`, `Referer`, CORS, and a client body organization ID do not
    establish tenancy. Origin allowlisting reduces browser embedding abuse but is
    not authentication against scripted clients that can forge headers.
@@ -326,6 +327,21 @@ browser secret and does not prove a user is a clinic customer.
    token alone cannot enumerate or confirm another request.
 8. Abuse and origin decisions are observable. Domain allowlist changes, key
    rotations, and connection disables are audited.
+
+S10 uses a separate minimum-256-bit Widget signing key and a fixed
+`lead-agent-widget` issuer/audience. Tokens are bearer-only, never cookies or
+query parameters, and have a two-hour absolute ceiling plus a server-enforced
+30-minute idle limit. First-message binding atomically rotates the stored JTI
+hash; the bootstrap token is invalid afterward. Every request verifies the
+signature, exact finite claims, current JTI, active session/channel/origin, and
+the immutable conversation binding before any customer data is revealed.
+
+The S10 application limiter hashes its key material, evicts expired buckets,
+and has a fixed memory bound, but is deliberately process-local. Fastify does
+not trust forwarding headers unless a deployment explicitly configures a
+trusted proxy boundary. Edge/WAF aggregate enforcement remains required for
+distributed abuse control; S10 does not claim that an instance-local map is a
+global rate limit.
 
 Because public lead intake is scrapeable, no endpoint exposes tenant-private
 knowledge, conversation history outside the bound session, integration

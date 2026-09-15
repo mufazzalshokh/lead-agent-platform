@@ -14,3 +14,4 @@ export {
   StaffConversationHttpError,
   type StaffConversationDependencies,
 } from "./conversations/plugin.js";
+export { registerWidgetRoutes, type WidgetDependencies } from "./widget/plugin.js";

@@ -34,3 +34,8 @@ export {
   type StaffWebAuthConfig,
   type StaffWebAuthConfigInput,
 } from "./web-auth.js";
+export {
+  createWidgetSecurityConfig,
+  loadWidgetSecurityConfig,
+  type WidgetSecurityConfig,
+} from "./widget.js";

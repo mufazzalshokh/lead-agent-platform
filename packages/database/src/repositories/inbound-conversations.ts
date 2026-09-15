@@ -1087,3 +1087,26 @@ export const createCanonicalInboundPersistenceStore = (
     },
   });
 };
+
+/** Existing S9 persistence logic bound to an already-open tenant transaction. */
+export const createCanonicalInboundTenantSessionStore = (
+  session: TenantDbSession,
+  options: Readonly<{
+    clock?: () => Date;
+    identifierFactory?: SecurityIdentifierFactory;
+  }> = {},
+): CanonicalInboundPersistenceStore => {
+  const clock = options.clock ?? (() => new Date());
+  const identifiers = options.identifierFactory ?? createSecurityIdentifierFactory();
+  return Object.freeze({
+    acceptInbound: async (input: PreparedCanonicalInbound) => {
+      try {
+        return await processInbound(session, input, identifiers, clock);
+      } catch (error) {
+        const expected = mapExpectedFailure(error);
+        if (expected !== null) return expected;
+        throw error;
+      }
+    },
+  });
+};
