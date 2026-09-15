@@ -353,6 +353,60 @@ Service/Location lifecycle command.
 | `POST /privacy/exports` | `privacy.manage` | **P1 reserved:** owner/admin-authorized asynchronous tenant export; idempotent, step-up protected, and audited. |
 | `POST /privacy/deletion-requests` | `privacy.manage` | **P1 reserved:** validated, step-up-protected deletion workflow, not immediate ad hoc SQL deletion. |
 
+### S9 deterministic staff read contracts
+
+S9 staff reads use the canonical `StaffContact`, `StaffLead`,
+`StaffConversation`, and `StaffMessage` V1 contracts. They never mirror raw
+database rows and never expose `organization_id`.
+
+`StaffContact` contains exactly `id`, `status`, `preferred_locale`,
+`first_seen_at`, `last_seen_at`, `anonymized_at`, `version`, `created_at`,
+`updated_at`, `sensitive_fields_visible`, `display_name`, and `identities`.
+Each identity contains exactly `id`, `identity_type`, `channel_connection_id`,
+`display_redacted`, `value`, `validation_status`, `verified_at`, and `status`.
+Without `contacts.read_sensitive`, `display_name` and every identity `value` are
+`null`; with that permission they may contain safely decrypted values.
+Anonymized values remain `null` regardless of permission. Ciphertext, lookup
+hashes, encryption metadata, consent evidence, credentials, and provider secrets
+are never part of this representation.
+
+`StaffLead` contains exactly `id`, `contact_id`, `status`,
+`source_channel_connection_id`, `campaign_key`, `service_id`, `location_id`,
+`assigned_membership_id`, `qualification_policy_id`,
+`qualification_reason_codes`, `engaged_at`, `qualified_at`,
+`booking_requested_at`, `converted_at`, `closed_at`, `closed_reason`, `version`,
+`created_at`, and `updated_at`. Its list query permits only `status`,
+`location_id`, `assigned_membership_id`, inclusive `created_from`, exclusive
+`created_to`, `limit`, and `cursor`; when both bounds exist,
+`created_from < created_to`. Ordering is `(created_at DESC, id DESC)`.
+
+`StaffConversation` contains exactly `id`, `contact_id`, `lead_id`,
+`channel_connection_id`, `status`, `preferred_locale`, `automation_mode`,
+`active_handoff_id`, `participant`, `started_at`, `last_activity_at`,
+`resolved_at`, `closed_at`, `version`, `created_at`, and `updated_at`.
+`participant` contains only `contact_id`, nullable `identity_type`, and nullable
+`display_redacted`; it never widens Contact authorization. Conversation lists
+permit only `status`, `channel_connection_id`, current-active-Handoff
+`assigned_membership_id`, `limit`, and `cursor`, ordered by
+`(last_activity_at DESC, id DESC)`. External thread/grouping hashes and sequence
+counters are not public fields.
+
+`StaffMessage` contains exactly `id`, `conversation_id`,
+`channel_connection_id`, `direction`, `sender_type`, `sender_membership_id`,
+`sequence_no`, `content_type`, `body_text`, `locale`, `processing_status`,
+`delivery_status`, `reply_to_message_id`, `redacted_at`, and `created_at`.
+Redacted messages always have `body_text: null`; unredacted bodies may be
+returned only through supported safe decryption. Provider IDs/payloads,
+ciphertext, hashes, AI-run references, knowledge manifests, and internal metadata
+are excluded. Message pages are ordered `(sequence_no ASC, id ASC)`.
+
+All three collection contracts use opaque keyset cursors with default `50` and
+maximum `100`. Cursors bind the tenant, route, exact filters/order, actor Location
+scope, and final keys; Message cursors additionally bind the authorized
+Conversation. Cross-scope cursors are invalid rather than re-scoped. The six S9
+GET routes use the existing success/collection envelopes and require no CSRF
+mutation proof, `If-Match`, or `Idempotency-Key`.
+
 `configuration.write` creates or changes draft/configuration state.
 `configuration.publish` is additionally required for any request that makes a
 service fact, price, FAQ, business policy, hours, or other authoritative content

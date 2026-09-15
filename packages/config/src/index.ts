@@ -22,6 +22,12 @@ export {
   type QueueDatabaseRuntimeConfigInput,
 } from "./queue-database.js";
 export {
+  createCustomerDataProtectionConfig,
+  loadCustomerDataProtectionConfig,
+  type CustomerDataProtectionConfig,
+  type CustomerDataProtectionConfigInput,
+} from "./customer-data.js";
+export {
   createStaffWebAuthConfig,
   loadStaffWebAuthConfig,
   type ApplicationEnvironment,

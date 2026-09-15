@@ -10,3 +10,7 @@ export {
   type StaffConfigurationOperation,
   type StaffConfigurationRouteDefinition,
 } from "./configuration/manifest.js";
+export {
+  StaffConversationHttpError,
+  type StaffConversationDependencies,
+} from "./conversations/plugin.js";

@@ -122,6 +122,37 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "WeekdaySchema",
     "WeeklyBusinessHoursSchema",
   ],
+  conversation: [
+    "StaffContactIdentitySchema",
+    "StaffContactIdentityStatusSchema",
+    "StaffContactIdentityTypeSchema",
+    "StaffContactIdentityValidationStatusSchema",
+    "StaffContactReadParamsSchema",
+    "StaffContactResponseSchema",
+    "StaffContactSchema",
+    "StaffContactStatusSchema",
+    "StaffConversationAutomationModeSchema",
+    "StaffConversationCollectionResponseSchema",
+    "StaffConversationListQuerySchema",
+    "StaffConversationParticipantSchema",
+    "StaffConversationReadParamsSchema",
+    "StaffConversationResponseSchema",
+    "StaffConversationSchema",
+    "StaffConversationStatusSchema",
+    "StaffLeadCollectionResponseSchema",
+    "StaffLeadListQuerySchema",
+    "StaffLeadReadParamsSchema",
+    "StaffLeadResponseSchema",
+    "StaffLeadSchema",
+    "StaffLeadStatusSchema",
+    "StaffMessageCollectionResponseSchema",
+    "StaffMessageDeliveryStatusSchema",
+    "StaffMessageDirectionSchema",
+    "StaffMessageListQuerySchema",
+    "StaffMessageProcessingStatusSchema",
+    "StaffMessageSchema",
+    "StaffMessageSenderTypeSchema",
+  ],
   event: [
     "DomainEventNameSchema",
     "DomainAggregateTypeSchema",
@@ -170,7 +201,15 @@ export type PublicContractEntry = {
 };
 
 const publicExports = new Map<string, unknown>(Object.entries(Contracts));
-const CONTRACT_CATEGORIES = ["ai", "api", "channel", "configuration", "event", "shared"] as const;
+const CONTRACT_CATEGORIES = [
+  "ai",
+  "api",
+  "channel",
+  "configuration",
+  "conversation",
+  "event",
+  "shared",
+] as const;
 
 const requirePublicExport = (exportName: string) => {
   const value = publicExports.get(exportName);

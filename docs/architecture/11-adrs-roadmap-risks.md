@@ -374,9 +374,10 @@ stable identity, idempotency, state/version checks and reconciliation.
 Distributed exactly-once is not claimed. No normal business transaction directly
 enqueues pg-boss.
 
-The existing public contract surface remains 272 contracts, the event registry
-remains 63 semantic names and 64 versioned variants, and S8 adds no business
-event merely for queue infrastructure. The private queue-envelope V1 contains
+S9.B additively expands the public contract surface from 272 to 301 contracts
+with the canonical Contact/Lead/Conversation/Message staff read family. The event
+registry remains 63 semantic names and 64 versioned variants, and S8 adds no
+business event merely for queue infrastructure. The private queue-envelope V1 contains
 only `job_schema_version`, `outbox_event_id`, `organization_id`, `event_type`,
 `event_schema_version`, `aggregate_type`, `aggregate_id`, `correlation_id`, and
 optional `causation_id`. The worker reloads and validates the canonical outbox

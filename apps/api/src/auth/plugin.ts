@@ -54,6 +54,11 @@ import {
   StaffConfigurationHttpError,
   type StaffConfigurationDependencies,
 } from "../configuration/plugin.js";
+import {
+  registerStaffConversationQueries,
+  StaffConversationHttpError,
+  type StaffConversationDependencies,
+} from "../conversations/plugin.js";
 
 const STAFF_AUTH_PREFIX = "/v1/staff/auth";
 const CSRF_HEADER = "x-csrf-token";
@@ -99,6 +104,7 @@ export type ApiOptions = Readonly<{
   logger?: FastifyServerOptions["logger"];
   staffAuth?: StaffAuthDependencies;
   staffConfiguration?: StaffConfigurationDependencies;
+  staffConversations?: StaffConversationDependencies;
 }>;
 
 type SessionResolution = Readonly<{
@@ -298,6 +304,16 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
               : error.code === "business_rule_failed"
                 ? 422
                 : 429;
+  } else if (error instanceof StaffConversationHttpError) {
+    code = error.code;
+    status =
+      error.code === "validation_failed"
+        ? 400
+        : error.code === "permission_denied"
+          ? 403
+          : error.code === "resource_not_found"
+            ? 404
+            : 500;
   } else if (
     typeof error === "object" &&
     error !== null &&
@@ -339,6 +355,7 @@ const registerStaffAuth = async (
   api: FastifyInstance,
   dependencies: StaffAuthDependencies,
   staffConfiguration?: StaffConfigurationDependencies,
+  staffConversations?: StaffConversationDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -690,11 +707,20 @@ const registerStaffAuth = async (
       resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
+  if (staffConversations !== undefined) {
+    registerStaffConversationQueries(api, staffConversations, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
 };
 
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   if (options.staffConfiguration !== undefined && options.staffAuth === undefined) {
     throw new TypeError("Staff configuration routes require the staff authentication boundary");
+  }
+  if (options.staffConversations !== undefined && options.staffAuth === undefined) {
+    throw new TypeError("Staff conversation routes require the staff authentication boundary");
   }
   const api = Fastify({
     ajv: { customOptions: { removeAdditional: false, strict: false } },
@@ -714,7 +740,12 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   const staffAuth = options.staffAuth;
   if (staffAuth !== undefined) {
     void api.register((staffApi) =>
-      registerStaffAuth(staffApi, staffAuth, options.staffConfiguration),
+      registerStaffAuth(
+        staffApi,
+        staffAuth,
+        options.staffConfiguration,
+        options.staffConversations,
+      ),
     );
   }
   return api;

@@ -91,6 +91,9 @@ const satisfiesLessThanProperties = (schema: Type.TSchema, value: unknown): bool
     }
     const lower = value[constraint[0]];
     const upper = value[constraint[1]];
+    if (lower === undefined || upper === undefined) {
+      return true;
+    }
     if (upper === null) {
       return true;
     }

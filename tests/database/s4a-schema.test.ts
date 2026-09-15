@@ -118,6 +118,7 @@ import { registerServicePricingConfigurationTests } from "./service-pricing-conf
 import { registerFaqPolicyConfigurationTests } from "./faq-policy-configuration.test-suite.js";
 import { registerPublishedBusinessKnowledgeTests } from "./published-business-knowledge.test-suite.js";
 import { registerInboundConversationPersistenceTests } from "./inbound-conversation-persistence.test-suite.js";
+import { registerStaffConversationQueryTests } from "./staff-conversation-queries.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -9989,6 +9990,10 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     channelB: requireChannelConnectionId(CHANNEL_CONNECTION_B),
     organizationA: requireOrganizationId(ORGANIZATION_A),
     organizationB: requireOrganizationId(ORGANIZATION_B),
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+  });
+  registerStaffConversationQueryTests({
     privilegedPool: database,
     runtime: requireTenantRuntime,
   });

@@ -141,18 +141,21 @@ describe("public contract inventory and snapshot", () => {
   it("catalogs every intentional public schema exactly once", () => {
     const snapshot = buildContractSnapshot();
     const counts = Object.fromEntries(
-      ["ai", "api", "channel", "configuration", "event", "shared"].map((category) => [
-        category,
-        snapshot.contracts.filter((contract) => contract.category === category).length,
-      ]),
+      ["ai", "api", "channel", "configuration", "conversation", "event", "shared"].map(
+        (category) => [
+          category,
+          snapshot.contracts.filter((contract) => contract.category === category).length,
+        ],
+      ),
     );
 
-    expect(snapshot.contracts).toHaveLength(272);
+    expect(snapshot.contracts).toHaveLength(301);
     expect(counts).toEqual({
       ai: 16,
       api: 8,
       channel: 24,
       configuration: 65,
+      conversation: 29,
       event: 131,
       shared: 28,
     });
@@ -196,6 +199,22 @@ describe("public contract inventory and snapshot", () => {
 
     expect(configurationContracts).toHaveLength(65);
     expect(findings).toHaveLength(65);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("classifies the approved S9 staff read contracts as additive only", () => {
+    const candidate = buildContractSnapshot();
+    const conversationContracts = candidate.contracts.filter(
+      (contract) => contract.category === "conversation",
+    );
+    const baseline: ContractSnapshot = {
+      ...candidate,
+      contracts: candidate.contracts.filter((contract) => contract.category !== "conversation"),
+    };
+    const findings = compareContractSnapshots(baseline, candidate);
+
+    expect(conversationContracts).toHaveLength(29);
+    expect(findings).toHaveLength(29);
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 

@@ -2,6 +2,7 @@ import {
   createAuth0OidcVerifierConfig,
   createIdentityDatabaseRuntimeConfig,
   createTenantDatabaseRuntimeConfig,
+  loadCustomerDataProtectionConfig,
   loadStaffWebAuthConfig,
 } from "@lead-agent/config";
 import {
@@ -25,6 +26,7 @@ import type { FastifyInstance } from "fastify";
 
 import { createApi, STAFF_AUTH_LOG_REDACTION_PATHS } from "./auth/plugin.js";
 import { createStaffConfigurationDependencies } from "./configuration/composition.js";
+import { createS9ConversationComposition } from "./conversations/composition.js";
 
 const requireEnvironment = (environment: NodeJS.ProcessEnv, name: string): string => {
   const value = environment[name];
@@ -57,6 +59,11 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
   const tenantRuntime = createTenantDatabaseRuntime(tenantDatabase, {
     onUnexpectedPoolError: observeDatabaseFailure,
   });
+  const conversations = createS9ConversationComposition(
+    tenantRuntime,
+    loadCustomerDataProtectionConfig(environment),
+    web.browserEnvelopeKey,
+  );
   const membershipRuntime = createMembershipLifecycleDatabaseRuntime(
     authenticationDatabase,
     tenantRuntime,
@@ -98,6 +105,7 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
       sessions: createApplicationSessionLifecycle(sessionRuntime),
     },
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
+    staffConversations: conversations.staff,
   });
   api.addHook("onClose", async () => {
     await Promise.all([
