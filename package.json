@@ -22,8 +22,9 @@
     "contracts:snapshot": "tsx scripts/contracts/snapshot.ts --write",
     "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck",
     "test": "vitest",
-    "test:database": "vitest run tests/database/s4a-schema.test.ts",
-    "test:run": "vitest run",
+    "test:ordinary": "tsx scripts/test/run-database-gate.ts ordinary",
+    "test:database": "tsx scripts/test/run-database-gate.ts database",
+    "test:run": "pnpm test:ordinary && pnpm test:database",
     "clean": "node scripts/clean.mjs",
     "ci:verify": "pnpm clean && pnpm format:check && pnpm lint && pnpm boundaries:check && pnpm contracts:check && pnpm typecheck && pnpm test:run && pnpm build"
   },

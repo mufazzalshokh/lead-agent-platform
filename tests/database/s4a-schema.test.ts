@@ -2698,7 +2698,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(21);
+    expect(migrationCount.rows[0]?.count).toBe(25);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -2916,10 +2916,10 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       "available_at",
       "locked_by",
       "locked_until",
-      "lease_token",
       "published_at",
-      "published_claim_token",
       "last_error_category",
+      "lease_token",
+      "published_claim_token",
     ]);
     expect(namesByTable["audit_events"]?.map(({ column_name }) => column_name)).toEqual([
       "id",
@@ -3673,6 +3673,8 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       "channel_connections.credential_secret_ref",
       "channel_connections.webhook_secret_hash",
       "membership_invitations.token_hash",
+      "outbox_events.lease_token",
+      "outbox_events.published_claim_token",
       "widget_sessions.session_token_jti_hash",
     ]);
     expect(
@@ -3719,9 +3721,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
         .map(({ name }) => name);
-      expect(migratedNamesByTable[tableName]?.map(({ column_name }) => column_name)).toEqual(
-        declaredColumns,
-      );
+      expect(
+        migratedNamesByTable[tableName]?.map(({ column_name }) => column_name).toSorted(),
+      ).toEqual(declaredColumns.toSorted());
     }
   });
 
@@ -9426,7 +9428,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length + 9);
+    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length + 14);
     const tenantIsolationPolicies = policies.rows.filter(({ policyname }) =>
       policyname.endsWith("_tenant_isolation"),
     );

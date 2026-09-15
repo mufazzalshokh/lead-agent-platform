@@ -47,7 +47,7 @@ const createEvidence = async (userId: UserId, authenticationLevel = "mfa") => {
   );
   return createSessionAuthenticationEvidence(authentication, {
     authenticationLevel,
-    authenticationTime: new Date(),
+    authenticationTime: new Date(Date.now() - 1_000),
   });
 };
 

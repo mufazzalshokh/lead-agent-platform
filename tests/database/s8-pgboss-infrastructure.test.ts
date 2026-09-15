@@ -10,6 +10,7 @@ import { createQueueDatabaseRuntimeConfig } from "../../packages/config/src/inde
 import { migrationsFolder, runMigrations } from "../../packages/database/src/migrations.js";
 import {
   createQueueInfrastructure,
+  deadLetterQueueFor,
   PG_BOSS_SCHEMA_VERSION,
   QUEUE_NAMES,
 } from "../../apps/worker/src/queue-infrastructure.js";
@@ -138,8 +139,11 @@ const loadMigrationNames = async (): Promise<readonly string[]> => {
     if (typeof tag !== "string") throw new Error("Invalid Drizzle migration tag");
     return `${tag}.sql`;
   });
-  if (names.at(-1) !== S8_MIGRATION || names.length !== 22) {
-    throw new Error("S8.1 must be the only migration after the accepted 0020 baseline");
+  if (
+    names.indexOf(S8_MIGRATION) !== 21 ||
+    names[20] !== "0020_s7_faq_policy_history_integrity.sql"
+  ) {
+    throw new Error("S8.1 must immediately follow the accepted 0020 baseline");
   }
   return names;
 };
@@ -210,7 +214,8 @@ beforeAll(async () => {
   migrationOwner = versionResult.rows[0]?.current_user ?? "";
 
   const migrationNames = await loadMigrationNames();
-  for (const filename of migrationNames.slice(0, -1)) {
+  const migrationIndex = migrationNames.indexOf(S8_MIGRATION);
+  for (const filename of migrationNames.slice(0, migrationIndex)) {
     await applyMigrationSql(ownerPool, filename);
   }
   upgradeBusinessTableCount = await publicTableCount(ownerPool);
@@ -250,12 +255,12 @@ describe("S8.1 PostgreSQL 17 pg-boss infrastructure", { timeout: 30_000 }, () =>
     expect(upgradeSchemaVersion).toBe(PG_BOSS_SCHEMA_VERSION);
   });
 
-  it("fresh-bootstraps through 0021 and reruns the migration runner safely", async () => {
+  it("fresh-bootstraps current head and reruns the migration runner safely", async () => {
     expect(await publicTableCount(database())).toBe(BUSINESS_TABLE_COUNT);
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows[0]?.count).toBe(22);
+    expect(migrations.rows[0]?.count).toBe(25);
     const version = await database().query<{ version: number }>(
       "select version from pgboss.version",
     );
@@ -336,11 +341,13 @@ describe("S8.1 PostgreSQL 17 pg-boss infrastructure", { timeout: 30_000 }, () =>
     expect(extras.rows).toEqual([{ extensions: 0, sequences: 0, triggers: 0 }]);
   });
 
-  it("precreates exactly the six frozen non-partitioned queues", async () => {
+  it("precreates the six frozen queues and their six non-partitioned DLQs", async () => {
     const queues = await database().query<{ name: string; partition: boolean; policy: string }>(
       "select name, partition, policy from pgboss.queue order by name",
     );
-    expect(queues.rows.map(({ name }) => name)).toEqual([...QUEUE_NAMES].sort());
+    expect(queues.rows.map(({ name }) => name)).toEqual(
+      [...QUEUE_NAMES, ...QUEUE_NAMES.map(deadLetterQueueFor)].sort(),
+    );
     expect(queues.rows.every(({ partition, policy }) => !partition && policy === "standard")).toBe(
       true,
     );

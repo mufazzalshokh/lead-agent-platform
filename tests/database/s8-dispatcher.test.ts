@@ -324,25 +324,26 @@ beforeAll(async () => {
     throw new Error("S8.3 integration tests require PostgreSQL major version 17");
   }
   serverVersion = version.rows[0]?.server_version ?? "";
-  await runMigrations(ownerPool);
-  await runMigrations(ownerPool);
 
   const journal: unknown = JSON.parse(
     await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
   );
   const entries: unknown =
     typeof journal === "object" && journal !== null ? Reflect.get(journal, "entries") : undefined;
-  const finalEntry: unknown = Array.isArray(entries) ? entries.at(-1) : undefined;
+  const s8ActiveRouteEntry: unknown = Array.isArray(entries) ? entries[23] : undefined;
   if (
     typeof journal !== "object" ||
     journal === null ||
     !Array.isArray(entries) ||
-    typeof finalEntry !== "object" ||
-    finalEntry === null ||
-    Reflect.get(finalEntry, "tag") !== "0023_s8_active_route_claim"
+    typeof s8ActiveRouteEntry !== "object" ||
+    s8ActiveRouteEntry === null ||
+    Reflect.get(s8ActiveRouteEntry, "tag") !== "0023_s8_active_route_claim"
   ) {
     throw new Error("S8.3 migration journal is invalid");
   }
+
+  await runMigrations(ownerPool);
+  await runMigrations(ownerPool);
 
   const queuePassword = "s83-local-test-only-queue-password";
   const tenantPassword = "s83-local-test-only-tenant-password";
@@ -370,6 +371,7 @@ beforeAll(async () => {
       connectionString: queueConnectionString,
       maxConnections: 6,
     }),
+    { random: () => 0 },
   );
   await queueInfrastructure.start();
 }, 180_000);
@@ -390,7 +392,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_000 }, () => {
-  it("bootstraps 0023 twice without changing the 51-table business manifest", async () => {
+  it("bootstraps current head twice without changing the 51-table business manifest", async () => {
     expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     const tables = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -401,7 +403,7 @@ describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 24 }]);
+    expect(migrations.rows).toEqual([{ count: 25 }]);
   });
 
   it("observes pg-boss 12.31.0 returning null for an exact duplicate queue and ID", async () => {
@@ -490,10 +492,9 @@ describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_
     });
     expect(await persistedJobs()).toHaveLength(1);
     expect(await outboxState(eventId)).toMatchObject({ attempt_count: 1, status: "processing" });
-    await database().query(
-      "update outbox_events set locked_until = clock_timestamp() - interval '1 second' where id = $1",
-      [eventId],
-    );
+    await database().query("update outbox_events set locked_until = available_at where id = $1", [
+      eventId,
+    ]);
 
     const second = createRealDispatcher("dispatcher.s83-crash-b");
     expect(await second.dispatchOnce(ACTIVE_ORGANIZATION_CREATED)).toMatchObject({
@@ -751,6 +752,14 @@ describe("S8.4 PostgreSQL 17 worker lifecycle and finite registry", { timeout: 3
       eventId,
       organizationId: ORGANIZATION_A,
     });
+    await database().query(
+      `update outbox_events
+          set status = 'published',
+              published_at = '2026-09-14T10:00:00.000Z'::timestamptz,
+              published_claim_token = '00000000-0000-4000-8000-000000000244'::uuid
+        where id = $1::uuid`,
+      [eventId],
+    );
     const identities: string[] = [];
     const workerQueue = createQueueInfrastructure(
       createQueueDatabaseRuntimeConfig({ connectionString: queueConnectionString }),
@@ -760,6 +769,7 @@ describe("S8.4 PostgreSQL 17 worker lifecycle and finite registry", { timeout: 3
       dispatcher: idleDispatcher,
       observability: { onDispatcherError: (error) => void error },
       queue: workerQueue,
+      random: () => 0,
       registry: createWorkerHandlerRegistry([
         {
           eventType: "organization.created",
@@ -815,6 +825,7 @@ describe("S8.4 PostgreSQL 17 worker lifecycle and finite registry", { timeout: 3
       dispatcher: idleDispatcher,
       observability: { onDispatcherError: (error) => void error },
       queue: workerQueue,
+      random: () => 0,
       registry: createWorkerHandlerRegistry([
         {
           eventType: "organization.created",

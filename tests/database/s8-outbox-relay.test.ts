@@ -139,8 +139,8 @@ const loadMigrationNames = async (): Promise<readonly string[]> => {
     if (typeof tag !== "string") throw new Error("Invalid Drizzle migration tag");
     return `${tag}.sql`;
   });
-  if (names.at(-1) !== S8_ACTIVE_ROUTE_MIGRATION || names.length !== 24) {
-    throw new Error("S8.3 must be the only migration after the accepted 0022 baseline");
+  if (names.indexOf(S8_RELAY_MIGRATION) !== 22 || names.indexOf(S8_ACTIVE_ROUTE_MIGRATION) !== 23) {
+    throw new Error("S8.2 and S8.3 migrations must remain consecutive after the S8.1 baseline");
   }
   return names;
 };
@@ -413,7 +413,7 @@ describe("S8.2/S8.3 PostgreSQL 17 narrow outbox relay persistence", { timeout: 3
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 24 }]);
+    expect(migrations.rows).toEqual([{ count: 25 }]);
   });
 
   it("exposes only the minimal typed claim result without payload", async () => {
@@ -547,7 +547,7 @@ describe("S8.2/S8.3 PostgreSQL 17 narrow outbox relay persistence", { timeout: 3
       `update outbox_events
           set status = 'processing', attempt_count = 1,
               locked_by = 'dispatcher.expired-seed',
-              locked_until = clock_timestamp() - interval '1 second',
+              locked_until = available_at,
               lease_token = '123e4567-e89b-42d3-a456-426614174000'::uuid
         where id = $1::uuid`,
       [id],
@@ -813,10 +813,9 @@ describe("S8.2/S8.3 PostgreSQL 17 narrow outbox relay persistence", { timeout: 3
     await insertOutboxEvent(id, ORGANIZATION_A, 1);
     const [first] = await claimRaw("dispatcher.expiry-a", 1, 60);
     if (first === undefined) throw new Error("Expected initial relay claim");
-    await database().query(
-      "update outbox_events set locked_until = clock_timestamp() - interval '1 second' where id = $1",
-      [id],
-    );
+    await database().query("update outbox_events set locked_until = available_at where id = $1", [
+      id,
+    ]);
     const [second] = await claimRaw("dispatcher.expiry-b", 1, 60);
     if (second === undefined) throw new Error("Expected reclaimed relay claim");
     expect(second.lease_token).not.toBe(first.lease_token);
