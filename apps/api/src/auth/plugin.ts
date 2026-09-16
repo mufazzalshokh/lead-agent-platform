@@ -71,6 +71,13 @@ import {
   type StaffTelegramDependencies,
   type TelegramWebhookDependencies,
 } from "../telegram/plugin.js";
+import {
+  registerInstagramPublicRoutes,
+  registerStaffInstagramManagement,
+  instagramHttpProblem,
+  type InstagramWebhookDependencies,
+  type StaffInstagramDependencies,
+} from "../instagram/plugin.js";
 
 const STAFF_AUTH_PREFIX = "/v1/staff/auth";
 const CSRF_HEADER = "x-csrf-token";
@@ -83,10 +90,14 @@ export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.idempotency-key",
   "req.headers.x-csrf-token",
   "req.headers.x-telegram-bot-api-secret-token",
+  "req.headers.x-hub-signature-256",
   "res.headers.set-cookie",
   "body.authorization_code",
   "body.invitation_token",
   "body.refresh_token",
+  "body.access_token",
+  "body.code",
+  "body.state",
 ]);
 
 export type InvitationAcceptanceBoundary = Readonly<{
@@ -120,6 +131,8 @@ export type ApiOptions = Readonly<{
   staffConversations?: StaffConversationDependencies;
   staffTelegram?: StaffTelegramDependencies;
   telegramWebhook?: TelegramWebhookDependencies;
+  staffInstagram?: StaffInstagramDependencies;
+  instagramWebhook?: InstagramWebhookDependencies;
   widget?: WidgetDependencies;
 }>;
 
@@ -334,6 +347,10 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
     const telegramProblem = telegramHttpProblem(error)!;
     code = telegramProblem.code;
     status = telegramProblem.status;
+  } else if (instagramHttpProblem(error) !== null) {
+    const instagramProblem = instagramHttpProblem(error)!;
+    code = instagramProblem.code;
+    status = instagramProblem.status;
   } else if (error instanceof WidgetOriginInvalidError) {
     code = "origin_not_allowed";
     status = 403;
@@ -396,6 +413,7 @@ const registerStaffAuth = async (
   staffConfiguration?: StaffConfigurationDependencies,
   staffConversations?: StaffConversationDependencies,
   staffTelegram?: StaffTelegramDependencies,
+  staffInstagram?: StaffInstagramDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -465,7 +483,7 @@ const registerStaffAuth = async (
   };
 
   api.addHook("onRequest", async (request, reply) => {
-    if (!request.url.startsWith("/v1/staff/")) return;
+    if (!request.url.startsWith("/v1/staff/") && !request.url.startsWith("/v2/staff/")) return;
     const origin = request.headers.origin;
     if (origin !== undefined) {
       const trusted = requireTrustedStaffOrigin(origin, dependencies.config.staffAllowedOrigins);
@@ -485,6 +503,13 @@ const registerStaffAuth = async (
   });
 
   api.options("/v1/staff/*", async (_request, reply) => reply.code(204).send());
+  for (const path of [
+    "/v2/staff/contacts/:id",
+    "/v2/staff/conversations",
+    "/v2/staff/conversations/:id",
+  ]) {
+    api.options(path, async (_request, reply) => reply.code(204).send());
+  }
 
   api.setErrorHandler((error, request, reply) => {
     if (request.url.startsWith(STAFF_AUTH_PREFIX + "/callback")) {
@@ -763,6 +788,13 @@ const registerStaffAuth = async (
         (await requireMutationSession(request, reply)).session,
     });
   }
+  if (staffInstagram !== undefined) {
+    registerStaffInstagramManagement(api, staffInstagram, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+    });
+  }
 };
 
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
@@ -775,6 +807,8 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   if (options.staffTelegram !== undefined && options.staffAuth === undefined) {
     throw new TypeError("Staff Telegram routes require the staff authentication boundary");
   }
+  if (options.staffInstagram !== undefined && options.staffAuth === undefined)
+    throw new TypeError("Staff Instagram routes require the staff authentication boundary");
   const api = Fastify({
     ajv: { customOptions: { removeAdditional: false, strict: false } },
     logController: new LogController({ disableRequestLogging: true }),
@@ -838,6 +872,40 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
     });
   }
   const staffAuth = options.staffAuth;
+  const instagramWebhook = options.instagramWebhook;
+  if (instagramWebhook !== undefined) {
+    void api.register((instagramApi) => {
+      instagramApi.setErrorHandler((error, request, reply) => {
+        const problem = instagramHttpProblem(error);
+        const statusCode: unknown =
+          error instanceof Error ? Reflect.get(error, "statusCode") : null;
+        const status =
+          problem?.status ??
+          (statusCode === 413 ? 413 : statusCode === 400 || statusCode === 415 ? 400 : 503);
+        const code =
+          problem?.code ??
+          (status === 413
+            ? "payload_too_large"
+            : status === 400
+              ? "validation_failed"
+              : "dependency_unavailable");
+        request.log.warn({ code, requestId: request.id }, "Instagram request rejected");
+        void reply
+          .header("cache-control", "no-store")
+          .header("referrer-policy", "no-referrer")
+          .type("application/problem+json")
+          .code(status)
+          .send({
+            code,
+            request_id: request.id,
+            status,
+            title: "Request unavailable",
+            type: "https://lead-agent.invalid/problems/" + code,
+          });
+      });
+      registerInstagramPublicRoutes(instagramApi, instagramWebhook);
+    });
+  }
   if (staffAuth !== undefined) {
     void api.register((staffApi) =>
       registerStaffAuth(
@@ -846,6 +914,7 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         options.staffConfiguration,
         options.staffConversations,
         options.staffTelegram,
+        options.staffInstagram,
       ),
     );
   }

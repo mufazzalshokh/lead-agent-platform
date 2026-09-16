@@ -4,6 +4,8 @@ import {
   OpaqueCursorSchema,
   StaffContactReadParamsSchema,
   StaffContactSchema,
+  StaffContactV2Schema,
+  StaffConversationSchema,
   StaffConversationListQuerySchema,
   StaffConversationReadParamsSchema,
   StaffLeadListQuerySchema,
@@ -21,8 +23,10 @@ import {
   type MessageId,
   type OpaqueCursor,
   type StaffContact,
-  type StaffContactIdentity,
-  type StaffContactIdentityType,
+  type StaffContactV2,
+  type StaffContactIdentityV2,
+  type StaffContactIdentityTypeV2,
+  type StaffConversationV2,
   type StaffConversation,
   type StaffConversationListQuery,
   type StaffContactReadParams,
@@ -61,12 +65,12 @@ type Replace<Value, Keys extends keyof Value, Fields> = Value extends unknown
   : never;
 
 export type StoredContactIdentity = Replace<
-  StaffContactIdentity,
+  StaffContactIdentityV2,
   "value",
   Readonly<{ valueCiphertext: Uint8Array | null }>
 >;
 export type StoredContact = Replace<
-  StaffContact,
+  StaffContactV2,
   "display_name" | "identities" | "sensitive_fields_visible",
   Readonly<{
     displayNameCiphertext: Uint8Array | null;
@@ -115,7 +119,7 @@ export interface StaffConversationQueryStore {
   ): Promise<Readonly<{ items: readonly StaffLead[]; next: LeadPagePosition | null }>>;
   getConversation(
     input: Readonly<{ authorization: AuthorizationContext; conversationId: ConversationId }>,
-  ): Promise<StaffConversation | null>;
+  ): Promise<StaffConversationV2 | null>;
   listConversations(
     input: Readonly<{
       after: ConversationPagePosition | null;
@@ -124,7 +128,7 @@ export interface StaffConversationQueryStore {
       limit: number;
     }>,
   ): Promise<
-    Readonly<{ items: readonly StaffConversation[]; next: ConversationPagePosition | null }>
+    Readonly<{ items: readonly StaffConversationV2[]; next: ConversationPagePosition | null }>
   >;
   listMessages(
     input: Readonly<{
@@ -150,7 +154,7 @@ export interface StaffCustomerDataRevealer {
     input: Readonly<{
       channelConnectionId: ChannelConnectionId | null;
       ciphertext: Uint8Array;
-      identityType: StaffContactIdentityType;
+      identityType: StaffContactIdentityTypeV2;
       organizationId: AuthorizationContext["organizationId"];
     }>,
   ): string;
@@ -262,6 +266,21 @@ export interface StaffConversationQueryUseCases {
   ): Promise<StaffQueryResult<StaffQueryPage<StaffMessage>>>;
 }
 
+export interface StaffConversationQueryV2UseCases extends Omit<
+  StaffConversationQueryUseCases,
+  "getContact" | "getConversation" | "listConversations"
+> {
+  getContact(
+    query: Parameters<StaffConversationQueryUseCases["getContact"]>[0],
+  ): Promise<StaffQueryResult<StaffContactV2>>;
+  getConversation(
+    query: Parameters<StaffConversationQueryUseCases["getConversation"]>[0],
+  ): Promise<StaffQueryResult<StaffConversationV2>>;
+  listConversations(
+    query: Parameters<StaffConversationQueryUseCases["listConversations"]>[0],
+  ): Promise<StaffQueryResult<StaffQueryPage<StaffConversationV2>>>;
+}
+
 const failure = <Value>(code: StaffQueryFailureCode): StaffQueryResult<Value> =>
   Object.freeze({ error: Object.freeze({ code }), ok: false });
 const success = <Value>(value: Value): StaffQueryResult<Value> =>
@@ -329,13 +348,14 @@ const messagePosition = (
 const supportedContentType = (value: string): value is "attachment" | "quick_reply" | "text" =>
   value === "attachment" || value === "quick_reply" || value === "text";
 
-export const createStaffConversationQueryUseCases = (
+const createRichStaffConversationQueries = (
   store: StaffConversationQueryStore,
   revealer: StaffCustomerDataRevealer,
   cursors: StaffQueryCursorCodec,
   evaluatePermission: StaffQueryPermissionEvaluator = hasPermission,
-): StaffConversationQueryUseCases => {
-  const useCases: StaffConversationQueryUseCases = {
+  includeInstagramIdentities = true,
+): StaffConversationQueryV2UseCases => {
+  const useCases: StaffConversationQueryV2UseCases = {
     getContact: async ({ authorization, input }) => {
       if (!validAuthorization(authorization, "contacts.read", evaluatePermission))
         return failure("permission_denied");
@@ -345,7 +365,7 @@ export const createStaffConversationQueryUseCases = (
       const sensitive = evaluatePermission(authorization.role, "contacts.read_sensitive");
       try {
         const { displayNameCiphertext, identities, ...contactFields } = stored;
-        const contact: StaffContact = {
+        const contact: StaffContactV2 = {
           ...contactFields,
           display_name:
             sensitive && stored.status !== "anonymized" && displayNameCiphertext !== null
@@ -354,24 +374,29 @@ export const createStaffConversationQueryUseCases = (
                   organizationId: authorization.organizationId,
                 })
               : null,
-          identities: identities.map(({ valueCiphertext, ...identity }) => ({
-            ...identity,
-            value:
-              sensitive &&
-              stored.status !== "anonymized" &&
-              identity.status !== "anonymized" &&
-              valueCiphertext !== null
-                ? revealer.revealContactIdentity({
-                    channelConnectionId: identity.channel_connection_id,
-                    ciphertext: valueCiphertext,
-                    identityType: identity.identity_type,
-                    organizationId: authorization.organizationId,
-                  })
-                : null,
-          })),
+          identities: identities
+            .filter(
+              (identity) =>
+                includeInstagramIdentities || identity.identity_type !== "instagram_user",
+            )
+            .map(({ valueCiphertext, ...identity }) => ({
+              ...identity,
+              value:
+                sensitive &&
+                stored.status !== "anonymized" &&
+                identity.status !== "anonymized" &&
+                valueCiphertext !== null
+                  ? revealer.revealContactIdentity({
+                      channelConnectionId: identity.channel_connection_id,
+                      ciphertext: valueCiphertext,
+                      identityType: identity.identity_type,
+                      organizationId: authorization.organizationId,
+                    })
+                  : null,
+            })),
           sensitive_fields_visible: sensitive,
         };
-        return isSchemaValue(StaffContactSchema, contact)
+        return isSchemaValue(StaffContactV2Schema, contact)
           ? success(contact)
           : failure("internal_error");
       } catch {
@@ -513,4 +538,73 @@ export const createStaffConversationQueryUseCases = (
     },
   };
   return Object.freeze(useCases);
+};
+
+export const createStaffConversationQueryV2UseCases = (
+  store: StaffConversationQueryStore,
+  revealer: StaffCustomerDataRevealer,
+  cursors: StaffQueryCursorCodec,
+  evaluatePermission: StaffQueryPermissionEvaluator = hasPermission,
+): StaffConversationQueryV2UseCases =>
+  createRichStaffConversationQueries(store, revealer, cursors, evaluatePermission);
+
+const projectV1Conversation = (value: StaffConversationV2): StaffConversation => {
+  const projected = {
+    ...value,
+    participant: {
+      ...value.participant,
+      identity_type:
+        value.participant.identity_type === "instagram_user"
+          ? null
+          : value.participant.identity_type,
+    },
+  };
+  if (!isSchemaValue(StaffConversationSchema, projected))
+    throw new TypeError("Invalid staff conversation projection");
+  return projected;
+};
+
+export const createStaffConversationQueryUseCases = (
+  store: StaffConversationQueryStore,
+  revealer: StaffCustomerDataRevealer,
+  cursors: StaffQueryCursorCodec,
+  evaluatePermission: StaffQueryPermissionEvaluator = hasPermission,
+): StaffConversationQueryUseCases => {
+  // Filter unsupported identities before decryption; V1 never reveals Instagram values.
+  const rich = createRichStaffConversationQueries(
+    store,
+    revealer,
+    cursors,
+    evaluatePermission,
+    false,
+  );
+  const queries: StaffConversationQueryUseCases = {
+    ...rich,
+    getContact: async (query) => {
+      const result = await rich.getContact(query);
+      if (!result.ok) return result;
+      return isSchemaValue(StaffContactSchema, result.value)
+        ? success(result.value)
+        : failure("internal_error");
+    },
+    getConversation: async (query) => {
+      const result = await rich.getConversation(query);
+      if (!result.ok) return result;
+      try {
+        return success(projectV1Conversation(result.value));
+      } catch {
+        return failure("internal_error");
+      }
+    },
+    listConversations: async (query) => {
+      const result = await rich.listConversations(query);
+      if (!result.ok) return result;
+      try {
+        return success({ ...result.value, items: result.value.items.map(projectV1Conversation) });
+      } catch {
+        return failure("internal_error");
+      }
+    },
+  };
+  return Object.freeze(queries);
 };

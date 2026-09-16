@@ -1,6 +1,10 @@
 import Type from "typebox";
 
-import { domainEventDefinitions, leadReopenedDomainEventV2Definition } from "./catalog.js";
+import {
+  contactIdentityAddedDomainEventV2Definition,
+  domainEventDefinitions,
+  leadReopenedDomainEventV2Definition,
+} from "./catalog.js";
 
 type EventDefinitions = typeof domainEventDefinitions;
 
@@ -25,6 +29,11 @@ export const DomainEventPayloadSchemas = Object.fromEntries(
 export const LeadReopenedDomainEventV2Schema = leadReopenedDomainEventV2Definition.eventSchema;
 export const LeadReopenedDomainEventPayloadV2Schema =
   leadReopenedDomainEventV2Definition.payloadSchema;
+
+export const ContactIdentityAddedDomainEventV2Schema =
+  contactIdentityAddedDomainEventV2Definition.eventSchema;
+export const ContactIdentityAddedDomainEventPayloadV2Schema =
+  contactIdentityAddedDomainEventV2Definition.payloadSchema;
 
 const v1EventSchemasByVersion = Object.fromEntries(
   Object.entries(DomainEventSchemas).map(([eventName, schema]) => [
@@ -54,6 +63,10 @@ const v1PayloadSchemasByVersion = Object.fromEntries(
  */
 export const DomainEventSchemasByVersion = Object.freeze({
   ...v1EventSchemasByVersion,
+  "contact.identity_added": Object.freeze({
+    "1": DomainEventSchemas["contact.identity_added"],
+    "2": ContactIdentityAddedDomainEventV2Schema,
+  }),
   "lead.reopened": Object.freeze({
     "1": DomainEventSchemas["lead.reopened"],
     "2": LeadReopenedDomainEventV2Schema,
@@ -62,6 +75,10 @@ export const DomainEventSchemasByVersion = Object.freeze({
 
 export const DomainEventPayloadSchemasByVersion = Object.freeze({
   ...v1PayloadSchemasByVersion,
+  "contact.identity_added": Object.freeze({
+    "1": DomainEventPayloadSchemas["contact.identity_added"],
+    "2": ContactIdentityAddedDomainEventPayloadV2Schema,
+  }),
   "lead.reopened": Object.freeze({
     "1": DomainEventPayloadSchemas["lead.reopened"],
     "2": LeadReopenedDomainEventPayloadV2Schema,
@@ -69,6 +86,12 @@ export const DomainEventPayloadSchemasByVersion = Object.freeze({
 });
 
 export type LeadReopenedDomainEventV2 = Type.Static<typeof LeadReopenedDomainEventV2Schema>;
+export type ContactIdentityAddedDomainEventV2 = Type.Static<
+  typeof ContactIdentityAddedDomainEventV2Schema
+>;
+export type ContactIdentityAddedDomainEventPayloadV2 = Type.Static<
+  typeof ContactIdentityAddedDomainEventPayloadV2Schema
+>;
 export type LeadReopenedDomainEventPayloadV2 = Type.Static<
   typeof LeadReopenedDomainEventPayloadV2Schema
 >;

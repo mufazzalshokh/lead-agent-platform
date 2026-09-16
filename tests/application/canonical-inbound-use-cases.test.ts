@@ -212,7 +212,7 @@ describe("S9.A canonical inbound application boundary", () => {
     expect(harness.accepted).toHaveLength(0);
   });
 
-  it.each(["instagram", "whatsapp"] as const)(
+  it.each(["whatsapp"] as const)(
     "rejects the unimplemented %s channel without invoking persistence",
     async (channel) => {
       const harness = createHarness();

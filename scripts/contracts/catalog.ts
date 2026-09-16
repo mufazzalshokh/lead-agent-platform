@@ -123,6 +123,14 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "WeeklyBusinessHoursSchema",
   ],
   conversation: [
+    "StaffContactIdentityTypeV2Schema",
+    "StaffContactIdentityV2Schema",
+    "StaffContactV2Schema",
+    "StaffContactResponseV2Schema",
+    "StaffConversationParticipantV2Schema",
+    "StaffConversationV2Schema",
+    "StaffConversationResponseV2Schema",
+    "StaffConversationCollectionResponseV2Schema",
     "StaffContactIdentitySchema",
     "StaffContactIdentityStatusSchema",
     "StaffContactIdentityTypeSchema",
@@ -154,6 +162,8 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "StaffMessageSenderTypeSchema",
   ],
   event: [
+    "ContactIdentityAddedDomainEventV2Schema",
+    "ContactIdentityAddedDomainEventPayloadV2Schema",
     "DomainEventNameSchema",
     "DomainAggregateTypeSchema",
     "DomainEventSchema",

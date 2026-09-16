@@ -823,7 +823,9 @@ the Widget by itself creates no Contact, Lead, Conversation, or Message.
 - **Purpose:** Channel participant, phone, or email identity for tenant-local
   contact resolution and communication.
 - **Columns:** `id`, `organization_id`, `contact_id`,
-  `identity_type widget_participant|telegram_user|phone|email`,
+  `identity_type widget_participant|telegram_user|instagram_user|phone|email`,
+  with `instagram_user` requiring a non-null same-tenant channel connection
+  and trusted canonical validation that its channel type is `instagram`,
   `channel_connection_id nullable`, `value_ciphertext bytea nullable`,
   `lookup_hash bytea`, `hash_key_version`, `display_redacted`,
   `validation_status unverified|valid|verified|invalid`, `verified_at`,

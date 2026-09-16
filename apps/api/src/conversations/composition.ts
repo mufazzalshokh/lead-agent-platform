@@ -3,6 +3,7 @@ import { hkdfSync } from "node:crypto";
 import {
   createCanonicalInboundUseCases,
   createStaffConversationQueryUseCases,
+  createStaffConversationQueryV2UseCases,
   createStaffQueryCursorCodec,
   type CanonicalInboundUseCases,
 } from "@lead-agent/application";
@@ -38,17 +39,16 @@ export const createS9ConversationComposition = (
   cursorRootKey: Uint8Array,
 ): S9ConversationComposition => {
   const customerData = createCustomerDataProtection(customerDataConfig);
+  const store = createStaffConversationQueryStore(runtime);
+  const cursors = createStaffQueryCursorCodec(deriveCursorKey(cursorRootKey));
   return Object.freeze({
     inbound: createCanonicalInboundUseCases(
       createCanonicalInboundPersistenceStore(runtime),
       customerData,
     ),
     staff: Object.freeze({
-      queries: createStaffConversationQueryUseCases(
-        createStaffConversationQueryStore(runtime),
-        customerData,
-        createStaffQueryCursorCodec(deriveCursorKey(cursorRootKey)),
-      ),
+      queries: createStaffConversationQueryUseCases(store, customerData, cursors),
+      queriesV2: createStaffConversationQueryV2UseCases(store, customerData, cursors),
     }),
   });
 };

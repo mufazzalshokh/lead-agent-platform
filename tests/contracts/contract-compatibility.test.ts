@@ -149,14 +149,14 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(319);
+    expect(snapshot.contracts).toHaveLength(329);
     expect(counts).toEqual({
       ai: 16,
       api: 8,
       channel: 24,
       configuration: 65,
-      conversation: 29,
-      event: 131,
+      conversation: 37,
+      event: 133,
       shared: 28,
       widget: 18,
     });
@@ -222,11 +222,13 @@ describe("public contract inventory and snapshot", () => {
   it("classifies the approved S9 staff read contracts as additive only", () => {
     const candidate = buildContractSnapshot();
     const conversationContracts = candidate.contracts.filter(
-      (contract) => contract.category === "conversation",
+      (contract) => contract.category === "conversation" && contract.schema_id.endsWith(".v1"),
     );
     const baseline: ContractSnapshot = {
       ...candidate,
-      contracts: candidate.contracts.filter((contract) => contract.category !== "conversation"),
+      contracts: candidate.contracts.filter(
+        (contract) => contract.category !== "conversation" || !contract.schema_id.endsWith(".v1"),
+      ),
     };
     const findings = compareContractSnapshots(baseline, candidate);
 
@@ -622,7 +624,7 @@ describe("cross-contract security and drift audit", () => {
         (count, versions) => count + Object.keys(versions).length,
         0,
       ),
-    ).toBe(64);
+    ).toBe(65);
   });
 
   it("keeps event payloads privacy-minimal and credential rotation version-only", () => {

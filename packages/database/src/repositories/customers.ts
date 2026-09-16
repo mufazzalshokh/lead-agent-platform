@@ -36,7 +36,13 @@ import {
 } from "./shared.js";
 
 const CONTACT_STATUSES = ["active", "anonymized", "blocked"] as const;
-const IDENTITY_TYPES = ["widget_participant", "telegram_user", "phone", "email"] as const;
+const IDENTITY_TYPES = [
+  "widget_participant",
+  "telegram_user",
+  "instagram_user",
+  "phone",
+  "email",
+] as const;
 const IDENTITY_VALIDATION_STATUSES = ["unverified", "valid", "verified", "invalid"] as const;
 const IDENTITY_STATUSES = ["active", "withdrawn", "anonymized"] as const;
 const CONSENT_PURPOSES = [

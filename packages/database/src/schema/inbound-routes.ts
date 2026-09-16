@@ -40,7 +40,7 @@ export const inboundRoutes = pgTable(
     ),
     check(
       "inbound_routes_route_type_check",
-      sql`${table.routeType} in ('widget_key', 'telegram_webhook')`,
+      sql`${table.routeType} in ('widget_key', 'telegram_webhook', 'instagram_webhook')`,
     ),
     check("inbound_routes_route_key_hash_check", sql`octet_length(${table.routeKeyHash}) > 0`),
     check("inbound_routes_status_check", sql`${table.status} in ('active', 'disabled')`),

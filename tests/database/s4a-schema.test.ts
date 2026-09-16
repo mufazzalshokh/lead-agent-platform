@@ -121,6 +121,7 @@ import { registerInboundConversationPersistenceTests } from "./inbound-conversat
 import { registerStaffConversationQueryTests } from "./staff-conversation-queries.test-suite.js";
 import { registerWidgetIntakeTests } from "./widget-intake.test-suite.js";
 import { registerTelegramBusinessPersistenceTests } from "./telegram-business.test-suite.js";
+import { registerInstagramBusinessPersistenceTests } from "./instagram-business.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -2711,7 +2712,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(27);
+    expect(migrationCount.rows[0]?.count).toBe(28);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -8651,11 +8652,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       }
     }
 
-    expect(eventVariantCount).toBe(64);
+    expect(eventVariantCount).toBe(65);
     const persistedCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from outbox_events",
     );
-    expect(persistedCount.rows[0]?.count).toBe(64);
+    expect(persistedCount.rows[0]?.count).toBe(65);
 
     await expect(
       insertOutboxEvent(syntheticUuid(0xd00), ORGANIZATION_A, {
@@ -9115,7 +9116,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         eventVariantCount += 1;
       }
     }
-    expect(eventVariantCount).toBe(64);
+    expect(eventVariantCount).toBe(65);
 
     await insertAnalyticsEvent(ANALYTICS_EVENT_A, ORGANIZATION_A, {
       campaignKey: "consented_campaign",
@@ -10013,6 +10014,10 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     },
   });
   registerTelegramBusinessPersistenceTests({
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+  });
+  registerInstagramBusinessPersistenceTests({
     privilegedPool: database,
     runtime: requireTenantRuntime,
   });

@@ -11,6 +11,8 @@ import {
   ConversationIdSchema,
   CorrelationIdSchema,
   DomainEventSchemasByVersion,
+  DomainEventSchema,
+  ContactIdentityAddedDomainEventV2Schema,
   EventIdSchema,
   LeadIdSchema,
   MessageIdSchema,
@@ -23,6 +25,7 @@ import {
   type ConversationId,
   type CorrelationId,
   type DomainEvent,
+  type ContactIdentityAddedDomainEventV2,
   type EventId,
   type LeadId,
   type MessageId,
@@ -201,8 +204,12 @@ const materializeContactEvent = (
   context: EventContext,
   organizationId: PreparedCanonicalInbound["organizationId"],
   eventId: EventId,
-): DomainEvent => {
-  const schema = eventSchemaFor(eventType, "1");
+): DomainEvent | ContactIdentityAddedDomainEventV2 => {
+  const schemaVersion =
+    eventType === "contact.identity_added" && payload["identity_type"] === "instagram_user"
+      ? "2"
+      : "1";
+  const schema = eventSchemaFor(eventType, schemaVersion);
   if (schema === undefined) throw new RepositoryDataIntegrityError();
   const schemaId: unknown = Reflect.get(schema, "$id");
   const candidate = Object.freeze({
@@ -219,10 +226,16 @@ const materializeContactEvent = (
     payload,
     request_id: context.requestId,
     schema_id: schemaId,
-    schema_version: "1",
+    schema_version: schemaVersion,
   });
   if (!isSchemaValue(schema, candidate)) throw new RepositoryDataIntegrityError();
-  return candidate as DomainEvent;
+  if (schemaVersion === "2") {
+    if (!isSchemaValue(ContactIdentityAddedDomainEventV2Schema, candidate))
+      throw new TypeError("Invalid contact identity event");
+    return candidate;
+  }
+  if (!isSchemaValue(DomainEventSchema, candidate)) throw new TypeError("Invalid contact event");
+  return candidate;
 };
 
 const acquireLocks = async (session: TenantDbSession, keys: readonly string[]): Promise<void> => {
@@ -374,7 +387,7 @@ const persistContactAudit = async (
 
 const persistContactOutboxEvent = async (
   session: TenantDbSession,
-  event: DomainEvent,
+  event: DomainEvent | ContactIdentityAddedDomainEventV2,
 ): Promise<void> => {
   await executeTenantWrite(
     session,
@@ -751,7 +764,10 @@ const processInbound = async (
   if (
     organization.status !== "active" ||
     channelConnection.status !== "active" ||
-    channelConnection.channelType !== input.event.channel
+    channelConnection.channelType !== input.event.channel ||
+    (input.identity.identityType === "instagram_user" &&
+      channelConnection.channelType !== "instagram") ||
+    (input.event.channel === "instagram" && input.identity.identityType !== "instagram_user")
   ) {
     return failure("channel_unavailable");
   }

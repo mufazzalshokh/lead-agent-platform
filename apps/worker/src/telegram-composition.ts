@@ -3,16 +3,23 @@ import {
   loadCustomerDataProtectionConfig,
   loadQueueDatabaseRuntimeConfig,
   loadTelegramPlatformConfig,
+  loadInstagramPlatformConfig,
 } from "@lead-agent/config";
 import {
   createOutboxDispatcherId,
   createOutboxRelayDatabaseRuntime,
   createTelegramOutboundPersistenceStore,
+  createInstagramOutboundPersistenceStore,
+  createInstagramPersistenceStore,
   createTenantCanonicalOutboxEventSource,
   createTenantDatabaseRuntime,
   type OutboxRelayClaim,
 } from "@lead-agent/database";
-import { createTelegramPlatformClient } from "@lead-agent/integrations";
+import {
+  createTelegramPlatformClient,
+  createInstagramPlatformClient,
+} from "@lead-agent/integrations";
+import type { CredentialSecretStore } from "@lead-agent/application";
 import { createCustomerDataProtection } from "@lead-agent/security";
 
 import {
@@ -27,10 +34,17 @@ import {
 } from "./telegram-outbound.js";
 import { createWorkerRuntime, type WorkerRuntime } from "./worker-runtime.js";
 import { createStructuredConsoleWorkerTelemetry } from "./worker-telemetry.js";
+import { createInstagramOutboundHandler } from "./instagram-outbound.js";
 
 export const composeProductionWorkerRuntime = (
   environment: NodeJS.ProcessEnv = {},
+  options: Readonly<{ credentialSecretStore?: CredentialSecretStore }> = {},
 ): WorkerRuntime => {
+  const instagramConfig =
+    environment["INSTAGRAM_APP_ID"] === undefined ? null : loadInstagramPlatformConfig(environment);
+  const credentials = options.credentialSecretStore;
+  if (instagramConfig !== null && credentials === undefined)
+    throw new TypeError("Instagram requires a configured writable managed credential secret store");
   const telemetry = createStructuredConsoleWorkerTelemetry({ service: "lead-agent-worker" });
   const queueConfig = loadQueueDatabaseRuntimeConfig(environment);
   const queue = createQueueInfrastructure(queueConfig, { telemetry });
@@ -84,6 +98,20 @@ export const composeProductionWorkerRuntime = (
   });
   const telegramClient = createTelegramPlatformClient(loadTelegramPlatformConfig(environment));
   const registry = createProductionHandlerRegistry({
+    ...(instagramConfig === null || credentials === undefined
+      ? {}
+      : {
+          instagramOutbound: createInstagramOutboundHandler({
+            client: createInstagramPlatformClient(instagramConfig),
+            credentials,
+            connections: createInstagramPersistenceStore(tenantRuntime),
+            dataProtection: createCustomerDataProtection(
+              loadCustomerDataProtectionConfig(environment),
+            ),
+            store: createInstagramOutboundPersistenceStore(tenantRuntime),
+            onCredentialCleanupFailure: () => console.error("Instagram credential cleanup failed"),
+          }),
+        }),
     telegramOutbound: createTelegramOutboundHandler({
       client: telegramClient,
       dataProtection: createCustomerDataProtection(loadCustomerDataProtectionConfig(environment)),

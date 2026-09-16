@@ -3454,6 +3454,296 @@
       "schema_version": "1"
     },
     {
+      "category": "event",
+      "export_name": "ContactIdentityAddedDomainEventPayloadV2Schema",
+      "schema": {
+        "$id": "ContactIdentityAddedDomainEventPayload.v2",
+        "additionalProperties": false,
+        "properties": {
+          "contact_identity_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "identity_type": {
+            "anyOf": [
+              {
+                "const": "phone",
+                "type": "string"
+              },
+              {
+                "const": "email",
+                "type": "string"
+              },
+              {
+                "const": "widget_participant",
+                "type": "string"
+              },
+              {
+                "const": "telegram_user",
+                "type": "string"
+              },
+              {
+                "const": "instagram_user",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contact_identity_id",
+          "identity_type"
+        ],
+        "type": "object"
+      },
+      "schema_id": "ContactIdentityAddedDomainEventPayload.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "event",
+      "export_name": "ContactIdentityAddedDomainEventV2Schema",
+      "schema": {
+        "$id": "ContactIdentityAddedDomainEvent.v2",
+        "additionalProperties": false,
+        "description": "Versioned committed domain fact. Provenance fields do not authenticate or authorize a consumer.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "customer",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "member",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "type": "null"
+                  },
+                  "actor_type": {
+                    "const": "system",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "platform_operator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Event attribution only. Runtime validation does not authenticate or authorize the actor."
+          },
+          "aggregate_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "const": "contact",
+            "type": "string"
+          },
+          "aggregate_version": {
+            "description": "Monotonic positive safe integer aggregate version.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "correlation_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "contact.identity_added",
+            "type": "string"
+          },
+          "occurred_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "organization_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "contact_identity_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "identity_type": {
+                "anyOf": [
+                  {
+                    "const": "phone",
+                    "type": "string"
+                  },
+                  {
+                    "const": "email",
+                    "type": "string"
+                  },
+                  {
+                    "const": "widget_participant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "telegram_user",
+                    "type": "string"
+                  },
+                  {
+                    "const": "instagram_user",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "contact_identity_id",
+              "identity_type"
+            ],
+            "type": "object"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_id": {
+            "const": "ContactIdentityAddedDomainEvent.v2",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "2",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor",
+          "aggregate_id",
+          "aggregate_type",
+          "aggregate_version",
+          "causation_id",
+          "correlation_id",
+          "event_id",
+          "event_type",
+          "occurred_at",
+          "organization_id",
+          "payload",
+          "request_id",
+          "schema_id",
+          "schema_version"
+        ],
+        "type": "object"
+      },
+      "schema_id": "ContactIdentityAddedDomainEvent.v2",
+      "schema_version": "2"
+    },
+    {
       "category": "shared",
       "export_name": "ContactIdSchema",
       "schema": {
@@ -45063,6 +45353,182 @@
     },
     {
       "category": "conversation",
+      "export_name": "StaffContactIdentityTypeV2Schema",
+      "schema": {
+        "$id": "StaffContactIdentityType.v2",
+        "anyOf": [
+          {
+            "const": "widget_participant",
+            "type": "string"
+          },
+          {
+            "const": "telegram_user",
+            "type": "string"
+          },
+          {
+            "const": "instagram_user",
+            "type": "string"
+          },
+          {
+            "const": "phone",
+            "type": "string"
+          },
+          {
+            "const": "email",
+            "type": "string"
+          }
+        ]
+      },
+      "schema_id": "StaffContactIdentityType.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "conversation",
+      "export_name": "StaffContactIdentityV2Schema",
+      "schema": {
+        "$id": "StaffContactIdentity.v2",
+        "additionalProperties": false,
+        "properties": {
+          "channel_connection_id": {
+            "anyOf": [
+              {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_redacted": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^\\u0000]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "identity_type": {
+            "anyOf": [
+              {
+                "const": "widget_participant",
+                "type": "string"
+              },
+              {
+                "const": "telegram_user",
+                "type": "string"
+              },
+              {
+                "const": "instagram_user",
+                "type": "string"
+              },
+              {
+                "const": "phone",
+                "type": "string"
+              },
+              {
+                "const": "email",
+                "type": "string"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "const": "active",
+                "type": "string"
+              },
+              {
+                "const": "withdrawn",
+                "type": "string"
+              },
+              {
+                "const": "anonymized",
+                "type": "string"
+              }
+            ]
+          },
+          "validation_status": {
+            "anyOf": [
+              {
+                "const": "unverified",
+                "type": "string"
+              },
+              {
+                "const": "valid",
+                "type": "string"
+              },
+              {
+                "const": "verified",
+                "type": "string"
+              },
+              {
+                "const": "invalid",
+                "type": "string"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "maxLength": 8192,
+                "minLength": 1,
+                "pattern": "^[^\\u0000]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "channel_connection_id",
+          "display_redacted",
+          "id",
+          "identity_type",
+          "status",
+          "validation_status",
+          "value",
+          "verified_at"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffContactIdentity.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "conversation",
       "export_name": "StaffContactIdentityValidationStatusSchema",
       "schema": {
         "$id": "StaffContactIdentityValidationStatus.v1",
@@ -46124,6 +46590,1033 @@
     },
     {
       "category": "conversation",
+      "export_name": "StaffContactResponseV2Schema",
+      "schema": {
+        "$id": "StaffContactResponse.v2",
+        "additionalProperties": false,
+        "description": "V1 successful single-resource response envelope.",
+        "properties": {
+          "data": {
+            "$id": "StaffContact.v2",
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "anonymized_at": {
+                    "type": "null"
+                  },
+                  "created_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "null"
+                  },
+                  "first_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "identities": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "channel_connection_id": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                              "maxLength": 36,
+                              "minLength": 36,
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "display_redacted": {
+                          "anyOf": [
+                            {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[^\\u0000]+$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "id": {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        "identity_type": {
+                          "anyOf": [
+                            {
+                              "const": "widget_participant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "telegram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "instagram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "phone",
+                              "type": "string"
+                            },
+                            {
+                              "const": "email",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "active",
+                              "type": "string"
+                            },
+                            {
+                              "const": "withdrawn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "anonymized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "validation_status": {
+                          "anyOf": [
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "valid",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "invalid",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "value": {
+                          "type": "null"
+                        },
+                        "verified_at": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                              "format": "date-time",
+                              "maxLength": 30,
+                              "minLength": 20,
+                              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "channel_connection_id",
+                        "display_redacted",
+                        "id",
+                        "identity_type",
+                        "status",
+                        "validation_status",
+                        "value",
+                        "verified_at"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 64,
+                    "type": "array"
+                  },
+                  "last_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "preferred_locale": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "uz",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ru",
+                            "type": "string"
+                          },
+                          {
+                            "const": "en",
+                            "type": "string"
+                          }
+                        ],
+                        "description": "Supported V1 customer presentation locale."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sensitive_fields_visible": {
+                    "const": false,
+                    "type": "boolean"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "blocked",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "updated_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "version": {
+                    "description": "Positive safe integer used for optimistic concurrency.",
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "anonymized_at",
+                  "created_at",
+                  "display_name",
+                  "first_seen_at",
+                  "id",
+                  "identities",
+                  "last_seen_at",
+                  "preferred_locale",
+                  "sensitive_fields_visible",
+                  "status",
+                  "updated_at",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "anonymized_at": {
+                    "type": "null"
+                  },
+                  "created_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "anyOf": [
+                      {
+                        "maxLength": 8192,
+                        "minLength": 1,
+                        "pattern": "^[^\\u0000]+$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "first_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "identities": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "channel_connection_id": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                              "maxLength": 36,
+                              "minLength": 36,
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "display_redacted": {
+                          "anyOf": [
+                            {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[^\\u0000]+$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "id": {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        "identity_type": {
+                          "anyOf": [
+                            {
+                              "const": "widget_participant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "telegram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "instagram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "phone",
+                              "type": "string"
+                            },
+                            {
+                              "const": "email",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "active",
+                              "type": "string"
+                            },
+                            {
+                              "const": "withdrawn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "anonymized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "validation_status": {
+                          "anyOf": [
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "valid",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "invalid",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "value": {
+                          "anyOf": [
+                            {
+                              "maxLength": 8192,
+                              "minLength": 1,
+                              "pattern": "^[^\\u0000]+$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "verified_at": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                              "format": "date-time",
+                              "maxLength": 30,
+                              "minLength": 20,
+                              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "channel_connection_id",
+                        "display_redacted",
+                        "id",
+                        "identity_type",
+                        "status",
+                        "validation_status",
+                        "value",
+                        "verified_at"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 64,
+                    "type": "array"
+                  },
+                  "last_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "preferred_locale": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "uz",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ru",
+                            "type": "string"
+                          },
+                          {
+                            "const": "en",
+                            "type": "string"
+                          }
+                        ],
+                        "description": "Supported V1 customer presentation locale."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sensitive_fields_visible": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "blocked",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "updated_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "version": {
+                    "description": "Positive safe integer used for optimistic concurrency.",
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "anonymized_at",
+                  "created_at",
+                  "display_name",
+                  "first_seen_at",
+                  "id",
+                  "identities",
+                  "last_seen_at",
+                  "preferred_locale",
+                  "sensitive_fields_visible",
+                  "status",
+                  "updated_at",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "anonymized_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "null"
+                  },
+                  "first_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "identities": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "channel_connection_id": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                              "maxLength": 36,
+                              "minLength": 36,
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "display_redacted": {
+                          "anyOf": [
+                            {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[^\\u0000]+$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "id": {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        "identity_type": {
+                          "anyOf": [
+                            {
+                              "const": "widget_participant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "telegram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "instagram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "phone",
+                              "type": "string"
+                            },
+                            {
+                              "const": "email",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "active",
+                              "type": "string"
+                            },
+                            {
+                              "const": "withdrawn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "anonymized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "validation_status": {
+                          "anyOf": [
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "valid",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "invalid",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "value": {
+                          "type": "null"
+                        },
+                        "verified_at": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                              "format": "date-time",
+                              "maxLength": 30,
+                              "minLength": 20,
+                              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "channel_connection_id",
+                        "display_redacted",
+                        "id",
+                        "identity_type",
+                        "status",
+                        "validation_status",
+                        "value",
+                        "verified_at"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 64,
+                    "type": "array"
+                  },
+                  "last_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "preferred_locale": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "uz",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ru",
+                            "type": "string"
+                          },
+                          {
+                            "const": "en",
+                            "type": "string"
+                          }
+                        ],
+                        "description": "Supported V1 customer presentation locale."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sensitive_fields_visible": {
+                    "const": false,
+                    "type": "boolean"
+                  },
+                  "status": {
+                    "const": "anonymized",
+                    "type": "string"
+                  },
+                  "updated_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "version": {
+                    "description": "Positive safe integer used for optimistic concurrency.",
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "anonymized_at",
+                  "created_at",
+                  "display_name",
+                  "first_seen_at",
+                  "id",
+                  "identities",
+                  "last_seen_at",
+                  "preferred_locale",
+                  "sensitive_fields_visible",
+                  "status",
+                  "updated_at",
+                  "version"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "anonymized_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "null"
+                  },
+                  "first_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "identities": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "channel_connection_id": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                              "maxLength": 36,
+                              "minLength": 36,
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "display_redacted": {
+                          "anyOf": [
+                            {
+                              "maxLength": 255,
+                              "minLength": 1,
+                              "pattern": "^[^\\u0000]+$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "id": {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        "identity_type": {
+                          "anyOf": [
+                            {
+                              "const": "widget_participant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "telegram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "instagram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "phone",
+                              "type": "string"
+                            },
+                            {
+                              "const": "email",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "active",
+                              "type": "string"
+                            },
+                            {
+                              "const": "withdrawn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "anonymized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "validation_status": {
+                          "anyOf": [
+                            {
+                              "const": "unverified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "valid",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verified",
+                              "type": "string"
+                            },
+                            {
+                              "const": "invalid",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "value": {
+                          "type": "null"
+                        },
+                        "verified_at": {
+                          "anyOf": [
+                            {
+                              "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                              "format": "date-time",
+                              "maxLength": 30,
+                              "minLength": 20,
+                              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "channel_connection_id",
+                        "display_redacted",
+                        "id",
+                        "identity_type",
+                        "status",
+                        "validation_status",
+                        "value",
+                        "verified_at"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 64,
+                    "type": "array"
+                  },
+                  "last_seen_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "preferred_locale": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "uz",
+                            "type": "string"
+                          },
+                          {
+                            "const": "ru",
+                            "type": "string"
+                          },
+                          {
+                            "const": "en",
+                            "type": "string"
+                          }
+                        ],
+                        "description": "Supported V1 customer presentation locale."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sensitive_fields_visible": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "status": {
+                    "const": "anonymized",
+                    "type": "string"
+                  },
+                  "updated_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "version": {
+                    "description": "Positive safe integer used for optimistic concurrency.",
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "anonymized_at",
+                  "created_at",
+                  "display_name",
+                  "first_seen_at",
+                  "id",
+                  "identities",
+                  "last_seen_at",
+                  "preferred_locale",
+                  "sensitive_fields_visible",
+                  "status",
+                  "updated_at",
+                  "version"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Tenant-authorized Contact projection with permission-bound sensitive fields and fail-closed anonymization."
+          },
+          "meta": {
+            "additionalProperties": false,
+            "description": "Correlation metadata returned by a successful API request.",
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffContactResponse.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "conversation",
       "export_name": "StaffContactSchema",
       "schema": {
         "$id": "StaffContact.v1",
@@ -47129,6 +48622,1004 @@
     },
     {
       "category": "conversation",
+      "export_name": "StaffContactV2Schema",
+      "schema": {
+        "$id": "StaffContact.v2",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anonymized_at": {
+                "type": "null"
+              },
+              "created_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "display_name": {
+                "type": "null"
+              },
+              "first_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "identities": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel_connection_id": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "display_redacted": {
+                      "anyOf": [
+                        {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000]+$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "identity_type": {
+                      "anyOf": [
+                        {
+                          "const": "widget_participant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telegram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "instagram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "phone",
+                          "type": "string"
+                        },
+                        {
+                          "const": "email",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "anonymized",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "validation_status": {
+                      "anyOf": [
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "valid",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "invalid",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "type": "null"
+                    },
+                    "verified_at": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                          "format": "date-time",
+                          "maxLength": 30,
+                          "minLength": 20,
+                          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "channel_connection_id",
+                    "display_redacted",
+                    "id",
+                    "identity_type",
+                    "status",
+                    "validation_status",
+                    "value",
+                    "verified_at"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              "last_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "preferred_locale": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "const": "uz",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ru",
+                        "type": "string"
+                      },
+                      {
+                        "const": "en",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "Supported V1 customer presentation locale."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sensitive_fields_visible": {
+                "const": false,
+                "type": "boolean"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "const": "active",
+                    "type": "string"
+                  },
+                  {
+                    "const": "blocked",
+                    "type": "string"
+                  }
+                ]
+              },
+              "updated_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "version": {
+                "description": "Positive safe integer used for optimistic concurrency.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "anonymized_at",
+              "created_at",
+              "display_name",
+              "first_seen_at",
+              "id",
+              "identities",
+              "last_seen_at",
+              "preferred_locale",
+              "sensitive_fields_visible",
+              "status",
+              "updated_at",
+              "version"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anonymized_at": {
+                "type": "null"
+              },
+              "created_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "display_name": {
+                "anyOf": [
+                  {
+                    "maxLength": 8192,
+                    "minLength": 1,
+                    "pattern": "^[^\\u0000]+$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "first_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "identities": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel_connection_id": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "display_redacted": {
+                      "anyOf": [
+                        {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000]+$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "identity_type": {
+                      "anyOf": [
+                        {
+                          "const": "widget_participant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telegram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "instagram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "phone",
+                          "type": "string"
+                        },
+                        {
+                          "const": "email",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "anonymized",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "validation_status": {
+                      "anyOf": [
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "valid",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "invalid",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "maxLength": 8192,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000]+$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verified_at": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                          "format": "date-time",
+                          "maxLength": 30,
+                          "minLength": 20,
+                          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "channel_connection_id",
+                    "display_redacted",
+                    "id",
+                    "identity_type",
+                    "status",
+                    "validation_status",
+                    "value",
+                    "verified_at"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              "last_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "preferred_locale": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "const": "uz",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ru",
+                        "type": "string"
+                      },
+                      {
+                        "const": "en",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "Supported V1 customer presentation locale."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sensitive_fields_visible": {
+                "const": true,
+                "type": "boolean"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "const": "active",
+                    "type": "string"
+                  },
+                  {
+                    "const": "blocked",
+                    "type": "string"
+                  }
+                ]
+              },
+              "updated_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "version": {
+                "description": "Positive safe integer used for optimistic concurrency.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "anonymized_at",
+              "created_at",
+              "display_name",
+              "first_seen_at",
+              "id",
+              "identities",
+              "last_seen_at",
+              "preferred_locale",
+              "sensitive_fields_visible",
+              "status",
+              "updated_at",
+              "version"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anonymized_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "created_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "display_name": {
+                "type": "null"
+              },
+              "first_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "identities": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel_connection_id": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "display_redacted": {
+                      "anyOf": [
+                        {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000]+$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "identity_type": {
+                      "anyOf": [
+                        {
+                          "const": "widget_participant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telegram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "instagram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "phone",
+                          "type": "string"
+                        },
+                        {
+                          "const": "email",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "anonymized",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "validation_status": {
+                      "anyOf": [
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "valid",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "invalid",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "type": "null"
+                    },
+                    "verified_at": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                          "format": "date-time",
+                          "maxLength": 30,
+                          "minLength": 20,
+                          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "channel_connection_id",
+                    "display_redacted",
+                    "id",
+                    "identity_type",
+                    "status",
+                    "validation_status",
+                    "value",
+                    "verified_at"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              "last_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "preferred_locale": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "const": "uz",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ru",
+                        "type": "string"
+                      },
+                      {
+                        "const": "en",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "Supported V1 customer presentation locale."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sensitive_fields_visible": {
+                "const": false,
+                "type": "boolean"
+              },
+              "status": {
+                "const": "anonymized",
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "version": {
+                "description": "Positive safe integer used for optimistic concurrency.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "anonymized_at",
+              "created_at",
+              "display_name",
+              "first_seen_at",
+              "id",
+              "identities",
+              "last_seen_at",
+              "preferred_locale",
+              "sensitive_fields_visible",
+              "status",
+              "updated_at",
+              "version"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anonymized_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "created_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "display_name": {
+                "type": "null"
+              },
+              "first_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "identities": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel_connection_id": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                          "maxLength": 36,
+                          "minLength": 36,
+                          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "display_redacted": {
+                      "anyOf": [
+                        {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000]+$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "identity_type": {
+                      "anyOf": [
+                        {
+                          "const": "widget_participant",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telegram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "instagram_user",
+                          "type": "string"
+                        },
+                        {
+                          "const": "phone",
+                          "type": "string"
+                        },
+                        {
+                          "const": "email",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "anonymized",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "validation_status": {
+                      "anyOf": [
+                        {
+                          "const": "unverified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "valid",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verified",
+                          "type": "string"
+                        },
+                        {
+                          "const": "invalid",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "type": "null"
+                    },
+                    "verified_at": {
+                      "anyOf": [
+                        {
+                          "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                          "format": "date-time",
+                          "maxLength": 30,
+                          "minLength": 20,
+                          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "channel_connection_id",
+                    "display_redacted",
+                    "id",
+                    "identity_type",
+                    "status",
+                    "validation_status",
+                    "value",
+                    "verified_at"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              "last_seen_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "preferred_locale": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "const": "uz",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ru",
+                        "type": "string"
+                      },
+                      {
+                        "const": "en",
+                        "type": "string"
+                      }
+                    ],
+                    "description": "Supported V1 customer presentation locale."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sensitive_fields_visible": {
+                "const": true,
+                "type": "boolean"
+              },
+              "status": {
+                "const": "anonymized",
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "version": {
+                "description": "Positive safe integer used for optimistic concurrency.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "anonymized_at",
+              "created_at",
+              "display_name",
+              "first_seen_at",
+              "id",
+              "identities",
+              "last_seen_at",
+              "preferred_locale",
+              "sensitive_fields_visible",
+              "status",
+              "updated_at",
+              "version"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Tenant-authorized Contact projection with permission-bound sensitive fields and fail-closed anonymization."
+      },
+      "schema_id": "StaffContact.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "conversation",
       "export_name": "StaffConversationAutomationModeSchema",
       "schema": {
         "$id": "StaffConversationAutomationMode.v1",
@@ -47484,6 +49975,340 @@
     },
     {
       "category": "conversation",
+      "export_name": "StaffConversationCollectionResponseV2Schema",
+      "schema": {
+        "$id": "StaffConversationCollectionResponse.v2",
+        "additionalProperties": false,
+        "description": "V1 successful keyset-paginated collection response envelope.",
+        "properties": {
+          "data": {
+            "items": {
+              "$id": "StaffConversation.v2",
+              "additionalProperties": false,
+              "properties": {
+                "active_handoff_id": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "automation_mode": {
+                  "anyOf": [
+                    {
+                      "const": "ai",
+                      "type": "string"
+                    },
+                    {
+                      "const": "paused",
+                      "type": "string"
+                    },
+                    {
+                      "const": "staff",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "channel_connection_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "closed_at": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                      "format": "date-time",
+                      "maxLength": 30,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "contact_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "created_at": {
+                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                  "format": "date-time",
+                  "maxLength": 30,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                  "type": "string"
+                },
+                "id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "last_activity_at": {
+                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                  "format": "date-time",
+                  "maxLength": 30,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                  "type": "string"
+                },
+                "lead_id": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "participant": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contact_id": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "display_redacted": {
+                      "anyOf": [
+                        {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000]+$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "identity_type": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "widget_participant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "telegram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "instagram_user",
+                              "type": "string"
+                            },
+                            {
+                              "const": "phone",
+                              "type": "string"
+                            },
+                            {
+                              "const": "email",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "contact_id",
+                    "display_redacted",
+                    "identity_type"
+                  ],
+                  "type": "object"
+                },
+                "preferred_locale": {
+                  "anyOf": [
+                    {
+                      "const": "uz",
+                      "type": "string"
+                    },
+                    {
+                      "const": "ru",
+                      "type": "string"
+                    },
+                    {
+                      "const": "en",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "Supported V1 customer presentation locale."
+                },
+                "resolved_at": {
+                  "anyOf": [
+                    {
+                      "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                      "format": "date-time",
+                      "maxLength": 30,
+                      "minLength": 20,
+                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "started_at": {
+                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                  "format": "date-time",
+                  "maxLength": 30,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                  "type": "string"
+                },
+                "status": {
+                  "anyOf": [
+                    {
+                      "const": "open",
+                      "type": "string"
+                    },
+                    {
+                      "const": "awaiting_lead",
+                      "type": "string"
+                    },
+                    {
+                      "const": "awaiting_staff",
+                      "type": "string"
+                    },
+                    {
+                      "const": "resolved",
+                      "type": "string"
+                    },
+                    {
+                      "const": "closed",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "updated_at": {
+                  "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                  "format": "date-time",
+                  "maxLength": 30,
+                  "minLength": 20,
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                  "type": "string"
+                },
+                "version": {
+                  "description": "Positive safe integer used for optimistic concurrency.",
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "active_handoff_id",
+                "automation_mode",
+                "channel_connection_id",
+                "closed_at",
+                "contact_id",
+                "created_at",
+                "id",
+                "last_activity_at",
+                "lead_id",
+                "participant",
+                "preferred_locale",
+                "resolved_at",
+                "started_at",
+                "status",
+                "updated_at",
+                "version"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "has_more": {
+                    "const": false,
+                    "type": "boolean"
+                  },
+                  "next_cursor": {
+                    "type": "null"
+                  },
+                  "request_id": {
+                    "description": "Bounded opaque operational identifier; never authorization evidence.",
+                    "maxLength": 128,
+                    "minLength": 8,
+                    "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "has_more",
+                  "request_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "has_more": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "next_cursor": {
+                    "description": "Bounded unpadded base64url cursor; opaque data and never tenant authorization evidence.",
+                    "maxLength": 2048,
+                    "minLength": 2,
+                    "pattern": "^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "description": "Bounded opaque operational identifier; never authorization evidence.",
+                    "maxLength": 128,
+                    "minLength": 8,
+                    "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "has_more",
+                  "next_cursor",
+                  "request_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Collection response metadata with a coherent optional continuation cursor."
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffConversationCollectionResponse.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "conversation",
       "export_name": "StaffConversationListQuerySchema",
       "schema": {
         "$id": "StaffConversationListQuery.v1",
@@ -47613,6 +50438,75 @@
       },
       "schema_id": "StaffConversationParticipant.v1",
       "schema_version": "1"
+    },
+    {
+      "category": "conversation",
+      "export_name": "StaffConversationParticipantV2Schema",
+      "schema": {
+        "$id": "StaffConversationParticipant.v2",
+        "additionalProperties": false,
+        "properties": {
+          "contact_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "display_redacted": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[^\\u0000]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identity_type": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "const": "widget_participant",
+                    "type": "string"
+                  },
+                  {
+                    "const": "telegram_user",
+                    "type": "string"
+                  },
+                  {
+                    "const": "instagram_user",
+                    "type": "string"
+                  },
+                  {
+                    "const": "phone",
+                    "type": "string"
+                  },
+                  {
+                    "const": "email",
+                    "type": "string"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contact_id",
+          "display_redacted",
+          "identity_type"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffConversationParticipant.v2",
+      "schema_version": "2"
     },
     {
       "category": "conversation",
@@ -47926,6 +50820,295 @@
     },
     {
       "category": "conversation",
+      "export_name": "StaffConversationResponseV2Schema",
+      "schema": {
+        "$id": "StaffConversationResponse.v2",
+        "additionalProperties": false,
+        "description": "V1 successful single-resource response envelope.",
+        "properties": {
+          "data": {
+            "$id": "StaffConversation.v2",
+            "additionalProperties": false,
+            "properties": {
+              "active_handoff_id": {
+                "anyOf": [
+                  {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "automation_mode": {
+                "anyOf": [
+                  {
+                    "const": "ai",
+                    "type": "string"
+                  },
+                  {
+                    "const": "paused",
+                    "type": "string"
+                  },
+                  {
+                    "const": "staff",
+                    "type": "string"
+                  }
+                ]
+              },
+              "channel_connection_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "closed_at": {
+                "anyOf": [
+                  {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contact_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "created_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "last_activity_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "lead_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "participant": {
+                "additionalProperties": false,
+                "properties": {
+                  "contact_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "display_redacted": {
+                    "anyOf": [
+                      {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "pattern": "^[^\\u0000]+$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "identity_type": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "widget_participant",
+                            "type": "string"
+                          },
+                          {
+                            "const": "telegram_user",
+                            "type": "string"
+                          },
+                          {
+                            "const": "instagram_user",
+                            "type": "string"
+                          },
+                          {
+                            "const": "phone",
+                            "type": "string"
+                          },
+                          {
+                            "const": "email",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "contact_id",
+                  "display_redacted",
+                  "identity_type"
+                ],
+                "type": "object"
+              },
+              "preferred_locale": {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              "resolved_at": {
+                "anyOf": [
+                  {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "started_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "const": "open",
+                    "type": "string"
+                  },
+                  {
+                    "const": "awaiting_lead",
+                    "type": "string"
+                  },
+                  {
+                    "const": "awaiting_staff",
+                    "type": "string"
+                  },
+                  {
+                    "const": "resolved",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closed",
+                    "type": "string"
+                  }
+                ]
+              },
+              "updated_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "version": {
+                "description": "Positive safe integer used for optimistic concurrency.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "active_handoff_id",
+              "automation_mode",
+              "channel_connection_id",
+              "closed_at",
+              "contact_id",
+              "created_at",
+              "id",
+              "last_activity_at",
+              "lead_id",
+              "participant",
+              "preferred_locale",
+              "resolved_at",
+              "started_at",
+              "status",
+              "updated_at",
+              "version"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "description": "Correlation metadata returned by a successful API request.",
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffConversationResponse.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "conversation",
       "export_name": "StaffConversationSchema",
       "schema": {
         "$id": "StaffConversation.v1",
@@ -48212,6 +51395,266 @@
       },
       "schema_id": "StaffConversationStatus.v1",
       "schema_version": "1"
+    },
+    {
+      "category": "conversation",
+      "export_name": "StaffConversationV2Schema",
+      "schema": {
+        "$id": "StaffConversation.v2",
+        "additionalProperties": false,
+        "properties": {
+          "active_handoff_id": {
+            "anyOf": [
+              {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "automation_mode": {
+            "anyOf": [
+              {
+                "const": "ai",
+                "type": "string"
+              },
+              {
+                "const": "paused",
+                "type": "string"
+              },
+              {
+                "const": "staff",
+                "type": "string"
+              }
+            ]
+          },
+          "channel_connection_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "last_activity_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "lead_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "participant": {
+            "additionalProperties": false,
+            "properties": {
+              "contact_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "display_redacted": {
+                "anyOf": [
+                  {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[^\\u0000]+$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "identity_type": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "const": "widget_participant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "telegram_user",
+                        "type": "string"
+                      },
+                      {
+                        "const": "instagram_user",
+                        "type": "string"
+                      },
+                      {
+                        "const": "phone",
+                        "type": "string"
+                      },
+                      {
+                        "const": "email",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "contact_id",
+              "display_redacted",
+              "identity_type"
+            ],
+            "type": "object"
+          },
+          "preferred_locale": {
+            "anyOf": [
+              {
+                "const": "uz",
+                "type": "string"
+              },
+              {
+                "const": "ru",
+                "type": "string"
+              },
+              {
+                "const": "en",
+                "type": "string"
+              }
+            ],
+            "description": "Supported V1 customer presentation locale."
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "const": "open",
+                "type": "string"
+              },
+              {
+                "const": "awaiting_lead",
+                "type": "string"
+              },
+              {
+                "const": "awaiting_staff",
+                "type": "string"
+              },
+              {
+                "const": "resolved",
+                "type": "string"
+              },
+              {
+                "const": "closed",
+                "type": "string"
+              }
+            ]
+          },
+          "updated_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "version": {
+            "description": "Positive safe integer used for optimistic concurrency.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_handoff_id",
+          "automation_mode",
+          "channel_connection_id",
+          "closed_at",
+          "contact_id",
+          "created_at",
+          "id",
+          "last_activity_at",
+          "lead_id",
+          "participant",
+          "preferred_locale",
+          "resolved_at",
+          "started_at",
+          "status",
+          "updated_at",
+          "version"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffConversation.v2",
+      "schema_version": "2"
     },
     {
       "category": "conversation",

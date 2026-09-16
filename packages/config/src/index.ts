@@ -40,3 +40,4 @@ export {
   type WidgetSecurityConfig,
 } from "./widget.js";
 export { loadTelegramPlatformConfig, type TelegramPlatformConfig } from "./telegram.js";
+export { loadInstagramPlatformConfig, type InstagramPlatformConfig } from "./instagram.js";

@@ -1,5 +1,12 @@
 # Public contract compatibility and drift control
 
+S11.B adds ContactIdentityAdded payload/event V2 and eight identity-bearing staff
+read V2 schemas without changing accepted V1 schemas. The verified public catalog
+is 329 schemas, 63 semantic event names and 65 registered event variants.
+Instagram identities produce `contact.identity_added` V2; unrelated producers
+remain V1. Exact staff route versioning and V1 projections are frozen in
+[the Instagram architecture note](../architecture/s11-instagram-business.md).
+
 Stage 2 publishes one runtime JSON Schema source of truth from
 `packages/contracts`. The reviewed baseline is
 `packages/contracts/snapshots/public-contracts.v1.json`; it inventories 207

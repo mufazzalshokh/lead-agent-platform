@@ -342,8 +342,8 @@ export const outboxEvents = pgTable(
     ),
     check(
       "outbox_events_schema_version_check",
-      sql`(${table.eventType} = 'lead.reopened' and ${table.schemaVersion} in ('1', '2'))
-        or (${table.eventType} <> 'lead.reopened' and ${table.schemaVersion} = '1')`,
+      sql`(${table.eventType} in ('lead.reopened', 'contact.identity_added') and ${table.schemaVersion} in ('1', '2'))
+        or (${table.eventType} not in ('lead.reopened', 'contact.identity_added') and ${table.schemaVersion} = '1')`,
     ),
     check("outbox_events_aggregate_version_check", sql`${table.aggregateVersion} > 0`),
     check(

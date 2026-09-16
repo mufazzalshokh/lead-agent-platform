@@ -468,7 +468,7 @@ const loadOutboundInSession = async (
                 where organization_id = $1 and contact_id = c.contact_id
                   and channel_connection_id = m.channel_connection_id
                   and identity_type = 'telegram_user' and status = 'active'
-                order by is_primary desc, created_at asc limit 1
+                order by created_at asc limit 1
              ) ci on true
             where m.organization_id = $1 and m.id = $2
               and m.direction = 'outbound'`,

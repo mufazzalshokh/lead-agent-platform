@@ -1,5 +1,6 @@
 import type {
   StaffConversationQueryUseCases,
+  StaffConversationQueryV2UseCases,
   StaffQueryFailureCode,
   StaffQueryResult,
 } from "@lead-agent/application";
@@ -8,10 +9,13 @@ import {
   RequestIdSchema,
   StaffContactReadParamsSchema,
   StaffContactResponseSchema,
+  StaffContactResponseV2Schema,
   StaffConversationCollectionResponseSchema,
+  StaffConversationCollectionResponseV2Schema,
   StaffConversationListQuerySchema,
   StaffConversationReadParamsSchema,
   StaffConversationResponseSchema,
+  StaffConversationResponseV2Schema,
   StaffLeadCollectionResponseSchema,
   StaffLeadListQuerySchema,
   StaffLeadReadParamsSchema,
@@ -39,6 +43,7 @@ const ORGANIZATION_HEADER = "x-organization-context";
 
 export type StaffConversationDependencies = Readonly<{
   queries: StaffConversationQueryUseCases;
+  queriesV2?: StaffConversationQueryV2UseCases;
 }>;
 
 export type StaffConversationSecurityBoundary = Readonly<{
@@ -98,6 +103,63 @@ export const registerStaffConversationQueries = (
   dependencies: StaffConversationDependencies,
   security: StaffConversationSecurityBoundary,
 ): void => {
+  const queriesV2 = dependencies.queriesV2;
+  if (queriesV2 !== undefined) {
+    api.get<{ Params: StaffContactReadParams }>(
+      "/v2/staff/contacts/:id",
+      {
+        schema: {
+          params: StaffContactReadParamsSchema,
+          response: { 200: StaffContactResponseV2Schema },
+        },
+      },
+      async (request, reply) => ({
+        data: requireValue(
+          await queriesV2.getContact({
+            authorization: await authorize(request, reply, security),
+            input: request.params,
+          }),
+        ),
+        meta: { request_id: publicRequestId(request) },
+      }),
+    );
+    api.get<{ Querystring: StaffConversationListQuery }>(
+      "/v2/staff/conversations",
+      {
+        schema: {
+          querystring: StaffConversationListQuerySchema,
+          response: { 200: StaffConversationCollectionResponseV2Schema },
+        },
+      },
+      async (request, reply) => {
+        const page = requireValue(
+          await queriesV2.listConversations({
+            authorization: await authorize(request, reply, security),
+            input: request.query,
+          }),
+        );
+        return { data: page.items, meta: pageMeta(request, page.nextCursor) };
+      },
+    );
+    api.get<{ Params: StaffConversationReadParams }>(
+      "/v2/staff/conversations/:id",
+      {
+        schema: {
+          params: StaffConversationReadParamsSchema,
+          response: { 200: StaffConversationResponseV2Schema },
+        },
+      },
+      async (request, reply) => ({
+        data: requireValue(
+          await queriesV2.getConversation({
+            authorization: await authorize(request, reply, security),
+            input: request.params,
+          }),
+        ),
+        meta: { request_id: publicRequestId(request) },
+      }),
+    );
+  }
   api.get<{ Params: StaffContactReadParams }>(
     "/v1/staff/contacts/:id",
     {

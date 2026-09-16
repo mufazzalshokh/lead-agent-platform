@@ -2,6 +2,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import type { WorkerRuntime } from "./worker-runtime.js";
+import type { CredentialSecretStore } from "@lead-agent/application";
 import { createWorkerShutdownCoordinator } from "./worker-signals.js";
 
 const safeErrorMetadata = (error: unknown): Readonly<{ code?: string; name: string }> => {
@@ -15,9 +16,10 @@ const safeErrorMetadata = (error: unknown): Readonly<{ code?: string; name: stri
 
 export const createProductionWorkerRuntime = async (
   environment: NodeJS.ProcessEnv = process.env,
+  options: Readonly<{ credentialSecretStore?: CredentialSecretStore }> = {},
 ): Promise<WorkerRuntime> => {
   const { composeProductionWorkerRuntime } = await import("./telegram-composition.js");
-  return composeProductionWorkerRuntime(environment);
+  return composeProductionWorkerRuntime(environment, options);
 };
 
 export const startWorker = async (

@@ -355,6 +355,13 @@ Service/Location lifecycle command.
 
 ### S9 deterministic staff read contracts
 
+S11.B adds only eight identity-bearing staff V2 schemas and three parallel
+read routes, as frozen in [the Instagram compatibility note](s11-instagram-business.md).
+Existing V1 shapes below remain immutable. V1 Contacts omit Instagram identities
+before decryption; V1 Conversation participant identity types project as null.
+V2 preserves authorization, masking, anonymization and pagination while adding
+`instagram_user`. Lead/message routes remain V1.
+
 S9 staff reads use the canonical `StaffContact`, `StaffLead`,
 `StaffConversation`, and `StaffMessage` V1 contracts. They never mirror raw
 database rows and never expose `organization_id`.

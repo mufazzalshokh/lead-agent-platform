@@ -48,7 +48,11 @@ export const contactIdentities = pgTable(
     ),
     check(
       "contact_identities_identity_type_check",
-      sql`${table.identityType} in ('widget_participant', 'telegram_user', 'phone', 'email')`,
+      sql`${table.identityType} in ('widget_participant', 'telegram_user', 'instagram_user', 'phone', 'email')`,
+    ),
+    check(
+      "contact_identities_instagram_channel_required_check",
+      sql`${table.identityType} <> 'instagram_user' or ${table.channelConnectionId} is not null`,
     ),
     check(
       "contact_identities_value_ciphertext_check",

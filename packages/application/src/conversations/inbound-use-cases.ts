@@ -22,7 +22,8 @@ const MESSAGE_CIPHERTEXT_MAXIMUM_BYTES = 65_536;
 const BOUNDED_CODE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/u;
 const NOTICE_KEY_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u;
 
-export type InboundParticipantIdentityType = "telegram_user" | "widget_participant";
+export type InboundParticipantIdentityType =
+  "instagram_user" | "telegram_user" | "widget_participant";
 export type InboundMessageProcessingStatus =
   "accepted" | "failed" | "processed" | "processing" | "suppressed";
 type InitialInboundMessageProcessingStatus = Extract<
@@ -204,6 +205,7 @@ const identityTypeFor = (event: CanonicalInboundEvent): InboundParticipantIdenti
     case "widget":
       return "widget_participant";
     case "instagram":
+      return "instagram_user";
     case "whatsapp":
       return null;
   }
@@ -300,7 +302,8 @@ export const createCanonicalInboundUseCases = (
             hashKeyVersion: identity.hashKeyVersion,
             identityType,
             lookupHash: new Uint8Array(identity.lookupHash),
-            validationStatus: event.channel === "telegram" ? "verified" : "valid",
+            validationStatus:
+              event.channel === "telegram" || event.channel === "instagram" ? "verified" : "valid",
             valueCiphertext: new Uint8Array(identity.valueCiphertext),
           }),
           message: Object.freeze({

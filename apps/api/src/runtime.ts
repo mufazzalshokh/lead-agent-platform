@@ -5,6 +5,7 @@ import {
   loadCustomerDataProtectionConfig,
   loadStaffWebAuthConfig,
   loadTelegramPlatformConfig,
+  loadInstagramPlatformConfig,
   loadWidgetSecurityConfig,
 } from "@lead-agent/config";
 import {
@@ -32,6 +33,8 @@ import { createStaffConfigurationDependencies } from "./configuration/compositio
 import { createS9ConversationComposition } from "./conversations/composition.js";
 import { createWidgetDependencies } from "./widget/composition.js";
 import { createTelegramApiComposition } from "./telegram/composition.js";
+import { createInstagramApiComposition } from "./instagram/composition.js";
+import type { CredentialSecretStore } from "@lead-agent/application";
 
 const requireEnvironment = (environment: NodeJS.ProcessEnv, name: string): string => {
   const value = environment[name];
@@ -44,7 +47,15 @@ const observeDatabaseFailure = (error: Error): void => {
   console.error("Authentication database pool reported an unexpected failure");
 };
 
-export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): FastifyInstance => {
+export const createApiFromEnvironment = (
+  environment: NodeJS.ProcessEnv,
+  options: Readonly<{ credentialSecretStore?: CredentialSecretStore }> = {},
+): FastifyInstance => {
+  const instagramConfig =
+    environment["INSTAGRAM_APP_ID"] === undefined ? null : loadInstagramPlatformConfig(environment);
+  const credentials = options.credentialSecretStore;
+  if (instagramConfig !== null && credentials === undefined)
+    throw new TypeError("Instagram requires a configured writable managed credential secret store");
   const web = loadStaffWebAuthConfig(environment);
   const authenticationDatabase = createIdentityDatabaseRuntimeConfig({
     connectionString: requireEnvironment(environment, "AUTH_DATABASE_URL"),
@@ -82,6 +93,16 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
     customerDataConfig,
     web.browserEnvelopeKey,
   );
+  const instagram =
+    instagramConfig !== null && credentials !== undefined
+      ? createInstagramApiComposition(
+          tenantRuntime,
+          ingressRuntime,
+          customerDataConfig,
+          instagramConfig,
+          credentials,
+        )
+      : null;
   const membershipRuntime = createMembershipLifecycleDatabaseRuntime(
     authenticationDatabase,
     tenantRuntime,
@@ -126,6 +147,9 @@ export const createApiFromEnvironment = (environment: NodeJS.ProcessEnv): Fastif
     staffConversations: conversations.staff,
     staffTelegram: telegram.staff,
     telegramWebhook: telegram.webhook,
+    ...(instagram === null
+      ? {}
+      : { staffInstagram: instagram.staff, instagramWebhook: instagram.webhook }),
     widget: createWidgetDependencies(
       tenantRuntime,
       ingressRuntime,

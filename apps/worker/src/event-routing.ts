@@ -89,7 +89,9 @@ export const isKnownEventVersion = (
   eventType: RoutedEventType,
   schemaVersion: unknown,
 ): schemaVersion is string =>
-  schemaVersion === "1" || (eventType === "lead.reopened" && schemaVersion === "2");
+  schemaVersion === "1" ||
+  ((eventType === "lead.reopened" || eventType === "contact.identity_added") &&
+    schemaVersion === "2");
 
 export const queueForEvent = (eventType: RoutedEventType): QueueName => {
   const queue: QueueName | undefined = EVENT_QUEUE_OWNERSHIP[eventType];

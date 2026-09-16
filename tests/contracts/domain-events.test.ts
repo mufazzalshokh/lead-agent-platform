@@ -424,7 +424,7 @@ describe("domain event catalog and source-of-truth strategy", () => {
     expect(Object.keys(DomainEventSchemasByVersion["lead.reopened"])).toEqual(["1", "2"]);
     expect(Object.keys(DomainEventPayloadSchemasByVersion["lead.reopened"])).toEqual(["1", "2"]);
     for (const eventName of EXPECTED_EVENT_NAMES) {
-      if (eventName !== "lead.reopened") {
+      if (eventName !== "lead.reopened" && eventName !== "contact.identity_added") {
         expect(Object.keys(DomainEventSchemasByVersion[eventName])).toEqual(["1"]);
         expect(Object.keys(DomainEventPayloadSchemasByVersion[eventName])).toEqual(["1"]);
       }

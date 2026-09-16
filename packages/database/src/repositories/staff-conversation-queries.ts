@@ -4,7 +4,7 @@ import type {
   StoredContactIdentity,
   StoredMessage,
 } from "@lead-agent/application";
-import type { StaffConversation, StaffLead } from "@lead-agent/contracts";
+import type { StaffConversationV2, StaffLead } from "@lead-agent/contracts";
 import type { AuthorizationContext } from "@lead-agent/security";
 import type { QueryResultRow } from "pg";
 
@@ -32,7 +32,13 @@ import {
 } from "./shared.js";
 
 const CONTACT_STATUSES = ["active", "anonymized", "blocked"] as const;
-const IDENTITY_TYPES = ["widget_participant", "telegram_user", "phone", "email"] as const;
+const IDENTITY_TYPES = [
+  "widget_participant",
+  "telegram_user",
+  "instagram_user",
+  "phone",
+  "email",
+] as const;
 const IDENTITY_VALIDATION_STATUSES = ["unverified", "valid", "verified", "invalid"] as const;
 const IDENTITY_STATUSES = ["active", "withdrawn", "anonymized"] as const;
 const LEAD_STATUSES = [
@@ -199,7 +205,7 @@ const mapLead = (row: LeadRow): StaffLead => ({
   version: mapAggregateVersion(row.version),
 });
 
-const mapConversation = (row: ConversationRow): StaffConversation => ({
+const mapConversation = (row: ConversationRow): StaffConversationV2 => ({
   active_handoff_id: nullable(row.active_handoff_id, mapHandoffId),
   automation_mode: mapEnum(row.automation_mode, AUTOMATION_MODES),
   channel_connection_id: mapChannelConnectionId(row.channel_connection_id),

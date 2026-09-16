@@ -139,11 +139,18 @@ export const createTelegramOutboundHandler = (dependencies: {
 
 export const createProductionHandlerRegistry = (dependencies: {
   telegramOutbound: WorkerEventHandler;
+  instagramOutbound?: WorkerEventHandler;
 }) =>
   createWorkerHandlerRegistry([
     {
       eventType: "message.response_queued",
-      handler: dependencies.telegramOutbound,
+      handler:
+        dependencies.instagramOutbound === undefined
+          ? dependencies.telegramOutbound
+          : async (context: Parameters<WorkerEventHandler>[0]) => {
+              await dependencies.telegramOutbound(context);
+              await dependencies.instagramOutbound?.(context);
+            },
       handlerVersion: "v1",
       queue: "outbound_message",
       schemaVersion: "1",

@@ -14,7 +14,8 @@ const FIXED_ENVELOPE_BYTES = MAGIC.byteLength + 1 + 1 + NONCE_BYTES + TAG_BYTES;
 const IDENTITY_ENVELOPE_MAX_BYTES = 8_192;
 const MESSAGE_ENVELOPE_MAX_BYTES = 65_536;
 
-export type CustomerIdentityType = "email" | "phone" | "telegram_user" | "widget_participant";
+export type CustomerIdentityType =
+  "email" | "phone" | "instagram_user" | "telegram_user" | "widget_participant";
 export type CustomerMessageContentType = "attachment" | "quick_reply" | "text";
 
 export class CustomerDataProtectionError extends Error {
@@ -91,7 +92,7 @@ export type CustomerDataProtection = Readonly<{
     input: Readonly<{
       channelConnectionId: ChannelConnectionId;
       externalParticipantId: string;
-      identityType: "telegram_user" | "widget_participant";
+      identityType: "instagram_user" | "telegram_user" | "widget_participant";
       organizationId: OrganizationId;
     }>,
   ): Readonly<{ hashKeyVersion: 1; lookupHash: Uint8Array; valueCiphertext: Uint8Array }>;

@@ -66,6 +66,26 @@ export const leadReopenedDomainEventV2Definition = defineDomainEventVersion(
   LeadReopenedDomainEventPayloadV2Schema,
 );
 
+export const contactIdentityAddedDomainEventV2Definition = defineDomainEventVersion(
+  "contact.identity_added",
+  "contact",
+  ContactIdSchema,
+  "2",
+  Type.Object(
+    {
+      contact_identity_id: embedSchema(ResourceIdSchema),
+      identity_type: Type.Union([
+        Type.Literal("phone"),
+        Type.Literal("email"),
+        Type.Literal("widget_participant"),
+        Type.Literal("telegram_user"),
+        Type.Literal("instagram_user"),
+      ]),
+    },
+    { $id: "ContactIdentityAddedDomainEventPayload.v2", additionalProperties: false },
+  ),
+);
+
 const ConversationActiveHandoffChangedDomainEventPayloadV1Schema = Type.Object(
   {
     automation_mode: Type.Literal("paused"),

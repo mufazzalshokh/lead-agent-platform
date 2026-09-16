@@ -91,7 +91,10 @@ export const StaffContactIdentityStatusSchema = Type.Union(
 );
 export type StaffContactIdentityStatus = Type.Static<typeof StaffContactIdentityStatusSchema>;
 
-const identityProjection = (value: Type.TSchema) =>
+const identityProjection = <IdentitySchema extends Type.TSchema, ValueSchema extends Type.TSchema>(
+  value: ValueSchema,
+  identityType: IdentitySchema,
+) =>
   Type.Object(
     {
       channel_connection_id: nullable(ChannelConnectionIdSchema),
@@ -100,7 +103,7 @@ const identityProjection = (value: Type.TSchema) =>
         Type.Null(),
       ]),
       id: embedSchemaAs<ResourceId>(ResourceIdSchema),
-      identity_type: embedSchema(StaffContactIdentityTypeSchema),
+      identity_type: embedSchema(identityType),
       status: embedSchema(StaffContactIdentityStatusSchema),
       validation_status: embedSchema(StaffContactIdentityValidationStatusSchema),
       value,
@@ -113,8 +116,11 @@ const NullableIdentityValueSchema = Type.Union([
   Type.String({ maxLength: 8_192, minLength: 1, pattern: NON_NULL_TEXT_PATTERN }),
   Type.Null(),
 ]);
-const MaskedIdentitySchema = identityProjection(Type.Null());
-const SensitiveIdentitySchema = identityProjection(NullableIdentityValueSchema);
+const MaskedIdentitySchema = identityProjection(Type.Null(), StaffContactIdentityTypeSchema);
+const SensitiveIdentitySchema = identityProjection(
+  NullableIdentityValueSchema,
+  StaffContactIdentityTypeSchema,
+);
 
 export const StaffContactIdentitySchema = Type.Object(SensitiveIdentitySchema.properties, {
   $id: "StaffContactIdentity.v1",
@@ -124,9 +130,9 @@ export const StaffContactIdentitySchema = Type.Object(SensitiveIdentitySchema.pr
 });
 export type StaffContactIdentity = Type.Static<typeof StaffContactIdentitySchema>;
 
-const contactProjection = (input: {
+const contactProjection = <IdentitySchema extends Type.TSchema>(input: {
   readonly displayName: Type.TSchema;
-  readonly identities: Type.TSchema;
+  readonly identities: IdentitySchema;
   readonly sensitiveFieldsVisible: boolean;
   readonly status: Type.TSchema;
   readonly anonymizedAt: Type.TSchema;
@@ -583,4 +589,98 @@ export const StaffMessageCollectionResponseSchema = createCollectionEnvelopeSche
 );
 export type StaffMessageCollectionResponse = Type.Static<
   typeof StaffMessageCollectionResponseSchema
+>;
+export const StaffContactIdentityTypeV2Schema = Type.Union(
+  [
+    Type.Literal("widget_participant"),
+    Type.Literal("telegram_user"),
+    Type.Literal("instagram_user"),
+    Type.Literal("phone"),
+    Type.Literal("email"),
+  ],
+  { $id: "StaffContactIdentityType.v2" },
+);
+export type StaffContactIdentityTypeV2 = Type.Static<typeof StaffContactIdentityTypeV2Schema>;
+const MaskedIdentityV2Schema = identityProjection(Type.Null(), StaffContactIdentityTypeV2Schema);
+const SensitiveIdentityV2Schema = identityProjection(
+  NullableIdentityValueSchema,
+  StaffContactIdentityTypeV2Schema,
+);
+export const StaffContactIdentityV2Schema = Type.Object(SensitiveIdentityV2Schema.properties, {
+  $id: "StaffContactIdentity.v2",
+  additionalProperties: false,
+});
+export type StaffContactIdentityV2 = Type.Static<typeof StaffContactIdentityV2Schema>;
+export const StaffContactV2Schema = Type.Union(
+  [
+    contactProjection({
+      anonymizedAt: Type.Null(),
+      displayName: Type.Null(),
+      identities: MaskedIdentityV2Schema,
+      sensitiveFieldsVisible: false,
+      status: ActiveContactStatusSchema,
+    }),
+    contactProjection({
+      anonymizedAt: Type.Null(),
+      displayName: NullableDisplayNameSchema,
+      identities: SensitiveIdentityV2Schema,
+      sensitiveFieldsVisible: true,
+      status: ActiveContactStatusSchema,
+    }),
+    contactProjection({
+      anonymizedAt: embeddedTimestamp(),
+      displayName: Type.Null(),
+      identities: MaskedIdentityV2Schema,
+      sensitiveFieldsVisible: false,
+      status: Type.Literal("anonymized"),
+    }),
+    contactProjection({
+      anonymizedAt: embeddedTimestamp(),
+      displayName: Type.Null(),
+      identities: MaskedIdentityV2Schema,
+      sensitiveFieldsVisible: true,
+      status: Type.Literal("anonymized"),
+    }),
+  ],
+  {
+    $id: "StaffContact.v2",
+    description:
+      "Tenant-authorized Contact projection with permission-bound sensitive fields and fail-closed anonymization.",
+  },
+);
+export type StaffContactV2 = Type.Static<typeof StaffContactV2Schema>;
+export const StaffContactResponseV2Schema = createSuccessEnvelopeSchema(
+  StaffContactV2Schema,
+  "StaffContactResponse.v2",
+);
+export type StaffContactResponseV2 = Type.Static<typeof StaffContactResponseV2Schema>;
+export const StaffConversationParticipantV2Schema = Type.Object(
+  {
+    ...StaffConversationParticipantSchema.properties,
+    identity_type: nullable(StaffContactIdentityTypeV2Schema),
+  },
+  { $id: "StaffConversationParticipant.v2", additionalProperties: false },
+);
+export type StaffConversationParticipantV2 = Type.Static<
+  typeof StaffConversationParticipantV2Schema
+>;
+export const StaffConversationV2Schema = Type.Object(
+  {
+    ...StaffConversationSchema.properties,
+    participant: embedSchema(StaffConversationParticipantV2Schema),
+  },
+  { $id: "StaffConversation.v2", additionalProperties: false },
+);
+export type StaffConversationV2 = Type.Static<typeof StaffConversationV2Schema>;
+export const StaffConversationResponseV2Schema = createSuccessEnvelopeSchema(
+  StaffConversationV2Schema,
+  "StaffConversationResponse.v2",
+);
+export type StaffConversationResponseV2 = Type.Static<typeof StaffConversationResponseV2Schema>;
+export const StaffConversationCollectionResponseV2Schema = createCollectionEnvelopeSchema(
+  StaffConversationV2Schema,
+  "StaffConversationCollectionResponse.v2",
+);
+export type StaffConversationCollectionResponseV2 = Type.Static<
+  typeof StaffConversationCollectionResponseV2Schema
 >;

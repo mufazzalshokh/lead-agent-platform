@@ -14,6 +14,7 @@ export * from "./published-business-knowledge.js";
 export * from "./service-configuration.js";
 export * from "./staff-conversation-queries.js";
 export * from "./telegram.js";
+export * from "./instagram.js";
 export * from "./widget.js";
 export {
   InvalidRepositoryMutationPlanError,

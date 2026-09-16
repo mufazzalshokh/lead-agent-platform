@@ -16,3 +16,4 @@ export {
 } from "./conversations/plugin.js";
 export { registerWidgetRoutes, type WidgetDependencies } from "./widget/plugin.js";
 export * from "./telegram/index.js";
+export * from "./instagram/index.js";
