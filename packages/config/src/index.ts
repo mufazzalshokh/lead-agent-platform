@@ -39,3 +39,4 @@ export {
   loadWidgetSecurityConfig,
   type WidgetSecurityConfig,
 } from "./widget.js";
+export { loadTelegramPlatformConfig, type TelegramPlatformConfig } from "./telegram.js";

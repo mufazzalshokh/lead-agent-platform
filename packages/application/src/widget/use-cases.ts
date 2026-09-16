@@ -27,6 +27,8 @@ import {
   type WidgetTokenService,
 } from "@lead-agent/security";
 
+import type { InboundRouteResolver, TrustedInboundRoute } from "../channels/index.js";
+
 import {
   createCanonicalInboundUseCases,
   type CanonicalInboundDataProtector,
@@ -37,14 +39,8 @@ import {
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$/u;
 const ABSOLUTE_LIFETIME_MS = 2 * 60 * 60 * 1_000;
 
-export type WidgetRoute = Readonly<{
-  channelConnectionId: ChannelConnectionId;
-  organizationId: OrganizationId;
-}>;
-
-export interface WidgetRouteResolver {
-  resolveWidgetRoute(routeKeyHash: Uint8Array): Promise<WidgetRoute | null>;
-}
+export type WidgetRoute = TrustedInboundRoute;
+export type WidgetRouteResolver = InboundRouteResolver;
 
 export type WidgetSessionAuthority = Readonly<{
   channelConnectionId: ChannelConnectionId;
@@ -360,7 +356,10 @@ export const createWidgetUseCases = (
       const now = clock();
       const origin = normalizeWidgetOrigin(input.origin);
       dependencies.rateLimiter.consume(["bootstrap", input.clientIp, input.widgetKey, origin], 10);
-      const route = await dependencies.routeResolver.resolveWidgetRoute(hash(input.widgetKey));
+      const route = await dependencies.routeResolver.resolveInboundRoute(
+        "widget_key",
+        hash(input.widgetKey),
+      );
       if (route === null) throw new WidgetApplicationError("channel_unavailable");
       dependencies.rateLimiter.consume(["bootstrap-tenant", route.organizationId], 100);
       const sessionId = identifiers.issueResourceId(now);

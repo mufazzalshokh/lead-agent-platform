@@ -98,9 +98,24 @@ importers:
 
   apps/worker:
     dependencies:
+      '@lead-agent/application':
+        specifier: workspace:*
+        version: link:../../packages/application
       '@lead-agent/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@lead-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@lead-agent/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@lead-agent/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
+      '@lead-agent/security':
+        specifier: workspace:*
+        version: link:../../packages/security
       pg-boss:
         specifier: 12.31.0
         version: 12.31.0
@@ -163,9 +178,15 @@ importers:
 
   packages/integrations:
     dependencies:
+      '@lead-agent/application':
+        specifier: workspace:*
+        version: link:../application
       '@lead-agent/config':
         specifier: workspace:*
         version: link:../config
+      '@lead-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@lead-agent/security':
         specifier: workspace:*
         version: link:../security

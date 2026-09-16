@@ -120,6 +120,7 @@ import { registerPublishedBusinessKnowledgeTests } from "./published-business-kn
 import { registerInboundConversationPersistenceTests } from "./inbound-conversation-persistence.test-suite.js";
 import { registerStaffConversationQueryTests } from "./staff-conversation-queries.test-suite.js";
 import { registerWidgetIntakeTests } from "./widget-intake.test-suite.js";
+import { registerTelegramBusinessPersistenceTests } from "./telegram-business.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -2710,7 +2711,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(26);
+    expect(migrationCount.rows[0]?.count).toBe(27);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -10010,5 +10011,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       await insertChannelConnection(CHANNEL_CONNECTION_A, ORGANIZATION_A, "widget", "S10 Widget");
       await insertWidgetOrigin(WIDGET_ORIGIN_A, ORGANIZATION_A, CHANNEL_CONNECTION_A, USER_A);
     },
+  });
+  registerTelegramBusinessPersistenceTests({
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
   });
 });

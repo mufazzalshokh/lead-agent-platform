@@ -4,7 +4,11 @@ import {
   OrganizationIdSchema,
   isSchemaValue,
 } from "@lead-agent/contracts";
-import type { WidgetRouteResolver } from "@lead-agent/application";
+import {
+  INBOUND_ROUTE_TYPES,
+  type InboundRouteResolver,
+  type InboundRouteType,
+} from "@lead-agent/application";
 import { Pool } from "pg";
 
 const REQUIRED_ROLE = "lead_agent_ingress";
@@ -17,7 +21,7 @@ export class InboundRouteRuntimeError extends Error {
   }
 }
 
-export type InboundRouteDatabaseRuntime = WidgetRouteResolver &
+export type InboundRouteDatabaseRuntime = InboundRouteResolver &
   Readonly<{
     close(): Promise<void>;
     verifyReady(): Promise<void>;
@@ -49,16 +53,22 @@ export const createInboundRouteDatabaseRuntime = (
       closed = true;
       await pool.end();
     },
-    resolveWidgetRoute: async (routeKeyHash: Uint8Array) => {
+    resolveInboundRoute: async (routeType: InboundRouteType, routeKeyHash: Uint8Array) => {
       try {
         await requireRole();
-        if (!(routeKeyHash instanceof Uint8Array) || routeKeyHash.byteLength !== 32) return null;
+        if (
+          !INBOUND_ROUTE_TYPES.includes(routeType) ||
+          !(routeKeyHash instanceof Uint8Array) ||
+          routeKeyHash.byteLength !== 32
+        ) {
+          return null;
+        }
         const result = await pool.query<{
           channel_connection_id: string;
           organization_id: string;
         }>(
-          "select organization_id::text, channel_connection_id::text from app.resolve_inbound_route('widget_key', $1::bytea)",
-          [Buffer.from(routeKeyHash)],
+          "select organization_id::text, channel_connection_id::text from app.resolve_inbound_route($1, $2::bytea)",
+          [routeType, Buffer.from(routeKeyHash)],
         );
         const row = result.rows[0];
         if (row === undefined) return null;

@@ -19,7 +19,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@lead-agent/application": "workspace:*",
     "@lead-agent/config": "workspace:*",
+    "@lead-agent/contracts": "workspace:*",
     "@lead-agent/security": "workspace:*",
     "jose": "6.2.12",
     "openid-client": "6.8.7"

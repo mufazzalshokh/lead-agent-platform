@@ -177,7 +177,7 @@ may therefore legitimately require both.
 |---|---|---|---|
 | Staff/private | Human user | Auth0 OIDC Authorization Code + PKCE establishes an opaque, revocable application session in a Secure, HttpOnly, SameSite=Lax cookie; production MFA is required for every tenant role | Active organization selector is verified against server-side active membership on every request; Auth0 Organization claims have no authority. |
 | Anonymous widget | Widget session | Short-lived, audience-scoped widget bearer token issued by the session bootstrap | Publishable widget key resolves configuration; token binds immutable `organization_id`, `channel_connection_id`, origin, and conversation/session. |
-| Telegram webhook | Provider delivery | Adapter verifies provider secret/signature against raw bytes before parsing | Opaque route connection key plus verified provider account resolves one active channel connection. |
+| Telegram webhook | Platform Business Bot delivery | Verify the platform secret-token header before semantic processing | Verified Business Connection hash resolves an exact tenant/channel; customers retain their existing business DM. See `s11-telegram-business.md`. |
 | Future Instagram/WhatsApp webhook | Provider delivery | Adapter-specific signature, timestamp, and replay verification | Verified provider account/connection mapping; never a payload `organization_id`. |
 | Background worker | Workload identity | Separate least-privilege database/application credential | Tenant carried in a trusted job created from an already resolved transaction and re-established for each job. |
 | Platform operations | Platform operator | Separate admin audience, mandatory MFA, and fresh step-up for sensitive actions | No implicit tenant scope; an explicit, two-operator-approved, audited support grant is required. |
@@ -686,7 +686,7 @@ rate- and size-limited.
 
 | Method and path | V1 | Tenant routing |
 |---|---:|---|
-| `POST /telegram/{connection_key}` | yes | Opaque high-entropy route key narrows the candidate connection; verified secret and bot/account identity must match it. |
+| `POST /v1/webhooks/telegram` | yes | One platform secret-token webhook; verified Business Connection identity resolves the tenant. Nonce → owner → connection binding uses controlled Telegram-only route functions; see `s11-telegram-business.md`. |
 | `POST /instagram/{connection_key}` | later | Same core ingress port; Meta-specific signature/account verification. |
 | `POST /whatsapp/{connection_key}` | later | Same core ingress port; Meta-specific signature/account verification. |
 

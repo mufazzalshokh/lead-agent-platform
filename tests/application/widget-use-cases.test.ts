@@ -183,7 +183,7 @@ const fixture = (
       options.rateLimiter ??
       createWidgetRateLimiter({ clock: () => NOW, salt: Buffer.alloc(32, 5) }),
     routeResolver: {
-      resolveWidgetRoute: () =>
+      resolveInboundRoute: () =>
         Promise.resolve({
           channelConnectionId: CHANNEL_ID,
           organizationId: ORGANIZATION_ID,

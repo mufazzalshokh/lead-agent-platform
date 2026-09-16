@@ -20,6 +20,12 @@ export default defineConfig({
       "@lead-agent/security": fileURLToPath(
         new URL("./packages/security/src/index.ts", import.meta.url),
       ),
+      "@lead-agent/integrations": fileURLToPath(
+        new URL("./packages/integrations/src/index.ts", import.meta.url),
+      ),
+      "@lead-agent/database": fileURLToPath(
+        new URL("./packages/database/src/index.ts", import.meta.url),
+      ),
     },
   },
   test: {

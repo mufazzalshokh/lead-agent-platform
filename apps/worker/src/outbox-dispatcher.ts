@@ -50,6 +50,7 @@ export type CanonicalDispatchEvent = Readonly<{
   event_id: string;
   event_type: string;
   organization_id: string;
+  payload?: Readonly<Record<string, unknown>>;
   schema_version: string;
 }>;
 

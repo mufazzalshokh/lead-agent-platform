@@ -64,6 +64,13 @@ import {
   type StaffConversationDependencies,
 } from "../conversations/plugin.js";
 import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
+import {
+  registerStaffTelegramManagement,
+  registerTelegramWebhook,
+  telegramHttpProblem,
+  type StaffTelegramDependencies,
+  type TelegramWebhookDependencies,
+} from "../telegram/plugin.js";
 
 const STAFF_AUTH_PREFIX = "/v1/staff/auth";
 const CSRF_HEADER = "x-csrf-token";
@@ -75,6 +82,7 @@ export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.cookie",
   "req.headers.idempotency-key",
   "req.headers.x-csrf-token",
+  "req.headers.x-telegram-bot-api-secret-token",
   "res.headers.set-cookie",
   "body.authorization_code",
   "body.invitation_token",
@@ -110,6 +118,8 @@ export type ApiOptions = Readonly<{
   staffAuth?: StaffAuthDependencies;
   staffConfiguration?: StaffConfigurationDependencies;
   staffConversations?: StaffConversationDependencies;
+  staffTelegram?: StaffTelegramDependencies;
+  telegramWebhook?: TelegramWebhookDependencies;
   widget?: WidgetDependencies;
 }>;
 
@@ -320,6 +330,10 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
           : error.code === "resource_not_found"
             ? 404
             : 500;
+  } else if (telegramHttpProblem(error) !== null) {
+    const telegramProblem = telegramHttpProblem(error)!;
+    code = telegramProblem.code;
+    status = telegramProblem.status;
   } else if (error instanceof WidgetOriginInvalidError) {
     code = "origin_not_allowed";
     status = 403;
@@ -381,6 +395,7 @@ const registerStaffAuth = async (
   dependencies: StaffAuthDependencies,
   staffConfiguration?: StaffConfigurationDependencies,
   staffConversations?: StaffConversationDependencies,
+  staffTelegram?: StaffTelegramDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -741,6 +756,13 @@ const registerStaffAuth = async (
       resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
+  if (staffTelegram !== undefined) {
+    registerStaffTelegramManagement(api, staffTelegram, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+    });
+  }
 };
 
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
@@ -749,6 +771,9 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   }
   if (options.staffConversations !== undefined && options.staffAuth === undefined) {
     throw new TypeError("Staff conversation routes require the staff authentication boundary");
+  }
+  if (options.staffTelegram !== undefined && options.staffAuth === undefined) {
+    throw new TypeError("Staff Telegram routes require the staff authentication boundary");
   }
   const api = Fastify({
     ajv: { customOptions: { removeAdditional: false, strict: false } },
@@ -781,6 +806,37 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
       registerWidgetRoutes(widgetApi, widget);
     });
   }
+  const telegramWebhook = options.telegramWebhook;
+  if (telegramWebhook !== undefined) {
+    void api.register((telegramApi) => {
+      telegramApi.setErrorHandler((error, request, reply) => {
+        const telegramProblem = telegramHttpProblem(error);
+        const statusCode: unknown =
+          error instanceof Error ? Reflect.get(error, "statusCode") : null;
+        const status =
+          telegramProblem?.status ??
+          (statusCode === 413 ? 413 : statusCode === 400 || statusCode === 415 ? 400 : 503);
+        const code =
+          telegramProblem?.code ??
+          (status === 413
+            ? "payload_too_large"
+            : status === 400
+              ? "validation_failed"
+              : "dependency_unavailable");
+        void reply
+          .type("application/problem+json")
+          .code(status)
+          .send({
+            code,
+            request_id: request.id,
+            status,
+            title: status >= 500 ? "Service unavailable" : "Request denied",
+            type: "https://lead-agent.invalid/problems/" + code,
+          });
+      });
+      registerTelegramWebhook(telegramApi, telegramWebhook);
+    });
+  }
   const staffAuth = options.staffAuth;
   if (staffAuth !== undefined) {
     void api.register((staffApi) =>
@@ -789,6 +845,7 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         staffAuth,
         options.staffConfiguration,
         options.staffConversations,
+        options.staffTelegram,
       ),
     );
   }

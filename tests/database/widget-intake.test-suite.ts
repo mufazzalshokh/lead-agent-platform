@@ -46,7 +46,7 @@ export const registerWidgetIntakeTests = (options: Options): void => {
       persistence: createWidgetPersistenceStore(options.runtime(), { clock: () => NOW }),
       rateLimiter: createWidgetRateLimiter({ clock: () => NOW, salt: Buffer.alloc(32, 24) }),
       routeResolver: {
-        resolveWidgetRoute: (routeHash) =>
+        resolveInboundRoute: (_routeType, routeHash) =>
           Promise.resolve(
             Buffer.from(routeHash).equals(createHash("sha256").update(WIDGET_KEY).digest())
               ? { channelConnectionId: options.channelId, organizationId: options.organizationId }

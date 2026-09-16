@@ -1,13 +1,8 @@
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { loadQueueDatabaseRuntimeConfig } from "@lead-agent/config";
-
-import { PRODUCTION_HANDLER_REGISTRY } from "./handler-registry.js";
-import { createQueueInfrastructure } from "./queue-infrastructure.js";
-import { createWorkerRuntime, type WorkerRuntime } from "./worker-runtime.js";
+import type { WorkerRuntime } from "./worker-runtime.js";
 import { createWorkerShutdownCoordinator } from "./worker-signals.js";
-import { createStructuredConsoleWorkerTelemetry } from "./worker-telemetry.js";
 
 const safeErrorMetadata = (error: unknown): Readonly<{ code?: string; name: string }> => {
   if (!(error instanceof Error)) return Object.freeze({ name: "UnknownError" });
@@ -18,26 +13,17 @@ const safeErrorMetadata = (error: unknown): Readonly<{ code?: string; name: stri
   });
 };
 
-export const createProductionWorkerRuntime = (
+export const createProductionWorkerRuntime = async (
   environment: NodeJS.ProcessEnv = process.env,
-): WorkerRuntime => {
-  const telemetry = createStructuredConsoleWorkerTelemetry({ service: "lead-agent-worker" });
-  return createWorkerRuntime({
-    observability: {
-      onDispatcherError: (error) => {
-        console.error("Worker dispatcher iteration failed", safeErrorMetadata(error));
-      },
-    },
-    queue: createQueueInfrastructure(loadQueueDatabaseRuntimeConfig(environment), { telemetry }),
-    registry: PRODUCTION_HANDLER_REGISTRY,
-    telemetry,
-  });
+): Promise<WorkerRuntime> => {
+  const { composeProductionWorkerRuntime } = await import("./telegram-composition.js");
+  return composeProductionWorkerRuntime(environment);
 };
 
 export const startWorker = async (
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<WorkerRuntime> => {
-  const runtime = createProductionWorkerRuntime(environment);
+  const runtime = await createProductionWorkerRuntime(environment);
   await runtime.start();
   console.info("Lead Agent Platform worker is ready", runtime.readiness());
   return runtime;
@@ -50,7 +36,7 @@ const isMainModule = (): boolean => {
 
 const runWorkerProcess = async (): Promise<void> => {
   try {
-    const runtime = createProductionWorkerRuntime();
+    const runtime = await createProductionWorkerRuntime();
     const shutdown = createWorkerShutdownCoordinator({
       onShutdownError: (error) => {
         console.error("Lead Agent Platform worker shutdown failed", safeErrorMetadata(error));
