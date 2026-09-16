@@ -413,7 +413,7 @@ describe("S8.2/S8.3 PostgreSQL 17 narrow outbox relay persistence", { timeout: 3
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 25 }]);
+    expect(migrations.rows).toEqual([{ count: 26 }]);
   });
 
   it("exposes only the minimal typed claim result without payload", async () => {

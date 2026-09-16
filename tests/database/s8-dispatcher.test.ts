@@ -403,7 +403,7 @@ describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 25 }]);
+    expect(migrations.rows).toEqual([{ count: 26 }]);
   });
 
   it("observes pg-boss 12.31.0 returning null for an exact duplicate queue and ID", async () => {
