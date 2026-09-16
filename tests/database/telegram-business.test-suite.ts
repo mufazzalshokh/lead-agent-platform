@@ -339,7 +339,7 @@ export const registerTelegramBusinessPersistenceTests = (options: Options): void
           )
         ).rows[0]?.id;
         await pool.query(
-          "update conversations set status=$1,automation_mode='paused',resolved_at=last_activity_at,closed_at=case when $1='closed' then last_activity_at else null end where id=$2",
+          "update conversations set status=$1::text,automation_mode='paused',resolved_at=last_activity_at,closed_at=case when $1::text='closed' then last_activity_at else null end where id=$2",
           [status, first],
         );
         await useCases.processUpdate(
