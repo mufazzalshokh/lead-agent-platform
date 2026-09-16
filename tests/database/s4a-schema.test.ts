@@ -9265,7 +9265,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
               pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'DELETE') as can_delete,
               pg_catalog.has_table_privilege($1, pg_catalog.format('public.%I', table_name), 'TRUNCATE') as can_truncate
          from unnest($2::text[]) as tenant_table(table_name)
-        order by table_name`,
+        order by table_name collate "C"`,
       [S5_RUNTIME_ROLE, S5_FULL_DML_TABLES],
     );
     expect(fullDmlPrivileges.rows).toEqual(
