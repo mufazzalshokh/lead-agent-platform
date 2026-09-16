@@ -22,7 +22,6 @@ import {
   type MembershipId,
   type MessageId,
   type OrganizationId,
-  type ResourceId,
   type StaffContact,
   type StaffConversation,
   type StaffLead,
@@ -95,7 +94,7 @@ const contact: StaffContact = {
     {
       channel_connection_id: CHANNEL_ID,
       display_redacted: "@a***",
-      id: ids.identity as ResourceId,
+      id: ids.identity,
       identity_type: "telegram_user",
       status: "active",
       validation_status: "verified",
