@@ -17,10 +17,18 @@ import {
   type WidgetMessageListQuery,
   type WidgetSessionCreateInput,
 } from "@lead-agent/contracts";
-import type { WidgetUseCases } from "@lead-agent/application";
+import { WidgetApplicationError, type WidgetUseCases } from "@lead-agent/application";
+import { WidgetOriginInvalidError, normalizeWidgetOrigin } from "@lead-agent/security";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 const BODY_LIMIT = 32 * 1_024;
+const PREFLIGHT_METHODS = new Set(["GET", "POST"]);
+const PREFLIGHT_HEADERS = new Set([
+  "authorization",
+  "content-type",
+  "idempotency-key",
+  "x-request-id",
+]);
 export type WidgetDependencies = Readonly<{ useCases: WidgetUseCases }>;
 const requestId = (request: FastifyRequest): RequestId => `request:${request.id}` as RequestId;
 const originOf = (request: FastifyRequest): string =>
@@ -35,6 +43,27 @@ const idempotencyOf = (request: FastifyRequest): string => {
   const value = request.headers["idempotency-key"];
   return typeof value === "string" ? value : "";
 };
+const requirePreflightOrigin = (request: FastifyRequest): string => {
+  const rawOrigin = request.headers.origin;
+  const origin = normalizeWidgetOrigin(rawOrigin);
+  if (rawOrigin !== origin) throw new WidgetOriginInvalidError();
+  return origin;
+};
+const requirePreflightCapabilities = (request: FastifyRequest): void => {
+  const method = request.headers["access-control-request-method"];
+  if (typeof method !== "string" || !PREFLIGHT_METHODS.has(method)) {
+    throw new WidgetApplicationError("validation_failed");
+  }
+  const requestedHeaders = request.headers["access-control-request-headers"];
+  if (requestedHeaders === undefined) return;
+  if (typeof requestedHeaders !== "string") {
+    throw new WidgetApplicationError("validation_failed");
+  }
+  const names = requestedHeaders.split(",").map((name) => name.trim().toLowerCase());
+  if (names.some((name) => name.length === 0 || !PREFLIGHT_HEADERS.has(name))) {
+    throw new WidgetApplicationError("validation_failed");
+  }
+};
 const secureResponse = (reply: FastifyReply, origin: string): void => {
   reply.header("access-control-allow-origin", origin);
   reply.header("cache-control", "no-store");
@@ -46,14 +75,17 @@ export const registerWidgetRoutes = (
   api: FastifyInstance,
   dependencies: WidgetDependencies,
 ): void => {
-  api.options("/v1/widget/*", async (_request, reply) => {
-    reply.header("access-control-allow-methods", "GET, POST, OPTIONS");
+  api.options("/v1/widget/*", async (request, reply) => {
+    const origin = requirePreflightOrigin(request);
+    requirePreflightCapabilities(request);
+    reply.header("access-control-allow-origin", origin);
+    reply.header("access-control-allow-methods", "GET, POST");
     reply.header(
       "access-control-allow-headers",
       "Authorization, Content-Type, Idempotency-Key, X-Request-Id",
     );
     reply.header("cache-control", "no-store");
-    reply.header("vary", "Origin");
+    reply.header("vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
     await reply.code(204).send();
   });
 

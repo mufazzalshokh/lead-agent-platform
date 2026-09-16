@@ -67,11 +67,12 @@ const dependencies = () => {
         sequenceNo: 1,
       });
     }),
-    getConversation: vi.fn(({ conversationId }) =>
-      conversationId === CONVERSATION_ID
+    getConversation: vi.fn(({ bearerToken, conversationId }) => {
+      if (bearerToken === "") return Promise.reject(new WidgetTokenInvalidError());
+      return conversationId === CONVERSATION_ID
         ? Promise.resolve(conversation)
-        : Promise.reject(new Error("not found")),
-    ),
+        : Promise.reject(new Error("not found"));
+    }),
     listMessages: vi.fn(() => Promise.resolve({ hasMore: false, items: [visibleMessage] })),
     postMessage: vi.fn(() =>
       Promise.resolve({
@@ -176,7 +177,7 @@ describe("S10 Widget Fastify API", () => {
     }
   }, 30_000);
 
-  it("rejects missing Origin, malformed bearer, oversized JSON, and arbitrary CORS reflection", async () => {
+  it("supports non-enumerating browser preflight and rejects arbitrary actual-request CORS", async () => {
     const widget = dependencies();
     const api = createApi({ widget: { useCases: widget.useCases } });
     try {
@@ -209,11 +210,121 @@ describe("S10 Widget Fastify API", () => {
       const preflight = await api.inject({
         method: "OPTIONS",
         url: "/v1/widget/sessions",
-        headers: { origin: "https://unknown.invalid" },
+        headers: {
+          "access-control-request-headers": "content-type, x-request-id",
+          "access-control-request-method": "POST",
+          origin: ORIGIN,
+        },
       });
       expect(preflight.statusCode).toBe(204);
-      expect(preflight.headers).not.toHaveProperty("access-control-allow-origin");
+      expect(preflight.headers["access-control-allow-origin"]).toBe(ORIGIN);
+      expect(preflight.headers["access-control-allow-methods"]).toBe("GET, POST");
+      expect(preflight.headers["access-control-allow-headers"]).toBe(
+        "Authorization, Content-Type, Idempotency-Key, X-Request-Id",
+      );
+      expect(preflight.headers["vary"]).toContain("Access-Control-Request-Method");
+      expect(preflight.headers).not.toHaveProperty("access-control-allow-credentials");
       expect(widget.useCases.bootstrap).toHaveBeenCalledTimes(0);
+
+      vi.mocked(widget.useCases.bootstrap).mockRejectedValueOnce(new WidgetOriginInvalidError());
+      const unapproved = await api.inject({
+        method: "POST",
+        url: "/v1/widget/sessions",
+        headers: { origin: "https://unknown.invalid" },
+        payload: {
+          page_url: "https://unknown.invalid",
+          requested_locale: "uz",
+          widget_key: "A".repeat(32),
+        },
+      });
+      expect(unapproved.statusCode).toBe(403);
+      expect(unapproved.headers).not.toHaveProperty("access-control-allow-origin");
+    } finally {
+      await api.close();
+    }
+  });
+
+  it.each([
+    [{ "access-control-request-method": "POST" }, 403],
+    [{ "access-control-request-method": "POST", origin: "null" }, 403],
+    [{ "access-control-request-method": "POST", origin: "http://clinic.example" }, 403],
+    [{ "access-control-request-method": "POST", origin: "https://CLINIC.example" }, 403],
+    [{ "access-control-request-method": "POST", origin: "https://clinic.example/path" }, 403],
+    [{ "access-control-request-method": "DELETE", origin: ORIGIN }, 400],
+    [
+      {
+        "access-control-request-headers": "content-type, x-tenant-id",
+        "access-control-request-method": "POST",
+        origin: ORIGIN,
+      },
+      400,
+    ],
+  ])(
+    "rejects malformed or unsupported preflight capabilities %#",
+    async (requestHeaders, status) => {
+      const widget = dependencies();
+      const api = createApi({ widget: { useCases: widget.useCases } });
+      try {
+        const response = await api.inject({
+          method: "OPTIONS",
+          url: "/v1/widget/sessions",
+          headers: requestHeaders,
+        });
+        expect(response.statusCode).toBe(status);
+        expect(response.headers).not.toHaveProperty("access-control-allow-origin");
+        expect(response.headers).not.toHaveProperty("access-control-allow-credentials");
+        expect(widget.useCases.bootstrap).not.toHaveBeenCalled();
+      } finally {
+        await api.close();
+      }
+    },
+  );
+
+  it("ignores tenant selectors in query strings and rejects authority or bearer smuggling", async () => {
+    const widget = dependencies();
+    const api = createApi({ widget: { useCases: widget.useCases } });
+    try {
+      const queryAttempt = await api.inject({
+        method: "POST",
+        url: `/v1/widget/sessions?organization_id=${CONVERSATION_ID}&channel_connection_id=${MESSAGE_ID}`,
+        headers: { origin: ORIGIN },
+        payload: {
+          page_url: "https://attacker.invalid/spoof",
+          requested_locale: "uz",
+          widget_key: "A".repeat(32),
+        },
+      });
+      expect(queryAttempt.statusCode).toBe(201);
+      expect(widget.useCases.bootstrap).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(widget.useCases.bootstrap).mock.calls[0]?.[0]).not.toHaveProperty(
+        "organization_id",
+      );
+      expect(vi.mocked(widget.useCases.bootstrap).mock.calls[0]?.[0]).not.toHaveProperty(
+        "channel_connection_id",
+      );
+
+      const payloadAttempt = await api.inject({
+        method: "POST",
+        url: "/v1/widget/sessions",
+        headers: { origin: ORIGIN },
+        payload: {
+          channel_connection_id: MESSAGE_ID,
+          organization_id: CONVERSATION_ID,
+          page_url: ORIGIN,
+          requested_locale: "uz",
+          widget_key: "A".repeat(32),
+        },
+      });
+      expect(payloadAttempt.statusCode).toBe(400);
+      expect(widget.useCases.bootstrap).toHaveBeenCalledTimes(1);
+
+      const queryToken = await api.inject({
+        method: "GET",
+        url: `/v1/widget/conversations/${CONVERSATION_ID}?access_token=${TOKEN}`,
+        headers: { origin: ORIGIN },
+      });
+      expect(queryToken.statusCode).toBe(401);
+      expect(queryToken.headers).not.toHaveProperty("access-control-allow-origin");
     } finally {
       await api.close();
     }

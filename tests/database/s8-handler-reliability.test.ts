@@ -301,7 +301,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe("S8.5 PostgreSQL 17 reliability migration", { timeout: 30_000 }, () => {
-  it("bootstraps and reruns 0024 without changing the 51-table business manifest", async () => {
+  it("bootstraps and reruns 0025 without changing the 51-table business manifest", async () => {
     expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     const journal: unknown = JSON.parse(
       await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
@@ -311,8 +311,8 @@ describe("S8.5 PostgreSQL 17 reliability migration", { timeout: 30_000 }, () => 
         ? (journal as Record<string, unknown>)["entries"]
         : undefined;
     expect(Array.isArray(entries) ? entries.at(-1) : undefined).toMatchObject({
-      idx: 24,
-      tag: "0024_s8_handler_reliability",
+      idx: 25,
+      tag: "0025_s6_membership_invitation_clock_skew",
     });
     const publicTables = await database().query<{ count: number }>(
       `select count(*)::integer as count from information_schema.tables

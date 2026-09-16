@@ -21,6 +21,8 @@ import type {
 import {
   createWidgetRateLimiter,
   createWidgetTokenService,
+  WidgetRateLimitError,
+  type WidgetRateLimiter,
   type WidgetTokenClaims,
 } from "../../packages/security/src/index.js";
 
@@ -45,10 +47,16 @@ const conversation: WidgetConversation = {
   status: "open",
 };
 
-const fixture = () => {
+const fixture = (
+  options: Readonly<{
+    corruptFirstMessage?: boolean;
+    rateLimiter?: WidgetRateLimiter;
+  }> = {},
+) => {
   let createdSessions = 0;
   let acceptedInitial = 0;
   let acceptedBound = 0;
+  let revealedMessages = 0;
   let preparedEvent: CanonicalInboundEvent | undefined;
   const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
   let authorityClaims: WidgetTokenClaims | null = null;
@@ -117,36 +125,40 @@ const fixture = () => {
     },
     getConversation: ({ conversationId }) =>
       Promise.resolve(conversationId === CONVERSATION_ID ? conversation : null),
-    listMessages: () =>
-      Promise.resolve({
-        hasMore: false,
-        items: [
-          {
-            bodyCiphertext: Buffer.from("cipher"),
-            channelConnectionId: CHANNEL_ID,
-            contentType: "text",
-            conversationId: CONVERSATION_ID,
-            createdAt: NOW,
-            direction: "inbound",
-            id: MESSAGE_ID,
-            locale: "uz",
-            redactedAt: null,
-            sequenceNo: 1,
-          },
-          {
-            bodyCiphertext: null,
-            channelConnectionId: CHANNEL_ID,
-            contentType: "text",
-            conversationId: CONVERSATION_ID,
-            createdAt: NOW,
-            direction: "outbound",
-            id: MESSAGE_ID,
-            locale: "uz",
-            redactedAt: NOW,
-            sequenceNo: 2,
-          },
-        ],
-      }),
+    listMessages: ({ conversationId }) =>
+      Promise.resolve(
+        conversationId === CONVERSATION_ID
+          ? {
+              hasMore: false,
+              items: [
+                {
+                  bodyCiphertext: options.corruptFirstMessage ? null : Buffer.from("cipher"),
+                  channelConnectionId: CHANNEL_ID,
+                  contentType: "text",
+                  conversationId: CONVERSATION_ID,
+                  createdAt: NOW,
+                  direction: "inbound",
+                  id: MESSAGE_ID,
+                  locale: "uz",
+                  redactedAt: null,
+                  sequenceNo: 1,
+                },
+                {
+                  bodyCiphertext: null,
+                  channelConnectionId: CHANNEL_ID,
+                  contentType: "text",
+                  conversationId: CONVERSATION_ID,
+                  createdAt: NOW,
+                  direction: "outbound",
+                  id: MESSAGE_ID,
+                  locale: "uz",
+                  redactedAt: NOW,
+                  sequenceNo: 2,
+                },
+              ],
+            }
+          : null,
+      ),
   };
   const useCases = createWidgetUseCases({
     clock: () => NOW,
@@ -160,11 +172,16 @@ const fixture = () => {
         lookupHash: digest(externalParticipantId),
         valueCiphertext: Buffer.from(externalParticipantId),
       }),
-      revealMessageBody: () => "<script>text only</script>",
+      revealMessageBody: () => {
+        revealedMessages += 1;
+        return "<script>text only</script>";
+      },
       threadHash: ({ externalConversationId }) => digest(externalConversationId),
     },
     persistence,
-    rateLimiter: createWidgetRateLimiter({ clock: () => NOW, salt: Buffer.alloc(32, 5) }),
+    rateLimiter:
+      options.rateLimiter ??
+      createWidgetRateLimiter({ clock: () => NOW, salt: Buffer.alloc(32, 5) }),
     routeResolver: {
       resolveWidgetRoute: () =>
         Promise.resolve({
@@ -177,6 +194,7 @@ const fixture = () => {
   return {
     counts: () => ({ acceptedBound, acceptedInitial, createdSessions }),
     prepared: () => preparedEvent,
+    reveals: () => revealedMessages,
     tokens,
     useCases,
   };
@@ -313,6 +331,15 @@ describe("S10 Widget application use cases", () => {
       "<script>text only</script>",
       null,
     ]);
+    expect(test.reveals()).toBe(1);
+    await expect(
+      test.useCases.listMessages({
+        bearerToken: created.bearerToken,
+        conversationId: OTHER_CONVERSATION_ID,
+        origin: ORIGIN,
+      }),
+    ).rejects.toMatchObject({ code: "resource_not_found" });
+    expect(test.reveals()).toBe(1);
     await expect(
       test.useCases.getConversation({
         bearerToken: created.bearerToken,
@@ -320,5 +347,94 @@ describe("S10 Widget application use cases", () => {
         origin: ORIGIN,
       }),
     ).rejects.toBeInstanceOf(WidgetApplicationError);
+  });
+
+  it("fails safely before reveal when a non-redacted protected message is corrupt", async () => {
+    const test = fixture({ corruptFirstMessage: true });
+    const bootstrap = await test.useCases.bootstrap({
+      clientIp: "127.0.0.1",
+      origin: ORIGIN,
+      pageUrl: ORIGIN,
+      requestedLocale: "uz",
+      widgetKey: "A".repeat(32),
+    });
+    const created = await test.useCases.createConversation({
+      bearerToken: bootstrap.bearerToken,
+      body: {
+        client_message_id: "browser.message-1",
+        kind: "text",
+        locale_hint: null,
+        text: "Salom",
+      },
+      idempotencyKey: "request-key-1",
+      origin: ORIGIN,
+    });
+    await expect(
+      test.useCases.listMessages({
+        bearerToken: created.bearerToken,
+        conversationId: CONVERSATION_ID,
+        origin: ORIGIN,
+      }),
+    ).rejects.toMatchObject({ code: "business_rule_failed" });
+    expect(test.reveals()).toBe(0);
+  });
+
+  it("applies the frozen Widget rate budgets and rejects before persistence", async () => {
+    const consumed: [readonly string[], number][] = [];
+    const limiter: WidgetRateLimiter = {
+      consume: (keyParts, limit) => consumed.push([keyParts, limit]),
+      size: () => consumed.length,
+    };
+    const test = fixture({ rateLimiter: limiter });
+    const bootstrap = await test.useCases.bootstrap({
+      clientIp: "127.0.0.1",
+      origin: ORIGIN,
+      pageUrl: ORIGIN,
+      requestedLocale: "uz",
+      widgetKey: "A".repeat(32),
+    });
+    const created = await test.useCases.createConversation({
+      bearerToken: bootstrap.bearerToken,
+      body: {
+        client_message_id: "browser.message-1",
+        kind: "text",
+        locale_hint: null,
+        text: "Salom",
+      },
+      idempotencyKey: "request-key-1",
+      origin: ORIGIN,
+    });
+    await test.useCases.getConversation({
+      bearerToken: created.bearerToken,
+      conversationId: CONVERSATION_ID,
+      origin: ORIGIN,
+    });
+    expect(consumed.map(([parts, limit]) => [parts[0], limit])).toEqual([
+      ["bootstrap", 10],
+      ["bootstrap-tenant", 100],
+      ["mutation", 30],
+      ["tenant-authenticated", 300],
+      ["read", 60],
+      ["tenant-authenticated", 300],
+    ]);
+
+    const denied = fixture({
+      rateLimiter: {
+        consume: () => {
+          throw new WidgetRateLimitError(60);
+        },
+        size: () => 0,
+      },
+    });
+    await expect(
+      denied.useCases.bootstrap({
+        clientIp: "127.0.0.1",
+        origin: ORIGIN,
+        pageUrl: ORIGIN,
+        requestedLocale: "uz",
+        widgetKey: "A".repeat(32),
+      }),
+    ).rejects.toBeInstanceOf(WidgetRateLimitError);
+    expect(denied.counts()).toEqual({ acceptedBound: 0, acceptedInitial: 0, createdSessions: 0 });
   });
 });

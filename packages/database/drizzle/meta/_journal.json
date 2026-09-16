@@ -176,6 +176,13 @@
       "when": 1789804800000,
       "tag": "0024_s8_handler_reliability",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789891200000,
+      "tag": "0025_s6_membership_invitation_clock_skew",
+      "breakpoints": true
     }
   ]
 }

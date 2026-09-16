@@ -22,6 +22,8 @@ const signCandidate = async (
   overrides: Readonly<Record<string, unknown>> = {},
   issuer = "lead-agent-widget",
   audience = "lead-agent-widget",
+  timing: Readonly<{ expiresAt?: number; issuedAt?: number }> = {},
+  subject: string = SESSION_ID,
 ): Promise<string> =>
   await new SignJWT({
     channel_connection_id: CHANNEL_ID,
@@ -35,10 +37,10 @@ const signCandidate = async (
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer(issuer)
     .setAudience(audience)
-    .setSubject(SESSION_ID)
+    .setSubject(subject)
     .setJti(Buffer.alloc(32, 9).toString("base64url"))
-    .setIssuedAt(Math.floor(TOKEN_NOW.getTime() / 1_000))
-    .setExpirationTime(Math.floor(TOKEN_NOW.getTime() / 1_000) + 7_200)
+    .setIssuedAt(timing.issuedAt ?? Math.floor(TOKEN_NOW.getTime() / 1_000))
+    .setExpirationTime(timing.expiresAt ?? Math.floor(TOKEN_NOW.getTime() / 1_000) + 7_200)
     .sign(Buffer.from(KEY, "base64url"));
 
 describe("S10 Widget Origin trust", () => {
@@ -116,6 +118,9 @@ describe("S10 Widget bearer tokens", () => {
     await expect(
       tokens.verify(await signCandidate({ extension: "forbidden" }), TOKEN_NOW),
     ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+    await expect(
+      tokens.verify(await signCandidate({}, undefined, undefined, {}, "not-a-session"), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
   });
 
   it("rejects non-canonical trust bindings and future or overlong lifetimes", async () => {
@@ -127,23 +132,19 @@ describe("S10 Widget bearer tokens", () => {
       tokens.verify(await signCandidate({ origin: "https://CLINIC.example" }), TOKEN_NOW),
     ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
 
-    const future = await new SignJWT({
-      channel_connection_id: CHANNEL_ID,
-      conversation_id: null,
-      organization_id: ORGANIZATION_ID,
-      origin: "https://clinic.example",
-      scope: "widget:conversation",
-      version: 1,
-    })
-      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-      .setIssuer("lead-agent-widget")
-      .setAudience("lead-agent-widget")
-      .setSubject(SESSION_ID)
-      .setJti(Buffer.alloc(32, 10).toString("base64url"))
-      .setIssuedAt(Math.floor(TOKEN_NOW.getTime() / 1_000) + 1)
-      .setExpirationTime(Math.floor(TOKEN_NOW.getTime() / 1_000) + 7_202)
-      .sign(Buffer.from(KEY, "base64url"));
+    const nowSeconds = Math.floor(TOKEN_NOW.getTime() / 1_000);
+    const future = await signCandidate({}, undefined, undefined, {
+      expiresAt: nowSeconds + 7_200,
+      issuedAt: nowSeconds + 1,
+    });
     await expect(tokens.verify(future, TOKEN_NOW)).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+    const overlong = await signCandidate({}, undefined, undefined, {
+      expiresAt: nowSeconds + 7_201,
+      issuedAt: nowSeconds,
+    });
+    await expect(tokens.verify(overlong, TOKEN_NOW)).rejects.toBeInstanceOf(
+      WidgetTokenInvalidError,
+    );
   });
 
   it("rejects key reuse and derives stable rotation JTI material", () => {

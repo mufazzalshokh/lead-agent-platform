@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import {
   CorrelationIdSchema,
   LocationIdSchema,
@@ -13,11 +16,14 @@ import {
   type ResourceId,
   type UserId,
 } from "@lead-agent/contracts";
-import type {
-  AuthorizationDatabaseRuntime,
-  MembershipLifecycleDatabaseRuntime,
+import {
+  MembershipLifecycleDatabaseError,
+  migrationsFolder,
+  type AuthorizationDatabaseRuntime,
+  type MembershipLifecycleDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import {
+  INVITATION_LIFETIME_MILLISECONDS,
   InvitationTokenInvalidError,
   MembershipFinalOwnerError,
   MembershipLifecycleConflictError,
@@ -206,16 +212,42 @@ const lifecycleFor = (
   runtime: MembershipLifecycleDatabaseRuntime,
   verifiedTarget: string | null = "invitee@example.com",
   identifierFactory?: SecurityIdentifierFactory,
+  clock?: () => Date,
 ): MembershipLifecycle =>
   createMembershipLifecycle(
     runtime,
     targetProtector,
     { resolveVerifiedEmailTarget: () => Promise.resolve(verifiedTarget) },
-    identifierFactory === undefined ? {} : { identifierFactory },
+    {
+      ...(clock === undefined ? {} : { clock }),
+      ...(identifierFactory === undefined ? {} : { identifierFactory }),
+    },
   );
 
-const actorFor = async (authorizationRuntime: AuthorizationDatabaseRuntime, userId: UserId) => {
-  const now = new Date();
+const applyMigration = async (pool: Pool, filename: string): Promise<void> => {
+  const migration = await readFile(join(migrationsFolder, filename), "utf8");
+  const statements = migration
+    .split("--> statement-breakpoint")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    for (const statement of statements) await client.query(statement);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+const actorFor = async (
+  authorizationRuntime: AuthorizationDatabaseRuntime,
+  userId: UserId,
+  now = new Date(),
+) => {
   return Object.freeze({
     authorization: await contextFor(authorizationRuntime, userId),
     session: sessionFor(userId, now),
@@ -337,6 +369,238 @@ export const registerMembershipLifecycleTests = (harness: MembershipLifecycleHar
           where oid='public.memberships'::regclass`,
       );
       expect(rls.rows[0]).toEqual({ force_row_security: true, row_security: true });
+    });
+
+    it("upgrades the 0024 acceptance function and normalizes an application clock ahead of PostgreSQL", async () => {
+      const pool = harness.privilegedPool();
+      await seedOwner(pool);
+      const databaseTime = await pool.query<{ now: Date }>(
+        "select pg_catalog.statement_timestamp() as now",
+      );
+      const databaseNow = databaseTime.rows[0]?.now;
+      if (databaseNow === undefined) throw new Error("Expected PostgreSQL statement time");
+      const applicationNow = new Date(databaseNow.getTime() + 5 * 60 * 1_000);
+      const lifecycle = lifecycleFor(
+        harness.runtime(),
+        "clock-skew@example.com",
+        undefined,
+        () => applicationNow,
+      );
+      const actor = await actorFor(harness.authorizationRuntime(), OWNER_USER_ID, applicationNow);
+      const invitation = await lifecycle.issueInvitation(actor, {
+        audit: AUDIT,
+        locationScope: "restricted",
+        role: "staff",
+        target: "clock-skew@example.com",
+      });
+      const acceptance = {
+        audit: AUDIT,
+        identity: await identity("clock-skew-subject"),
+        organizationId: ORGANIZATION_ID,
+        token: invitation.token,
+      } as const;
+
+      await applyMigration(pool, "0017_s6_membership_lifecycle.sql");
+      try {
+        await expect(lifecycle.acceptInvitation(acceptance)).rejects.toBeInstanceOf(
+          MembershipLifecycleDatabaseError,
+        );
+        expect(
+          (
+            await pool.query("select status from membership_invitations where id=$1::uuid", [
+              invitation.invitationId,
+            ])
+          ).rows,
+        ).toEqual([{ status: "active" }]);
+
+        await applyMigration(pool, "0025_s6_membership_invitation_clock_skew.sql");
+        const accepted = await lifecycle.acceptInvitation(acceptance);
+        expect(accepted).toMatchObject({
+          externalIdentityCreated: true,
+          membershipActivated: true,
+          outcome: "activated",
+          userCreated: true,
+        });
+
+        const lifecycleTimes = await pool.query<{
+          accepted_at: Date;
+          external_identity_created_at: Date;
+          external_identity_last_authenticated_at: Date;
+          external_identity_linked_at: Date;
+          external_identity_updated_at: Date;
+          expires_at: Date;
+          invitation_created_at: Date;
+          invitation_updated_at: Date;
+          membership_activated_at: Date;
+          membership_created_at: Date;
+          membership_invited_at: Date;
+          membership_updated_at: Date;
+          user_created_at: Date;
+          user_last_authenticated_at: Date;
+          user_updated_at: Date;
+        }>(
+          `select invitation.created_at as invitation_created_at,
+                  invitation.expires_at, invitation.accepted_at,
+                  invitation.updated_at as invitation_updated_at,
+                  application_user.created_at as user_created_at,
+                  application_user.updated_at as user_updated_at,
+                  application_user.last_authenticated_at as user_last_authenticated_at,
+                  external_identity.linked_at as external_identity_linked_at,
+                  external_identity.created_at as external_identity_created_at,
+                  external_identity.updated_at as external_identity_updated_at,
+                  external_identity.last_authenticated_at as external_identity_last_authenticated_at,
+                  membership.invited_at as membership_invited_at,
+                  membership.activated_at as membership_activated_at,
+                  membership.created_at as membership_created_at,
+                  membership.updated_at as membership_updated_at
+             from membership_invitations invitation
+             join users application_user on application_user.id=invitation.accepted_by_user_id
+             join external_identities external_identity
+               on external_identity.user_id=application_user.id
+              and external_identity.issuer='https://identity.s65.example/'
+              and external_identity.subject='clock-skew-subject'
+             join memberships membership
+               on membership.organization_id=invitation.organization_id
+              and membership.user_id=application_user.id
+            where invitation.id=$1::uuid`,
+          [invitation.invitationId],
+        );
+        const times = lifecycleTimes.rows[0];
+        if (times === undefined) throw new Error("Expected accepted invitation lifecycle times");
+        expect(times.accepted_at).toEqual(times.invitation_created_at);
+        expect(times.accepted_at.getTime()).toBeLessThan(times.expires_at.getTime());
+        expect([
+          times.invitation_updated_at,
+          times.user_created_at,
+          times.user_updated_at,
+          times.user_last_authenticated_at,
+          times.external_identity_linked_at,
+          times.external_identity_created_at,
+          times.external_identity_updated_at,
+          times.external_identity_last_authenticated_at,
+          times.membership_invited_at,
+          times.membership_activated_at,
+          times.membership_created_at,
+          times.membership_updated_at,
+        ]).toEqual(Array.from({ length: 12 }, () => times.accepted_at));
+        const acceptanceAudits = await pool.query<{ occurred_at: Date }>(
+          `select occurred_at from audit_events
+            where event_type=any($1::varchar[])
+            order by event_type`,
+          [
+            [
+              "external_identity.linked",
+              "invitation.accepted",
+              "membership.activated",
+              "user.onboarded",
+            ],
+          ],
+        );
+        expect(acceptanceAudits.rows.map(({ occurred_at }) => occurred_at)).toEqual(
+          Array.from({ length: 4 }, () => times.accepted_at),
+        );
+      } finally {
+        await applyMigration(pool, "0025_s6_membership_invitation_clock_skew.sql");
+      }
+    });
+
+    it("keeps normal invitation acceptance on the later PostgreSQL statement time", async () => {
+      const pool = harness.privilegedPool();
+      await seedOwner(pool);
+      const databaseTime = await pool.query<{ now: Date }>(
+        "select pg_catalog.statement_timestamp() as now",
+      );
+      const databaseNow = databaseTime.rows[0]?.now;
+      if (databaseNow === undefined) throw new Error("Expected PostgreSQL statement time");
+      const applicationNow = new Date(databaseNow.getTime() - 5 * 60 * 1_000);
+      const lifecycle = lifecycleFor(
+        harness.runtime(),
+        "normal-clock@example.com",
+        undefined,
+        () => applicationNow,
+      );
+      const actor = await actorFor(harness.authorizationRuntime(), OWNER_USER_ID, applicationNow);
+      const invitation = await lifecycle.issueInvitation(actor, {
+        audit: AUDIT,
+        locationScope: "restricted",
+        role: "staff",
+        target: "normal-clock@example.com",
+      });
+      const beforeAcceptance = await pool.query<{ now: Date }>(
+        "select pg_catalog.statement_timestamp() as now",
+      );
+      await lifecycle.acceptInvitation({
+        audit: AUDIT,
+        identity: await identity("normal-clock-subject"),
+        organizationId: ORGANIZATION_ID,
+        token: invitation.token,
+      });
+      const stored = await pool.query<{
+        accepted_at: Date;
+        created_at: Date;
+        expires_at: Date;
+      }>(
+        `select created_at,accepted_at,expires_at
+           from membership_invitations where id=$1::uuid`,
+        [invitation.invitationId],
+      );
+      const times = stored.rows[0];
+      const lowerBound = beforeAcceptance.rows[0]?.now;
+      if (times === undefined || lowerBound === undefined) {
+        throw new Error("Expected normal acceptance timestamps");
+      }
+      expect(times.accepted_at.getTime()).toBeGreaterThanOrEqual(lowerBound.getTime());
+      expect(times.accepted_at.getTime()).toBeGreaterThan(times.created_at.getTime());
+      expect(times.accepted_at.getTime()).toBeLessThan(times.expires_at.getTime());
+    });
+
+    it("expires at the half-open boundary using the normalized acceptance instant", async () => {
+      const pool = harness.privilegedPool();
+      await seedOwner(pool);
+      const databaseTime = await pool.query<{ now: Date }>(
+        "select pg_catalog.statement_timestamp() as now",
+      );
+      const databaseNow = databaseTime.rows[0]?.now;
+      if (databaseNow === undefined) throw new Error("Expected PostgreSQL statement time");
+      const applicationNow = new Date(databaseNow.getTime() - INVITATION_LIFETIME_MILLISECONDS);
+      const lifecycle = lifecycleFor(
+        harness.runtime(),
+        "expired-clock@example.com",
+        undefined,
+        () => applicationNow,
+      );
+      const actor = await actorFor(harness.authorizationRuntime(), OWNER_USER_ID, applicationNow);
+      const invitation = await lifecycle.issueInvitation(actor, {
+        audit: AUDIT,
+        locationScope: "restricted",
+        role: "staff",
+        target: "expired-clock@example.com",
+      });
+      await expect(
+        lifecycle.acceptInvitation({
+          audit: AUDIT,
+          identity: await identity("expired-clock-subject"),
+          organizationId: ORGANIZATION_ID,
+          token: invitation.token,
+        }),
+      ).rejects.toBeInstanceOf(InvitationTokenInvalidError);
+      const stored = await pool.query<{
+        accepted_at: Date | null;
+        expires_at: Date;
+        expired_at: Date;
+        status: string;
+        updated_at: Date;
+      }>(
+        `select status,expires_at,accepted_at,expired_at,updated_at
+           from membership_invitations where id=$1::uuid`,
+        [invitation.invitationId],
+      );
+      const times = stored.rows[0];
+      if (times === undefined) throw new Error("Expected expired invitation timestamps");
+      expect(times.status).toBe("expired");
+      expect(times.accepted_at).toBeNull();
+      expect(times.expired_at.getTime()).toBeGreaterThanOrEqual(times.expires_at.getTime());
+      expect(times.updated_at).toEqual(times.expired_at);
     });
 
     it("issues each owner-authorized role with hash-only seven-day storage and active uniqueness", async () => {

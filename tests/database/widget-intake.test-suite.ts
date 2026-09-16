@@ -27,6 +27,8 @@ type Options = Readonly<{
 const NOW = new Date("2026-09-15T10:00:00.000Z");
 const ORIGIN = "https://clinic.example";
 const WIDGET_KEY = "public_widget_key_123456789012345";
+const OTHER_ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf1" as OrganizationId;
+const OTHER_CHANNEL_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf2" as ChannelConnectionId;
 
 export const registerWidgetIntakeTests = (options: Options): void => {
   const createFixture = () => {
@@ -103,6 +105,12 @@ export const registerWidgetIntakeTests = (options: Options): void => {
         messages: 1,
         sessions: 1,
       });
+      const identityTypes = await pool.query<{ identity_type: string }>(
+        "select identity_type from contact_identities order by identity_type",
+      );
+      expect(identityTypes.rows.map(({ identity_type }) => identity_type)).toEqual([
+        "widget_participant",
+      ]);
       await expect(
         useCases.getConversation({
           bearerToken: bootstrap.bearerToken,
@@ -287,6 +295,66 @@ export const registerWidgetIntakeTests = (options: Options): void => {
       expect((await pool.query("select id from contacts")).rowCount).toBe(0);
     });
 
+    it("rejects signed cross-tenant/channel claims and never extends absolute expiry", async () => {
+      await options.seed();
+      const pool = options.privilegedPool();
+      const useCases = createFixture();
+      const tokens = createWidgetTokenService(
+        createWidgetSecurityConfig(Buffer.alloc(32, 23).toString("base64url")),
+      );
+      const bootstrap = await useCases.bootstrap({
+        clientIp: "127.0.0.1",
+        origin: ORIGIN,
+        pageUrl: ORIGIN,
+        requestedLocale: "uz",
+        widgetKey: WIDGET_KEY,
+      });
+      const created = await useCases.createConversation({
+        bearerToken: bootstrap.bearerToken,
+        body: {
+          client_message_id: "browser.message-1",
+          kind: "text",
+          locale_hint: null,
+          text: "Salom",
+        },
+        idempotencyKey: "request-key-1",
+        origin: ORIGIN,
+      });
+      const claims = await tokens.verify(created.bearerToken, NOW);
+      const wrongTenant = await tokens.issue({
+        ...claims,
+        organizationId: OTHER_ORGANIZATION_ID,
+      });
+      const wrongChannel = await tokens.issue({
+        ...claims,
+        channelConnectionId: OTHER_CHANNEL_ID,
+      });
+      for (const bearerToken of [wrongTenant, wrongChannel]) {
+        await expect(
+          useCases.getConversation({
+            bearerToken,
+            conversationId: created.conversation.id,
+            origin: ORIGIN,
+          }),
+        ).rejects.toMatchObject({ code: "token_invalid" });
+      }
+
+      const before = await pool.query<{ expires_at: Date }>(
+        "select expires_at from widget_sessions where organization_id = $1",
+        [options.organizationId],
+      );
+      await useCases.getConversation({
+        bearerToken: created.bearerToken,
+        conversationId: created.conversation.id,
+        origin: ORIGIN,
+      });
+      const after = await pool.query<{ expires_at: Date }>(
+        "select expires_at from widget_sessions where organization_id = $1",
+        [options.organizationId],
+      );
+      expect(after.rows[0]?.expires_at).toEqual(before.rows[0]?.expires_at);
+    });
+
     it("fails closed for wrong Origin and excludes staff-internal messages", async () => {
       await options.seed();
       const pool = options.privilegedPool();
@@ -339,10 +407,13 @@ export const registerWidgetIntakeTests = (options: Options): void => {
       ).resolves.toEqual({ hasMore: false, items: [] });
     });
 
-    it("rejects a terminal Conversation without reopening or creating another cycle", async () => {
+    it("rolls back business state, session binding, and JTI rotation as one transaction", async () => {
       await options.seed();
       const pool = options.privilegedPool();
       const useCases = createFixture();
+      const tokens = createWidgetTokenService(
+        createWidgetSecurityConfig(Buffer.alloc(32, 23).toString("base64url")),
+      );
       const bootstrap = await useCases.bootstrap({
         clientIp: "127.0.0.1",
         origin: ORIGIN,
@@ -350,37 +421,113 @@ export const registerWidgetIntakeTests = (options: Options): void => {
         requestedLocale: "uz",
         widgetKey: WIDGET_KEY,
       });
-      const created = await useCases.createConversation({
-        bearerToken: bootstrap.bearerToken,
-        body: {
-          client_message_id: "browser.message-1",
-          kind: "text",
-          locale_hint: null,
-          text: "Salom",
-        },
-        idempotencyKey: "request-key-1",
-        origin: ORIGIN,
-      });
-      await pool.query(
-        "update conversations set status = 'resolved', automation_mode = 'paused', resolved_at = $3 where organization_id = $1 and id = $2",
-        [options.organizationId, created.conversation.id, NOW],
+      const bootstrapClaims = await tokens.verify(bootstrap.bearerToken, NOW);
+      await pool.query("drop trigger if exists s10_reject_widget_binding on widget_sessions");
+      await pool.query(`create or replace function public.s10_reject_widget_binding()
+        returns trigger language plpgsql as $$
+        begin
+          if new.conversation_id is not null then
+            raise exception 'forced S10 binding rollback';
+          end if;
+          return new;
+        end
+        $$`);
+      await pool.query(`create trigger s10_reject_widget_binding
+        before update on widget_sessions for each row
+        execute function public.s10_reject_widget_binding()`);
+      try {
+        await expect(
+          useCases.createConversation({
+            bearerToken: bootstrap.bearerToken,
+            body: {
+              client_message_id: "browser.message-1",
+              kind: "text",
+              locale_hint: null,
+              text: "Salom",
+            },
+            idempotencyKey: "request-key-1",
+            origin: ORIGIN,
+          }),
+        ).rejects.toThrow("forced S10 binding rollback");
+      } finally {
+        await pool.query("drop trigger if exists s10_reject_widget_binding on widget_sessions");
+        await pool.query("drop function if exists public.s10_reject_widget_binding() cascade");
+      }
+      const state = await pool.query<{
+        business_rows: number;
+        conversation_id: string | null;
+        idempotency_rows: number;
+        session_token_jti_hash: Buffer;
+      }>(
+        `select
+           ((select count(*) from contacts) + (select count(*) from leads) +
+            (select count(*) from conversations) + (select count(*) from messages))::int business_rows,
+           (select conversation_id::text from widget_sessions limit 1) conversation_id,
+           (select session_token_jti_hash from widget_sessions limit 1) session_token_jti_hash,
+           (select count(*)::int from idempotency_keys) idempotency_rows`,
       );
-      await expect(
-        useCases.postMessage({
-          bearerToken: created.bearerToken,
+      expect(state.rows[0]).toMatchObject({
+        business_rows: 0,
+        conversation_id: null,
+        idempotency_rows: 0,
+      });
+      expect(state.rows[0]?.session_token_jti_hash).toEqual(
+        Buffer.from(tokens.hashJti(bootstrapClaims.jti)),
+      );
+    });
+
+    it.each(["resolved", "closed"] as const)(
+      "rejects a %s Conversation without reopening or creating another cycle",
+      async (terminalStatus) => {
+        await options.seed();
+        const pool = options.privilegedPool();
+        const useCases = createFixture();
+        const bootstrap = await useCases.bootstrap({
+          clientIp: "127.0.0.1",
+          origin: ORIGIN,
+          pageUrl: ORIGIN,
+          requestedLocale: "uz",
+          widgetKey: WIDGET_KEY,
+        });
+        const created = await useCases.createConversation({
+          bearerToken: bootstrap.bearerToken,
           body: {
-            client_message_id: "browser.message-2",
+            client_message_id: "browser.message-1",
             kind: "text",
             locale_hint: null,
-            text: "Yana savol",
+            text: "Salom",
           },
-          conversationId: created.conversation.id,
-          idempotencyKey: "request-key-2",
+          idempotencyKey: "request-key-1",
           origin: ORIGIN,
-        }),
-      ).rejects.toMatchObject({ code: "business_rule_failed" });
-      expect((await pool.query("select id from conversations")).rowCount).toBe(1);
-      expect((await pool.query("select id from messages")).rowCount).toBe(1);
-    });
+        });
+        const terminalUpdate =
+          terminalStatus === "closed"
+            ? `update conversations
+                  set status = 'closed', automation_mode = 'paused',
+                      resolved_at = $3, closed_at = $3
+                where organization_id = $1 and id = $2`
+            : `update conversations
+                  set status = 'resolved', automation_mode = 'paused',
+                      resolved_at = $3, closed_at = null
+                where organization_id = $1 and id = $2`;
+        await pool.query(terminalUpdate, [options.organizationId, created.conversation.id, NOW]);
+        await expect(
+          useCases.postMessage({
+            bearerToken: created.bearerToken,
+            body: {
+              client_message_id: "browser.message-2",
+              kind: "text",
+              locale_hint: null,
+              text: "Yana savol",
+            },
+            conversationId: created.conversation.id,
+            idempotencyKey: "request-key-2",
+            origin: ORIGIN,
+          }),
+        ).rejects.toMatchObject({ code: "business_rule_failed" });
+        expect((await pool.query("select id from conversations")).rowCount).toBe(1);
+        expect((await pool.query("select id from messages")).rowCount).toBe(1);
+      },
+    );
   });
 };
