@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@lead-agent/ai": fileURLToPath(new URL("./packages/ai/src/index.ts", import.meta.url)),
       "@lead-agent/application": fileURLToPath(
         new URL("./packages/application/src/index.ts", import.meta.url),
       ),

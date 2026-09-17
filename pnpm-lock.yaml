@@ -98,6 +98,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@lead-agent/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@lead-agent/application':
         specifier: workspace:*
         version: link:../../packages/application
@@ -120,7 +123,17 @@ importers:
         specifier: 12.31.0
         version: 12.31.0
 
-  packages/ai: {}
+  packages/ai:
+    dependencies:
+      '@lead-agent/application':
+        specifier: workspace:*
+        version: link:../application
+      '@lead-agent/config':
+        specifier: workspace:*
+        version: link:../config
+      '@lead-agent/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/application:
     dependencies:

@@ -41,3 +41,4 @@ export {
 } from "./widget.js";
 export { loadTelegramPlatformConfig, type TelegramPlatformConfig } from "./telegram.js";
 export { loadInstagramPlatformConfig, type InstagramPlatformConfig } from "./instagram.js";
+export { loadOpenAIHarnessConfig, type OpenAIHarnessConfig } from "./ai.js";

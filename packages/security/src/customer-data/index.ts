@@ -1,6 +1,7 @@
 export {
   CustomerDataProtectionError,
   createCustomerDataProtection,
+  createAIProposalProtection,
   type CustomerDataKeyProvider,
   type CustomerDataProtection,
   type CustomerDataProtectionOptions,

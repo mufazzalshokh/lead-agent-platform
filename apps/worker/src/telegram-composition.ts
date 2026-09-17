@@ -4,6 +4,7 @@ import {
   loadQueueDatabaseRuntimeConfig,
   loadTelegramPlatformConfig,
   loadInstagramPlatformConfig,
+  loadOpenAIHarnessConfig,
 } from "@lead-agent/config";
 import {
   createOutboxDispatcherId,
@@ -13,14 +14,17 @@ import {
   createInstagramPersistenceStore,
   createTenantCanonicalOutboxEventSource,
   createTenantDatabaseRuntime,
+  createAIOrchestrationStore,
   type OutboxRelayClaim,
 } from "@lead-agent/database";
 import {
   createTelegramPlatformClient,
   createInstagramPlatformClient,
 } from "@lead-agent/integrations";
-import type { CredentialSecretStore } from "@lead-agent/application";
-import { createCustomerDataProtection } from "@lead-agent/security";
+import { createAIOrchestrator, type CredentialSecretStore } from "@lead-agent/application";
+import { createCustomerDataProtection, createAIProposalProtection } from "@lead-agent/security";
+import { createOpenAIProvider } from "@lead-agent/ai";
+import { createAIMessageHandler } from "./ai-handler.js";
 
 import {
   createOutboxDispatcher,
@@ -97,7 +101,28 @@ export const composeProductionWorkerRuntime = (
       }),
   });
   const telegramClient = createTelegramPlatformClient(loadTelegramPlatformConfig(environment));
+  const aiConfig =
+    environment["OPENAI_API_KEY"] === undefined || environment["OPENAI_API_KEY"] === ""
+      ? null
+      : loadOpenAIHarnessConfig(environment);
+  const protectionConfig = loadCustomerDataProtectionConfig(environment);
+  const aiMessage =
+    aiConfig === null
+      ? undefined
+      : createAIMessageHandler(
+          createAIOrchestrator({
+            provider: createOpenAIProvider(aiConfig),
+            store: createAIOrchestrationStore(tenantRuntime, {
+              requestedModel: aiConfig.model,
+              dataProtection: createCustomerDataProtection(protectionConfig),
+              protectProposal: createAIProposalProtection(protectionConfig).protect,
+            }),
+            timeoutMs: aiConfig.requestTimeoutMs,
+            telemetry: { record: (metric) => console.info("AI orchestration outcome", metric) },
+          }),
+        );
   const registry = createProductionHandlerRegistry({
+    ...(aiMessage === undefined ? {} : { aiMessage }),
     ...(instagramConfig === null || credentials === undefined
       ? {}
       : {

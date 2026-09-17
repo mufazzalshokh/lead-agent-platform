@@ -94,3 +94,4 @@ export {
 } from "./runtime/tenant.js";
 export * from "./repositories/index.js";
 export * from "./schema/index.js";
+export { createAIOrchestrationStore } from "./repositories/ai-orchestration.js";

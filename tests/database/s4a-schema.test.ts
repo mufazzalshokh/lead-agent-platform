@@ -122,6 +122,7 @@ import { registerStaffConversationQueryTests } from "./staff-conversation-querie
 import { registerWidgetIntakeTests } from "./widget-intake.test-suite.js";
 import { registerTelegramBusinessPersistenceTests } from "./telegram-business.test-suite.js";
 import { registerInstagramBusinessPersistenceTests } from "./instagram-business.test-suite.js";
+import { registerAIOrchestrationTests } from "./ai-orchestration.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -10021,4 +10022,5 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     privilegedPool: database,
     runtime: requireTenantRuntime,
   });
+  registerAIOrchestrationTests({ privilegedPool: database, runtime: requireTenantRuntime });
 });

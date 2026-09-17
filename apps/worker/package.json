@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
   },
   "dependencies": {
+    "@lead-agent/ai": "workspace:*",
     "@lead-agent/application": "workspace:*",
     "@lead-agent/config": "workspace:*",
     "@lead-agent/contracts": "workspace:*",

@@ -38,6 +38,31 @@ export type CustomerDataProtectionOptions = Readonly<{
   lookupKey: Uint8Array;
 }>;
 
+/** Separate AAD purpose: model action arguments cannot be decoded as customer messages. */
+export const createAIProposalProtection = (options: CustomerDataProtectionOptions) => {
+  const provider = createSingleKeyProvider(options.currentKeyId, options.currentEncryptionKey);
+  return Object.freeze({
+    protect: (
+      input: Readonly<{ organizationId: OrganizationId; runId: string; argumentsJSON: string }>,
+    ): Uint8Array =>
+      seal(
+        provider,
+        Buffer.from(input.argumentsJSON, "utf8"),
+        aad("ai-proposal", input.organizationId, input.runId),
+        MESSAGE_ENVELOPE_MAX_BYTES,
+      ),
+    reveal: (
+      input: Readonly<{ organizationId: OrganizationId; runId: string; ciphertext: Uint8Array }>,
+    ): string =>
+      open(
+        provider,
+        input.ciphertext,
+        aad("ai-proposal", input.organizationId, input.runId),
+        MESSAGE_ENVELOPE_MAX_BYTES,
+      ).toString("utf8"),
+  });
+};
+
 type IdentityContext = Readonly<{
   channelConnectionId: ChannelConnectionId | null;
   identityType: CustomerIdentityType;
