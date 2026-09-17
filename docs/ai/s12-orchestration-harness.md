@@ -1,5 +1,9 @@
 # S12 — AI orchestration harness
 
+Historical S12 baseline: [S13.D](s13-production-model.md) now pins the owner-approved
+paid-tier Gemini production profile. OpenAI remains supported non-default
+infrastructure; the application-owned provider/policy boundary below is unchanged.
+
 S12 provides proposal-only infrastructure. It does not send model-generated
 messages, qualify Leads, create Handoffs or AppointmentRequests, confirm bookings,
 or implement FAQ/pricing answers. S13 owns model selection, multilingual quality

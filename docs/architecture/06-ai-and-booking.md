@@ -333,8 +333,11 @@ schema, so the projection can never weaken mutation or send policy. The
 [official Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
 states that only a JSON Schema subset is supported and an unsupported strict
 schema causes an API error. S12 must snapshot and contract-test the
-provider-compatible schema projection. S13 must submit it with `strict: true`
-against the selected pinned live model before enabling that model/profile.
+provider-compatible schema projection. S13 must prove the same projection against
+the selected pinned live model before enabling that model/profile: `strict: true`
+for the retained OpenAI adapter, or native JSON MIME type/`responseJsonSchema` for
+the owner-approved Gemini profile. Full canonical application validation remains
+mandatory; [S13.D](../ai/s13-production-model.md) records the exact approved pin.
 Schema version `1` is immutable once deployed; backward-incompatible changes
 create a new schema and eval suite.
 

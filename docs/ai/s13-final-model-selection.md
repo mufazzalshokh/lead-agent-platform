@@ -1,5 +1,9 @@
 # S13 — Final model selection evidence
 
+Historical decision-evidence report: the owner's subsequent approval and exact
+Commercial V1 pin are recorded in [S13.D](s13-production-model.md). The scores,
+notes and publication-time conclusions below remain unchanged.
+
 STATUS: **READY FOR OWNER DECISION**. Native preferences imported unchanged and
 unblinded only after preservation, hashing and validation. Imported 17-09-2026.
 

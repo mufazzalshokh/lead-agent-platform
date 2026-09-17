@@ -8,6 +8,7 @@ import type {
   AIUsage,
 } from "@lead-agent/application";
 import { AI_CONTEXT_LIMITS } from "@lead-agent/application";
+import { COMMERCIAL_V1_AI_PROFILE } from "@lead-agent/config";
 import { AI_INSTRUCTIONS, OPENAI_AGENT_DECISION_SCHEMA } from "../schema.js";
 import { EMPTY_AI_USAGE } from "./openai.js";
 
@@ -51,7 +52,7 @@ export const parseGeminiUsage = (value: unknown): AIUsage => {
 export const buildGeminiRequest = (
   input: AIProviderInput,
   instructions = AI_INSTRUCTIONS,
-  thinkingLevel: "low" | "medium" = "medium",
+  thinkingLevel: "low" | "medium" = COMMERCIAL_V1_AI_PROFILE.thinkingLevel,
 ) => ({
   systemInstruction: { parts: [{ text: instructions }] },
   contents: [
@@ -83,7 +84,7 @@ export const buildGeminiRequest = (
   generationConfig: {
     responseMimeType: "application/json",
     responseJsonSchema: OPENAI_AGENT_DECISION_SCHEMA,
-    maxOutputTokens: 4_000,
+    maxOutputTokens: COMMERCIAL_V1_AI_PROFILE.maxOutputTokens,
     thinkingConfig: { thinkingLevel },
   },
 });
@@ -114,7 +115,7 @@ const boundedJSON = async (response: Response): Promise<unknown> => {
   }
 };
 
-/** S13 candidate only. Not wired into production provider selection/fallback. */
+/** Provider-neutral Gemini adapter; the production factory pins the approved profile. */
 export const createGeminiProvider = (
   config: GeminiHarnessConfig,
   options: Readonly<{
@@ -206,6 +207,10 @@ export const createGeminiProvider = (
         if (signal.aborted) return { ...metadata(), kind: "timeout" };
         if (!record(body)) return { ...metadata(), kind: "invalid_output" };
         const meta = metadata(body);
+        // A response from another model cannot satisfy the approved production pin.
+        // Missing metadata still uses the existing malformed-envelope classification.
+        if (meta.model !== null && meta.model !== config.model)
+          return { ...meta, kind: "invalid_output" };
         if (record(body["promptFeedback"]) && body["promptFeedback"]["blockReason"] !== undefined)
           return { ...meta, kind: "refusal" };
         if (

@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { COMMERCIAL_V1_AI_PROFILE } from "../../packages/config/src/index.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAIOrchestrator,
@@ -144,6 +145,64 @@ const counts = async (pool: Pool) =>
   ).rows[0];
 export const registerAIOrchestrationTests = (harness: Harness): void => {
   describe("S12 tenant-bound safe AI persistence", () => {
+    it("S13 Gemini records accurate provider/profile/prompt provenance across a schema repair", async () => {
+      await seed(harness);
+      const receipt = await accept(harness);
+      const decide = vi.fn<() => Promise<AIProviderResult>>(() =>
+        Promise.resolve({
+          ...AI_METADATA,
+          model: COMMERCIAL_V1_AI_PROFILE.model,
+          kind: "completed" as const,
+          value: validDecision(),
+        }),
+      );
+      decide.mockResolvedValueOnce({
+        ...AI_METADATA,
+        model: COMMERCIAL_V1_AI_PROFILE.model,
+        kind: "completed",
+        value: {},
+      });
+      const pinnedStore = createAIOrchestrationStore(harness.runtime(), {
+        requestedModel: COMMERCIAL_V1_AI_PROFILE.model,
+        providerId: COMMERCIAL_V1_AI_PROFILE.providerId,
+        modelProfileVersion: COMMERCIAL_V1_AI_PROFILE.modelProfileVersion,
+        promptTemplateVersion: COMMERCIAL_V1_AI_PROFILE.promptTemplateVersion,
+        dataProtection,
+        protectProposal: proposalProtection.protect,
+      });
+      expect(
+        await createAIOrchestrator({
+          provider: { decide },
+          store: pinnedStore,
+          timeoutMs: 5000,
+        }).run(referenceFor(receipt)),
+      ).toMatchObject({ kind: "decision", applied: false });
+      const rows = await harness
+        .privilegedPool()
+        .query(
+          `select provider_id,requested_model_id,provider_resolved_model_id,model_profile_version,prompt_template_version,decision_schema_version,attempt_no,status from ai_runs order by attempt_no`,
+        );
+      expect(rows.rows).toEqual(
+        ["schema_rejected", "succeeded"].map((status, index) => ({
+          provider_id: "gemini",
+          requested_model_id: "gemini-3.8-flash",
+          provider_resolved_model_id: "gemini-3.8-flash",
+          model_profile_version: "s13-commercial-v1.v1",
+          prompt_template_version: "s13-uzbek-latin.v1",
+          decision_schema_version: "1",
+          attempt_no: index + 1,
+          status,
+        })),
+      );
+      expect(decide).toHaveBeenCalledTimes(2);
+      expect(await counts(harness.privilegedPool())).toMatchObject({
+        completed: 1,
+        evaluations: 1,
+        outbound: 0,
+        appointments: 0,
+        handoffs: 0,
+      });
+    });
     it("atomically persists provenance/evaluation/audit/Outbox without protected actions or plaintext snapshots", async () => {
       await seed(harness);
       const receipt = await accept(harness);

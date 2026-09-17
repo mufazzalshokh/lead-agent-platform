@@ -4,7 +4,8 @@ import {
   loadQueueDatabaseRuntimeConfig,
   loadTelegramPlatformConfig,
   loadInstagramPlatformConfig,
-  loadOpenAIHarnessConfig,
+  COMMERCIAL_V1_AI_PROFILE,
+  loadCommercialV1AIConfig,
 } from "@lead-agent/config";
 import {
   createOutboxDispatcherId,
@@ -23,7 +24,7 @@ import {
 } from "@lead-agent/integrations";
 import { createAIOrchestrator, type CredentialSecretStore } from "@lead-agent/application";
 import { createCustomerDataProtection, createAIProposalProtection } from "@lead-agent/security";
-import { createOpenAIProvider } from "@lead-agent/ai";
+import { createCommercialV1AIProvider } from "@lead-agent/ai";
 import { createAIMessageHandler } from "./ai-handler.js";
 
 import {
@@ -44,6 +45,7 @@ export const composeProductionWorkerRuntime = (
   environment: NodeJS.ProcessEnv = {},
   options: Readonly<{ credentialSecretStore?: CredentialSecretStore }> = {},
 ): WorkerRuntime => {
+  const aiConfig = loadCommercialV1AIConfig(environment);
   const instagramConfig =
     environment["INSTAGRAM_APP_ID"] === undefined ? null : loadInstagramPlatformConfig(environment);
   const credentials = options.credentialSecretStore;
@@ -101,19 +103,18 @@ export const composeProductionWorkerRuntime = (
       }),
   });
   const telegramClient = createTelegramPlatformClient(loadTelegramPlatformConfig(environment));
-  const aiConfig =
-    environment["OPENAI_API_KEY"] === undefined || environment["OPENAI_API_KEY"] === ""
-      ? null
-      : loadOpenAIHarnessConfig(environment);
   const protectionConfig = loadCustomerDataProtectionConfig(environment);
   const aiMessage =
     aiConfig === null
       ? undefined
       : createAIMessageHandler(
           createAIOrchestrator({
-            provider: createOpenAIProvider(aiConfig),
+            provider: createCommercialV1AIProvider(aiConfig),
             store: createAIOrchestrationStore(tenantRuntime, {
               requestedModel: aiConfig.model,
+              providerId: COMMERCIAL_V1_AI_PROFILE.providerId,
+              modelProfileVersion: COMMERCIAL_V1_AI_PROFILE.modelProfileVersion,
+              promptTemplateVersion: COMMERCIAL_V1_AI_PROFILE.promptTemplateVersion,
               dataProtection: createCustomerDataProtection(protectionConfig),
               protectProposal: createAIProposalProtection(protectionConfig).protect,
             }),

@@ -52,6 +52,9 @@ type SourceRow = QueryResultRow & {
 };
 type AIStoreOptions = Readonly<{
   requestedModel: string;
+  providerId?: "openai" | "gemini";
+  modelProfileVersion?: string;
+  promptTemplateVersion?: string;
   dataProtection: CustomerDataProtection;
   protectProposal: (
     input: Readonly<{
@@ -114,11 +117,20 @@ export const createAIOrchestrationStore = (
   runtime: TenantDatabaseRuntime,
   options: AIStoreOptions,
 ): AIOrchestrationStore => {
+  const providerId = options.providerId ?? "openai";
+  const modelProfileVersion = options.modelProfileVersion ?? "s12-configured.v1";
+  const promptTemplateVersion = options.promptTemplateVersion ?? "s12-instructions.v1";
   if (
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/u.test(options.requestedModel) ||
     options.requestedModel === "latest"
   )
     throw new TypeError("Invalid requested model");
+  if (
+    !["openai", "gemini"].includes(providerId) ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(modelProfileVersion) ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(promptTemplateVersion)
+  )
+    throw new TypeError("Invalid AI profile provenance");
   const identifiers = createSecurityIdentifierFactory();
   const now = options.clock ?? (() => new Date());
   const nextId = (): string => identifiers.issueResourceId(now());
@@ -254,8 +266,8 @@ export const createAIOrchestrationStore = (
             return null;
           const attempts = await executeTenantRead(
             session,
-            `select coalesce(max(attempt_no),0) + 1 as attempt from ai_runs where organization_id = $1 and trigger_message_id = $2 and provider_id = 'openai'`,
-            [input.reference.messageId],
+            `select coalesce(max(attempt_no),0) + 1 as attempt from ai_runs where organization_id = $1 and trigger_message_id = $2 and provider_id = $3`,
+            [input.reference.messageId, providerId],
           );
           const attemptNo = mapSafeBigInt(attempts[0]?.["attempt"]);
           if (attemptNo > 32) return null;
@@ -264,7 +276,7 @@ export const createAIOrchestrationStore = (
             session,
             `insert into ai_runs
           (organization_id,id,conversation_id,trigger_message_id,expected_conversation_version,provider_id,requested_model_id,model_profile_version,orchestrator_version,prompt_template_version,decision_schema_version,policy_version,status,cost_currency,cost_catalog_version,attempt_no,knowledge_manifest_jsonb,input_hash,started_at,correlation_id)
-          values ($1,$2,$3,$4,$5,'openai',$6,'s12-configured.v1','s12-orchestrator.v1','s12-instructions.v1','1','s12-policy.v1','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
+          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','s12-policy.v1','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
             [
               runId,
               input.reference.conversationId,
@@ -278,6 +290,9 @@ export const createAIOrchestrationStore = (
               input.inputHash,
               now(),
               input.reference.correlationId,
+              providerId,
+              modelProfileVersion,
+              promptTemplateVersion,
             ],
           );
           return Object.freeze({ runId, attemptNo });

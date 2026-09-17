@@ -516,6 +516,15 @@ The calculation uses integer micros/exact decimals and records unknown rather th
 
 ### Model selection and operating budgets
 
+Commercial V1 owner decision: **Google Gemini API, paid tier, `gemini-3.8-flash`,
+low thinking, stateless AgentDecision.v1 JSON, maximum 4,000 output tokens**.
+[S13.D](../ai/s13-production-model.md) records the exact profile, joint evidence
+and accepted cost/latency/operational tradeoffs. OpenAI/Luna remains supported
+non-default infrastructure, not implicit fallback. Claude is not activated;
+fine-tuning is NOT_NEEDED. This pin does not approve launch privacy/data controls
+or prove end-to-end customer-perceived TTFR. Other architecture/budgets remain
+authoritative.
+
 S13 pins a supported model only after the same versioned Uzbek/Russian/English corpus measures:
 
 - red-line factual, medical, tenant, tool, and booking safety;

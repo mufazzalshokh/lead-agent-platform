@@ -9,8 +9,8 @@
 ![pnpm 11](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)
 ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![Public contracts](https://img.shields.io/badge/Public%20contracts-301-6C5CE7)
-![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S9.B-00A86B)
+![Public contracts](https://img.shields.io/badge/Public%20contracts-329-6C5CE7)
+![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S13.D-00A86B)
 
 **Uzbek · Russian · English** · **Modular monolith** · **Human-controlled booking**
 
@@ -21,7 +21,7 @@ customer conversations into qualified leads and safe booking requests. The initi
 focus is dental and aesthetic clinics, while the domain and integration boundaries are
 designed for other high-value appointment businesses.
 
-The planned AI layer interprets language and proposes structured actions. Deterministic
+The proposal-only AI layer interprets language and proposes structured actions. Deterministic
 application policy remains responsible for authorization, tenant identity, business
 facts, state transitions, and side effects.
 
@@ -29,36 +29,42 @@ facts, state transitions, and side effects.
 > This repository is under active development and is not production-ready. The core
 > architecture, contracts, domain kernel, PostgreSQL foundation, and tenant-safe
 > persistence are complete. Staff authentication/RBAC, authoritative business-knowledge
-> configuration, the reliable async substrate, and the S9 deterministic inbound and
-> staff-query slices are implemented. S9.C is the next acceptance gate. Customer-facing
-> AI and provider integrations remain later roadmap work.
+> configuration, reliable async substrate, deterministic inbound/staff queries, secure
+> widget, and Telegram/Instagram Business DM integrations are accepted. S13 selects
+> paid-tier Gemini 3.8 Flash after automated and native Uzbek evaluation; the model
+> remains proposal-only. Grounded customer-facing AI responses, booking operations,
+> full customer-perceived latency and production launch readiness remain later work.
 
 ## Current progress
 
-| Milestone                           | Status | Delivered                                                                                              |
-| ----------------------------------- | :----: | ------------------------------------------------------------------------------------------------------ |
-| S0 — Architecture                   |   ✅   | Audited product, security, data, AI, reliability, and delivery architecture                            |
-| S1 — Workspace baseline             |   ✅   | Reproducible pnpm monorepo, CI gate, strict TypeScript, lint, and boundaries                           |
-| S2 — Canonical contracts            |   ✅   | Runtime schemas, errors, pagination, events, channel contracts, and drift protection                   |
-| S3 — Pure domain kernel             |   ✅   | Lead, Conversation, Handoff, AppointmentRequest, and cross-machine workflows                           |
-| S4 — Database foundation            |   ✅   | PostgreSQL 17 initial schema with 47 production tables and explicit migrations                         |
-| S5 — Tenant-safe persistence        |   ✅   | FORCE RLS, tenant sessions, repositories, CAS, atomic audit/outbox writes, and inbound resolver        |
-| S6 — Staff identity and RBAC        |   ✅   | Auth0 OIDC, application sessions, MFA, RBAC, invitations, recovery, and location scopes                |
-| S7 — Business knowledge             |   ✅   | Versioned Location, Service, Price, FAQ, policy publication, trusted reads, and private staff API      |
-| S8 — Reliable async substrate       |   ✅   | pg-boss, Outbox relay/dispatcher, finite handlers, retry/DLQ/replay, observability, and safe shutdown  |
-| S9 — Conversation persistence + API |   🟡   | S9.A deterministic inbound and S9.B staff query surface accepted; final S9.C acceptance gate is next   |
-| S10+ — Product integrations         |   ⏳   | Widget/Telegram ingress, AI orchestration, booking operations, UX, observability, and launch readiness |
+| Milestone                           |     Status     | Delivered                                                                                             |
+| ----------------------------------- | :------------: | ----------------------------------------------------------------------------------------------------- |
+| S0 — Architecture                   |       ✅       | Audited product, security, data, AI, reliability, and delivery architecture                           |
+| S1 — Workspace baseline             |       ✅       | Reproducible pnpm monorepo, CI gate, strict TypeScript, lint, and boundaries                          |
+| S2 — Canonical contracts            |       ✅       | Runtime schemas, errors, pagination, events, channel contracts, and drift protection                  |
+| S3 — Pure domain kernel             |       ✅       | Lead, Conversation, Handoff, AppointmentRequest, and cross-machine workflows                          |
+| S4 — Database foundation            |       ✅       | PostgreSQL 17 initial schema with 47 production tables and explicit migrations                        |
+| S5 — Tenant-safe persistence        |       ✅       | FORCE RLS, tenant sessions, repositories, CAS, atomic audit/outbox writes, and inbound resolver       |
+| S6 — Staff identity and RBAC        |       ✅       | Auth0 OIDC, application sessions, MFA, RBAC, invitations, recovery, and location scopes               |
+| S7 — Business knowledge             |       ✅       | Versioned Location, Service, Price, FAQ, policy publication, trusted reads, and private staff API     |
+| S8 — Reliable async substrate       |       ✅       | pg-boss, Outbox relay/dispatcher, finite handlers, retry/DLQ/replay, observability, and safe shutdown |
+| S9 — Conversation persistence + API |       ✅       | Deterministic inbound, encrypted customer data, private staff queries and hostile acceptance          |
+| S10 — Secure widget                 |       ✅       | Bound widget sessions, trust/intake and hostile acceptance                                            |
+| S11 — Business DM integrations      |       ✅       | Verified Telegram and Instagram ingress/outbound adapters                                             |
+| S12 — AI orchestration harness      |       ✅       | Provider-neutral schema/policy validation, proposal-only orchestration and atomic provenance          |
+| S13 — Multilingual model selection  | Owner approved | 560 cases/model, 40 blinded native Uzbek reviews; exact Gemini Commercial V1 pin, CI-gated promotion  |
+| S14+ — Customer-facing product      |       ⏳       | Grounded FAQ/pricing, qualification, handoff, booking operations, UX and launch readiness             |
 
 ## What is already implemented
 
-- 301 versioned runtime contracts with compatibility snapshots and drift checks,
-  including 63 semantic events represented by 64 schema variants.
+- 329 versioned runtime contracts with compatibility snapshots and drift checks,
+  including 63 semantic events represented by 65 schema variants.
 - Pure TypeScript domain state machines with deterministic transitions and typed errors.
 - PostgreSQL 17 and Drizzle schema covering tenant configuration, contacts, leads,
   conversations, appointments, handoffs, notifications, reliability, audit, privacy,
   analytics, and AI provenance.
-- Fifty-one production business tables and 25 explicit migrations (`0000` through
-  `0024`) with fresh-install, upgrade, rerun, structural, and hostile-tenant verification.
+- Fifty-one production business tables and 28 explicit migrations (`0000` through
+  `0027`) with fresh-install, upgrade, rerun, structural, and hostile-tenant verification.
 - FORCE RLS across the tenant table manifest with a non-owner, `NOBYPASSRLS` runtime
   role and transaction-local tenant context.
 - Immutable tenant database sessions, tenant-qualified repositories, active-record
@@ -74,6 +80,12 @@ facts, state transitions, and side effects.
   consent, audit, and Outbox facts with duplicate/reordered delivery safety.
 - Purpose-separated AES-256-GCM customer-data protection plus six authenticated,
   tenant/location-scoped staff Contact, Lead, Conversation, and Message read routes.
+- Secure Widget intake and verified Telegram/Instagram Business DM provider adapters.
+- Provider-neutral, proposal-only AI orchestration with canonical schema validation,
+  deterministic safety, bounded context and atomic audit/Outbox provenance.
+- [Owner-approved Gemini model profile](docs/ai/s13-production-model.md): paid API,
+  `gemini-3.8-flash`, low thinking, stateless JSON, 4,000 output tokens; non-default
+  OpenAI/Luna support retained without automatic fallback.
 
 ## Safety model
 
@@ -195,8 +207,8 @@ Repository-wide engineering rules are defined in [AGENTS.md](AGENTS.md).
 
 ## Product direction
 
-The first complete vertical slice will support secure widget and Telegram intake,
-authoritative multilingual FAQ and pricing responses, deterministic qualification,
-human handoff, staff-controlled appointment requests, and explicit customer
-confirmation. Instagram, WhatsApp, external calendars, CRM synchronization, billing,
-and additional verticals remain behind reviewed integration boundaries.
+Secure widget and Telegram/Instagram Business DM intake are implemented. The next
+roadmap stage is **S14 — GROUNDED FAQ / PRICING RESPONSE**. Later slices add
+deterministic qualification, human handoff, staff-controlled appointment requests,
+and explicit customer confirmation. WhatsApp, external calendars, CRM synchronization,
+billing and additional verticals remain behind reviewed integration boundaries.

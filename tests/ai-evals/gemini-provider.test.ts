@@ -60,7 +60,7 @@ describe("S13 Gemini untrusted provider boundary", () => {
         responseMimeType: "application/json",
         responseJsonSchema: OPENAI_AGENT_DECISION_SCHEMA,
         maxOutputTokens: 4000,
-        thinkingConfig: { thinkingLevel: "medium" },
+        thinkingConfig: { thinkingLevel: "low" },
       },
     });
     expect(body).toHaveProperty("contents");
