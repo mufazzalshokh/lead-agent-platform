@@ -1,0 +1,525 @@
+{
+  "version": "s13-research.v1",
+  "sources": [
+    {
+      "title": "EzguSavdo product",
+      "publisher": "EzguSavdo",
+      "url": "https://ezgusavdo.uz/en",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": [
+        "local-channels",
+        "local-pricing",
+        "gemini-disclosure",
+        "tostco-vendor-metric"
+      ]
+    },
+    {
+      "title": "nilu product",
+      "publisher": "nilu",
+      "url": "https://nilu.uz/en/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": [
+        "local-channels",
+        "local-pricing",
+        "provider-families",
+        "cyrillic-search",
+        "after-hours-vendor-metric"
+      ]
+    },
+    {
+      "title": "SimpleChat product",
+      "publisher": "SimpleChat",
+      "url": "https://simplechat.uz/en",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": [
+        "local-channels",
+        "local-pricing",
+        "rag-security-claims",
+        "plan-discrepancy"
+      ]
+    },
+    {
+      "title": "Gramir indexed product; fetched shell",
+      "publisher": "Gramir",
+      "url": "https://gramir.uz/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "indexed_vendor_product",
+      "supports_claims": [
+        "local-channels",
+        "local-pricing",
+        "lead-inbox-claims",
+        "retrieval-limitation"
+      ]
+    },
+    {
+      "title": "Reveo product",
+      "publisher": "Reveo",
+      "url": "https://reveo.uz/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": [
+        "business-dms",
+        "whatsapp-claim",
+        "booking-claim",
+        "vendor-scale",
+        "integration-logos"
+      ]
+    },
+    {
+      "title": "AI Kotib indexed description; empty fetched body",
+      "publisher": "AI Kotib",
+      "url": "https://aikotib.uz/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "indexed_vendor_product",
+      "supports_claims": ["local-positioning", "retrieval-limitation"]
+    },
+    {
+      "title": "Innosoft AI-agent development",
+      "publisher": "Innosoft",
+      "url": "https://innosoft.uz/en/services/ai-agent",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": [
+        "tashkent-custom-service",
+        "setup-prices",
+        "gpt-claude-disclosure",
+        "rag-architecture-claim"
+      ]
+    },
+    {
+      "title": "Fin AI engine",
+      "publisher": "Intercom",
+      "url": "https://www.intercom.com/help/en/articles/9929230-the-fin-ai-engine",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_documentation",
+      "supports_claims": ["fin-refine-retrieve-validate", "fin-fallback"]
+    },
+    {
+      "title": "Fin layers and roles",
+      "publisher": "Intercom",
+      "url": "https://www.intercom.com/help/en/articles/7120684-fin-ai-agent-explained",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_documentation",
+      "supports_claims": ["fin-specialized-models", "fin-sales-role"]
+    },
+    {
+      "title": "Fin CX model suite",
+      "publisher": "Intercom",
+      "url": "https://fin.ai/cx-models",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": ["fin-apex-post-training", "fin-apex-vendor-metrics"]
+    },
+    {
+      "title": "Anthropic support with Fin",
+      "publisher": "Intercom",
+      "url": "https://fin.ai/customers/anthropic-transformation",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_case_study",
+      "supports_claims": ["named-production-fin", "resolution-vs-automation"]
+    },
+    {
+      "title": "Air-gapped deployment",
+      "publisher": "Decagon engineering",
+      "url": "https://decagon.ai/blog/what-an-air-gapped-ai-deployment-actually-requires",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_engineering",
+      "supports_claims": ["decagon-model-network", "cx-performance-latency"]
+    },
+    {
+      "title": "Chime case",
+      "publisher": "Decagon",
+      "url": "https://decagon.ai/case-studies/chime",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_case_study",
+      "supports_claims": ["named-production-decagon", "aop-iteration", "vendor-scale-cost"]
+    },
+    {
+      "title": "Constellation of models",
+      "publisher": "Sierra engineering",
+      "url": "https://sierra.ai/uk/blog/constellation-of-models",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_engineering",
+      "supports_claims": ["sierra-model-network", "task-fine-tuning", "health-failover"]
+    },
+    {
+      "title": "AOL case",
+      "publisher": "Sierra",
+      "url": "https://sierra.ai/customers/aol",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_case_study",
+      "supports_claims": ["named-production-sierra", "escalation"]
+    },
+    {
+      "title": "Subtask orchestration",
+      "publisher": "Parloa",
+      "url": "https://www.parloa.com/blog/subtask-agents-for-enterprise-ai-orchestration/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_engineering",
+      "supports_claims": ["pre-llm-deterministic-restrictions", "latency-vendor-metric"]
+    },
+    {
+      "title": "Production red teaming",
+      "publisher": "Parloa Labs",
+      "url": "https://www.parloa.com/labs/insights/how-parloa-stress-tests-production-deployments/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_engineering",
+      "supports_claims": ["hostile-taxonomy", "binary-invariants-and-judges"]
+    },
+    {
+      "title": "Parloa customers",
+      "publisher": "Parloa",
+      "url": "https://www.parloa.com/customers/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_case_study",
+      "supports_claims": ["named-production-parloa", "voice-scale-vendor-metric"]
+    },
+    {
+      "title": "Atlas reasoning engine",
+      "publisher": "Salesforce engineering",
+      "url": "https://engineering.salesforce.com/inside-the-brain-of-agentforce-revealing-the-atlas-reasoning-engine/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_engineering",
+      "supports_claims": ["atlas-state-workflows-grounding"]
+    },
+    {
+      "title": "Wiley case",
+      "publisher": "Salesforce",
+      "url": "https://www.salesforce.com/customer-stories/wiley/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_case_study",
+      "supports_claims": ["named-production-agentforce", "roi-vendor-metric"]
+    },
+    {
+      "title": "Salesforce Koa",
+      "publisher": "Salesforce research / arXiv",
+      "url": "https://arxiv.org/abs/2609.15066",
+      "retrieved_at": "2026-09-17",
+      "source_type": "research_preprint",
+      "supports_claims": ["workflow-post-training", "not-production-rollout-proof"]
+    },
+    {
+      "title": "Zendesk AI agents",
+      "publisher": "Zendesk",
+      "url": "https://www.zendesk.com/service/ai/ai-agents/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": ["zendesk-workflow-qa", "named-production-vendor-metrics"]
+    },
+    {
+      "title": "Zendesk agent testing",
+      "publisher": "Zendesk",
+      "url": "https://support.zendesk.com/hc/en-us/articles/8357751802138-Best-practices-for-testing-AI-agents",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_documentation",
+      "supports_claims": ["preview-and-conversation-logs"]
+    },
+    {
+      "title": "Breeze Customer Agent",
+      "publisher": "HubSpot",
+      "url": "https://www.hubspot.com/products/artificial-intelligence/ai-customer-service-agent",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_product",
+      "supports_claims": ["breeze-grounding-handoff-channels"]
+    },
+    {
+      "title": "RevPartners launch",
+      "publisher": "HubSpot",
+      "url": "https://www.hubspot.com/startups/ai/launching-breeze-customer-agent",
+      "retrieved_at": "2026-09-17",
+      "source_type": "vendor_case_study",
+      "supports_claims": ["breeze-named-production", "historical-gpt4-not-current-default"]
+    },
+    {
+      "title": "Unified Reasoner evaluation science",
+      "publisher": "Ada Labs",
+      "url": "https://www.ada.cx/labs/research/unified-reasoning-engine-evaluation-science/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "company_engineering",
+      "supports_claims": ["fast-slow-reasoning", "per-category-repeated-rollout-gates"]
+    },
+    {
+      "title": "Gemini 3.8 Flash",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/latest-model",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["gemini-ga-id-bounds-thinking"]
+    },
+    {
+      "title": "Gemini prices",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["gemini-rates-expiry-cache-batch"]
+    },
+    {
+      "title": "Gemini structured output",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/structured-output",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["gemini-schema-no-tools"]
+    },
+    {
+      "title": "Gemini retention",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/zdr",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["paid-no-training", "abuse-retention-cloud-path"]
+    },
+    {
+      "title": "Gemini terms",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/terms",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_terms",
+      "supports_claims": ["medical-use-restriction", "admin-use-review-required"]
+    },
+    {
+      "title": "Gemini lifecycle",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["gemini-release-retirement-status"]
+    },
+    {
+      "title": "Gemini access regions",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/available-regions",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["uzbekistan-listed-not-residency"]
+    },
+    {
+      "title": "Gemini quotas",
+      "publisher": "Google",
+      "url": "https://ai.google.dev/gemini-api/docs/rate-limits",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["project-tier-quotas"]
+    },
+    {
+      "title": "GPT-5.6 Luna",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["luna-id-schema-bounds-reasoning-limits"]
+    },
+    {
+      "title": "GPT-5.6 Terra",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["terra-id-schema-bounds"]
+    },
+    {
+      "title": "GPT-5.6 Sol",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["sol-id-schema-bounds"]
+    },
+    {
+      "title": "OpenAI prices",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/pricing",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["openai-rates-cache-batch-region-promotion"]
+    },
+    {
+      "title": "OpenAI data controls",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/guides/your-data",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["api-no-training", "store-false-not-zdr", "residency-requirements"]
+    },
+    {
+      "title": "OpenAI deprecations",
+      "publisher": "OpenAI",
+      "url": "https://developers.openai.com/api/docs/deprecations",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["openai-lifecycle-current-not-perpetual"]
+    },
+    {
+      "title": "Claude Sonnet 5",
+      "publisher": "Anthropic",
+      "url": "https://platform.claude.com/docs/en/models/sonnet-5/overview",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["sonnet-id-bounds-adaptive-thinking"]
+    },
+    {
+      "title": "Claude prices",
+      "publisher": "Anthropic",
+      "url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["sonnet-permanent-rates-cache-batch"]
+    },
+    {
+      "title": "Claude structured outputs",
+      "publisher": "Anthropic",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["claude-json-without-tools", "schema-projection-local-validation"]
+    },
+    {
+      "title": "Claude API retention",
+      "publisher": "Anthropic",
+      "url": "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["claude-zdr-feature-eligibility", "schema-cache-no-phi"]
+    },
+    {
+      "title": "Commercial retention exceptions",
+      "publisher": "Anthropic Privacy Center",
+      "url": "https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_terms",
+      "supports_claims": ["claude-standard-30-days-exceptions"]
+    },
+    {
+      "title": "Commercial model training and feedback",
+      "publisher": "Anthropic Privacy Center",
+      "url": "https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_terms",
+      "supports_claims": ["claude-commercial-no-training-default", "feedback-opt-in-exception"]
+    },
+    {
+      "title": "Supported commercial API countries",
+      "publisher": "Anthropic",
+      "url": "https://www.anthropic.com/supported-countries",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_terms",
+      "supports_claims": ["uzbekistan-commercial-api-access", "ownership-region-restrictions"]
+    },
+    {
+      "title": "Claude residency",
+      "publisher": "Anthropic",
+      "url": "https://platform.claude.com/docs/en/manage-claude/data-residency",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["claude-global-us-pricing"]
+    },
+    {
+      "title": "Claude quotas",
+      "publisher": "Anthropic",
+      "url": "https://platform.claude.com/docs/en/api/rate-limits",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["claude-start-limits-account-uncertainty"]
+    },
+    {
+      "title": "Claude lifecycle",
+      "publisher": "Anthropic",
+      "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["claude-active-retirement-notifications"]
+    },
+    {
+      "title": "Mistral Large 3",
+      "publisher": "Mistral",
+      "url": "https://docs.mistral.ai/models/mistral-large-3-25-12",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["mistral-ga-exact-id-context-schema"]
+    },
+    {
+      "title": "Mistral rates",
+      "publisher": "Mistral",
+      "url": "https://docs.mistral.ai/inference/pricing",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["mistral-standard-cache-prices"]
+    },
+    {
+      "title": "Mistral API opt-out",
+      "publisher": "Mistral",
+      "url": "https://help.mistral.ai/en/articles/455207-can-i-opt-out-of-my-input-or-output-data-being-used-for-training",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_terms",
+      "supports_claims": ["mistral-separate-api-training-opt-out"]
+    },
+    {
+      "title": "Mistral lifecycle",
+      "publisher": "Mistral",
+      "url": "https://docs.mistral.ai/inference/model-lifecycle",
+      "retrieved_at": "2026-09-17",
+      "source_type": "provider_documentation",
+      "supports_claims": ["ga-no-silent-update-six-month-notice"]
+    },
+    {
+      "title": "DeepSeek pricing indexed; fetched timeout",
+      "publisher": "DeepSeek",
+      "url": "https://api-docs.deepseek.com/quick_start/pricing",
+      "retrieved_at": "2026-09-17",
+      "source_type": "indexed_provider_documentation",
+      "supports_claims": ["unverified-current-pricing", "deepseek-filter-failure"]
+    },
+    {
+      "title": "DeepSeek Responses indexed; fetched timeout",
+      "publisher": "DeepSeek",
+      "url": "https://api-docs.deepseek.com/api/create-response/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "indexed_provider_documentation",
+      "supports_claims": ["unverified-current-schema-api"]
+    },
+    {
+      "title": "UzLiB leaderboard main snapshot",
+      "publisher": "Tahrirchi / Abror Shopulatov",
+      "url": "https://github.com/tahrirchi/uzlib/blob/main/LEADERBOARD.md",
+      "retrieved_at": "2026-09-17",
+      "source_type": "benchmark_repository",
+      "supports_claims": ["uzlib-named-model-scores", "not-product-evaluation"]
+    },
+    {
+      "title": "UzLiB methodology",
+      "publisher": "Tahrirchi / Abror Shopulatov",
+      "url": "https://github.com/tahrirchi/uzlib",
+      "retrieved_at": "2026-09-17",
+      "source_type": "benchmark_repository",
+      "supports_claims": ["latin-standardization", "linguistic-mcq-method"]
+    },
+    {
+      "title": "TUMLU ACL 2025",
+      "publisher": "ACL / TUMLU authors",
+      "url": "https://aclanthology.org/2025.acl-long.1112/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "peer_reviewed_research",
+      "supports_claims": ["native-school-mcq", "latin-cyrillic-analysis"]
+    },
+    {
+      "title": "TUMLU-mini archived results",
+      "publisher": "Cefer Isbarov / TUMLU authors",
+      "url": "https://github.com/ceferisbarov/TUMLU",
+      "retrieved_at": "2026-09-17",
+      "source_type": "benchmark_repository",
+      "supports_claims": ["historical-five-shot-uzbek-scores", "replication-scripts"]
+    },
+    {
+      "title": "Kardes-NLU EACL 2024",
+      "publisher": "ACL / Kardes-NLU authors",
+      "url": "https://aclanthology.org/2024.eacl-long.100/",
+      "retrieved_at": "2026-09-17",
+      "source_type": "peer_reviewed_research",
+      "supports_claims": ["uzbek-low-resource-nlu-transfer", "not-current-finalist-score"]
+    }
+  ]
+}
