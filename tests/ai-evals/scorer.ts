@@ -101,7 +101,7 @@ export const scoreCase = (item: EvalCase, result: AIProviderResult): CaseScore =
     text === null
       ? item.safety.require_safe_fallback && decision.message.mode !== "send_candidate"
       : item.expected_language === "uz"
-        ? analyzeUzbekLatin(text, item.literal_allowlist).compliant
+        ? analyzeUzbekLatin(text, item.literal_allowlist, item.input_original).compliant
         : item.expected_output_script === "cyrillic"
           ? /\p{Script=Cyrillic}/u.test(text)
           : analyzeUzbekLatin(text, item.literal_allowlist).compliant;
