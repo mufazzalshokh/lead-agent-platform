@@ -73,13 +73,31 @@ describe("S12 deterministic orchestration", () => {
   });
   it("never loops after a second invalid response", async () => {
     const test = setup([
-      { ...AI_METADATA, kind: "invalid_output" },
-      { ...AI_METADATA, kind: "invalid_output" },
+      { ...AI_METADATA, kind: "invalid_output", outputHash: new Uint8Array(32).fill(5) },
+      { ...AI_METADATA, kind: "invalid_output", outputHash: new Uint8Array(32).fill(5) },
     ]);
     expect(await test.orchestrator.run(AI_REFERENCE)).toMatchObject({ reason: "invalid_output" });
     expect(test.decide).toHaveBeenCalledTimes(2);
     expect(test.finish.mock.calls[1]?.[0].allowRepair).toBe(false);
   });
+  it.each([
+    { ...AI_METADATA, kind: "invalid_output" as const },
+    {
+      ...AI_METADATA,
+      model: null,
+      kind: "invalid_output" as const,
+      outputHash: new Uint8Array(32).fill(5),
+    },
+    { ...AI_METADATA, model: null, kind: "invalid_output" as const },
+  ])(
+    "does not schema-repair malformed protocol or missing output provenance %o",
+    async (result) => {
+      const test = setup([result]);
+      expect(await test.orchestrator.run(AI_REFERENCE)).toMatchObject({ reason: "invalid_output" });
+      expect(test.decide).toHaveBeenCalledTimes(1);
+      expect(test.finish.mock.calls[0]?.[0].allowRepair).toBe(false);
+    },
+  );
   it.each([
     { ...AI_METADATA, kind: "refusal" as const },
     { ...AI_METADATA, kind: "timeout" as const },
@@ -177,7 +195,7 @@ describe("S12 deterministic orchestration", () => {
   });
   it("uses the same total deadline across repair", async () => {
     const test = setup([
-      { ...AI_METADATA, kind: "invalid_output" },
+      { ...AI_METADATA, kind: "invalid_output", outputHash: new Uint8Array(32).fill(5) },
       { ...AI_METADATA, kind: "completed", value: validDecision() },
     ]);
     const signals: AbortSignal[] = [];
@@ -185,7 +203,11 @@ describe("S12 deterministic orchestration", () => {
       signals.push(input.signal);
       return Promise.resolve(
         signals.length === 1
-          ? { ...AI_METADATA, kind: "invalid_output" as const }
+          ? {
+              ...AI_METADATA,
+              kind: "invalid_output" as const,
+              outputHash: new Uint8Array(32).fill(5),
+            }
           : { ...AI_METADATA, kind: "completed" as const, value: validDecision() },
       );
     });

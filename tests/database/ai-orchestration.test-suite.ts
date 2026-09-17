@@ -8,6 +8,7 @@ import {
   type CanonicalInboundReceipt,
 } from "../../packages/application/src/index.js";
 import {
+  AgentFactualClaimSchema,
   CanonicalInboundEventSchema,
   ChannelConnectionIdSchema,
   OrganizationIdSchema,
@@ -340,14 +341,14 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
         (await harness.privilegedPool().query(`select status from ai_runs`)).rows[0],
       ).toMatchObject({ status: "stale" });
     });
-    it("paused automation suppresses a result arriving after provider call", async () => {
+    it("resolved/paused automation suppresses a result arriving after provider call", async () => {
       await seed(harness);
       const receipt = await accept(harness);
       const decide = async () => {
         await harness
           .privilegedPool()
           .query(
-            `update conversations set automation_mode='paused',version=version+1 where id=$1`,
+            `update conversations set status='resolved',automation_mode='paused',resolved_at=now(),version=version+1,updated_at=now() where id=$1`,
             [receipt.conversationId],
           );
         return result();
@@ -487,6 +488,56 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
         estimated_cost_micros: null,
       });
     });
+    it.each(["extra_fields", "excessive_references"] as const)(
+      "rejects %s without copying unsafe knowledge into provenance",
+      async (kind) => {
+        await seed(harness);
+        const receipt = await accept(harness);
+        const factReference: unknown = {
+          claim_kind: "service",
+          source_type: "service",
+          source_id: fixtureId(13100),
+          source_version: 1,
+        };
+        if (!isSchemaValue(AgentFactualClaimSchema, factReference))
+          throw new Error("Invalid knowledge fixture");
+        const facts =
+          kind === "extra_fields"
+            ? [
+                {
+                  reference: { ...factReference, private_text: "synthetic-private-claim" },
+                  text: "Synthetic fact",
+                },
+              ]
+            : Array.from({ length: 25 }, () => ({
+                reference: factReference,
+                text: "Synthetic fact",
+              }));
+        const decide = vi.fn(() => Promise.resolve(result()));
+        const persistence = createAIOrchestrationStore(harness.runtime(), {
+          requestedModel: "configured-test-model",
+          dataProtection,
+          protectProposal: proposalProtection.protect,
+          knowledge: () => Promise.resolve(facts),
+        });
+        expect(
+          await createAIOrchestrator({
+            provider: { decide },
+            store: persistence,
+            timeoutMs: 5_000,
+          }).run(referenceFor(receipt)),
+        ).toMatchObject({ reason: "context_too_large" });
+        expect(decide).not.toHaveBeenCalled();
+        const evidence = await harness
+          .privilegedPool()
+          .query<Record<string, unknown>>(`select status,knowledge_manifest_jsonb from ai_runs`);
+        expect(evidence.rows[0]).toEqual({
+          status: "failed",
+          knowledge_manifest_jsonb: { sources: [] },
+        });
+        expect(JSON.stringify(evidence.rows)).not.toContain("synthetic-private-claim");
+      },
+    );
     it("argument-encryption failure rolls back the entire terminal write", async () => {
       await seed(harness);
       const receipt = await accept(harness);

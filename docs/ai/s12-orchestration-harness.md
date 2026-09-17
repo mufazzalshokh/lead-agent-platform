@@ -52,6 +52,8 @@ gain tools, policy authority or a protected write path.
   one total deadline and the same schema/authority. Each physical invocation has
   its own `ai_runs` attempt. Refusal, timeout, incomplete, policy denial and HTTP
   authentication/request/rate-limit/server failures are not schema-repaired.
+  Malformed provider envelopes without known model/decision-output provenance
+  are not schema-repaired either.
 - Transport retries are **zero** in S12. Clear 429/5xx retryability is recorded in
   the typed provider result; bounded numeric Retry-After is metadata, not a blind
   retry instruction. Ambiguous network errors are non-retryable here.
@@ -90,7 +92,10 @@ remain S14 work. Free-form fact text never becomes system instructions.
 
 Existing `ai_runs` holds requested/resolved model, schema/prompt/policy/orchestrator
 versions, expected Conversation version, bounded source manifest, hashes, attempt,
-UTC lifecycle, finite failure and nullable usage. Unknown usage/cost stays NULL;
+UTC lifecycle, finite failure and nullable usage. Unknown usage/cost stays NULL.
+Provenance source references use an explicit four-field whitelist; invalid or
+over-limit reference sets are omitted from failed-run manifests, not copied as
+arbitrary objects. The provider still receives no context when bounds fail.
 `not-priced.v1` explicitly denotes no S12 estimate. USD is a storage denomination,
 not a claimed price. Commercial cost catalogs and authoritative pricing are later
 work.

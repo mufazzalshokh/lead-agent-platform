@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  AI_CONTEXT_LIMITS,
   aiFallback,
   validateAgentDecision,
   type AIContextSnapshot,
@@ -10,6 +11,7 @@ import {
   type AIFact,
 } from "@lead-agent/application";
 import {
+  AgentFactualClaimSchema,
   ConversationIdSchema,
   CorrelationIdSchema,
   MessageIdSchema,
@@ -70,6 +72,20 @@ type AIStoreOptions = Readonly<{
 }>;
 const hash = (value: unknown): Uint8Array =>
   createHash("sha256").update(JSON.stringify(value)).digest();
+const manifestSources = (snapshot: AIContextSnapshot) => {
+  const facts = snapshot.policy.facts;
+  if (
+    facts.length > AI_CONTEXT_LIMITS.facts ||
+    facts.some((fact) => !isSchemaValue(AgentFactualClaimSchema, fact.reference))
+  )
+    return [];
+  return facts.map(({ reference }) => ({
+    claim_kind: reference.claim_kind,
+    source_type: reference.source_type,
+    source_id: reference.source_id,
+    source_version: reference.source_version,
+  }));
+};
 const requireReference = (reference: AIWorkReference): void => {
   if (
     !isSchemaValue(OrganizationIdSchema, reference.organizationId) ||
@@ -257,7 +273,7 @@ export const createAIOrchestrationStore = (
               options.requestedModel,
               attemptNo,
               JSON.stringify({
-                sources: input.snapshot.policy.facts.map((fact) => fact.reference),
+                sources: manifestSources(input.snapshot),
               }),
               input.inputHash,
               now(),

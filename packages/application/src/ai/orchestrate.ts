@@ -97,8 +97,9 @@ export const createAIOrchestrator = (
           }
         }
         const schemaInvalid =
-          provider?.kind === "invalid_output" ||
-          (provider?.kind === "completed" && !validateAgentDecision(provider.value));
+          provider?.model != null &&
+          ((provider.kind === "invalid_output" && provider.outputHash !== undefined) ||
+            (provider.kind === "completed" && !validateAgentDecision(provider.value)));
         const allowRepair = attempt === 0 && schemaInvalid && !deadline.aborted;
         const resolved = await options.store.finish({
           reference,
