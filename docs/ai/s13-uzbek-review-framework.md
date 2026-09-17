@@ -1,9 +1,14 @@
 # S13.C — Blinded native Uzbek review framework
 
-STATUS: **FINAL FULL-CORPUS PACKET PREPARED; HUMAN REVIEW PENDING**.
+STATUS: **40 NATIVE PREFERENCES IMPORTED / UNBLINDED; OWNER MODEL DECISION PENDING**.
+See [the final selection evidence](s13-final-model-selection.md) and
+[unchanged submitted choices/notes](s13-native-uzbek-review-results.json).
+All 40 preferences are explicit. Numeric dimensions 1–9 were not supplied and
+remain missing; no ratings or notes were edited or inferred. Submission was
+preserved and hashed before the existing private mapping was opened.
 The framework/sampling adds no paid calls; the packet uses completed authorized
 S13.C outputs merged with preserved S13.B evidence. Updated 17-09-2026.
-**NATIVE UZBEK REVIEW REQUIRED BEFORE FINAL MODEL APPROVAL.**
+**NATIVE PREFERENCE REVIEW COMPLETE; FINAL MODEL APPROVAL STILL REQUIRED.**
 Review exactly **40 paired comparisons**, not hundreds of outputs. Use only the
 opaque reviewer packet; do not open model reports, source artifacts or curator
 unblinding metadata during review. Candidate order and identities are blinded.
@@ -122,5 +127,9 @@ seed/mapping remain unopened until ratings are sealed; Windows sharing/ACLs must
 enforce the boundary, not just POSIX mode. Null drafts remain N/A. No human review
 or language-quality approval is inferred from automated script compliance.
 
-Next safe step: independent native review of these **40 paired cases**, sealing
-all ratings/safety/uncertainty notes before authorized unblinding. No model pin.
+Historical packet hash above identifies the blank packet before the owner filled
+it directly. The completed submission and seal hashes are recorded in the final
+selection evidence; missing dimensional scores are not converted into passes.
+
+Next safe step: owner model/configuration decision on the combined automated and
+native evidence. No production model pin, main merge, Claude activation or S14.
