@@ -51,7 +51,7 @@ const score = (v: unknown): v is CaseScore =>
   v["semanticReview"] === "pending" &&
   ["proposal", "fallback", "not_evaluated"].some((k) => k === v["policyDisposition"]) &&
   metadata(v["providerMetadata"]);
-const observation = (v: unknown): v is LiveObservation =>
+export const observation = (v: unknown): v is LiveObservation =>
   record(v) &&
   SCREEN_MODELS.some((m) => m === v["model"]) &&
   text(v["caseId"], 100) &&
@@ -78,7 +78,7 @@ const observation = (v: unknown): v is LiveObservation =>
   (v["repair"] === null) === (v["repairCostUSD"] === null) &&
   v["first"].providerMetadata.model === v["model"] &&
   v["final"].providerMetadata.model === v["model"];
-const budget = (v: unknown): v is BudgetCheckpoint =>
+export const budget = (v: unknown): v is BudgetCheckpoint =>
   record(v) &&
   count(v["calls"]) &&
   money(v["estimatedSpendUSD"]) &&

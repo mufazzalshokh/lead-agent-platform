@@ -75,14 +75,19 @@ const prior = (): EvalAttempt => ({
 });
 
 describe("S13 owner-approved evaluation-only bounded recovery", () => {
-  it.each(["EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT", "ECONNRESET", "UND_ERR_SOCKET"])(
-    "permits a single classified transient %s",
-    (code) => {
-      expect(retryDelay(network(), cause(code), null, () => 0)).toBe(1000);
-    },
-  );
   it.each([
+    "EAI_AGAIN",
     "ENOTFOUND",
+    "ECONNREFUSED",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "ECONNRESET",
+    "UND_ERR_SOCKET",
+  ])("permits a single classified transient %s", (code) => {
+    expect(retryDelay(network(), cause(code), null, () => 0)).toBe(1000);
+  });
+  it.each([
+    "EAI_FAIL",
+    "EAI_NODATA",
     "CERT_HAS_EXPIRED",
     "ERR_TLS_CERT_ALTNAME_INVALID",
     "ABORT_ERR",
@@ -93,6 +98,44 @@ describe("S13 owner-approved evaluation-only bounded recovery", () => {
   it("does not retry an unclassified network exception", () => {
     expect(retryDelay(network(), null, null)).toBeNull();
   });
+  it("ENOTFOUND eligibility requires a genuine DNS transport failure without an HTTP response", () => {
+    expect(cause("ENOTFOUND").classification).toBe("DNS");
+    expect(retryDelay(network(), cause("ENOTFOUND"), null, () => 0)).toBe(1000);
+    expect(
+      retryDelay(network(), cause("ENOTFOUND"), { status: 404, code: null, category: null }),
+    ).toBeNull();
+    expect(retryDelay(network(), { ...cause("ENOTFOUND"), signalAborted: true }, null)).toBeNull();
+    expect(
+      retryDelay(network(), { ...cause("ENOTFOUND"), classification: "UNKNOWN_NETWORK" }, null),
+    ).toBeNull();
+  });
+  it.each([true, false])(
+    "DNS recovery success=%s preserves the first failure and never makes a third call",
+    async (success) => {
+      const failed = { ...network(), model: null };
+      const provider = mock([failed, success ? completed() : failed]);
+      const ledger = createBudgetLedger();
+      const attempts: EvalAttempt[] = [];
+      const operation = observeDecision("gpt-5.6-luna", provider, row, ledger, {
+        retry: { ...hooks(), diagnostics: () => ({ transport: cause("ENOTFOUND"), http: null }) },
+        onAttempt: (attempt) => attempts.push(attempt),
+      });
+      if (success) expect((await operation).first.schema).toBe(true);
+      else await expect(operation).rejects.toThrow();
+      expect(provider.decide).toHaveBeenCalledTimes(2);
+      expect(attempts[0]).toMatchObject({
+        attemptNumber: 1,
+        category: "network",
+        transport: { classification: "DNS", codes: ["ENOTFOUND"] },
+        unresolvedReservationUSD: "$0.007050",
+      });
+      expect(attempts[1]).toMatchObject({ attemptNumber: 2, retrySucceeded: success });
+      expect(ledger.snapshot()).toMatchObject({
+        calls: 2,
+        estimatedSpendUSD: success ? "$0.007195" : "$0.014100",
+      });
+    },
+  );
   it.each([408, 500, 502, 503, 504])("permits explicitly transient HTTP %s", (status) => {
     expect(
       retryDelay(
@@ -290,6 +333,15 @@ describe("S13 owner-approved evaluation-only bounded recovery", () => {
     expect(
       recurringTransportFailure([values[0] ?? prior(), values[0] ?? prior(), values[0] ?? prior()]),
     ).toBe(false);
+  });
+  it("does not mask recurring ENOTFOUND failures across distinct decisions", () => {
+    const failures = [0, 1, 2].map((index): EvalAttempt => ({
+      ...prior(),
+      caseId: `dns-${index}`,
+      transport: cause("ENOTFOUND"),
+    }));
+    expect(recurringTransportFailure(failures.slice(0, 2))).toBe(false);
+    expect(recurringTransportFailure(failures)).toBe(true);
   });
   it("pre-dispatch projected full-run cost enforces the hard ceiling", async () => {
     const provider = mock([]);

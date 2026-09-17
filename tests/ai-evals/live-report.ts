@@ -11,13 +11,15 @@ const rate = (values: readonly (boolean | null)[]) => ({
   rateAllCases:
     values.length === 0 ? null : values.filter((v) => v === true).length / values.length,
 });
-const latency = (values: readonly number[]) => {
+export const latency = (values: readonly number[]) => {
   if (values.some((v) => !Number.isFinite(v) || v < 0)) throw new TypeError("Invalid latency");
   const sorted = [...values].sort((a, b) => a - b);
   const percentile = (p: number) => sorted[Math.ceil(sorted.length * p) - 1] ?? null;
   return {
     samples: values.length,
     p50: percentile(0.5),
+    p75: percentile(0.75),
+    p90: percentile(0.9),
     p95: percentile(0.95),
     p99: percentile(0.99),
     max: sorted.at(-1) ?? null,
@@ -99,7 +101,8 @@ export const buildLiveReport = (
         : first.elapsedMs + retry.backoffMs + retry.elapsedMs;
     });
     const successfulCalls = physical.filter(
-      (attempt) => !["provider_error", "timeout"].includes(attempt.resultKind),
+      (attempt) =>
+        !["provider_error", "timeout", "unknown_interruption"].includes(attempt.resultKind),
     );
     return {
       model,
@@ -113,7 +116,8 @@ export const buildLiveReport = (
               attemptKey(attempt) === attemptKey(observation) && attempt.attemptNumber === 1,
           );
           return firstAttempt?.resultKind === "provider_error" ||
-            firstAttempt?.resultKind === "timeout"
+            firstAttempt?.resultKind === "timeout" ||
+            firstAttempt?.resultKind === "unknown_interruption"
             ? false
             : observation.first.schema;
         }),
@@ -124,6 +128,9 @@ export const buildLiveReport = (
         successfulCallRate: physical.length === 0 ? null : successfulCalls.length / physical.length,
         providerFailures: physical.filter((attempt) => attempt.resultKind === "provider_error")
           .length,
+        unclassifiedInterruptions: physical.filter(
+          (attempt) => attempt.resultKind === "unknown_interruption",
+        ).length,
         providerRefusals: physical.filter((attempt) => attempt.resultKind === "refusal").length,
         timeoutCount: physical.filter((attempt) => attempt.resultKind === "timeout").length,
         transportInterruptions: physical.filter(

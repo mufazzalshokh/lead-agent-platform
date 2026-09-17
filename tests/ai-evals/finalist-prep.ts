@@ -275,12 +275,32 @@ const block = (value: string) =>
     .join("\n");
 
 /** Reproducible using a PRIVATE seed. Returned curator mapping must never reach the reviewer packet. */
-export const blindedReviewPacket = (rows: readonly AcceptedCoreRow[], privateSeed: string) => {
-  remainingFinalistCases(rows);
+export const blindedReviewPacket = (
+  rows: readonly AcceptedCoreRow[],
+  privateSeed: string,
+  corpus: "screen" | "full" = "screen",
+) => {
+  if (corpus === "screen") remainingFinalistCases(rows);
+  else {
+    if (
+      rows.length !== 1120 ||
+      SCREEN_MODELS.some((model) => {
+        const selected = rows.filter((row) => row.model === model);
+        return (
+          selected.length !== 560 ||
+          new Set(selected.map((row) => row.caseId)).size !== 560 ||
+          selected.some((row) => !CORPUS.some((item) => item.case_id === row.caseId))
+        );
+      })
+    )
+      throw new TypeError("Need complete unique full-corpus review evidence");
+  }
   if (!/^[a-f0-9]{64}$/u.test(privateSeed))
     throw new TypeError("Need a private 256-bit review seed");
   const selected = REVIEW_QUOTAS.flatMap(([slice, quota]) => {
-    const pool = SCREEN.filter((item) => item.slice === slice).map((item) => pairFor(rows, item));
+    const pool = (corpus === "full" ? CORPUS : SCREEN)
+      .filter((item) => item.slice === slice)
+      .map((item) => pairFor(rows, item));
     pool.sort(
       (a, b) =>
         Number(disagreement(b)) - Number(disagreement(a)) ||

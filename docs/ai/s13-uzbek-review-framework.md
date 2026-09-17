@@ -1,6 +1,9 @@
 # S13.C — Blinded native Uzbek review framework
 
-STATUS: **FRAMEWORK/PACKET PREPARED; HUMAN REVIEW PENDING**. No paid generation.
+STATUS: **FINAL FULL-CORPUS PACKET PREPARED; HUMAN REVIEW PENDING**.
+The framework/sampling adds no paid calls; the packet uses completed authorized
+S13.C outputs merged with preserved S13.B evidence. Updated 17-09-2026.
+**NATIVE UZBEK REVIEW REQUIRED BEFORE FINAL MODEL APPROVAL.**
 Review exactly **40 paired comparisons**, not hundreds of outputs. Use only the
 opaque reviewer packet; do not open model reports, source artifacts or curator
 unblinding metadata during review. Candidate order and identities are blinded.
@@ -105,11 +108,19 @@ A/B/Tie/Both-bad counts before and after authorized unblinding.
   provisional deterministic labels. Do not retroactively overwrite accepted
   S13.B evidence or optimize one finalist mid-run.
 
-The preparation packet uses accepted S13.B core outputs because new S13.C results
-do not yet exist. It is one bounded native review exercise, not a requirement to
-review another 560 outputs after live completion. Revisit genuinely new failure
-clusters only with a stated bounded plan; do not infer human review completion
-from automated script compliance.
+The original preparation packet from accepted S13.B remains preserved. One final
+40-pair packet now uses the full **560-case/model merged corpus**, with the same
+quotas, disagreement priority and controls. This supersedes the preparation packet
+for the single bounded review exercise; not a second mandatory 560-output review.
 
-Next safe step: owner approval of the full evaluation cost/budget plan and
-arrangement of independent native review. No model selection or paid call.
+Final reviewer packet (outside Git):
+`C:\Users\Lenovo\AppData\Local\Temp\s13-finalist-7CnTbC\reviewer-packet.md`.
+SHA-256: `3A7024B958017A78D253ACCB26B0B737C7AD1031256C4490858DD1A24B1BA423`.
+Share only this packet plus this rubric. Keep model reports, repository/source
+artifacts and the separate curator key inaccessible to the reviewer. Private
+seed/mapping remain unopened until ratings are sealed; Windows sharing/ACLs must
+enforce the boundary, not just POSIX mode. Null drafts remain N/A. No human review
+or language-quality approval is inferred from automated script compliance.
+
+Next safe step: independent native review of these **40 paired cases**, sealing
+all ratings/safety/uncertainty notes before authorized unblinding. No model pin.

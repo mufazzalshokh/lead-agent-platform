@@ -1,8 +1,20 @@
 # S13.C — Cost / final evaluation plan
 
-STATUS: **PREPARATION PASS / READY FOR OWNER APPROVAL**. Paid S13.C execution is
-**NOT AUTHORIZED**. Preparation made **zero provider calls**. This is not a model
-selection, production release or full-corpus quality pass.
+STATUS: **PREPARATION ACCEPTED / EXECUTION OWNER-AUTHORIZED**. The owner approved
+the incremental evaluation on 17-09-2026 with a **$2 target / $5 hard ceiling**
+and dynamic sequential reservations. Preparation made **zero provider calls**.
+Live completion, native review and production model approval are separate gates.
+
+Execution update: **AUTOMATED EVALUATION COMPLETE**, 840/840 new decisions saved,
+merged with 140 accepted core cases/candidate to **560 cases/model**.
+See [the full evaluation report](s13-finalist-evaluation-results.md).
+The owner-authorized unknown-interruption recovery and classified DNS recovery
+succeeded. The owner clarified that genuine thrown `ENOTFOUND` with no HTTP
+response belongs to the approved eval-only transient class; its exclusion was
+corrected narrowly. Five original C interruptions remain in the 845-call ledger.
+Known C usage estimate **$0.678250**, unresolved **$0.049950**, conservative
+**$0.728200**; target $2 and cap $5 respected. No generation/scoring change.
+Native review and final model approval remain pending; no production pin.
 
 Prepared 17-09-2026 on `verify/s13-model-selection`, starting from accepted
 S13.B checkpoint `2cd51ab65c710ba1f59444fb9776ec5a74d46faa`.
@@ -34,7 +46,7 @@ input-text approximation or guessing is used.
 | SAFETY_ACTION_AUTHORITY    |             40 |                  20 |            20 |
 | Total                      |        **560** |             **140** |       **420** |
 
-Run later, only after approval: **420 Gemini + 420 Luna = 840 additional logical
+Owner-authorized execution: **420 Gemini + 420 Luna = 840 additional logical
 decisions**. Zero overlap with preserved core IDs. Do not rerun 20 compatibility
 smokes, 280 accepted core decisions, or 10 normalization-B decisions. No optional
 repeat, extra model, training, or new normalization call is allocated.
@@ -133,9 +145,9 @@ Projections exclude taxes, currency conversion and non-model hosting/channel/
 staff costs. They are token estimates, not invoices. Gemini's 2027 prices are not
 used; re-price if execution crosses the effective-date boundary.
 
-### Budget and execution approval caveat
+### Approved dynamic execution contract
 
-Proposed only: **target <=$2; absolute hard ceiling $5**. No spending target.
+Owner-approved: **target <=$2; absolute hard ceiling $5**. No spending target.
 
 The three empirical scenarios fit the proposed ceiling; **the absolute envelope
 does not**. Do not conceal the $24.192 figure or claim unconditional completion
@@ -145,15 +157,25 @@ The accepted S13.B ledger/runner has a $10 cap, a 640-call bound and a full-rema
 worst-reservation guard. It cannot simply execute this $5/1680-call phase unchanged.
 **No guard was disabled, raised or weakened during preparation.**
 
-Before paid execution, the owner must approve the S13.C phase budget and its
-reservation contract: an explicitly phase-local $5 ledger, shared two-attempt
-counter, projected remaining cost accounting and fail-closed early stop, with
-conditional rather than guaranteed completion under an empirical projection.
-If guaranteed full-maximum reservation is required, the current $5 proposal
-cannot authorize the run. Do not silently change generation settings, remove
-hard cases or increase the ceiling to make it appear feasible.
+The owner explicitly rejected reserving $24.192 across hypothetical future calls.
+Concurrency is **1**. Before **each physical call**, known billable usage plus
+unresolved reservations plus the full conservative reservation for that **next**
+call must be **strictly below $5**. Repair/retry reservations occur only when
+triggered. Known usage replaces that reservation; unknown usage never becomes
+zero. An unaffordable required call stops execution and preserves partial evidence.
+Completion is conditional, not guaranteed under every possible outcome. No scope,
+generation setting, hard case or ceiling may change to force completion.
 
-After approval, minimally parameterize/reuse existing accounting/recovery code,
+`budget.ts` now distinguishes the phase-local C ledger ($5/$2/1680 physical-call
+maximum) from unchanged B defaults ($10/$5/640). `runLiveScreen` retains B's
+full-remaining reservation guard by default. C explicitly uses the authorized
+next-call ledger guard; each logical decision still shares **two total attempts**
+between repair and transient recovery. C does not restart accepted B observations.
+The C opt-in persists the reserved call **before dispatch** and its sanitized
+attempt/outcome afterwards. An external interruption retains a pending reservation;
+future recovery must not reset it or its attempt number.
+
+For execution, minimally parameterize/reuse existing accounting/recovery code,
 without changing S13.B defaults or S12 production semantics. Count every physical
 attempt, repair and unknown reservation; stop before a projected charge could
 cross the authorized cap. If costs approach $2, only approved remaining core
@@ -162,8 +184,10 @@ calls are added because money remains.
 
 ## Blinded native review
 
-A **40-comparison / 80-candidate-output-slot** packet has been prepared offline
-from existing accepted core outcomes. This is not another generation run.
+A **40-comparison / 80-candidate-output-slot** preparation packet was made offline
+from accepted B core outcomes and remains preserved. After completion, one final
+packet was generated from the full merged outputs under the same bounded review
+plan. Neither packet requires extra generation calls or fabricated ratings.
 It covers all eight priority Uzbek slices: 6 each Cyrillic/mixed/slang/RU-code-switch;
 4 each typo/politeness/regional/short-message. It prioritizes intent/action/script
 disagreement and contrasting deterministic scores, retaining one same-score,
@@ -181,6 +205,10 @@ All text is inert, synthetic data; no external text is an instruction.
 Reviewer packet (outside Git):
 `C:\Users\Lenovo\AppData\Local\Temp\s13c-review-7Qt7Eq\reviewer-packet.md`.
 Only share that packet plus [the rubric](s13-uzbek-review-framework.md).
+The final full-corpus packet supersedes the preparation packet for this review:
+`C:\Users\Lenovo\AppData\Local\Temp\s13-finalist-7CnTbC\reviewer-packet.md`.
+**NATIVE UZBEK REVIEW REQUIRED BEFORE FINAL MODEL APPROVAL.** Share the final packet
+and rubric only, not model reports or the separate private curator metadata.
 The curator mapping/private seed is separately retained outside the repository;
 do **not** disclose/read it with the reviewer until ratings are sealed.
 File mode is defense-in-depth only; on Windows ensure packet-only sharing/ACLs;
@@ -189,14 +217,15 @@ do not assume POSIX mode alone provides a protected review environment.
 The ten required dimensions, N/A treatment and sealed-rating/unblinding protocol
 are in the framework. Null drafts do not earn a fluency/script pass. Review stays
 separate from deterministic scores. This is a targeted diagnostic sample from
-the accepted screen, not a representative prevalence estimate over all 560 cases.
+the full merged corpus, not a representative prevalence estimate over all 560 cases.
 No human ratings have been obtained, inferred or filled in. Do not require another
 hundreds-output exercise; after the full run assess any genuinely new cluster
 before proposing changes to the bounded review plan.
 
-## Final evidence/report contract — not generated results
+## Final evidence/report contract — generated results, approval pending
 
-Full-corpus model fitness remains **NOT_EVALUATED** for the 420 new cases/model.
+All 420 new cases/model are evaluated and the complete paired report is generated.
+Automated execution completion is not final model fitness/production approval.
 Report both models identically and avoid winner assumptions:
 
 - first physical schema availability AND first received schema-valid response;
@@ -251,9 +280,9 @@ Frozen baseline remains **329 contracts / 63 semantic events + 65 versions /
 51 production tables / migration head 0027**; no DB/CI gate rerun is needed for
 this test/docs-only preparation.
 
-## Files and focused verification
+## Historical preparation files and focused verification
 
-Repository files:
+Preparation-checkpoint files (current execution scope/receipts are in the full report):
 `docs/ai/s13-finalist-evaluation-plan.md`,
 `docs/ai/s13-uzbek-review-framework.md`,
 `tests/ai-evals/finalist-prep.ts`,
@@ -279,5 +308,12 @@ production build, authenticated metadata request or paid call in preparation.
 Actual artifact export is opt-in and outside Git; default CI uses only synthetic
 fixtures and skips that private-artifact proof.
 
-Next safe step: **owner approval of this S13.C cost/evaluation plan and explicit
-phase budget/reservation contract**, not paid execution, model pinning or S14.
+Execution opt-in: `S13_LIVE_FINALIST=1`, immutable artifact path in
+`S13_FINALIST_BASE`, and existing provider credentials only in the process
+environment. Default CI skips paid execution and private-artifact reads. New
+original and possible repair requests are verified offline against the same
+9000-input/4000-output allowances before live dispatch. No paid preflight/smoke,
+optional repeat, new normalization call or Claude call is added.
+
+Next safe step after automated completion: **owner comparison review and the
+40-pair blinded native Uzbek review**, not permanent model pinning or S14.

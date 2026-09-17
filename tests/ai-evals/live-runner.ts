@@ -4,7 +4,7 @@ import {
   type AIProvider,
   type AIProviderResult,
 } from "@lead-agent/application";
-import { createBudgetLedger, type BudgetCheckpoint } from "./budget.js";
+import { createBudgetLedger, type BudgetCheckpoint, type BudgetPhase } from "./budget.js";
 import type { EvalCase } from "./cases.js";
 import { usd } from "./cost.js";
 import { HARD_CAP_MICROS, parseUSDMicros, reservePerCall } from "./budget.js";
@@ -71,6 +71,7 @@ export class ScreenStop extends Error {
       phase: ScreenPhase;
       resultKind: AIProviderResult["kind"];
       category: string | null;
+      responseModelMissing?: boolean;
     }>,
   ) {
     super(`Screen stopped: ${reason}`);
@@ -95,6 +96,8 @@ export const observeDecision = async (
     priorAttempt?: EvalAttempt;
     beforePhysical?: () => void;
     onAttempt?: (attempt: EvalAttempt) => void;
+    onReserved?: (model: ScreenModel, row: PlannedDecision, attemptNumber: number) => void;
+    ownerRecovery?: "s13c-luna-mixed-script-26-0";
   }> = {},
 ): Promise<LiveObservation> => {
   const clock = options.clock ?? (() => performance.now());
@@ -102,12 +105,24 @@ export const observeDecision = async (
   let signal: AbortSignal;
   let physicalCount = options.priorAttempt?.attemptNumber ?? 0;
   let initialBackoff = 0;
+  const ownerRecovery =
+    options.ownerRecovery === "s13c-luna-mixed-script-26-0" &&
+    model === "gpt-5.6-luna" &&
+    row.item.case_id === "s13-uz-mixed-script-26-0" &&
+    row.phase === "core" &&
+    !row.hint &&
+    options.priorAttempt?.resultKind === "unknown_interruption" &&
+    options.priorAttempt.source === "historical" &&
+    options.priorAttempt.category === null &&
+    attemptKey(options.priorAttempt) ===
+      attemptKey({ model, caseId: row.item.case_id, phase: row.phase, hint: row.hint });
   if (options.priorAttempt !== undefined) {
     if (
       options.retry === undefined ||
       physicalCount !== 1 ||
-      options.priorAttempt.resultKind !== "provider_error" ||
-      options.priorAttempt.category !== "network"
+      (!ownerRecovery &&
+        (options.priorAttempt.resultKind !== "provider_error" ||
+          options.priorAttempt.category !== "network"))
     )
       throw new ScreenStop("retry_exhausted");
     // The owner's explicit preserved-state resume authorizes this already-reviewed interruption.
@@ -121,8 +136,13 @@ export const observeDecision = async (
   ): Promise<{ result: AIProviderResult; cost: string }> => {
     if (physicalCount >= 2) throw new ScreenStop("retry_exhausted");
     options.beforePhysical?.();
-    ledger.before(model, row.phase === "repeat");
+    try {
+      ledger.before(model, row.phase === "repeat");
+    } catch {
+      throw new ScreenStop("usage_unknown_or_overrun");
+    }
     physicalCount++;
+    options.onReserved?.(model, row, physicalCount);
     options.retry?.resetDiagnostics(model);
     const attemptStarted = clock();
     const result = await provider.decide(inputForCase(row.item, signal, row.hint, repair));
@@ -144,7 +164,13 @@ export const observeDecision = async (
         phase: row.phase,
         hint: row.hint,
         attemptNumber: physicalCount === 1 ? 1 : 2,
-        purpose: repair ? "schema_repair" : physicalCount === 1 ? "initial" : "transient_retry",
+        purpose: ownerRecovery
+          ? "owner_resume"
+          : repair
+            ? "schema_repair"
+            : physicalCount === 1
+              ? "initial"
+              : "transient_retry",
         resultKind: result.kind,
         category: result.kind === "provider_error" ? result.category : null,
         transport: diagnostic?.transport ?? null,
@@ -154,7 +180,9 @@ export const observeDecision = async (
         backoffMs,
         retrySucceeded:
           physicalCount === 2 && !repair
-            ? result.kind !== "provider_error" && result.kind !== "timeout"
+            ? ownerRecovery
+              ? schema(result)
+              : result.kind !== "provider_error" && result.kind !== "timeout"
             : null,
         usage: result.usage,
         billableCostUSD: unknownBill ? null : cost,
@@ -174,8 +202,6 @@ export const observeDecision = async (
         category: result.kind === "provider_error" ? result.category : null,
       });
     }
-    // A response model mismatch is not silently treated as the requested candidate.
-    if (result.model !== model) throw new ScreenStop("provider_model_mismatch");
     if (
       result.kind === "completed" &&
       (options.secretValues ?? []).some(
@@ -184,6 +210,21 @@ export const observeDecision = async (
     )
       throw new ScreenStop("secret_disclosure");
     recordAttempt(cost);
+    // Transport/HTTP failures have no response body and the accepted OpenAI adapter
+    // correctly reports null model metadata. That is NOT a different model response.
+    // Never grant this exception to a completed/invalid/refused/incomplete response,
+    // or to any non-null unexpected model. Save operational evidence before stopping.
+    const missingTransportModel =
+      result.model === null && (result.kind === "provider_error" || result.kind === "timeout");
+    if (result.model !== model && !missingTransportModel)
+      throw new ScreenStop("provider_model_mismatch", {
+        model,
+        caseId: row.item.case_id,
+        phase: row.phase,
+        resultKind: result.kind,
+        category: result.kind === "provider_error" ? result.category : null,
+        responseModelMissing: result.model === null,
+      });
     if (
       options.retry !== undefined &&
       (result.kind === "provider_error" || result.kind === "timeout")
@@ -204,6 +245,14 @@ export const observeDecision = async (
     return { result, cost };
   };
   const first = await physical(false, initialBackoff);
+  if (ownerRecovery && !schema(first.result))
+    throw new ScreenStop("retry_exhausted", {
+      model,
+      caseId: row.item.case_id,
+      phase: row.phase,
+      resultKind: first.result.kind,
+      category: first.result.kind === "provider_error" ? first.result.category : null,
+    });
   const repaired =
     physicalCount < 2 && !schema(first.result) && repairable(first.result) && !signal.aborted
       ? await physical(true)
@@ -272,13 +321,25 @@ export const runLiveScreen = async (
     retry?: RetryHooks;
     initialAttempts?: readonly EvalAttempt[];
     onAttempt?: (attempt: EvalAttempt, budget: BudgetCheckpoint) => void;
+    budgetPhase?: BudgetPhase;
+    ownerRecovery?: "s13c-luna-mixed-script-26-0";
+    onReserved?: (
+      model: ScreenModel,
+      row: PlannedDecision,
+      attemptNumber: number,
+      budget: BudgetCheckpoint,
+    ) => void;
     onStop?: (
       error: unknown,
       budget: ReturnType<ReturnType<typeof createBudgetLedger>["snapshot"]>,
     ) => void;
   }> = {},
 ) => {
-  const ledger = createBudgetLedger(options.preflightReserveMicros, options.carryBudget),
+  const ledger = createBudgetLedger(
+      options.preflightReserveMicros,
+      options.carryBudget,
+      options.budgetPhase,
+    ),
     observations: LiveObservation[] = [...(options.initialObservations ?? [])];
   const attempts: EvalAttempt[] = [...(options.initialAttempts ?? [])];
   const plan = options.plan ?? planScreen();
@@ -339,13 +400,26 @@ export const runLiveScreen = async (
           : {
               retry: options.retry,
               ...(priorAttempt === undefined ? {} : { priorAttempt }),
-              beforePhysical: assertRemainingBudget,
+              ...(options.ownerRecovery === undefined
+                ? {}
+                : { ownerRecovery: options.ownerRecovery }),
+              // Owner-approved C: reserve ONLY the next physical call in ledger.before.
+              // B's accepted full-remaining guard is unchanged by default.
+              ...(options.budgetPhase === "finalist"
+                ? {}
+                : { beforePhysical: assertRemainingBudget }),
               onAttempt: (attempt: EvalAttempt) => {
                 attempts.push(attempt);
                 options.onAttempt?.(attempt, ledger.snapshot());
                 if (recurringTransportFailure(attempts))
                   throw new ScreenStop("recurring_transport_pattern");
               },
+            }),
+        ...(options.onReserved === undefined
+          ? {}
+          : {
+              onReserved: (m: ScreenModel, r: PlannedDecision, n: number) =>
+                options.onReserved?.(m, r, n, ledger.snapshot()),
             }),
       });
       observations.push(observation);

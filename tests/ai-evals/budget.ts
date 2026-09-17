@@ -4,6 +4,11 @@ import { INPUT_RESERVE, OUTPUT_LIMIT, type ScreenModel } from "./screen.js";
 
 export const HARD_CAP_MICROS = 10_000_000n;
 export const TARGET_MICROS = 5_000_000n;
+export type BudgetPhase = "screen" | "finalist";
+export const phaseLimits = (phase: BudgetPhase) =>
+  phase === "finalist"
+    ? { hardCap: 5_000_000n, target: 2_000_000n, maximumCalls: 1680 }
+    : { hardCap: HARD_CAP_MICROS, target: TARGET_MICROS, maximumCalls: 640 };
 export interface BudgetCheckpoint {
   readonly calls: number;
   readonly estimatedSpendUSD: string;
@@ -64,7 +69,12 @@ export const screenProjection = (logicalPerModel: number) => {
 };
 
 /** Reserve before dispatch. Unknown bills keep the full reservation and halt. */
-export const createBudgetLedger = (preflightReserveMicros = 0n, carry?: BudgetCheckpoint) => {
+export const createBudgetLedger = (
+  preflightReserveMicros = 0n,
+  carry?: BudgetCheckpoint,
+  phase: BudgetPhase = "screen",
+) => {
+  const limits = phaseLimits(phase);
   if (preflightReserveMicros < 0n || preflightReserveMicros > 10_000n)
     throw new TypeError("Unapproved preflight reserve");
   let spend = preflightReserveMicros,
@@ -76,9 +86,9 @@ export const createBudgetLedger = (preflightReserveMicros = 0n, carry?: BudgetCh
     if (
       !Number.isSafeInteger(carry.calls) ||
       carry.calls < 0 ||
-      carry.calls > 640 ||
-      carry.targetUSD !== usd(TARGET_MICROS) ||
-      carry.hardCapUSD !== usd(HARD_CAP_MICROS)
+      carry.calls > limits.maximumCalls ||
+      carry.targetUSD !== usd(limits.target) ||
+      carry.hardCapUSD !== usd(limits.hardCap)
     )
       throw new TypeError("Invalid budget checkpoint");
     spend = parseUSDMicros(carry.estimatedSpendUSD);
@@ -88,7 +98,7 @@ export const createBudgetLedger = (preflightReserveMicros = 0n, carry?: BudgetCh
     models["gpt-5.6-luna"] = parseUSDMicros(carry.perModelUSD["gpt-5.6-luna"]);
     if (
       preflightReserveMicros > 10000n ||
-      spend >= HARD_CAP_MICROS ||
+      spend >= limits.hardCap ||
       spend !== preflightReserveMicros + models["gemini-3.8-flash"] + models["gpt-5.6-luna"]
     )
       throw new TypeError("Inconsistent budget checkpoint");
@@ -99,9 +109,9 @@ export const createBudgetLedger = (preflightReserveMicros = 0n, carry?: BudgetCh
       if (
         halted ||
         pending !== null ||
-        calls >= 640 ||
-        spend + reserved >= HARD_CAP_MICROS ||
-        (optional && spend + reserved >= TARGET_MICROS)
+        calls >= limits.maximumCalls ||
+        spend + reserved >= limits.hardCap ||
+        (optional && spend + reserved >= limits.target)
       )
         throw new Error("Evaluation budget stop");
       pending = { model, reserved };
@@ -136,7 +146,7 @@ export const createBudgetLedger = (preflightReserveMicros = 0n, carry?: BudgetCh
       if (
         (usage.input ?? 0) > INPUT_RESERVE ||
         (usage.output ?? 0) > OUTPUT_LIMIT ||
-        spend >= HARD_CAP_MICROS
+        spend >= limits.hardCap
       ) {
         halted = true;
         throw new Error("Provider usage exceeded reservation; stop");
@@ -146,8 +156,8 @@ export const createBudgetLedger = (preflightReserveMicros = 0n, carry?: BudgetCh
     snapshot: () => ({
       calls,
       estimatedSpendUSD: usd(spend),
-      targetUSD: usd(TARGET_MICROS),
-      hardCapUSD: usd(HARD_CAP_MICROS),
+      targetUSD: usd(limits.target),
+      hardCapUSD: usd(limits.hardCap),
       preflightReservedUSD: usd(preflightReserveMicros),
       perModelUSD: {
         "gemini-3.8-flash": usd(models["gemini-3.8-flash"]),

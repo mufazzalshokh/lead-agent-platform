@@ -10,7 +10,7 @@ export interface EvalAttempt {
   readonly hint: boolean;
   readonly attemptNumber: 1 | 2;
   readonly purpose: "initial" | "schema_repair" | "transient_retry" | "owner_resume";
-  readonly resultKind: AIProviderResult["kind"];
+  readonly resultKind: AIProviderResult["kind"] | "unknown_interruption";
   readonly category: string | null;
   readonly transport: TransportDiagnostic | null;
   readonly http: HTTPDiagnostic | null;
@@ -48,7 +48,9 @@ export const retryDelay = (
     eligible =
       result.category === "network" &&
       transport !== null &&
-      ((transport.classification === "DNS" && transport.codes.includes("EAI_AGAIN")) ||
+      ((transport.classification === "DNS" &&
+        (transport.codes.includes("EAI_AGAIN") ||
+          (transport.codes.includes("ENOTFOUND") && http === null && !transport.signalAborted))) ||
         transport.classification === "TCP_CONNECT" ||
         transport.classification === "SOCKET_RESET" ||
         transport.classification === "CLIENT_TIMEOUT");
