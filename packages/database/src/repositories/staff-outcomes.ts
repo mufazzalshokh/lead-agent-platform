@@ -205,7 +205,7 @@ export const persistStaffOutcome = async (
     throw new TypeError("Invalid canonical staff outcome event");
   await executeTenantWrite(
     session,
-    `insert into outbox_events (organization_id,id,event_type,schema_version,aggregate_type,aggregate_id,aggregate_version,payload_jsonb,correlation_id,causation_id,occurred_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)`,
+    `insert into outbox_events (organization_id,id,event_type,schema_version,aggregate_type,aggregate_id,aggregate_version,payload_jsonb,correlation_id,causation_id,occurred_at,status,attempt_count,available_at) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,'pending',0,$11)`,
     [
       envelope.event_id,
       envelope.event_type,

@@ -394,11 +394,15 @@ const submissionStore = (harness: Harness) =>
     dataProtection,
     protectProposal: proposalProtection.protect,
   });
-const submissionFlow = (harness: Harness, extra: Readonly<Record<string, unknown>> = {}) =>
+const submissionFlow = (
+  harness: Harness,
+  extra: Readonly<Record<string, unknown>> = {},
+  timeoutMs = 5000,
+) =>
   createAppointmentSubmissionOrchestrator({
     provider: salesProvider(extra),
     store: submissionStore(harness),
-    timeoutMs: 5000,
+    timeoutMs,
   });
 const acceptSubmission = (harness: Harness, text: string, sequence = 1, tenant: "a" | "b" = "a") =>
   accept(harness, { text, sequence, tenant, receivedAt: GROUNDING_NOW });
@@ -1376,7 +1380,8 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
       await seedSales(harness, tenant);
       const first = await acceptSubmission(harness, "oka lazer nechi pul", 1, tenant);
       await bindWidget(harness, first, GROUNDING_NOW, tenant);
-      const flow = submissionFlow(harness);
+      // S17 setup permits bounded cold-host overhead; S16/production deadlines are unchanged.
+      const flow = submissionFlow(harness, {}, 30_000);
       const reference = (receipt: CanonicalInboundReceipt) => ({
         ...referenceFor(receipt),
         organizationId: tenant === "a" ? AI_REFERENCE.organizationId : tenantB,

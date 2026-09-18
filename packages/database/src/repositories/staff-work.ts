@@ -98,7 +98,7 @@ const location = (kind: StaffWorkKind): string =>
   kind === "appointment_request"
     ? "a.location_id"
     : kind === "notification"
-      ? "n.location_id"
+      ? "case when n.related_resource_type='appointment_request' then a.location_id when n.related_resource_type='handoff' then nh.location_id else l.location_id end"
       : kind === "handoff"
         ? "h.location_id"
         : "l.location_id";
@@ -172,9 +172,8 @@ export const readStaffWork = async (
       "(n.audience_type='membership' and n.recipient_membership_id=? or n.audience_type='queue')",
       authorization.membershipId,
     );
-    conditions.push(
-      "n.adapter_key='in_app' and n.notification_type in ('staff_task','staff_alert')",
-    );
+    // The private inbox projects staff audiences/types, not delivery-attempt adapters.
+    conditions.push("n.notification_type in ('staff_task','staff_alert')");
   }
   if (input.id !== undefined) add(`${alias}.id=?`, input.id);
   if (input.query !== undefined) {

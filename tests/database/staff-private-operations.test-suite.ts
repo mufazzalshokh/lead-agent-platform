@@ -101,7 +101,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
     return { receipt, auth, ops, item };
   };
   const acceptSlot = { start_at: "2026-09-19T12:00:00.000Z", end_at: "2026-09-19T12:30:00.000Z" };
-  const mutation = (f: Awaited<ReturnType<typeof requested>>, key = "accept") =>
+  const mutation = (f: Awaited<ReturnType<typeof requested>>, key = "s17-accept") =>
     f.ops.mutate(
       f.auth,
       "appointment_request",
@@ -194,7 +194,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
           "appointment_request",
           f.item.id,
           1,
-          "accept",
+          "s17-accept",
           { action: "accept", input: { ...checkedSlot(), end_at: checkedSlot().start_at } },
           "request:s17",
           "unused",
@@ -214,7 +214,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
                 "appointment_request",
                 f.item.id,
                 1,
-                "reject",
+                "s17-reject",
                 { action: "reject", input: { reason_code: "unavailable" } },
                 "request:s17",
                 "unused",
@@ -243,7 +243,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
             "appointment_request",
             target.item.id,
             1,
-            "attack",
+            "s17-attack",
             { action: "accept", input: checkedSlot() },
             "request:s17",
             "unused",
@@ -279,6 +279,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       expect(notification).toMatchObject({
         acknowledgment_supported: false,
         recipient_read_at: null,
+        location_id: f.item.location_id,
       });
       await expect(
         f.ops.mutate(
@@ -286,7 +287,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
           "notification",
           notification.id,
           notification.version,
-          "ack",
+          "s17-acknowledge",
           { action: "acknowledge", input: {} },
           "request:s17",
           "unused",
@@ -315,7 +316,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
         "notification",
         notification.id,
         notification.version,
-        "ack",
+        "s17-acknowledge",
         { action: "acknowledge", input: {} },
         "request:s17",
         "unused",
@@ -367,7 +368,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       await harness
         .privilegedPool()
         .query(
-          `insert into handoffs(id,organization_id,conversation_id,lead_id,location_id,status,trigger_reason,queue_key,requested_at,sla_due_at) values ($1,$2,$3,$4,$5,'requested','customer_requested','staff',$6,$6::timestamptz+interval '1 hour')`,
+          `insert into handoffs(id,organization_id,conversation_id,lead_id,location_id,status,trigger_reason,queue_key,requested_at,sla_due_at,created_at,updated_at) values ($1,$2,$3,$4,$5,'requested','customer_requested','staff',$6,$6::timestamptz+interval '1 hour',$6,$6)`,
           [
             handoff,
             f.auth.organizationId,
@@ -396,7 +397,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
           "handoff",
           id,
           item.version,
-          "claim-a",
+          "s17-claim-a",
           command,
           "request:s17",
           "unused",
@@ -406,7 +407,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
           "handoff",
           id,
           item.version,
-          "claim-b",
+          "s17-claim-b",
           command,
           "request:s17",
           "unused",
@@ -424,7 +425,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
         "handoff",
         id,
         claimed.version,
-        "resolve",
+        "s17-resolve",
         {
           action: "resolve",
           input: {
@@ -485,6 +486,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       const restricted = await authorization(f.receipt, "staff", "restricted");
       await expect(mutation(f)).rejects.toMatchObject({ code: "permission_denied" });
       expect((await f.ops.list(restricted, "appointment_request", {})).items).toHaveLength(0);
+      expect((await f.ops.list(restricted, "notification", {})).items).toHaveLength(0);
       await expect(f.ops.get(restricted, "appointment_request", f.item.id)).rejects.toMatchObject({
         code: "resource_not_found",
       });
@@ -508,7 +510,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       await harness
         .privilegedPool()
         .query(
-          `update conversations set status='resolved',resolved_at=$2,version=version+1,updated_at=$2 where id=$1`,
+          `update conversations set status='resolved',automation_mode='paused',active_handoff_id=null,resolved_at=$2,version=version+1,updated_at=$2 where id=$1`,
           [f.receipt.conversationId, now],
         );
       await expect(mutation(f)).rejects.toMatchObject({ code: "business_rule_failed" });
@@ -545,7 +547,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
           "appointment_request",
           f.item.id,
           f.item.version,
-          "revenue",
+          "s17-revenue",
           { action: "revenue", input: revenue },
           "request:s17",
           "unused",
@@ -635,7 +637,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
         "appointment_request",
         f.item.id,
         2,
-        "charge",
+        "s17-charge",
         { action: "revenue", input: charge },
         "request:s17",
         "unused",
@@ -651,7 +653,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
         "appointment_request",
         f.item.id,
         2,
-        "reverse",
+        "s17-reverse",
         { action: "revenue", input: reversal },
         "request:s17",
         "unused",
@@ -662,7 +664,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
           "appointment_request",
           f.item.id,
           2,
-          "reverse",
+          "s17-reverse",
           { action: "revenue", input: reversal },
           "request:s17",
           "unused",
@@ -744,8 +746,8 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       await harness
         .privilegedPool()
         .query(
-          `insert into audit_events (organization_id,id,event_type,actor_type,target_type,target_id,action,result,occurred_at) values ($1,$2,'test.fixture','system','appointment_request',$3,'test.fixture','succeeded',now())`,
-          [f.auth.organizationId, occupied, f.item.id],
+          `insert into audit_events (organization_id,id,event_type,actor_type,target_type,target_id,action,result,request_id,correlation_id,occurred_at) values ($1,$2,'test.fixture','system','appointment_request',$3,'test.fixture','succeeded','request:s17:fixture',$4,now())`,
+          [f.auth.organizationId, occupied, f.item.id, fixtureId(27008)],
         );
       const broken = createStaffOperations(
         createStaffOperationsStore(
@@ -762,7 +764,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
           "appointment_request",
           f.item.id,
           1,
-          "failure",
+          "s17-failure",
           { action: "accept", input: checkedSlot() },
           "request:s17",
           "unused",
