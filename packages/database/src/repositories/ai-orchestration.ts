@@ -598,14 +598,15 @@ const queueGroundedReply = async (
     contentType: "text",
     content: { type: "text", text, locale_hint: locale },
   });
-  const sequences = await executeTenantRead(
+  const sequences = await executeTenantWrite(
     session,
     `update conversations set next_sequence_no=next_sequence_no+1,version=version+1,
       last_activity_at=greatest(last_activity_at,$4),updated_at=greatest(updated_at,$4)
       where organization_id=$1 and id=$2 and version=$3 returning next_sequence_no-1 as sequence_no`,
     [input.reference.conversationId, version, occurredAt],
   );
-  if (sequences.length !== 1) throw new RepositoryDataIntegrityError();
+  if (sequences.rowCount !== 1 || sequences.rows.length !== 1)
+    throw new RepositoryDataIntegrityError();
   await executeTenantWrite(
     session,
     `insert into messages (organization_id,id,conversation_id,channel_connection_id,direction,sender_type,
@@ -616,7 +617,7 @@ const queueGroundedReply = async (
       messageId,
       input.reference.conversationId,
       input.snapshot.channelConnectionId,
-      mapSafeBigInt(sequences[0]?.["sequence_no"]),
+      mapSafeBigInt(sequences.rows[0]?.["sequence_no"]),
       protectedBody.ciphertext,
       protectedBody.hash,
       locale,

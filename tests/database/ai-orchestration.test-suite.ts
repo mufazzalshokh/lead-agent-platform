@@ -408,7 +408,7 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
       expect(reservations.every((entry) => entry !== null)).toBe(true);
       const candidates = reservations.filter((entry) => entry !== null),
         decision = validDecision({ intent: "pricing", language: "uz" });
-      const results = await Promise.all(
+      const completions = await Promise.allSettled(
         candidates.map((reservation) =>
           persistence.finish({
             reference,
@@ -420,6 +420,10 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
           }),
         ),
       );
+      const results = completions.map((entry) => {
+        if (entry.status === "rejected") throw entry.reason;
+        return entry.value;
+      });
       expect(results.filter((entry) => entry.kind === "decision")).toHaveLength(1);
       expect(await counts(harness.privilegedPool())).toMatchObject({
         outbound: 1,
