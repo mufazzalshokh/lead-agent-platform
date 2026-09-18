@@ -16,7 +16,6 @@ import {
   createTenantCanonicalOutboxEventSource,
   createTenantDatabaseRuntime,
   createAIOrchestrationStore,
-  createConversationKnowledgeReader,
   type OutboxRelayClaim,
 } from "@lead-agent/database";
 import {
@@ -24,12 +23,12 @@ import {
   createInstagramPlatformClient,
 } from "@lead-agent/integrations";
 import {
-  createGroundedAnswerOrchestrator,
-  GROUNDED_ANSWER_PROMPT_VERSION,
+  createSalesFlowOrchestrator,
+  SALES_FLOW_PROMPT_VERSION,
   type CredentialSecretStore,
 } from "@lead-agent/application";
 import { createCustomerDataProtection, createAIProposalProtection } from "@lead-agent/security";
-import { createGroundedAnswerAIProvider } from "@lead-agent/ai";
+import { createSalesFlowAIProvider } from "@lead-agent/ai";
 import { createAIMessageHandler } from "./ai-handler.js";
 
 import {
@@ -113,15 +112,14 @@ export const composeProductionWorkerRuntime = (
     aiConfig === null
       ? undefined
       : createAIMessageHandler(
-          createGroundedAnswerOrchestrator({
-            provider: createGroundedAnswerAIProvider(aiConfig),
+          createSalesFlowOrchestrator({
+            provider: createSalesFlowAIProvider(aiConfig),
             store: createAIOrchestrationStore(tenantRuntime, {
               requestedModel: aiConfig.model,
               providerId: COMMERCIAL_V1_AI_PROFILE.providerId,
               modelProfileVersion: COMMERCIAL_V1_AI_PROFILE.modelProfileVersion,
-              promptTemplateVersion: GROUNDED_ANSWER_PROMPT_VERSION,
-              groundedAnswers: true,
-              knowledge: createConversationKnowledgeReader(),
+              promptTemplateVersion: SALES_FLOW_PROMPT_VERSION,
+              salesFlow: true,
               dataProtection: createCustomerDataProtection(protectionConfig),
               protectProposal: createAIProposalProtection(protectionConfig).protect,
             }),

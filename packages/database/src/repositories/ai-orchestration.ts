@@ -12,6 +12,10 @@ import {
   evaluateGroundedDecision,
   groundingLocale,
   groundingUncertaintyText,
+  evaluateSalesDecision,
+  planSalesFlow,
+  salesMissing,
+  salesLocale,
 } from "@lead-agent/application";
 import {
   AgentFactualClaimSchema,
@@ -41,6 +45,8 @@ import {
   mapString,
   RepositoryDataIntegrityError,
 } from "./shared.js";
+import { readSalesContext } from "./sales-context.js";
+import { persistSalesPlan } from "./sales-persistence.js";
 
 type SourceRow = QueryResultRow & {
   id: unknown;
@@ -68,6 +74,8 @@ type AIStoreOptions = Readonly<{
   ) => Uint8Array;
   /** S14 only: deterministic approved text -> encrypted Message + canonical outbox. */
   groundedAnswers?: boolean;
+  /** S15: trusted qualification evidence and domain Handoff workflow, never model authorization. */
+  salesFlow?: boolean;
   /** Optional approved knowledge seam. S12 defaults to no facts; S14 owns grounded product behavior. */
   knowledge?: (
     session: TenantDbSession,
@@ -127,6 +135,11 @@ export const createAIOrchestrationStore = (
   const providerId = options.providerId ?? "openai";
   if (options.groundedAnswers === true && options.knowledge === undefined)
     throw new TypeError("Grounded answers require the approved knowledge reader");
+  if (
+    options.salesFlow === true &&
+    (options.groundedAnswers === true || options.knowledge !== undefined)
+  )
+    throw new TypeError("Sales flow owns the shared published knowledge projection");
   const modelProfileVersion = options.modelProfileVersion ?? "s12-configured.v1";
   const promptTemplateVersion = options.promptTemplateVersion ?? "s12-instructions.v1";
   if (
@@ -181,6 +194,7 @@ export const createAIOrchestrationStore = (
         [reference.conversationId, sequence],
       );
       const history = historyRows.map((row) => ({
+        messageId: mapMessageId(row.id),
         sequence: mapSafeBigInt(row.sequence_no),
         role:
           mapEnum(row.sender_type, ["customer", "member", "system"] as const) === "customer"
@@ -219,14 +233,29 @@ export const createAIOrchestrationStore = (
       if (contact.displayNameCiphertext === null) missingFields.push("name");
       if (!identityTypes.includes("phone")) missingFields.push("phone");
       if (!identityTypes.includes("email")) missingFields.push("email");
-      const facts =
+      let facts =
         (await options.knowledge?.(session, {
           conversationId: reference.conversationId,
           locale: conversation.preferredLocale,
           message: text,
           lock: false,
         })) ?? [];
-      return Object.freeze({
+      const sales =
+        options.salesFlow === true
+          ? await readSalesContext(session, {
+              conversationId: reference.conversationId,
+              locale: conversation.preferredLocale,
+              message: text,
+              history,
+              sourceMessageId: mapMessageId(message.id),
+              sourceSequence: sequence,
+              conversationVersion: conversation.version,
+              lock: false,
+              now: now(),
+            })
+          : null;
+      if (sales !== null) facts = sales.facts;
+      const snapshot: AIContextSnapshot = {
         conversationId: reference.conversationId,
         sourceMessageId: mapMessageId(message.id),
         channelConnectionId: conversation.channelConnectionId,
@@ -235,6 +264,7 @@ export const createAIOrchestrationStore = (
         locale: conversation.preferredLocale,
         message: text,
         history: Object.freeze(history),
+        ...(sales === null ? {} : { sales: sales.sales }),
         policy: Object.freeze({
           automationMode: conversation.automationMode,
           conversationStatus: conversation.status,
@@ -245,7 +275,23 @@ export const createAIOrchestrationStore = (
           facts,
           appointments: [],
         }),
-      });
+      };
+      if (sales !== null) {
+        const missing = salesMissing(snapshot);
+        const fields: AIContextSnapshot["policy"]["missingFields"][number][] = [];
+        if (missing.includes("service")) fields.push("service");
+        if (missing.includes("location")) fields.push("location");
+        return Object.freeze({
+          ...snapshot,
+          locale: salesLocale(snapshot.message, snapshot.locale),
+          policy: Object.freeze({
+            ...snapshot.policy,
+            contactableWithoutPhone: sales.sales.contactable,
+            missingFields: Object.freeze(fields),
+          }),
+        });
+      }
+      return Object.freeze(snapshot);
     });
   };
   return Object.freeze<AIOrchestrationStore>({
@@ -287,7 +333,7 @@ export const createAIOrchestrationStore = (
             session,
             `insert into ai_runs
           (organization_id,id,conversation_id,trigger_message_id,expected_conversation_version,provider_id,requested_model_id,model_profile_version,orchestrator_version,prompt_template_version,decision_schema_version,policy_version,status,cost_currency,cost_catalog_version,attempt_no,knowledge_manifest_jsonb,input_hash,started_at,correlation_id)
-          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','${options.groundedAnswers === true ? "s14-grounding.v1" : "s12-policy.v1"}','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
+          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','${options.salesFlow === true ? "s15-qualification-handoff.v1" : options.groundedAnswers === true ? "s14-grounding.v1" : "s12-policy.v1"}','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
             [
               runId,
               input.reference.conversationId,
@@ -378,6 +424,29 @@ const finishAIRun = async (
   }
   if (options.groundedAnswers === true && outcome.kind === "decision")
     outcome = evaluateGroundedDecision(outcome.decision, input.snapshot);
+  if (
+    options.salesFlow === true &&
+    !(outcome.kind === "fallback_required" && outcome.reason === "stale_context")
+  ) {
+    const current = await readSalesContext(session, {
+      conversationId: conversation.conversationId,
+      locale: input.snapshot.locale,
+      message: input.snapshot.message,
+      history: input.snapshot.history,
+      sourceMessageId: input.snapshot.sourceMessageId,
+      sourceSequence: input.snapshot.sourceSequence,
+      conversationVersion: input.snapshot.conversationVersion,
+      lock: true,
+      now: now(),
+    });
+    if (
+      !Buffer.from(hash(current.sales)).equals(Buffer.from(hash(input.snapshot.sales))) ||
+      !Buffer.from(hash(current.facts)).equals(Buffer.from(hash(input.snapshot.policy.facts)))
+    )
+      outcome = aiFallback("stale_context");
+    else if (outcome.kind === "decision")
+      outcome = evaluateSalesDecision(outcome.decision, input.snapshot);
+  }
   const value = input.provider?.kind === "completed" ? input.provider.value : null;
   const schemaValid = input.provider?.kind === "completed" ? validateAgentDecision(value) : null;
   const decision = validateAgentDecision(value) ? value : null;
@@ -411,6 +480,30 @@ const finishAIRun = async (
   const finished = now();
   if (!(run["started_at"] instanceof Date)) throw new RepositoryDataIntegrityError();
   const finishedAt = new Date(Math.max(finished.getTime(), run["started_at"].getTime()));
+  if (
+    options.salesFlow === true &&
+    !(
+      outcome.kind === "fallback_required" &&
+      outcome.reason === "invalid_output" &&
+      input.allowRepair
+    )
+  ) {
+    const plan = planSalesFlow(input.snapshot, outcome);
+    const persisted = await persistSalesPlan(session, input, plan, nextId, finishedAt);
+    if (plan.text !== null)
+      await queueGroundedReply(
+        session,
+        input,
+        options,
+        plan.text,
+        salesLocale(input.snapshot.message, input.snapshot.locale),
+        plan.sources,
+        persisted.conversationVersion,
+        nextId,
+        finishedAt,
+      );
+    outcome = Object.freeze({ ...outcome, salesResult: persisted.result });
+  }
   const usage = input.provider?.usage;
   await executeTenantWrite(
     session,
@@ -601,9 +694,14 @@ const queueGroundedReply = async (
   const sequences = await executeTenantWrite(
     session,
     `update conversations set next_sequence_no=next_sequence_no+1,version=version+1,
-      last_activity_at=greatest(last_activity_at,$4),updated_at=greatest(updated_at,$4)
+      last_activity_at=greatest(last_activity_at,$4),updated_at=greatest(updated_at,$4)${options.salesFlow === true ? ",preferred_locale=$5" : ""}
       where organization_id=$1 and id=$2 and version=$3 returning next_sequence_no-1 as sequence_no`,
-    [input.reference.conversationId, version, occurredAt],
+    [
+      input.reference.conversationId,
+      version,
+      occurredAt,
+      ...(options.salesFlow === true ? [locale] : []),
+    ],
   );
   if (sequences.rowCount !== 1 || sequences.rows.length !== 1)
     throw new RepositoryDataIntegrityError();

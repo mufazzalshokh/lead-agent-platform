@@ -9,6 +9,10 @@ import type {
   Locale,
   MessageId,
   OrganizationId,
+  LeadId,
+  LocationId,
+  ServiceId,
+  ResourceId,
 } from "@lead-agent/contracts";
 
 export type AIUsage = Readonly<{
@@ -50,6 +54,41 @@ export type AIHistoryEntry = Readonly<{
   sequence: number;
   role: "customer" | "staff" | "system";
   text: string;
+  /** Internal evidence binding, never projected into provider input. */
+  messageId?: MessageId;
+}>;
+export type SalesEvidence = Readonly<{
+  serviceId: ServiceId | null;
+  locationId: LocationId | null;
+  positiveNextStep: boolean;
+  serviceMessageId: MessageId | null;
+  locationMessageId: MessageId | null;
+  nextStepMessageId: MessageId | null;
+}>;
+/** Trusted application context, never model-authored or projected as instructions. */
+export type SalesContext = Readonly<{
+  leadId: LeadId;
+  leadVersion: number;
+  leadStatus: string;
+  policy: Readonly<{ id: ResourceId; version: number }> | null;
+  services: readonly Readonly<{
+    id: ServiceId;
+    names: readonly string[];
+    locationIds: readonly LocationId[];
+  }>[];
+  locations: readonly Readonly<{ id: LocationId; names: readonly string[] }>[];
+  stored: SalesEvidence;
+  contactable: boolean;
+}>;
+export type SalesResult = Readonly<{
+  kind:
+    | "qualification_incomplete"
+    | "qualified"
+    | "handoff_requested"
+    | "appointment_boundary"
+    | "grounding_insufficient";
+  reason: string | null;
+  missing: readonly string[];
 }>;
 export type AIProviderInput = Readonly<{
   locale: Locale;
@@ -88,6 +127,7 @@ export type AIContextSnapshot = Readonly<{
   message: string;
   history: readonly AIHistoryEntry[];
   policy: AIPolicyContext;
+  sales?: SalesContext;
 }>;
 export type AIFallbackReason =
   | "provider_unavailable"
@@ -99,6 +139,7 @@ export type AIFallbackReason =
   | "grounding_insufficient"
   | "medical_safety_wording_unapproved"
   | "booking_availability_unapproved"
+  | "staff_requested"
   | "stale_context";
 export type AIOutcome =
   | Readonly<{
@@ -106,8 +147,14 @@ export type AIOutcome =
       decision: AgentDecisionV1;
       disposition: "candidate" | "suppress";
       applied: false;
+      salesResult?: SalesResult;
     }>
-  | Readonly<{ kind: "fallback_required"; reason: AIFallbackReason; applied: false }>;
+  | Readonly<{
+      kind: "fallback_required";
+      reason: AIFallbackReason;
+      applied: false;
+      salesResult?: SalesResult;
+    }>;
 export type AIWorkReference = Readonly<{
   organizationId: OrganizationId;
   messageId: MessageId;
