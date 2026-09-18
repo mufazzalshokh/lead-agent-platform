@@ -30,6 +30,7 @@ import type { FastifyInstance } from "fastify";
 
 import { createApi, STAFF_AUTH_LOG_REDACTION_PATHS } from "./auth/plugin.js";
 import { createStaffConfigurationDependencies } from "./configuration/composition.js";
+import { createStaffOperationsDependencies } from "./staff/composition.js";
 import { createS9ConversationComposition } from "./conversations/composition.js";
 import { createWidgetDependencies } from "./widget/composition.js";
 import { createTelegramApiComposition } from "./telegram/composition.js";
@@ -144,6 +145,7 @@ export const createApiFromEnvironment = (
       sessions: createApplicationSessionLifecycle(sessionRuntime),
     },
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
+    staffOperations: createStaffOperationsDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffConversations: conversations.staff,
     staffTelegram: telegram.staff,
     telegramWebhook: telegram.webhook,

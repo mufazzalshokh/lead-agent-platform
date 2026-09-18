@@ -39,6 +39,7 @@ import {
   validDecision,
 } from "../ai/fixtures.js";
 import { groundingKnowledge, GROUNDING_NOW, groundingId } from "../ai/grounding-fixtures.js";
+import { registerStaffPrivateOperationsTests } from "./staff-private-operations.test-suite.js";
 
 type Harness = Readonly<{ privilegedPool: () => Pool; runtime: () => TenantDatabaseRuntime }>;
 const keys = {
@@ -1369,6 +1370,25 @@ const registerSalesFlowTests = (harness: Harness): void => {
   });
 };
 export const registerAIOrchestrationTests = (harness: Harness): void => {
+  registerStaffPrivateOperationsTests({
+    ...harness,
+    seedRequest: async (tenant) => {
+      await seedSales(harness, tenant);
+      const first = await acceptSubmission(harness, "oka lazer nechi pul", 1, tenant);
+      await bindWidget(harness, first, GROUNDING_NOW, tenant);
+      const flow = submissionFlow(harness);
+      const reference = (receipt: CanonicalInboundReceipt) => ({
+        ...referenceFor(receipt),
+        organizationId: tenant === "a" ? AI_REFERENCE.organizationId : tenantB,
+      });
+      await flow.run(reference(first));
+      const second = await acceptSubmission(harness, "ertaga", 2, tenant);
+      await flow.run(reference(second));
+      const third = await acceptSubmission(harness, "5larda", 3, tenant);
+      await flow.run(reference(third));
+      return third;
+    },
+  });
   registerAppointmentSubmissionTests(harness);
   registerSalesFlowTests(harness);
   describe("S14 conversation-bound grounded persistence", () => {

@@ -57,7 +57,7 @@ export interface LocationConfigurationReplayProtector {
 class LocationConfigurationPermissionError extends Error {}
 class LocationConfigurationValidationError extends Error {}
 class LocationConfigurationBusinessRuleError extends Error {}
-class LocationConfigurationIdempotencyError extends Error {}
+export class LocationConfigurationIdempotencyError extends Error {}
 class LocationConfigurationReplayError extends Error {}
 
 const resultFailure = <Value>(code: StoreFailureCode): ConfigurationResult<Value> =>
@@ -481,9 +481,9 @@ const bytesEqual = (left: Uint8Array, right: unknown): boolean => {
   return Buffer.from(left).equals(Buffer.from(right));
 };
 
-const reserveIdempotency = async (
+export const reserveRepositoryIdempotency = async (
   session: TenantDbSession,
-  input: PreparedLocationOperation,
+  input: Pick<PreparedLocationOperation, "idempotency" | "occurredAt">,
 ): Promise<IdempotencyRow | null> => {
   const inserted = await executeTenantWrite(
     session,
@@ -563,10 +563,11 @@ const decodeMutation = (
   return value;
 };
 
-const finalizeIdempotency = async (
+export const finalizeRepositoryIdempotency = async (
   session: TenantDbSession,
-  input: PreparedLocationOperation,
-  resourceType: "location" | "location_closure",
+  input: Pick<PreparedLocationOperation, "idempotency" | "occurredAt">,
+  resourceType:
+    "location" | "location_closure" | "appointment_request" | "handoff" | "notification",
   resourceId: ResourceId | LocationId,
   responseCiphertext: Uint8Array,
 ): Promise<void> => {
@@ -602,7 +603,7 @@ const idempotentMutation = async <Value extends LocationRoot | LocationClosureRe
       input.authorization.organizationId,
       async (session) => {
         await requireCurrentActor(session, input.authorization, permission);
-        const replay = await reserveIdempotency(session, input);
+        const replay = await reserveRepositoryIdempotency(session, input);
         if (replay !== null) {
           if (replay.status !== "succeeded") throw new LocationConfigurationIdempotencyError();
           return resultSuccess(
@@ -620,7 +621,7 @@ const idempotentMutation = async <Value extends LocationRoot | LocationClosureRe
           "closure_id" in mutation.resource
             ? mutation.resource.closure_id
             : mutation.resource.location_id;
-        await finalizeIdempotency(session, input, resourceType, resourceId, ciphertext);
+        await finalizeRepositoryIdempotency(session, input, resourceType, resourceId, ciphertext);
         return resultSuccess(mutation);
       },
     );

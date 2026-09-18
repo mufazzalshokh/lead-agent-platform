@@ -168,7 +168,7 @@ export interface StaffCustomerDataRevealer {
   ): string | null;
 }
 
-type CursorRoute = "conversations" | "leads" | "messages";
+type CursorRoute = "conversations" | "leads" | "messages" | "staff_work" | "staff_outcomes";
 type CursorPayload = Readonly<{
   binding: string;
   position: Readonly<Record<string, string | number>>;
@@ -189,12 +189,12 @@ export interface StaffQueryCursorCodec {
   ): OpaqueCursor;
 }
 
-const stableJson = (value: unknown): string => {
+export const stableStaffQueryJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (Array.isArray(value)) return `[${value.map(stableStaffQueryJson).join(",")}]`;
   return `{${Object.entries(value as Readonly<Record<string, unknown>>)
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+    .map(([key, entry]) => `${JSON.stringify(key)}:${stableStaffQueryJson(entry)}`)
     .join(",")}}`;
 };
 
@@ -228,7 +228,10 @@ export const createStaffQueryCursorCodec = (key: Uint8Array): StaffQueryCursorCo
       }
     },
     encode: (route, binding, position) => {
-      const body = Buffer.from(stableJson({ binding, position, route, version: 1 }), "utf8");
+      const body = Buffer.from(
+        stableStaffQueryJson({ binding, position, route, version: 1 }),
+        "utf8",
+      );
       const cursor = Buffer.concat([body, sign(body)]).toString("base64url");
       if (!isSchemaValue(OpaqueCursorSchema, cursor))
         throw new TypeError("Staff query cursor exceeds bounds");
@@ -297,7 +300,7 @@ const validAuthorization = (
 ): authorization is AuthorizationContext =>
   isAuthorizationContext(authorization) && evaluatePermission(authorization.role, permission);
 const scopeBinding = (authorization: AuthorizationContext): string =>
-  stableJson({
+  stableStaffQueryJson({
     allowedLocationIds: [...authorization.allowedLocationIds].sort(),
     locationScope: authorization.locationScope,
     membershipId: authorization.membershipId,
@@ -305,7 +308,7 @@ const scopeBinding = (authorization: AuthorizationContext): string =>
     userId: authorization.userId,
   });
 const filterBinding = (authorization: AuthorizationContext, filter: unknown): string =>
-  stableJson({ filter, scope: scopeBinding(authorization) });
+  stableStaffQueryJson({ filter, scope: scopeBinding(authorization) });
 
 const leadPosition = (
   value: Readonly<Record<string, string | number>> | null,

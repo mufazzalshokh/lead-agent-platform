@@ -64,6 +64,8 @@ import {
   type StaffConversationDependencies,
 } from "../conversations/plugin.js";
 import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
+import { registerStaffOperations, type StaffOperationsDependencies } from "../staff/plugin.js";
+import { StaffOperationError } from "@lead-agent/application";
 import {
   registerStaffTelegramManagement,
   registerTelegramWebhook,
@@ -129,6 +131,7 @@ export type ApiOptions = Readonly<{
   staffAuth?: StaffAuthDependencies;
   staffConfiguration?: StaffConfigurationDependencies;
   staffConversations?: StaffConversationDependencies;
+  staffOperations?: StaffOperationsDependencies;
   staffTelegram?: StaffTelegramDependencies;
   telegramWebhook?: TelegramWebhookDependencies;
   staffInstagram?: StaffInstagramDependencies;
@@ -333,6 +336,18 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
               : error.code === "business_rule_failed"
                 ? 422
                 : 429;
+  } else if (error instanceof StaffOperationError) {
+    code = error.code;
+    status =
+      error.code === "permission_denied"
+        ? 403
+        : error.code === "resource_not_found"
+          ? 404
+          : error.code === "validation_failed"
+            ? 400
+            : error.code === "business_rule_failed"
+              ? 422
+              : 409;
   } else if (error instanceof StaffConversationHttpError) {
     code = error.code;
     status =
@@ -414,6 +429,7 @@ const registerStaffAuth = async (
   staffConversations?: StaffConversationDependencies,
   staffTelegram?: StaffTelegramDependencies,
   staffInstagram?: StaffInstagramDependencies,
+  staffOperations?: StaffOperationsDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -781,6 +797,14 @@ const registerStaffAuth = async (
       resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
+  if (staffOperations !== undefined) {
+    registerStaffOperations(api, staffOperations, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
   if (staffTelegram !== undefined) {
     registerStaffTelegramManagement(api, staffTelegram, {
       authorizationResolver: dependencies.authorizationResolver,
@@ -798,6 +822,8 @@ const registerStaffAuth = async (
 };
 
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
+  if (options.staffOperations !== undefined && options.staffAuth === undefined)
+    throw new TypeError("Private staff operations require staff authentication");
   if (options.staffConfiguration !== undefined && options.staffAuth === undefined) {
     throw new TypeError("Staff configuration routes require the staff authentication boundary");
   }
@@ -915,6 +941,7 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         options.staffConversations,
         options.staffTelegram,
         options.staffInstagram,
+        options.staffOperations,
       ),
     );
   }

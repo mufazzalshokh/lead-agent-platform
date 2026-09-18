@@ -37,6 +37,12 @@ import {
   type MembershipRole,
 } from "@lead-agent/security";
 import { describe, expect, it } from "vitest";
+import {
+  createStaffOperations,
+  createStaffQueryCursorCodec,
+  type StaffOperationsStore,
+} from "@lead-agent/application";
+import { staffWorkFixture } from "../../../tests/application/staff-operations-fixtures.js";
 
 const NOW_TEXT_VALUE = "2026-09-15T08:00:00.000Z";
 const NOW = new Date(NOW_TEXT_VALUE);
@@ -176,7 +182,7 @@ type Controls = {
   sessionValid: boolean;
 };
 
-const createFixture = () => {
+const createFixture = (withOperations = false) => {
   const controls: Controls = { calls: [], role: "staff", sessionValid: true };
   const record = <Value>(operation: string, authorization: unknown, value: Value) => {
     controls.calls.push({ authorization, operation });
@@ -266,13 +272,140 @@ const createFixture = () => {
       rotateSession: () => Promise.reject(new Error("not used")),
     },
   };
-  const api = createApi({ staffAuth: auth, staffConversations });
+  const staffStore: StaffOperationsStore = {
+    list: ({ authorization }) => {
+      controls.calls.push({ authorization, operation: "inbox" });
+      return Promise.resolve({ items: [staffWorkFixture], next: null });
+    },
+    get: () => Promise.resolve(staffWorkFixture),
+    outcomes: () => Promise.resolve({ items: [], next: null }),
+    mutate: (input) => {
+      controls.calls.push({
+        authorization: input.authorization,
+        operation: input.operation.action,
+      });
+      return Promise.resolve({
+        resource: {
+          ...staffWorkFixture,
+          status: "staff_accepted",
+          appointment_status: "staff_accepted",
+          version: 2,
+        },
+        outcome_id: null,
+      });
+    },
+  };
+  const api = createApi({
+    staffAuth: auth,
+    staffConversations,
+    ...(withOperations
+      ? {
+          staffOperations: {
+            operations: createStaffOperations(
+              staffStore,
+              createStaffQueryCursorCodec(new Uint8Array(32).fill(17)),
+              () => NOW,
+            ),
+          },
+        }
+      : {}),
+  });
   const headers = (organizationId: OrganizationId = ORGANIZATION_ID) => ({
     cookie: `__Host-lead-session=${sealed}; __Host-lead-csrf=${csrf}`,
     "x-organization-context": organizationId,
   });
-  return { api, controls, headers, staffConversations };
+  return { api, controls, headers, staffConversations, csrf };
 };
+
+describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () => {
+  it("lists only through authenticated membership and a bounded explicit response", async () => {
+    const f = createFixture(true);
+    try {
+      expect((await f.api.inject({ method: "GET", url: "/v1/staff/inbox" })).statusCode).toBe(401);
+      expect(
+        (
+          await f.api.inject({
+            method: "GET",
+            url: "/v1/staff/inbox",
+            headers: f.headers(OTHER_ORGANIZATION_ID),
+          })
+        ).statusCode,
+      ).toBe(403);
+      const response = await f.api.inject({
+        method: "GET",
+        url: "/v1/staff/inbox",
+        headers: f.headers(),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.body).not.toMatch(
+        /ciphertext|provider_payload|confirmation_token|reasoning/u,
+      );
+      f.controls.role = "analyst";
+      expect(
+        (await f.api.inject({ method: "GET", url: "/v1/staff/inbox", headers: f.headers() }))
+          .statusCode,
+      ).toBe(403);
+    } finally {
+      await f.api.close();
+    }
+  });
+  it.each(["missing_origin", "bad_origin", "missing_csrf", "wrong_csrf", "no_session"])(
+    "denies protected staff acceptance: %s",
+    async (scenario) => {
+      const f = createFixture(true);
+      try {
+        const headers: Record<string, string> = {
+          ...f.headers(),
+          origin: STAFF_ORIGIN,
+          "x-csrf-token": f.csrf,
+          "idempotency-key": "s17-accept",
+          "if-match": `"${staffWorkFixture.id}:1"`,
+        };
+        if (scenario === "missing_origin") delete headers["origin"];
+        if (scenario === "bad_origin") headers["origin"] = "https://attacker.example";
+        if (scenario === "missing_csrf") delete headers["x-csrf-token"];
+        if (scenario === "wrong_csrf") headers["x-csrf-token"] = "wrong";
+        if (scenario === "no_session") delete headers["cookie"];
+        const response = await f.api.inject({
+          method: "POST",
+          url: `/v1/staff/appointment-requests/${staffWorkFixture.id}/accept`,
+          headers,
+          payload: { start_at: "2026-09-19T12:00:00.000Z", end_at: "2026-09-19T12:30:00.000Z" },
+        });
+        expect([401, 403]).toContain(response.statusCode);
+        expect(f.controls.calls).toHaveLength(0);
+      } finally {
+        await f.api.close();
+      }
+    },
+  );
+  it("returns 202 staff_accepted, never confirmed or confirmation sent", async () => {
+    const f = createFixture(true);
+    try {
+      const response = await f.api.inject({
+        method: "POST",
+        url: `/v1/staff/appointment-requests/${staffWorkFixture.id}/accept`,
+        headers: {
+          ...f.headers(),
+          origin: STAFF_ORIGIN,
+          "x-csrf-token": f.csrf,
+          "idempotency-key": "s17-accept",
+          "if-match": `"${staffWorkFixture.id}:1"`,
+        },
+        payload: { start_at: "2026-09-19T12:00:00.000Z", end_at: "2026-09-19T12:30:00.000Z" },
+      });
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toMatchObject({ data: { resource: { status: "staff_accepted" } } });
+      expect(response.body).not.toMatch(
+        /awaiting_customer_confirmation|"confirmed"|confirmation_sent/u,
+      );
+      expect(f.controls.calls[0]?.operation).toBe("accept");
+    } finally {
+      await f.api.close();
+    }
+  });
+});
 
 describe("S9.B private staff conversation query API", { timeout: 30_000 }, () => {
   it.each([
