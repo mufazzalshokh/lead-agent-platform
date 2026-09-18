@@ -32,21 +32,26 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       "4528878af70ef7bec527fd18f75602b21d5bf09262e4fcbb3083be34887d6de0",
     );
   });
-  it("has only 0027, 51 business tables, and a timestamp newer than 0026", async () => {
-    const files = await readdir(folder);
-    expect(files.some((name) => name.startsWith("0028_"))).toBe(false);
-    const snapshot: unknown = JSON.parse(
-      await readFile(new URL("meta/0027_snapshot.json", folder), "utf8"),
+  it("has the approved S18 migration head, 51 business tables, and ordered history", async () => {
+    const files = (await readdir(folder)).filter((name) => name.endsWith(".sql")).sort();
+    expect(files.map((name) => name.slice(0, 4))).toEqual(
+      Array.from({ length: 29 }, (_, index) => String(index).padStart(4, "0")),
     );
-    if (
-      typeof snapshot !== "object" ||
-      snapshot === null ||
-      !("tables" in snapshot) ||
-      typeof snapshot.tables !== "object" ||
-      snapshot.tables === null
-    )
-      throw new Error("Invalid snapshot");
-    expect(Object.keys(snapshot.tables)).toHaveLength(51);
+    expect(files.at(-1)).toBe("0028_s18_instagram_confirmation.sql");
+    for (const name of ["0027", "0028"]) {
+      const snapshot: unknown = JSON.parse(
+        await readFile(new URL(`meta/${name}_snapshot.json`, folder), "utf8"),
+      );
+      if (
+        typeof snapshot !== "object" ||
+        snapshot === null ||
+        !("tables" in snapshot) ||
+        typeof snapshot.tables !== "object" ||
+        snapshot.tables === null
+      )
+        throw new Error("Invalid snapshot");
+      expect(Object.keys(snapshot.tables)).toHaveLength(51);
+    }
     const journal: unknown = JSON.parse(
       await readFile(new URL("meta/_journal.json", folder), "utf8"),
     );
@@ -57,17 +62,22 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       !Array.isArray(journal.entries)
     )
       throw new Error("Invalid journal");
-    expect(journal.entries).toHaveLength(28);
+    expect(journal.entries).toHaveLength(29);
     let previous = -1;
     const entries: readonly unknown[] = journal.entries;
-    for (const entry of entries) {
+    for (const [index, entry] of entries.entries()) {
       if (
         typeof entry !== "object" ||
         entry === null ||
+        !("idx" in entry) ||
+        entry.idx !== index ||
+        !("tag" in entry) ||
+        typeof entry.tag !== "string" ||
         !("when" in entry) ||
         typeof entry.when !== "number"
       )
         throw new Error("Invalid migration time");
+      expect(`${entry.tag}.sql`).toBe(files[index]);
       expect(entry.when).toBeGreaterThan(previous);
       previous = entry.when;
     }
