@@ -2,12 +2,12 @@ import Type from "typebox";
 
 declare const currencyCodeBrand: unique symbol;
 
-type CurrencyCodeValue = string & {
+export type CurrencyCode = string & {
   readonly [currencyCodeBrand]: "CurrencyCode";
 };
 
 const createCurrencyCodeSchema = ($id?: string) =>
-  Type.Unsafe<CurrencyCodeValue>(
+  Type.Unsafe<CurrencyCode>(
     Type.String({
       ...($id === undefined ? {} : { $id }),
       description: "Uppercase three-letter ISO 4217 currency code.",
@@ -18,7 +18,6 @@ const createCurrencyCodeSchema = ($id?: string) =>
   );
 
 export const CurrencyCodeSchema = createCurrencyCodeSchema("CurrencyCode.v1");
-export type CurrencyCode = Type.Static<typeof CurrencyCodeSchema>;
 
 export const MoneySchema = Type.Object(
   {

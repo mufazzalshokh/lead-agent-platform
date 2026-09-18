@@ -5,7 +5,7 @@ import { withoutSchemaId } from "./embedding.js";
 
 declare const opaqueCursorBrand: unique symbol;
 
-type BrandedOpaqueCursor = string & {
+export type OpaqueCursor = string & {
   readonly [opaqueCursorBrand]: "OpaqueCursor";
 };
 
@@ -14,7 +14,7 @@ const BASE64URL_PATTERN = "^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$";
 const EmbeddedRequestIdSchema = withoutSchemaId<RequestId>(RequestIdSchema);
 
 const createOpaqueCursorSchema = ($id?: string) =>
-  Type.Unsafe<BrandedOpaqueCursor>(
+  Type.Unsafe<OpaqueCursor>(
     Type.String({
       ...($id === undefined ? {} : { $id }),
       description:
@@ -26,7 +26,6 @@ const createOpaqueCursorSchema = ($id?: string) =>
   );
 
 export const OpaqueCursorSchema = createOpaqueCursorSchema("OpaqueCursor.v1");
-export type OpaqueCursor = Type.Static<typeof OpaqueCursorSchema>;
 
 const createPageSizeSchema = ($id?: string) =>
   Type.Integer({
