@@ -1080,7 +1080,7 @@ const persistConfirmationEvidence = async (
         value.source,
         value.contactId,
         value.source === "staff_attested_external" ? value.recordedByMembershipId : null,
-        value.source === "telegram" ? value.sourceMessageId : null,
+        value.source === "telegram" || value.source === "instagram" ? value.sourceMessageId : null,
         append.externalReferenceHash ?? null,
         value.customerActedAt,
         value.recordedAt,

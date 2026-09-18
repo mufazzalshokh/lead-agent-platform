@@ -159,7 +159,7 @@ describe("S8.3 finite routing and private queue envelope", () => {
         (count, versions) => count + Object.keys(versions).length,
         0,
       ),
-    ).toBe(65);
+    ).toBe(66);
   });
 
   it("preserves explicit effect intent and never maps a canonical event to inbound", () => {

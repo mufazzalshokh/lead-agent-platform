@@ -48,7 +48,11 @@ const event = (identityType: string, version: "1" | "2" = "2") => ({
 });
 describe("Instagram additive identity/event version compatibility", () => {
   it("preserves all 319 accepted contract entries including every V1 schema byte-for-byte", () => {
-    const laterAdditions = new Set<string>(S17_STAFF_SCHEMA_NAMES);
+    const laterAdditions = new Set<string>([
+      ...S17_STAFF_SCHEMA_NAMES,
+      "AppointmentRequestConfirmedDomainEventV2Schema",
+      "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
+    ]);
     const legacy = buildContractSnapshot().contracts.filter(
       (contract) =>
         !additions.has(contract.export_name) && !laterAdditions.has(contract.export_name),
@@ -58,14 +62,14 @@ describe("Instagram additive identity/event version compatibility", () => {
       "6629a12317c510cba9435e1b31cc404fe75ac5306817da52c9322c59f89b343d",
     );
   });
-  it("keeps 63 semantic events and registers exactly 65 versioned variants", () => {
+  it("keeps 63 semantic events and registers exactly 66 versioned variants", () => {
     expect(DOMAIN_EVENT_NAMES).toHaveLength(63);
     expect(
       Object.values(DomainEventSchemasByVersion).reduce(
         (count, versions) => count + Object.keys(versions).length,
         0,
       ),
-    ).toBe(65);
+    ).toBe(66);
     expect(Object.keys(DomainEventSchemasByVersion["contact.identity_added"])).toEqual(["1", "2"]);
     expect(Object.keys(DomainEventPayloadSchemasByVersion["contact.identity_added"])).toEqual([
       "1",

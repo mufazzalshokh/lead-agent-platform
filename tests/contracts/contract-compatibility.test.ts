@@ -151,14 +151,14 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(345);
+    expect(snapshot.contracts).toHaveLength(347);
     expect(counts).toEqual({
       ai: 16,
       api: 24,
       channel: 24,
       configuration: 65,
       conversation: 37,
-      event: 133,
+      event: 135,
       shared: 28,
       widget: 18,
     });
@@ -168,7 +168,15 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S17 schemas without changing any of the 329 accepted entries", () => {
-    const candidate = buildContractSnapshot();
+    const full = buildContractSnapshot();
+    const candidate = {
+      ...full,
+      contracts: full.contracts.filter(
+        (contract) =>
+          !contract.export_name.startsWith("AppointmentRequestConfirmedDomainEvent") ||
+          contract.schema_version !== "2",
+      ),
+    };
     const additions = new Set<string>(S17_STAFF_SCHEMA_NAMES);
     const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
     const baseline: ContractSnapshot = { ...candidate, contracts: legacy };
@@ -180,6 +188,56 @@ describe("public contract inventory and snapshot", () => {
     expect(findings).toHaveLength(16);
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
+
+  it("adds only S18 confirmed V2 while preserving all 345 accepted contracts", () => {
+    const candidate = buildContractSnapshot();
+    const added = new Set([
+      "AppointmentRequestConfirmedDomainEventV2Schema",
+      "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
+    ]);
+    const legacy = candidate.contracts.filter((contract) => !added.has(contract.export_name));
+    expect(legacy).toHaveLength(345);
+    expect(createHash("sha256").update(JSON.stringify(legacy)).digest("hex")).toBe(
+      "a2c0a48259b7141287af5dd2184485345e8cc5aa3208ed529ee698fe983dd072",
+    );
+    const findings = compareContractSnapshots({ ...candidate, contracts: legacy }, candidate);
+    expect(findings).toHaveLength(2);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+    expect(
+      Object.keys(Contracts.DomainEventSchemasByVersion["appointment_request.confirmed"]),
+    ).toEqual(["1", "2"]);
+    expect(Contracts.DOMAIN_EVENT_NAMES).toHaveLength(63);
+  });
+
+  it.each(["customer_session", "telegram", "staff_attested_external", "instagram"])(
+    "validates the exact source compatibility for %s",
+    (source) => {
+      const payload = {
+        appointment_status: "confirmed",
+        confirmation_source: source,
+        customer_confirmed_at: "2026-09-18T09:00:00.000Z",
+        offer_version: 1,
+      };
+      expect(
+        Contracts.isSchemaValue(
+          Contracts.DomainEventPayloadSchemas["appointment_request.confirmed"],
+          payload,
+        ),
+      ).toBe(source !== "instagram");
+      expect(
+        Contracts.isSchemaValue(
+          Contracts.AppointmentRequestConfirmedDomainEventPayloadV2Schema,
+          payload,
+        ),
+      ).toBe(true);
+      expect(
+        Contracts.isSchemaValue(Contracts.AppointmentRequestConfirmedDomainEventPayloadV2Schema, {
+          ...payload,
+          confirmation_source: "invented",
+        }),
+      ).toBe(false);
+    },
+  );
 
   it("classifies the S10 Widget contracts as additive only", () => {
     const candidate = buildContractSnapshot();
@@ -640,7 +698,7 @@ describe("cross-contract security and drift audit", () => {
         (count, versions) => count + Object.keys(versions).length,
         0,
       ),
-    ).toBe(65);
+    ).toBe(66);
   });
 
   it("keeps event payloads privacy-minimal and credential rotation version-only", () => {

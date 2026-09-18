@@ -168,7 +168,8 @@ export type LeadRepository = Readonly<{
   ) => Promise<RepositoryPage<LeadRecord, LeadKeyset>>;
   listQualificationEvaluations: (
     leadId: LeadId,
-    request?: RepositoryPageRequest<LeadEvaluationKeyset>,
+    request?: RepositoryPageRequest<LeadEvaluationKeyset> &
+      Readonly<{ result?: LeadQualificationEvaluation["result"]; businessPolicyId?: ResourceId }>,
   ) => Promise<RepositoryPage<LeadQualificationEvaluation, LeadEvaluationKeyset>>;
   listQualificationEvidence: (
     evaluationId: ResourceId,
@@ -244,10 +245,19 @@ export const createLeadRepository = (session: TenantDbSession): LeadRepository =
            from lead_qualification_evaluations
           where organization_id = $1
             and lead_id = $2
+            and ($6::text is null or result = $6)
+            and ($7::uuid is null or business_policy_id = $7)
             and ($3::timestamptz is null or (occurred_at, id) < ($3, $4::uuid))
           order by occurred_at desc, id desc
           limit $5`,
-        [leadId, after?.occurredAt ?? null, after?.evaluationId ?? null, limit + 1],
+        [
+          leadId,
+          after?.occurredAt ?? null,
+          after?.evaluationId ?? null,
+          limit + 1,
+          request.result ?? null,
+          request.businessPolicyId ?? null,
+        ],
       );
       return createRepositoryPage(
         rows,

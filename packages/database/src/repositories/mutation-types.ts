@@ -1,5 +1,6 @@
 import type {
   ActorRef,
+  AppointmentRequestConfirmedDomainEventV2,
   AggregateVersion,
   CausationId,
   ChannelConnectionId,
@@ -35,7 +36,7 @@ import type {
 export type NonEmptyReadonlyArray<Value> = readonly [Value, ...Value[]];
 
 export type CoreDomainEvent = Extract<
-  DomainEvent | LeadReopenedDomainEventV2,
+  DomainEvent | LeadReopenedDomainEventV2 | AppointmentRequestConfirmedDomainEventV2,
   { aggregate_type: "appointment_request" | "conversation" | "handoff" | "lead" }
 >;
 

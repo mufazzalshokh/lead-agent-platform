@@ -478,8 +478,8 @@ export const analyticsEvents = pgTable(
     ),
     check(
       "analytics_events_schema_version_check",
-      sql`(${table.eventType} in ('lead.reopened', 'contact.identity_added') and ${table.schemaVersion} in ('1', '2'))
-        or (${table.eventType} not in ('lead.reopened', 'contact.identity_added') and ${table.schemaVersion} = '1')`,
+      sql`(${table.eventType} in ('lead.reopened', 'contact.identity_added', 'appointment_request.confirmed') and ${table.schemaVersion} in ('1', '2'))
+        or (${table.eventType} not in ('lead.reopened', 'contact.identity_added', 'appointment_request.confirmed') and ${table.schemaVersion} = '1')`,
     ),
     check(
       "analytics_events_channel_locale_check",
@@ -496,7 +496,12 @@ export const analyticsEvents = pgTable(
     check(
       "analytics_events_confirmation_source_check",
       sql`${table.confirmationSource} is null
-        or ${table.confirmationSource} in ('customer_session', 'telegram', 'staff_attested_external')`,
+        or ${table.confirmationSource} in ('customer_session', 'telegram', 'staff_attested_external', 'instagram')`,
+    ),
+    check(
+      "analytics_events_instagram_confirmation_version_check",
+      sql`${table.confirmationSource} is distinct from 'instagram'
+      or (${table.eventType} = 'appointment_request.confirmed' and ${table.schemaVersion} = '2')`,
     ),
     check(
       "analytics_events_dimensions_check",

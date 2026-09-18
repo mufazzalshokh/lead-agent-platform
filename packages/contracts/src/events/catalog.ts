@@ -86,6 +86,27 @@ export const contactIdentityAddedDomainEventV2Definition = defineDomainEventVers
   ),
 );
 
+export const appointmentRequestConfirmedDomainEventV2Definition = defineDomainEventVersion(
+  "appointment_request.confirmed",
+  "appointment_request",
+  AppointmentRequestIdSchema,
+  "2",
+  Type.Object(
+    {
+      appointment_status: Type.Literal("confirmed"),
+      confirmation_source: Type.Union([
+        Type.Literal("customer_session"),
+        Type.Literal("telegram"),
+        Type.Literal("staff_attested_external"),
+        Type.Literal("instagram"),
+      ]),
+      customer_confirmed_at: embedSchemaAs<JsonWire<UtcTimestamp>>(UtcTimestampSchema),
+      offer_version: embedSchema(AggregateVersionSchema),
+    },
+    { $id: "AppointmentRequestConfirmedDomainEventPayload.v2", additionalProperties: false },
+  ),
+);
+
 const ConversationActiveHandoffChangedDomainEventPayloadV1Schema = Type.Object(
   {
     automation_mode: Type.Literal("paused"),

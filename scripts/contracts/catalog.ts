@@ -182,6 +182,8 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "StaffMessageSenderTypeSchema",
   ],
   event: [
+    "AppointmentRequestConfirmedDomainEventV2Schema",
+    "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
     "ContactIdentityAddedDomainEventV2Schema",
     "ContactIdentityAddedDomainEventPayloadV2Schema",
     "DomainEventNameSchema",

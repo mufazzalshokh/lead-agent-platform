@@ -40,6 +40,7 @@ import {
 } from "../ai/fixtures.js";
 import { groundingKnowledge, GROUNDING_NOW, groundingId } from "../ai/grounding-fixtures.js";
 import { registerStaffPrivateOperationsTests } from "./staff-private-operations.test-suite.js";
+import { registerCustomerConfirmationTests } from "./customer-confirmation.test-suite.js";
 
 type Harness = Readonly<{ privilegedPool: () => Pool; runtime: () => TenantDatabaseRuntime }>;
 const keys = {
@@ -84,22 +85,34 @@ const accept = async (
     sequence?: number;
     text?: string;
     receivedAt?: string;
+    channelType?: "widget" | "telegram" | "instagram";
   }> = {},
 ): Promise<CanonicalInboundReceipt> => {
   const org = options.tenant === "b" ? tenantB : AI_REFERENCE.organizationId;
   const channel = options.tenant === "b" ? channelB : AI_SNAPSHOT.channelConnectionId;
   const sequence = options.sequence ?? 1;
   const event: unknown = {
-    channel: "widget",
+    channel: options.channelType ?? "widget",
     channel_connection_id: channel,
     content: { locale_hint: "en", type: "text", text: options.text ?? "Hello synthetic customer" },
     event_id: `s12:event:${sequence}`,
-    external_account_id: null,
-    external_conversation_id: "s12:thread",
+    external_account_id:
+      options.channelType === undefined || options.channelType === "widget" ? null : "900001",
+    external_conversation_id:
+      options.channelType === "instagram"
+        ? "ig:900001:700001"
+        : options.channelType === "telegram"
+          ? "700001"
+          : "s12:thread",
     external_message_id: `s12:message:${sequence}`,
-    external_sender_id: "s12:participant",
+    external_sender_id:
+      options.channelType === "instagram"
+        ? "ig:900001:700001"
+        : options.channelType === "telegram"
+          ? "700001"
+          : "s12:participant",
     kind: "text",
-    occurred_at: "2026-09-15T08:00:00.000Z",
+    occurred_at: options.receivedAt ?? "2026-09-15T08:00:00.000Z",
     received_at: options.receivedAt ?? "2026-09-15T08:00:00.000Z",
   };
   if (!isSchemaValue(CanonicalInboundEventSchema, event))
@@ -1374,25 +1387,56 @@ const registerSalesFlowTests = (harness: Harness): void => {
   });
 };
 export const registerAIOrchestrationTests = (harness: Harness): void => {
-  registerStaffPrivateOperationsTests({
+  const seedRequest = async (
+    tenant: "a" | "b",
+    channelType: "widget" | "telegram" | "instagram" = "widget",
+  ): Promise<CanonicalInboundReceipt> => {
+    await seedSales(harness, tenant);
+    const organizationId = tenant === "a" ? AI_REFERENCE.organizationId : tenantB;
+    const channelConnectionId = tenant === "a" ? AI_SNAPSHOT.channelConnectionId : channelB;
+    if (channelType !== "widget")
+      await harness
+        .privilegedPool()
+        .query("update channel_connections set channel_type=$2 where id=$1", [
+          channelConnectionId,
+          channelType,
+        ]);
+    const input = (text: string, sequence: number) =>
+      accept(harness, { text, sequence, tenant, channelType, receivedAt: GROUNDING_NOW });
+    const first = await input("oka lazer nechi pul", 1);
+    if (channelType === "widget") await bindWidget(harness, first, GROUNDING_NOW, tenant);
+    else {
+      const offset = tenant === "a" ? 0 : 1000;
+      await harness
+        .privilegedPool()
+        .query("insert into users (id,status) values ($1,'active')", [fixtureId(13003 + offset)]);
+      await harness
+        .privilegedPool()
+        .query(
+          "insert into memberships (id,organization_id,user_id,role,status,location_scope,activated_at) values ($1,$2,$3,'owner','active','all',$4)",
+          [fixtureId(13004 + offset), organizationId, fixtureId(13003 + offset), GROUNDING_NOW],
+        );
+    }
+    // S17 setup permits bounded cold-host overhead; S16/production deadlines are unchanged.
+    const flow = submissionFlow(harness, {}, 30_000);
+    const reference = (receipt: CanonicalInboundReceipt) => ({
+      ...referenceFor(receipt),
+      organizationId: tenant === "a" ? AI_REFERENCE.organizationId : tenantB,
+    });
+    await flow.run(reference(first));
+    const second = await input("ertaga", 2);
+    await flow.run(reference(second));
+    const third = await input("5larda", 3);
+    await flow.run(reference(third));
+    return third;
+  };
+  registerStaffPrivateOperationsTests({ ...harness, seedRequest });
+  registerCustomerConfirmationTests({
     ...harness,
-    seedRequest: async (tenant) => {
-      await seedSales(harness, tenant);
-      const first = await acceptSubmission(harness, "oka lazer nechi pul", 1, tenant);
-      await bindWidget(harness, first, GROUNDING_NOW, tenant);
-      // S17 setup permits bounded cold-host overhead; S16/production deadlines are unchanged.
-      const flow = submissionFlow(harness, {}, 30_000);
-      const reference = (receipt: CanonicalInboundReceipt) => ({
-        ...referenceFor(receipt),
-        organizationId: tenant === "a" ? AI_REFERENCE.organizationId : tenantB,
-      });
-      await flow.run(reference(first));
-      const second = await acceptSubmission(harness, "ertaga", 2, tenant);
-      await flow.run(reference(second));
-      const third = await acceptSubmission(harness, "5larda", 3, tenant);
-      await flow.run(reference(third));
-      return third;
-    },
+    seedRequest,
+    dataProtection,
+    inbound: (text, sequence, tenant, receivedAt, channelType = "widget") =>
+      accept(harness, { text, sequence, tenant, receivedAt, channelType }),
   });
   registerAppointmentSubmissionTests(harness);
   registerSalesFlowTests(harness);

@@ -588,16 +588,19 @@ slot; it does not mean an external calendar event exists.
    rendered in the location's time zone. If the
    original widget customer is offline/unreachable, the staff inbox shows an
    external-contact task instead of assuming delivery.
-4. **Customer confirms**: a bound widget customer session or verified Telegram
-   callback/message confirms the exact appointment ID, expected aggregate
+4. **Customer confirms**: a bound widget customer session, verified Telegram
+   callback/message, or accepted Instagram Business DM message confirms the exact appointment ID, expected aggregate
    version, and current `offer_version`, or staff records an external
    confirmation they actually obtained. The command receives `now` from the
    application clock and succeeds only for `issued_at <= now < expires_at`;
    equality with `expires_at` is expired. The domain transitions
    `awaiting_customer_confirmation -> confirmed`, records provenance, actor,
    channel/source and time, and queues customer/staff updates.
-5. **Expiry/cancellation**: versioned jobs expire undecided/unconfirmed requests
-   after configured deadlines. A customer's decline results in `cancelled` with
+5. **Expiry/cancellation**: versioned jobs expire undecided/unconfirmed requests.
+   Owner-approved S18 P0 customer expiry is fixed at the earlier of issuance
+   plus 24 hours or accepted start, using trusted UTC and a half-open window;
+   retries and provider windows cannot renew it. Configurable deadlines and
+   reminders remain future work. A customer's decline results in `cancelled` with
    a reason. Jobs and commands are idempotent.
 
 ### Confirmation provenance
@@ -608,11 +611,19 @@ slot; it does not mean an external calendar event exists.
 |---|---|
 | `customer_session` | Widget token bound to the conversation/customer plus either a valid single-use grant bound to request, aggregate version, and current `offer_version`, or an unambiguous message for exactly one current offer; actor is the contact/channel identity. |
 | `telegram` | Verified Telegram webhook and matching channel connection/sender; an explicit callback uses an opaque single-use grant bound to request, aggregate version, and current `offer_version`, while an unambiguous message must identify exactly one current offer; actor is the Telegram contact identity. |
+| `instagram` (confirmed V2) | Accepted Instagram Business DM ingress/binding, matching tenant/Contact/Conversation/channel and trusted inbound customer Message; explicit unambiguous response to exactly one current prepared offer; no model-supplied provenance. |
 | `staff_attested_external` | Authorized staff states they contacted the customer outside a reachable V1 channel; requires source method (`phone` or `in_person`), confirmation timestamp, actor membership, optional non-sensitive note, fresh MFA step-up within 15 minutes, and audit event. |
 
 Staff attestation is not silent staff confirmation: the API/UI must label it as
 an attestation, capture who asserted it and how, and expose it in history. It is
 the V1 path for an offline website-widget lead without requiring SMS/WhatsApp.
+
+Owner-approved S18 Instagram support is additive:
+`appointment_request.confirmed.v1` retains exactly its three frozen sources;
+V2 accepts those plus Instagram. Migration 0028 changes only compatibility
+CHECKs and does not reinterpret historical evidence. The fixed expiry and
+implementation boundary are frozen in
+[S18 customer confirmation](22-s18-customer-confirmation.md).
 
 ### Booking notifications
 

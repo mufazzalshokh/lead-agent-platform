@@ -40,6 +40,7 @@ export {
   type StaffAcceptAppointmentRequestCommand,
   type StaffAttestedExternalConfirmationEvidenceInput,
   type TelegramConfirmationEvidenceInput,
+  type InstagramConfirmationEvidenceInput,
 } from "./commands.js";
 export {
   isAppointmentConfirmationSource,
@@ -66,4 +67,5 @@ export {
   type InvalidAppointmentRequestReasonCode,
   type StaffAttestedExternalConfirmationEvidence,
   type TelegramConfirmationEvidence,
+  type InstagramConfirmationEvidence,
 } from "./appointment-request.js";

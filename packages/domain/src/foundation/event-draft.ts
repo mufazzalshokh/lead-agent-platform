@@ -1,8 +1,13 @@
-import type { DomainEvent, LeadReopenedDomainEventV2 } from "@lead-agent/contracts";
+import type {
+  DomainEvent,
+  LeadReopenedDomainEventV2,
+  AppointmentRequestConfirmedDomainEventV2,
+} from "@lead-agent/contracts";
 
 import type { DeepReadonly } from "./immutable.js";
 
-export type CanonicalDomainEvent = DomainEvent | LeadReopenedDomainEventV2;
+export type CanonicalDomainEvent =
+  DomainEvent | LeadReopenedDomainEventV2 | AppointmentRequestConfirmedDomainEventV2;
 
 /**
  * Projects only domain-known fields from an accepted canonical event contract.

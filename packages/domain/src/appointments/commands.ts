@@ -1,5 +1,7 @@
 import {
   ActorRefSchema,
+  AppointmentRequestConfirmedDomainEventV2Schema,
+  type AppointmentRequestConfirmedDomainEventV2,
   AggregateVersionSchema,
   AppointmentRequestIdSchema,
   ContactIdSchema,
@@ -82,6 +84,7 @@ import {
   type InvalidAppointmentRequestReasonCode,
   type StaffAttestedExternalConfirmationEvidence,
   type TelegramConfirmationEvidence,
+  type InstagramConfirmationEvidence,
 } from "./appointment-request.js";
 
 type AppointmentRequestEvent =
@@ -89,6 +92,7 @@ type AppointmentRequestEvent =
   | DomainEventFor<"appointment_request.staff_accepted">
   | DomainEventFor<"appointment_request.customer_confirmation_requested">
   | DomainEventFor<"appointment_request.confirmed">
+  | AppointmentRequestConfirmedDomainEventV2
   | DomainEventFor<"appointment_request.rejected">
   | DomainEventFor<"appointment_request.cancelled">
   | DomainEventFor<"appointment_request.expired">;
@@ -231,6 +235,12 @@ export type TelegramConfirmationEvidenceInput = ConfirmationEvidenceInputBase &
     sourceMessage: AppointmentMessageReference;
   }>;
 
+export type InstagramConfirmationEvidenceInput = ConfirmationEvidenceInputBase &
+  Readonly<{
+    source: "instagram";
+    sourceMessage: AppointmentMessageReference;
+  }>;
+
 export type StaffAttestedExternalConfirmationEvidenceInput = ConfirmationEvidenceInputBase &
   Readonly<{
     attestationMethod: "in_person" | "phone";
@@ -244,6 +254,7 @@ export type StaffAttestedExternalConfirmationEvidenceInput = ConfirmationEvidenc
 export type AppointmentConfirmationEvidenceInput =
   | CustomerSessionConfirmationEvidenceInput
   | TelegramConfirmationEvidenceInput
+  | InstagramConfirmationEvidenceInput
   | StaffAttestedExternalConfirmationEvidenceInput;
 
 export type ConfirmAppointmentRequestCommand = Readonly<{
@@ -1195,7 +1206,7 @@ const validateConfirmationEvidence = (
     return success(Object.freeze({ ...base, source: "customer_session" }));
   }
 
-  if (input["source"] === "telegram") {
+  if (input["source"] === "telegram" || input["source"] === "instagram") {
     if (
       !hasOnlyKeys(input, [
         "appointmentRequest",
@@ -1220,9 +1231,9 @@ const validateConfirmationEvidence = (
     if (!sourceMessageId.ok) {
       return sourceMessageId;
     }
-    const evidence: TelegramConfirmationEvidence = {
+    const evidence: TelegramConfirmationEvidence | InstagramConfirmationEvidence = {
       ...base,
-      source: "telegram",
+      source: input["source"],
       sourceMessageId: sourceMessageId.value,
     };
     return success(Object.freeze(evidence));
@@ -1338,7 +1349,9 @@ export const confirmAppointmentRequest = (
     return transitionFailure(evidence.error);
   }
 
-  const event = createEventDraft<DomainEventFor<"appointment_request.confirmed">>(
+  const event = createEventDraft<
+    DomainEventFor<"appointment_request.confirmed"> | AppointmentRequestConfirmedDomainEventV2
+  >(
     "appointment_request.confirmed",
     context.value.nextVersion,
     {
@@ -1347,7 +1360,9 @@ export const confirmAppointmentRequest = (
       customer_confirmed_at: evidence.value.customerActedAt,
       offer_version: evidence.value.offerVersion,
     },
-    EVENT_IDENTITIES["appointment_request.confirmed"],
+    evidence.value.source === "instagram"
+      ? eventIdentity(AppointmentRequestConfirmedDomainEventV2Schema)
+      : EVENT_IDENTITIES["appointment_request.confirmed"],
   );
 
   return completeTransition(

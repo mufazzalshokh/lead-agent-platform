@@ -60,7 +60,12 @@ export type PersistedAppointmentRequestStatus = (typeof APPOINTMENT_REQUEST_STAT
 const PREFERENCE_PRECISIONS = ["exact", "part_of_day", "date_only", "free_text"] as const;
 const TRANSITION_ACTOR_TYPES = ["customer", "member", "system"] as const;
 const CONFIRMATION_OUTCOMES = ["confirmed", "declined"] as const;
-const CONFIRMATION_SOURCES = ["customer_session", "telegram", "staff_attested_external"] as const;
+const CONFIRMATION_SOURCES = [
+  "customer_session",
+  "telegram",
+  "staff_attested_external",
+  "instagram",
+] as const;
 const ATTENDANCE_OUTCOMES = ["attended", "did_not_attend", "unknown"] as const;
 const BUSINESS_RECORD_SOURCES = ["staff_manual", "approved_import"] as const;
 const REVENUE_ENTRY_TYPES = ["charge", "adjustment", "reversal"] as const;

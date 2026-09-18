@@ -32,6 +32,9 @@ require the stated validation before they become contractual.
 
 Repository-wide engineering constraints remain in [AGENTS.md](../../AGENTS.md).
 
+Later owner-approved freezes include
+[S18 customer confirmation and Instagram/expiry compatibility](22-s18-customer-confirmation.md).
+
 ## Source-of-truth precedence
 
 When two statements appear inconsistent, use this order and record the discrepancy

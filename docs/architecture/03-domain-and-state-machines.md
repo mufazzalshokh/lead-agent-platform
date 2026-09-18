@@ -412,7 +412,8 @@ Canonical status:
 - `staff_attested_external` is evidence about a separate customer act, not
   another staff acceptance. It requires staff actor, confirmation time, contact
   method, attestation/evidence metadata, reason, and audit event.
-- Direct confirmation sources are `customer_session` and `telegram`; all
+- Direct confirmation sources are `customer_session`, `telegram`, and the
+  owner-approved S18 `instagram` source through additive confirmed V2; all
   confirmation sources preserve actor/participant, offer version, and timestamp.
 - Confirmation requires both the command's expected current AppointmentRequest
   aggregate version and evidence for the current, unexpired `offer_version`.
@@ -541,7 +542,7 @@ source IP/user-agent treatment where justified.
 | `IdempotencyKey` | Opaque bounded string plus tenant, operation, request hash, expiry |
 | `KnowledgeCitation` | Record type, record/version ID, allowed fields, context snapshot/hash |
 | `QualificationResult` | policy version, `qualified\|disqualified\|incomplete`, reason codes, validated evidence references |
-| `ConfirmationEvidence` | source `customer_session\|telegram\|staff_attested_external`, participant/actor, offer version distinct from the command's expected aggregate version, customer act time, recorded time, method and protected evidence reference |
+| `ConfirmationEvidence` | source `customer_session\|telegram\|staff_attested_external` in frozen V1, plus `instagram` in additive confirmed V2; participant/actor, offer version distinct from the command's expected aggregate version, customer act time, recorded time, method and protected evidence reference |
 | `ConsentDecision` | tenant-local subject anchor, purpose, `granted\|declined\|withdrawn\|not_required`, notice/version, lawful basis, capture channel/time, withdrawal relation |
 | `CorrelationContext` | request, trace, causation, and correlation IDs propagated across jobs/events |
 | `AggregateVersion` | Monotonic integer checked on commands and stale AI results |
@@ -858,7 +859,7 @@ stateDiagram-v2
 | `staff_accepted -> awaiting_customer_confirmation` | System worker only | In a later transaction, a customer confirmation request/task and delivery intent are durably created with active offer version, expiry, and route/token reference; that record, transition, and event commit atomically |
 | `staff_accepted -> cancelled` | Authorized staff or bound customer | Explicit retraction/withdrawal; invalidate offer/token; reason required |
 | `staff_accepted -> expired` | System | Preparation deadline passed and no valid confirmation request could be made |
-| `awaiting_customer_confirmation -> confirmed` | Bound customer via `customer_session`/`telegram`, or authorized staff recording `staff_attested_external` | Expected aggregate version and evidence `offer_version` both match the locked current request; evidence matches organization/request/contact, is within `[issued_at, expires_at)`, and is not replayed; transition + audit + event; lead to `converted` |
+| `awaiting_customer_confirmation -> confirmed` | Bound customer via `customer_session`/`telegram` or S18 `instagram` V2, or authorized staff recording `staff_attested_external` | Expected aggregate version and evidence `offer_version` both match the locked current request; evidence matches organization/request/contact, is within `[issued_at, expires_at)`, and is not replayed; transition + audit + event; lead to `converted` |
 | `awaiting_customer_confirmation -> cancelled` | Bound customer decline/withdrawal or authorized staff retraction | Actor/source/reason; invalidate confirmation token; notify other party |
 | `awaiting_customer_confirmation -> expired` | System expiry job | Offer expiry passed under row lock/version check |
 | `confirmed -> cancelled` | Bound customer or authorized staff | Explicit post-confirmation reason/actor; preserve confirmed timestamp/event; no calendar side effect in V1 |
@@ -879,6 +880,10 @@ receives `now` explicitly and never reads an implicit system clock.
 - `telegram`: authenticated provider update maps through the same connection and
   tenant-local participant identity; external update/message uniqueness prevents
   replay.
+- `instagram`: accepted Instagram Business DM ingress/binding establishes the
+  same-tenant customer Message, Contact, Conversation, and channel connection.
+  This source emits additive `appointment_request.confirmed.v2`; frozen V1
+  remains unchanged and rejects Instagram provenance.
 - `staff_attested_external`: used when an offline widget lead confirms by phone
   or another out-of-platform method. The member asserts that the customer
   explicitly confirmed; store member ID, customer act timestamp, method
@@ -887,6 +892,14 @@ receives `now` explicitly and never reads an implicit system clock.
   separately.
 
 No source lets the accepting staff action itself satisfy customer confirmation.
+
+The owner-approved S18 P0 window is fixed:
+`expires_at = min(issued_at + 24 hours, accepted_start_at)`, with trusted UTC
+issuance and evidence in `[issued_at, expires_at)`. Start at/before issuance
+expires without opening a window. Retries, duplicate messages, provider windows,
+and renewed channel sessions never extend it. See
+[the S18 freeze](22-s18-customer-confirmation.md); configurable expiry and
+reminder policies remain future decisions.
 
 ## 12. Handoff state machine
 
@@ -1004,7 +1017,8 @@ For each machine:
 2. Whether each fixed V1 staff-attestation method (`phone|in_person`) is
    permitted in the launch jurisdiction and what evidence/retention applies.
    Adding another method requires a versioned contract and architecture review.
-3. Customer confirmation and staff review expiry defaults and reminder cadence.
+3. Configurable customer-confirmation/staff-review expiry and reminder cadence.
+   S18 resolves only the fixed P0 customer window documented above.
 4. Whether staff may replace an offered slot; recommended invariant is cancel
    the current offer/request and create a new version/request rather than mutate
    evidence in place.

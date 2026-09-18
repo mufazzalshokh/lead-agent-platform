@@ -2,7 +2,7 @@
 
 S11.B adds ContactIdentityAdded payload/event V2 and eight identity-bearing staff
 read V2 schemas without changing accepted V1 schemas. The verified public catalog
-is 329 schemas, 63 semantic event names and 65 registered event variants.
+now contains 347 schemas, 63 semantic event names and 66 registered event variants.
 Instagram identities produce `contact.identity_added` V2; unrelated producers
 remain V1. Exact staff route versioning and V1 projections are frozen in
 [the Instagram architecture note](../architecture/s11-instagram-business.md).
@@ -61,12 +61,33 @@ of:
   `reason_code`.
 
 The version-aware event and payload registries expose V1 and V2 under
-`lead.reopened`; every other semantic event currently exposes V1 only.
+`lead.reopened`. Later approved additive versions of `contact.identity_added`
+and `appointment_request.confirmed` follow the same version-aware discipline.
 Consumers dispatch using `event_type` plus `schema_version` and verify the
 matching `schema_id`. Rollout is consumers-first. After the Stage 3 producer is
 implemented, new lead-reopen events use V2 only: producers do not dual-emit,
 rewrite history, or reinterpret a structurally valid legacy V1 payload as V2
 domain authority. V1 retention/read support is not removed by this migration.
+
+## S18 Instagram customer-confirmation compatibility freeze
+
+Owner approval adds only `AppointmentRequestConfirmedDomainEvent.v2` and
+`AppointmentRequestConfirmedDomainEventPayload.v2`. There is no new semantic
+event name. The 345 accepted pre-S18 catalog entries retain their exact schemas;
+their canonical-array SHA-256 remains
+`a2c0a48259b7141287af5dd2184485345e8cc5aa3208ed529ee698fe983dd072`.
+
+`appointment_request.confirmed.v1` remains unchanged and accepts only
+`customer_session`, `telegram`, and `staff_attested_external`. V2 accepts those
+three sources plus `instagram`. Existing sources continue producing V1;
+accepted Instagram Business DM bindings produce V2. Consumers select the
+registered event/version pair. No dual emission, historical reinterpretation,
+backfill, or silent widening of a frozen V1 union is permitted.
+
+Migration `0028_s18_instagram_confirmation.sql` changes only source/version
+compatibility CHECK constraints. It preserves existing tenant/source-message
+FKs and historical V1 rows. Invalid source/version combinations fail closed.
+See [the owner-approved S18 freeze](../architecture/22-s18-customer-confirmation.md).
 
 ## Conversation automation-mode provenance freeze
 

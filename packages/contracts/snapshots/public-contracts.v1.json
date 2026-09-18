@@ -1820,6 +1820,314 @@
       "schema_version": "1"
     },
     {
+      "category": "event",
+      "export_name": "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
+      "schema": {
+        "$id": "AppointmentRequestConfirmedDomainEventPayload.v2",
+        "additionalProperties": false,
+        "properties": {
+          "appointment_status": {
+            "const": "confirmed",
+            "type": "string"
+          },
+          "confirmation_source": {
+            "anyOf": [
+              {
+                "const": "customer_session",
+                "type": "string"
+              },
+              {
+                "const": "telegram",
+                "type": "string"
+              },
+              {
+                "const": "staff_attested_external",
+                "type": "string"
+              },
+              {
+                "const": "instagram",
+                "type": "string"
+              }
+            ]
+          },
+          "customer_confirmed_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "offer_version": {
+            "description": "Monotonic positive safe integer aggregate version.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "appointment_status",
+          "confirmation_source",
+          "customer_confirmed_at",
+          "offer_version"
+        ],
+        "type": "object"
+      },
+      "schema_id": "AppointmentRequestConfirmedDomainEventPayload.v2",
+      "schema_version": "2"
+    },
+    {
+      "category": "event",
+      "export_name": "AppointmentRequestConfirmedDomainEventV2Schema",
+      "schema": {
+        "$id": "AppointmentRequestConfirmedDomainEvent.v2",
+        "additionalProperties": false,
+        "description": "Versioned committed domain fact. Provenance fields do not authenticate or authorize a consumer.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "customer",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "member",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "type": "null"
+                  },
+                  "actor_type": {
+                    "const": "system",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "actor_type": {
+                    "const": "platform_operator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "actor_id",
+                  "actor_type"
+                ],
+                "type": "object"
+              }
+            ],
+            "description": "Event attribution only. Runtime validation does not authenticate or authorize the actor."
+          },
+          "aggregate_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "aggregate_type": {
+            "const": "appointment_request",
+            "type": "string"
+          },
+          "aggregate_version": {
+            "description": "Monotonic positive safe integer aggregate version.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "correlation_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "appointment_request.confirmed",
+            "type": "string"
+          },
+          "occurred_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "organization_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "appointment_status": {
+                "const": "confirmed",
+                "type": "string"
+              },
+              "confirmation_source": {
+                "anyOf": [
+                  {
+                    "const": "customer_session",
+                    "type": "string"
+                  },
+                  {
+                    "const": "telegram",
+                    "type": "string"
+                  },
+                  {
+                    "const": "staff_attested_external",
+                    "type": "string"
+                  },
+                  {
+                    "const": "instagram",
+                    "type": "string"
+                  }
+                ]
+              },
+              "customer_confirmed_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "offer_version": {
+                "description": "Monotonic positive safe integer aggregate version.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "appointment_status",
+              "confirmation_source",
+              "customer_confirmed_at",
+              "offer_version"
+            ],
+            "type": "object"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_id": {
+            "const": "AppointmentRequestConfirmedDomainEvent.v2",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "2",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor",
+          "aggregate_id",
+          "aggregate_type",
+          "aggregate_version",
+          "causation_id",
+          "correlation_id",
+          "event_id",
+          "event_type",
+          "occurred_at",
+          "organization_id",
+          "payload",
+          "request_id",
+          "schema_id",
+          "schema_version"
+        ],
+        "type": "object"
+      },
+      "schema_id": "AppointmentRequestConfirmedDomainEvent.v2",
+      "schema_version": "2"
+    },
+    {
       "category": "shared",
       "export_name": "AppointmentRequestIdSchema",
       "schema": {

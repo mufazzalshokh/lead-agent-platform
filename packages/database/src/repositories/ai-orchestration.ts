@@ -36,6 +36,7 @@ import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.j
 import { createConversationRepository } from "./conversations.js";
 import { createCustomerRepository } from "./customers.js";
 import { createLeadRepository } from "./leads.js";
+import { queueCustomerReply } from "./customer-replies.js";
 import {
   executeTenantRead,
   executeTenantWrite,
@@ -746,99 +747,24 @@ const queueGroundedReply = async (
   nextId: () => string,
   occurredAt: Date,
 ): Promise<void> => {
-  // Common smallest transport budget: Instagram plain-text UTF-8 bytes. Do not
-  // truncate a price/qualifier or split a claim into independently delivered jobs.
-  if (Buffer.byteLength(text, "utf8") > 1_000) throw new RepositoryDataIntegrityError();
-  const messageId = nextId();
-  const protectedBody = options.dataProtection.protectMessageBody({
-    organizationId: session.organizationId,
-    channelConnectionId: input.snapshot.channelConnectionId,
-    contentType: "text",
-    content: { type: "text", text, locale_hint: locale },
-  });
-  const sequences = await executeTenantWrite(
+  await queueCustomerReply(
     session,
-    `update conversations set next_sequence_no=next_sequence_no+1,version=version+1,
-      last_activity_at=greatest(last_activity_at,$4),updated_at=greatest(updated_at,$4)${options.salesFlow === true ? ",preferred_locale=$5" : ""}
-      where organization_id=$1 and id=$2 and version=$3 returning next_sequence_no-1 as sequence_no`,
-    [
-      input.reference.conversationId,
-      version,
-      occurredAt,
-      ...(options.salesFlow === true ? [locale] : []),
-    ],
-  );
-  if (sequences.rowCount !== 1 || sequences.rows.length !== 1)
-    throw new RepositoryDataIntegrityError();
-  await executeTenantWrite(
-    session,
-    `insert into messages (organization_id,id,conversation_id,channel_connection_id,direction,sender_type,
-      sequence_no,content_type,body_ciphertext,body_hash,locale,processing_status,delivery_status,
-      reply_to_message_id,ai_run_id,knowledge_manifest_jsonb,created_at)
-      values ($1,$2,$3,$4,'outbound','system',$5,'text',$6,$7,$8,'processed','queued',$9,$10,$11::jsonb,$12)`,
-    [
-      messageId,
-      input.reference.conversationId,
-      input.snapshot.channelConnectionId,
-      mapSafeBigInt(sequences.rows[0]?.["sequence_no"]),
-      protectedBody.ciphertext,
-      protectedBody.hash,
+    {
+      conversationId: input.reference.conversationId,
+      channelConnectionId: input.snapshot.channelConnectionId,
+      conversationVersion: version,
+      text,
       locale,
-      input.reference.messageId,
-      input.reservation.runId,
-      JSON.stringify({ sources }),
-      occurredAt,
-    ],
-  );
-  const schemaId: unknown = Reflect.get(
-    DomainEventSchemasByVersion["message.response_queued"]["1"],
-    "$id",
-  );
-  const event: unknown = {
-    actor: { actor_type: "system", actor_id: null },
-    aggregate_id: input.reference.conversationId,
-    aggregate_type: "conversation",
-    aggregate_version: version + 1,
-    causation_id: input.reference.causationId,
-    correlation_id: input.reference.correlationId,
-    event_id: nextId(),
-    event_type: "message.response_queued",
-    occurred_at: occurredAt.toISOString(),
-    organization_id: session.organizationId,
-    payload: { message_direction: "outbound", message_id: messageId, message_status: "queued" },
-    request_id: null,
-    schema_id: schemaId,
-    schema_version: "1",
-  };
-  if (!isSchemaValue(DomainEventSchemasByVersion["message.response_queued"]["1"], event))
-    throw new RepositoryDataIntegrityError();
-  await executeTenantWrite(
-    session,
-    `insert into audit_events (organization_id,id,event_type,actor_type,actor_id,target_type,target_id,
-      action,result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
-      values ($1,$2,'message.response_queued','system',null,'conversation',$3,'message.response_queued',
-      'succeeded',$4,$5,'{}'::jsonb,$6)`,
-    [
-      nextId(),
-      input.reference.conversationId,
-      `ai-answer:${input.reservation.runId}`,
-      input.reference.correlationId,
-      occurredAt,
-    ],
-  );
-  await executeTenantWrite(
-    session,
-    `insert into outbox_events (organization_id,id,event_type,schema_version,aggregate_type,aggregate_id,
-      aggregate_version,payload_jsonb,correlation_id,causation_id,occurred_at,status,available_at)
-      values ($1,$2,'message.response_queued','1','conversation',$3,$4,$5::jsonb,$6,$7,$8,'pending',$8)`,
-    [
-      event.event_id,
-      input.reference.conversationId,
-      version + 1,
-      JSON.stringify(event),
-      input.reference.correlationId,
-      input.reference.causationId,
-      occurredAt,
-    ],
+      replyToMessageId: input.reference.messageId,
+      aiRunId: input.reservation.runId,
+      correlationId: input.reference.correlationId,
+      causationId: input.reference.causationId,
+      requestId: `ai-answer:${input.reservation.runId}`,
+      manifest: { sources },
+      updatePreferredLocale: options.salesFlow === true,
+    },
+    options.dataProtection,
+    nextId,
+    occurredAt,
   );
 };

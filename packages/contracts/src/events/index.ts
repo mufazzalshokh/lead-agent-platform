@@ -2,6 +2,7 @@ import Type from "typebox";
 
 import {
   contactIdentityAddedDomainEventV2Definition,
+  appointmentRequestConfirmedDomainEventV2Definition,
   domainEventDefinitions,
   leadReopenedDomainEventV2Definition,
 } from "./catalog.js";
@@ -35,6 +36,17 @@ export const ContactIdentityAddedDomainEventV2Schema =
 export const ContactIdentityAddedDomainEventPayloadV2Schema =
   contactIdentityAddedDomainEventV2Definition.payloadSchema;
 
+export const AppointmentRequestConfirmedDomainEventV2Schema =
+  appointmentRequestConfirmedDomainEventV2Definition.eventSchema;
+export const AppointmentRequestConfirmedDomainEventPayloadV2Schema =
+  appointmentRequestConfirmedDomainEventV2Definition.payloadSchema;
+export type AppointmentRequestConfirmedDomainEventV2 = Type.Static<
+  typeof AppointmentRequestConfirmedDomainEventV2Schema
+>;
+export type AppointmentRequestConfirmedDomainEventPayloadV2 = Type.Static<
+  typeof AppointmentRequestConfirmedDomainEventPayloadV2Schema
+>;
+
 const v1EventSchemasByVersion = Object.fromEntries(
   Object.entries(DomainEventSchemas).map(([eventName, schema]) => [
     eventName,
@@ -63,6 +75,10 @@ const v1PayloadSchemasByVersion = Object.fromEntries(
  */
 export const DomainEventSchemasByVersion = Object.freeze({
   ...v1EventSchemasByVersion,
+  "appointment_request.confirmed": Object.freeze({
+    "1": DomainEventSchemas["appointment_request.confirmed"],
+    "2": AppointmentRequestConfirmedDomainEventV2Schema,
+  }),
   "contact.identity_added": Object.freeze({
     "1": DomainEventSchemas["contact.identity_added"],
     "2": ContactIdentityAddedDomainEventV2Schema,
@@ -75,6 +91,10 @@ export const DomainEventSchemasByVersion = Object.freeze({
 
 export const DomainEventPayloadSchemasByVersion = Object.freeze({
   ...v1PayloadSchemasByVersion,
+  "appointment_request.confirmed": Object.freeze({
+    "1": DomainEventPayloadSchemas["appointment_request.confirmed"],
+    "2": AppointmentRequestConfirmedDomainEventPayloadV2Schema,
+  }),
   "contact.identity_added": Object.freeze({
     "1": DomainEventPayloadSchemas["contact.identity_added"],
     "2": ContactIdentityAddedDomainEventPayloadV2Schema,

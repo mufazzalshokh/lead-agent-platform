@@ -23,7 +23,7 @@ describe("S13 research and corpus data", () => {
         (count, versions) => count + Object.keys(versions).length,
         0,
       ),
-    ).toBe(65);
+    ).toBe(66);
   });
   it("validates bounded closed source data and unique HTTPS sources", () => {
     const raw = readFileSync(new URL("./research-sources.json", import.meta.url), "utf8");

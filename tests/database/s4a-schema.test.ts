@@ -2713,7 +2713,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(28);
+    expect(migrationCount.rows[0]?.count).toBe(29);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -8653,11 +8653,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       }
     }
 
-    expect(eventVariantCount).toBe(65);
+    expect(eventVariantCount).toBe(66);
     const persistedCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from outbox_events",
     );
-    expect(persistedCount.rows[0]?.count).toBe(65);
+    expect(persistedCount.rows[0]?.count).toBe(66);
 
     await expect(
       insertOutboxEvent(syntheticUuid(0xd00), ORGANIZATION_A, {
@@ -9117,7 +9117,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         eventVariantCount += 1;
       }
     }
-    expect(eventVariantCount).toBe(65);
+    expect(eventVariantCount).toBe(66);
 
     await insertAnalyticsEvent(ANALYTICS_EVENT_A, ORGANIZATION_A, {
       campaignKey: "consented_campaign",

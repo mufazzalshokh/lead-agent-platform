@@ -1,5 +1,7 @@
 import {
   ActorRefSchema,
+  AppointmentRequestConfirmedDomainEventPayloadV2Schema,
+  type AppointmentRequestConfirmedDomainEventPayloadV2,
   AggregateVersionSchema,
   AppointmentRequestIdSchema,
   ContactIdSchema,
@@ -43,7 +45,7 @@ import {
 const AppointmentRequestStatusSchema =
   DomainEventPayloadSchemas["appointment_request.cancelled"].properties.previous_appointment_status;
 const AppointmentConfirmationSourceSchema =
-  DomainEventPayloadSchemas["appointment_request.confirmed"].properties.confirmation_source;
+  AppointmentRequestConfirmedDomainEventPayloadV2Schema.properties.confirmation_source;
 const AppointmentRequestReasonCodeSchema =
   DomainEventPayloadSchemas["appointment_request.cancelled"].properties.reason_code;
 
@@ -55,7 +57,7 @@ declare const appointmentRequestReasonCodeBrand: unique symbol;
 export type AppointmentRequestStatus =
   DomainEventPayloadByName["appointment_request.cancelled"]["previous_appointment_status"];
 export type AppointmentConfirmationSource =
-  DomainEventPayloadByName["appointment_request.confirmed"]["confirmation_source"];
+  AppointmentRequestConfirmedDomainEventPayloadV2["confirmation_source"];
 export type AppointmentOfferVersion = AggregateVersion & {
   readonly [appointmentOfferVersionBrand]: "AppointmentOfferVersion";
 };
@@ -111,6 +113,12 @@ export type TelegramConfirmationEvidence = AppointmentConfirmationEvidenceBase &
     sourceMessageId: MessageId;
   }>;
 
+export type InstagramConfirmationEvidence = AppointmentConfirmationEvidenceBase &
+  Readonly<{
+    source: "instagram";
+    sourceMessageId: MessageId;
+  }>;
+
 export type StaffAttestedExternalConfirmationEvidence = AppointmentConfirmationEvidenceBase &
   Readonly<{
     attestationMethod: "in_person" | "phone";
@@ -124,6 +132,7 @@ export type StaffAttestedExternalConfirmationEvidence = AppointmentConfirmationE
 export type AppointmentConfirmationEvidence =
   | CustomerSessionConfirmationEvidence
   | TelegramConfirmationEvidence
+  | InstagramConfirmationEvidence
   | StaffAttestedExternalConfirmationEvidence;
 
 export type AppointmentStaffDecision =
@@ -381,6 +390,7 @@ const isConfirmationEvidence = (
     case "customer_session":
       return true;
     case "telegram":
+    case "instagram":
       return isSchemaValue(MessageIdSchema, value["sourceMessageId"]);
     case "staff_attested_external":
       return (

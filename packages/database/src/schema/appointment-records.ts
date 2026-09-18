@@ -150,7 +150,7 @@ export const appointmentRequests = pgTable(
     check(
       "appointment_requests_confirmation_source_check",
       sql`${table.confirmationSource} is null
-        or ${table.confirmationSource} in ('customer_session', 'telegram', 'staff_attested_external')`,
+        or ${table.confirmationSource} in ('customer_session', 'telegram', 'staff_attested_external', 'instagram')`,
     ),
     check(
       "appointment_requests_confirmation_result_check",
@@ -610,7 +610,7 @@ export const appointmentConfirmationEvidence = pgTable(
     ),
     check(
       "appointment_confirmation_evidence_source_check",
-      sql`${table.source} in ('customer_session', 'telegram', 'staff_attested_external')`,
+      sql`${table.source} in ('customer_session', 'telegram', 'staff_attested_external', 'instagram')`,
     ),
     check(
       "appointment_confirmation_evidence_source_shape_check",
@@ -619,7 +619,7 @@ export const appointmentConfirmationEvidence = pgTable(
           and ${table.sourceMessageId} is null
           and ${table.attestationMethod} is null
           and ${table.attestationReasonCode} is null)
-        or (${table.source} = 'telegram'
+        or (${table.source} in ('telegram', 'instagram')
           and ${table.recordedByMembershipId} is null
           and ${table.sourceMessageId} is not null
           and ${table.attestationMethod} is null

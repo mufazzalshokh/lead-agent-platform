@@ -10,7 +10,11 @@ import type { TelegramOutboundPersistenceStore } from "@lead-agent/database";
 import { TelegramProviderError, type TelegramPlatformClient } from "@lead-agent/integrations";
 import type { CustomerDataProtection } from "@lead-agent/security";
 
-import { createWorkerHandlerRegistry, type WorkerEventHandler } from "./handler-registry.js";
+import {
+  createWorkerHandlerRegistry,
+  type WorkerEventHandler,
+  type WorkerHandlerRegistry,
+} from "./handler-registry.js";
 import { WorkerExecutionFailure } from "./reliability-policy.js";
 
 const TELEGRAM_REPLY_WINDOW_MILLISECONDS = 24 * 60 * 60 * 1_000;
@@ -141,8 +145,32 @@ export const createProductionHandlerRegistry = (dependencies: {
   telegramOutbound: WorkerEventHandler;
   instagramOutbound?: WorkerEventHandler;
   aiMessage?: WorkerEventHandler;
-}) =>
+  confirmationPreparation?: WorkerEventHandler;
+  confirmationExpiry?: WorkerEventHandler;
+}): WorkerHandlerRegistry =>
   createWorkerHandlerRegistry([
+    ...(dependencies.confirmationPreparation === undefined
+      ? []
+      : [
+          {
+            eventType: "appointment_request.staff_accepted",
+            handler: dependencies.confirmationPreparation,
+            handlerVersion: "v1",
+            queue: "analytics",
+            schemaVersion: "1",
+          },
+        ]),
+    ...(dependencies.confirmationExpiry === undefined
+      ? []
+      : [
+          {
+            eventType: "appointment_request.customer_confirmation_requested",
+            handler: dependencies.confirmationExpiry,
+            handlerVersion: "v1",
+            queue: "analytics",
+            schemaVersion: "1",
+          },
+        ]),
     ...(dependencies.aiMessage === undefined
       ? []
       : [

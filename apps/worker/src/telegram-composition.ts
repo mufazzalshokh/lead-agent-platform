@@ -16,6 +16,7 @@ import {
   createTenantCanonicalOutboxEventSource,
   createTenantDatabaseRuntime,
   createAIOrchestrationStore,
+  createCustomerConfirmationStore,
   type OutboxRelayClaim,
 } from "@lead-agent/database";
 import {
@@ -44,6 +45,11 @@ import {
 import { createWorkerRuntime, type WorkerRuntime } from "./worker-runtime.js";
 import { createStructuredConsoleWorkerTelemetry } from "./worker-telemetry.js";
 import { createInstagramOutboundHandler } from "./instagram-outbound.js";
+import {
+  createCustomerConfirmationMessageHandler,
+  createCustomerConfirmationPreparationHandler,
+  createCustomerConfirmationExpiryHandler,
+} from "./customer-confirmation.js";
 
 export const composeProductionWorkerRuntime = (
   environment: NodeJS.ProcessEnv = {},
@@ -128,8 +134,13 @@ export const composeProductionWorkerRuntime = (
             telemetry: { record: (metric) => console.info("AI orchestration outcome", metric) },
           }),
         );
+  const confirmation = createCustomerConfirmationStore(tenantRuntime, {
+    dataProtection: createCustomerDataProtection(protectionConfig),
+  });
   const registry = createProductionHandlerRegistry({
-    ...(aiMessage === undefined ? {} : { aiMessage }),
+    aiMessage: createCustomerConfirmationMessageHandler(confirmation, aiMessage),
+    confirmationPreparation: createCustomerConfirmationPreparationHandler(confirmation),
+    confirmationExpiry: createCustomerConfirmationExpiryHandler(confirmation),
     ...(instagramConfig === null || credentials === undefined
       ? {}
       : {
