@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
 
 import ts from "typescript";
@@ -9,6 +10,7 @@ import { canonicalStringify, type JsonValue } from "../../scripts/contracts/cano
 import {
   getPublicContractCatalog,
   PUBLIC_STATIC_SCHEMA_NAMES,
+  S17_STAFF_SCHEMA_NAMES,
   type PublicContractEntry,
 } from "../../scripts/contracts/catalog.js";
 import {
@@ -149,10 +151,10 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(329);
+    expect(snapshot.contracts).toHaveLength(345);
     expect(counts).toEqual({
       ai: 16,
-      api: 8,
+      api: 24,
       channel: 24,
       configuration: 65,
       conversation: 37,
@@ -163,6 +165,20 @@ describe("public contract inventory and snapshot", () => {
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
     );
+  });
+
+  it("adds exactly the S17 schemas without changing any of the 329 accepted entries", () => {
+    const candidate = buildContractSnapshot();
+    const additions = new Set<string>(S17_STAFF_SCHEMA_NAMES);
+    const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
+    const baseline: ContractSnapshot = { ...candidate, contracts: legacy };
+    expect(legacy).toHaveLength(329);
+    expect(createHash("sha256").update(JSON.stringify(legacy)).digest("hex")).toBe(
+      "f1d4bd209f8d0f1411c5f3a704c7a298fe02cf575d9c569ce979ac8ed172159e",
+    );
+    const findings = compareContractSnapshots(baseline, candidate);
+    expect(findings).toHaveLength(16);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 
   it("classifies the S10 Widget contracts as additive only", () => {

@@ -14,6 +14,7 @@ import {
 } from "../shared/identifiers.js";
 import { UtcTimestampSchema } from "../shared/time.js";
 import { ResourceVersionSchema } from "../shared/version.js";
+import { CurrencyCodeSchema } from "../shared/money.js";
 
 const embed = <S extends Type.TSchema>(schema: S) => withoutSchemaId<Type.Static<S>>(schema);
 const nullable = <S extends Type.TSchema>(schema: S) => Type.Union([embed(schema), Type.Null()]);
@@ -139,7 +140,7 @@ export const StaffRevenueInputSchema = Type.Union(
       {
         entry_type: Type.Union([Type.Literal("charge"), Type.Literal("adjustment")]),
         amount_minor: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
-        currency: Type.String({ pattern: "^[A-Z]{3}$" }),
+        currency: embed(CurrencyCodeSchema),
         category_code: code(),
         recognized_at: embed(UtcTimestampSchema),
       },
@@ -168,7 +169,7 @@ export const StaffOutcomeSchema = Type.Object(
       Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
       Type.Null(),
     ]),
-    currency: Type.Union([Type.String({ pattern: "^[A-Z]{3}$" }), Type.Null()]),
+    currency: nullable(CurrencyCodeSchema),
     entry_type: Type.Union([code(), Type.Null()]),
     is_current: Type.Union([Type.Boolean(), Type.Null()]),
     supersedes_id: nullable(ResourceIdSchema),

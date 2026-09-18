@@ -1,5 +1,24 @@
 import * as Contracts from "../../packages/contracts/src/index.js";
 
+export const S17_STAFF_SCHEMA_NAMES = [
+  "StaffWorkItemSchema",
+  "StaffWorkListQuerySchema",
+  "StaffWorkParamsSchema",
+  "StaffWorkResponseSchema",
+  "StaffWorkCollectionResponseSchema",
+  "StaffAcceptAppointmentInputSchema",
+  "StaffRejectAppointmentInputSchema",
+  "StaffClaimHandoffInputSchema",
+  "StaffResolveHandoffInputSchema",
+  "StaffAcknowledgeInputSchema",
+  "StaffAttendanceInputSchema",
+  "StaffRevenueInputSchema",
+  "StaffOutcomeSchema",
+  "StaffOutcomeCollectionResponseSchema",
+  "StaffMutationResultSchema",
+  "StaffMutationResponseSchema",
+] as const;
+
 export const PUBLIC_STATIC_SCHEMA_NAMES = {
   ai: [
     "AgentDecisionLanguageSchema",
@@ -20,22 +39,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "AgentDecisionV1Schema",
   ],
   api: [
-    "StaffWorkItemSchema",
-    "StaffWorkListQuerySchema",
-    "StaffWorkParamsSchema",
-    "StaffWorkResponseSchema",
-    "StaffWorkCollectionResponseSchema",
-    "StaffAcceptAppointmentInputSchema",
-    "StaffRejectAppointmentInputSchema",
-    "StaffClaimHandoffInputSchema",
-    "StaffResolveHandoffInputSchema",
-    "StaffAcknowledgeInputSchema",
-    "StaffAttendanceInputSchema",
-    "StaffRevenueInputSchema",
-    "StaffOutcomeSchema",
-    "StaffOutcomeCollectionResponseSchema",
-    "StaffMutationResultSchema",
-    "StaffMutationResponseSchema",
+    ...S17_STAFF_SCHEMA_NAMES,
     "ApiErrorCodeSchema",
     "ValidationIssueSchema",
     "ProblemSchema",

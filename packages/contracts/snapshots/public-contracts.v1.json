@@ -56630,6 +56630,9 @@
                 "currency": {
                   "anyOf": [
                     {
+                      "description": "Uppercase three-letter ISO 4217 currency code.",
+                      "maxLength": 3,
+                      "minLength": 3,
                       "pattern": "^[A-Z]{3}$",
                       "type": "string"
                     },
@@ -56852,6 +56855,9 @@
           "currency": {
             "anyOf": [
               {
+                "description": "Uppercase three-letter ISO 4217 currency code.",
+                "maxLength": 3,
+                "minLength": 3,
                 "pattern": "^[A-Z]{3}$",
                 "type": "string"
               },
@@ -57062,6 +57068,9 @@
                 "type": "string"
               },
               "currency": {
+                "description": "Uppercase three-letter ISO 4217 currency code.",
+                "maxLength": 3,
+                "minLength": 3,
                 "pattern": "^[A-Z]{3}$",
                 "type": "string"
               },
