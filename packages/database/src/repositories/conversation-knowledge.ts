@@ -14,7 +14,7 @@ import {
 import type { TenantDbSession } from "../runtime/tenant.js";
 import { createConversationRepository } from "./conversations.js";
 import { createLeadRepository } from "./leads.js";
-import { executeTenantRead } from "./shared.js";
+import { executeTenantRead, executeTenantRootRead } from "./shared.js";
 import { readConversationPublishedKnowledge } from "./published-business-knowledge.js";
 
 export const createConversationKnowledgeReader =
@@ -55,7 +55,7 @@ export const createConversationKnowledgeReader =
       effectiveAt,
       locationIds: lead.locationId === null ? null : [lead.locationId],
     });
-    const organizations = await executeTenantRead(
+    const organizations = await executeTenantRootRead(
       session,
       `select default_locale from organizations where id=$1 and status='active'`,
     );

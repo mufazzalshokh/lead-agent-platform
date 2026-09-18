@@ -451,18 +451,40 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
       ).toMatchObject({ kind: "grounding_insufficient", reason: "stale_context" });
       expect(await counts(harness.privilegedPool())).toMatchObject({ outbound: 0, completed: 0 });
     });
-    it("conflicting prices return uncertainty, not a guessed price", async () => {
+    it("different prices across unresolved locations return uncertainty, not a guessed price", async () => {
       await seedGrounding(harness);
       const receipt = await accept(harness, { text: "lazer narxi" });
-      await harness.privilegedPool().query(
-        `insert into service_prices (id,organization_id,service_id,price_type,currency,min_amount_minor,max_amount_minor,display_text_i18n,status,version_no,effective_from,published_by_user_id)
-        values ($1,$2,$3,'fixed','UZS',1,1,'{"uz":"Bir seans","en":"Per session"}'::jsonb,'published',2,$4,$5)`,
+      const pool = harness.privilegedPool();
+      // Same-scope overlapping prices are structurally forbidden. Represent a
+      // genuine ambiguity: two eligible locations with different valid prices.
+      await pool.query(
+        `insert into locations (id,organization_id,code,status,version) values ($1,$2,'second','active',2)`,
+        [groundingId(56), AI_REFERENCE.organizationId],
+      );
+      await pool.query(
+        `insert into location_versions (id,organization_id,location_id,version_no,name_i18n,address_i18n,public_contact_jsonb,time_zone,content_hash,published_at,published_by_user_id,created_at)
+        select $1,organization_id,$2,1,name_i18n,address_i18n,public_contact_jsonb,time_zone,content_hash,published_at,published_by_user_id,created_at
+        from location_versions where organization_id=$3 and id=$4`,
+        [groundingId(57), groundingId(56), AI_REFERENCE.organizationId, groundingId(3)],
+      );
+      await pool.query(
+        `update locations set current_version_id=$3 where organization_id=$1 and id=$2`,
+        [AI_REFERENCE.organizationId, groundingId(56), groundingId(57)],
+      );
+      await pool.query(
+        `insert into service_locations (organization_id,service_id,location_id,status,effective_from) values ($1,$2,$3,'active',$4)`,
+        [AI_REFERENCE.organizationId, groundingId(10), groundingId(56), GROUNDING_NOW],
+      );
+      await pool.query(
+        `insert into service_prices (id,organization_id,service_id,location_id,price_type,currency,min_amount_minor,max_amount_minor,display_text_i18n,status,version_no,effective_from,published_by_user_id)
+        values ($1,$2,$3,$6,'fixed','UZS',1,1,'{"uz":"Bir seans","en":"Per session"}'::jsonb,'published',2,$4,$5)`,
         [
           groundingId(55),
           AI_REFERENCE.organizationId,
           groundingId(10),
           GROUNDING_NOW,
           groundingId(1),
+          groundingId(56),
         ],
       );
       const result = await createGroundedAnswerOrchestrator({
