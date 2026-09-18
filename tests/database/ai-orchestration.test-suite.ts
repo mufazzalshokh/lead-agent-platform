@@ -107,7 +107,11 @@ const referenceFor = (receipt: CanonicalInboundReceipt): AIWorkReference => ({
   conversationId: receipt.conversationId,
   messageId: receipt.messageId,
 });
-const bindWidget = async (harness: Harness, receipt: CanonicalInboundReceipt): Promise<void> => {
+const bindWidget = async (
+  harness: Harness,
+  receipt: CanonicalInboundReceipt,
+  instant: string | null = null,
+): Promise<void> => {
   const pool = harness.privilegedPool();
   const user = fixtureId(13003),
     membership = fixtureId(13004),
@@ -124,7 +128,7 @@ const bindWidget = async (harness: Harness, receipt: CanonicalInboundReceipt): P
   );
   await pool.query(
     `insert into widget_sessions (id,organization_id,channel_connection_id,widget_allowed_origin_id,session_token_jti_hash,participant_lookup_hash,status,requested_locale,contact_id,conversation_id,issued_at,last_seen_at,expires_at)
-    select $1,$2,$3,$4,$5,lookup_hash,'active','en',$6,$7,now(),now(),now()+interval '1 hour' from contact_identities where organization_id=$2 and contact_id=$6 and identity_type='widget_participant'`,
+    select $1,$2,$3,$4,$5,lookup_hash,'active','en',$6,$7,coalesce($8::timestamptz,now()),coalesce($8::timestamptz,now()),coalesce($8::timestamptz,now())+interval '1 hour' from contact_identities where organization_id=$2 and contact_id=$6 and identity_type='widget_participant'`,
     [
       session,
       AI_REFERENCE.organizationId,
@@ -133,6 +137,7 @@ const bindWidget = async (harness: Harness, receipt: CanonicalInboundReceipt): P
       Buffer.alloc(32, 91),
       receipt.contactId,
       receipt.conversationId,
+      instant,
     ],
   );
 };
@@ -311,6 +316,7 @@ const salesStore = (harness: Harness, protectProposal = proposalProtection.prote
     providerId: "gemini",
     modelProfileVersion: COMMERCIAL_V1_AI_PROFILE.modelProfileVersion,
     promptTemplateVersion: SALES_FLOW_PROMPT_VERSION,
+    clock: () => new Date(GROUNDING_NOW),
     salesFlow: true,
     dataProtection,
     protectProposal,
@@ -367,7 +373,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
     it("visible price → tomorrow → human journey preserves facts, qualifies once, and requests one staff handoff", async () => {
       await seedSales(harness);
       const first = await accept(harness, { text: "oka lazer nechi pul" });
-      await bindWidget(harness, first);
+      await bindWidget(harness, first, GROUNDING_NOW);
       const flow = salesFlow(harness);
       expect(await flow.run(referenceFor(first))).toMatchObject({
         kind: "qualification_incomplete",
@@ -472,9 +478,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
       await seedSales(harness);
       await harness
         .privilegedPool()
-        .query(`update service_prices set status='archived' where service_id=$1`, [
-          groundingId(10),
-        ]);
+        .query(`update service_prices set status='retired' where service_id=$1`, [groundingId(10)]);
       const receipt = await accept(harness, { text: "lazer narxi" });
       expect(await salesFlow(harness).run(referenceFor(receipt))).toMatchObject({
         kind: "handoff_requested",
@@ -537,7 +541,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
     it("concurrent qualification uses one Lead CAS/event/evaluation", async () => {
       await seedSales(harness);
       const receipt = await accept(harness, { text: "I want laser tomorrow" });
-      await bindWidget(harness, receipt);
+      await bindWidget(harness, receipt, GROUNDING_NOW);
       const reference = referenceFor(receipt),
         store = salesStore(harness),
         snapshot = await store.load(reference);
@@ -594,7 +598,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
     it("newer inbound makes an old result stale without fact/status regression", async () => {
       await seedSales(harness);
       const receipt = await accept(harness, { text: "I want laser tomorrow" });
-      await bindWidget(harness, receipt);
+      await bindWidget(harness, receipt, GROUNDING_NOW);
       const reference = referenceFor(receipt),
         store = salesStore(harness),
         snapshot = await store.load(reference);
@@ -630,7 +634,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
       await harness
         .privilegedPool()
         .query(
-          `update conversations set status=$2,automation_mode='paused',resolved_at=now(),closed_at=case when $2='closed' then now() else null end where id=$1`,
+          `update conversations set status=$2::varchar,automation_mode='paused',resolved_at=now(),closed_at=case when $2::varchar='closed' then now() else null end where id=$1`,
           [receipt.conversationId, status],
         );
       expect(await salesFlow(harness).run(referenceFor(receipt))).toMatchObject({
@@ -669,7 +673,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
     it("audit/proposal persistence failure rolls back qualification/evidence/response/outbox together", async () => {
       await seedSales(harness);
       const receipt = await accept(harness, { text: "I want laser tomorrow" });
-      await bindWidget(harness, receipt);
+      await bindWidget(harness, receipt, GROUNDING_NOW);
       const flow = createSalesFlowOrchestrator({
         provider: salesProvider(),
         store: salesStore(harness, () => {
@@ -737,7 +741,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
     it("publication changes during inference suppress stale business wording and qualification", async () => {
       await seedSales(harness);
       const receipt = await accept(harness, { text: "lazer narxi" });
-      await bindWidget(harness, receipt);
+      await bindWidget(harness, receipt, GROUNDING_NOW);
       const flow = createSalesFlowOrchestrator({
         store: salesStore(harness),
         timeoutMs: 5000,
@@ -745,7 +749,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
           decide: async () => {
             await harness
               .privilegedPool()
-              .query(`update service_prices set status='archived' where id=$1`, [groundingId(12)]);
+              .query(`update service_prices set status='retired' where id=$1`, [groundingId(12)]);
             return {
               ...AI_METADATA,
               kind: "completed",
@@ -768,7 +772,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
     it("invalidated Widget contactability prevents stale qualification", async () => {
       await seedSales(harness);
       const receipt = await accept(harness, { text: "I want laser tomorrow" });
-      await bindWidget(harness, receipt);
+      await bindWidget(harness, receipt, GROUNDING_NOW);
       const flow = createSalesFlowOrchestrator({
         store: salesStore(harness),
         timeoutMs: 5000,
@@ -776,7 +780,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
           decide: async () => {
             await harness
               .privilegedPool()
-              .query(`update widget_sessions set status='revoked',revoked_at=now()`);
+              .query(`update widget_sessions set status='revoked',revoked_at=issued_at`);
             return result();
           },
         },
