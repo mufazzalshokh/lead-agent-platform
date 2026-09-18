@@ -6,7 +6,9 @@ import {
   RequestIdSchema,
   CorrelationIdSchema,
   isSchemaValue,
+  type ActorRef,
   type ResourceId,
+  type StaffWorkItem,
 } from "@lead-agent/contracts";
 import {
   staffAcceptAppointmentRequest,
@@ -45,7 +47,9 @@ import {
 } from "./shared.js";
 import { getStaffWork } from "./staff-work.js";
 
-export const staffActor = (input: StaffPreparedOperation) => {
+export const staffActor = (
+  input: StaffPreparedOperation,
+): Extract<ActorRef, { actor_type: "member" }> => {
   const actor: unknown = { actor_type: "member", actor_id: input.authorization.membershipId };
   if (!isSchemaValue(ActorRefSchema, actor) || actor.actor_type !== "member")
     throw new RepositoryDataIntegrityError();
@@ -401,6 +405,9 @@ export const persistStaffHandoff = async (
     ],
   });
 };
-export const requireStaffTarget = (session: TenantDbSession, input: StaffPreparedOperation) =>
+export const requireStaffTarget = (
+  session: TenantDbSession,
+  input: StaffPreparedOperation,
+): Promise<StaffWorkItem> =>
   getStaffWork(session, input.authorization, input.kind, mapResourceId(input.id));
 export type StaffOutcomeId = ResourceId | null;

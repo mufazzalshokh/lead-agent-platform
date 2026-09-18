@@ -217,7 +217,7 @@ export const getStaffWork = async (
 export const readStaffOutcomes = async (
   session: TenantDbSession,
   input: Parameters<StaffOperationsStore["outcomes"]>[0],
-) => {
+): ReturnType<StaffOperationsStore["outcomes"]> => {
   await getStaffWork(session, input.authorization, "appointment_request", input.id);
   const attendance = input.kind === "attendance",
     table = attendance ? "appointment_request_attendance" : "appointment_revenue_attributions";

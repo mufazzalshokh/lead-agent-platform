@@ -98,6 +98,38 @@ export interface StaffOperationsStore {
   ): Promise<Readonly<{ items: readonly StaffOutcome[]; next: StaffPosition | null }>>;
   mutate(input: StaffPreparedOperation): Promise<StaffMutationResult>;
 }
+export type StaffOperationsPage<Item> = {
+  items: readonly Item[];
+  nextCursor: OpaqueCursor | null;
+};
+export interface StaffOperations {
+  readonly list: (
+    authorization: AuthorizationContext,
+    kind: StaffWorkKind,
+    query: StaffWorkListQuery,
+  ) => Promise<StaffOperationsPage<StaffWorkItem>>;
+  readonly get: (
+    authorization: AuthorizationContext,
+    kind: StaffWorkKind,
+    id: ResourceId,
+  ) => Promise<StaffWorkItem>;
+  readonly outcomes: (
+    authorization: AuthorizationContext,
+    id: ResourceId,
+    kind: "attendance" | "revenue",
+    query: StaffWorkListQuery,
+  ) => Promise<StaffOperationsPage<StaffOutcome>>;
+  readonly mutate: (
+    authorization: AuthorizationContext,
+    kind: StaffWorkKind,
+    id: ResourceId,
+    expectedVersion: number,
+    key: string,
+    operation: StaffOperation,
+    requestId: string,
+    correlationId: string,
+  ) => Promise<StaffMutationResult>;
+}
 export const staffReadPermission = (kind: StaffWorkKind): TenantPermission =>
   kind === "appointment_request"
     ? "appointments.read"
@@ -142,7 +174,7 @@ export const createStaffOperations = (
   store: StaffOperationsStore,
   cursor: StaffQueryCursorCodec,
   clock: () => Date = () => new Date(),
-) => {
+): StaffOperations => {
   const identifiers = createSecurityIdentifierFactory();
   const parseQuery = (query: StaffWorkListQuery) => {
     if (!isSchemaValue(StaffWorkListQuerySchema, query))
@@ -284,4 +316,3 @@ export const createStaffOperations = (
     },
   });
 };
-export type StaffOperations = ReturnType<typeof createStaffOperations>;
