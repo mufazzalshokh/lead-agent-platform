@@ -480,6 +480,7 @@ const registerSalesFlowTests = (harness: Harness): void => {
         .privilegedPool()
         .query(`update service_prices set status='retired' where service_id=$1`, [groundingId(10)]);
       const receipt = await accept(harness, { text: "lazer narxi" });
+      await bindWidget(harness, receipt, GROUNDING_NOW);
       expect(await salesFlow(harness).run(referenceFor(receipt))).toMatchObject({
         kind: "handoff_requested",
         reason: "missing_authoritative_information",
