@@ -588,7 +588,7 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
       const pool = harness.privilegedPool();
       if (change === "newer_inbound") await acceptSubmission(harness, "I do not want to book", 2);
       if (change === "redacted")
-        await pool.query(`update messages set redacted_at=$2 where id=$1`, [
+        await pool.query(`update messages set redacted_at=$2,body_ciphertext=null where id=$1`, [
           receipt.messageId,
           GROUNDING_NOW,
         ]);
@@ -995,13 +995,19 @@ const registerSalesFlowTests = (harness: Harness): void => {
           )
       ).rows[0]?.active_handoff_id;
       expect(typeof active).toBe("string");
-      const persistedFacts = (
-        await harness
-          .privilegedPool()
-          .query<{ facts_jsonb: unknown }>(
-            `select facts_jsonb from lead_qualification_evaluations order by id desc limit 1`,
-          )
-      ).rows[0]?.facts_jsonb;
+      const evaluations = (
+        await harness.privilegedPool().query<{ facts_jsonb: unknown }>(
+          `select evaluation.facts_jsonb from lead_qualification_evaluations evaluation
+             join lead_qualification_evidence source
+               on source.organization_id=evaluation.organization_id
+              and source.evaluation_id=evaluation.id
+             where evaluation.organization_id=$1 and evaluation.lead_id=$2
+               and source.field_key='evaluation_source' and source.message_id=$3`,
+          [AI_REFERENCE.organizationId, first.leadId, second.messageId],
+        )
+      ).rows;
+      expect(evaluations).toHaveLength(1);
+      const persistedFacts = evaluations[0]?.facts_jsonb;
       expect(persistedFacts).toMatchObject({
         schema_version: "s15.v1",
         evidence: {

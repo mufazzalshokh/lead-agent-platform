@@ -73,6 +73,30 @@ const questions = {
     en: "Could you give the time in 24-hour format, for example 17:00?",
   },
 };
+const customerSubmissionIntent = (text: string): boolean => {
+  const query = normalizeGroundingQuery(text);
+  if (/\b(not|dont|do not|ne [hx]ochu|yoq|emas|xohlamay\w*)\b/u.test(query)) return false;
+  // Desire for information is not desire to submit an appointment request.
+  const question =
+    /\b(how|what|price|cost|narx\w*|qancha|nech\w*|pul|skolko|stoit|ochiq\w*|ishlay\w*|hours|open|rabota\w*|know|information)\b/u.test(
+      query,
+    );
+  const explicit =
+    /\b(yozil\w*|yozdir\w*|boraman|kelaman|zapis\w*|book\w*|want|would like|id like|[hx]ochu|xohlay\w*|istay\w*)\b/u.test(
+      query,
+    );
+  // An explicit submission clause may accompany a price question, but a bare
+  // date or an informational mention of "appointment" cannot authorize one.
+  if (question)
+    return (
+      /\b(yozil\w*|yozdir\w*|boraman|kelaman|zapis\w*|book\w*)\b/u.test(query) &&
+      !/\b(know|information)\b/u.test(query)
+    );
+  return (
+    explicit ||
+    /\b(appointment|ertaga|indin|bugun|zavtra|poslezavtra|segodnya|tomorrow|today)\b/u.test(query)
+  );
+};
 export const planAppointmentSubmission = (
   snapshot: AIContextSnapshot,
   outcome: AIOutcome,
@@ -105,12 +129,7 @@ export const planAppointmentSubmission = (
   const intent = entries.findLast(
     (entry) =>
       appointmentSubmissionPreflight({ ...snapshot, message: entry.text }) === null &&
-      /\b(yozil\w*|yozdir\w*|boraman|kelaman|ertaga|indin|bugun|zapis\w*|zavtra|poslezavtra|segodnya|book\w*|appointment|tomorrow|today)\b/u.test(
-        normalizeGroundingQuery(entry.text),
-      ) &&
-      !/\b(not|dont|do not|ne [hx]ochu|yoq|emas|xohlamay\w*)\b/u.test(
-        normalizeGroundingQuery(entry.text),
-      ),
+      customerSubmissionIntent(entry.text),
   );
   // A customer preference supplies next-step evidence, never the model's booking action.
   let trusted =

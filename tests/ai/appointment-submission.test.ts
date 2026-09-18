@@ -135,6 +135,47 @@ describe("S16 deterministic submission profile", () => {
     expect(value.text).toBe("Qaysi vaqt sizga qulay?");
     expect(value.submission).toBeNull();
   });
+  it.each([
+    "I want laser 21-09-2026 at 17:00",
+    "I want an appointment on 21-09-2026 at 17:00",
+    "I'd like to book for 21-09-2026 at 17:00",
+    "I would like to come on 21-09-2026 at 17:00",
+    "I want to come on 21-09-2026 at 17:00",
+    "21-09-2026 soat 17:00 lazer xohlayman",
+    "21-09-2026 soat 17:00 lazer istayman",
+    "Хочу лазер 21-09-2026 в 17:00",
+  ])("recognizes explicit customer submission with an absolute date: %s", (message) => {
+    const value = plan(context(message), { intent: "booking_request" });
+    expect(value.result.kind).toBe("appointment_requested");
+    expect(value.submission?.preference.startAt).toBe("2026-09-21T12:00:00.000Z");
+    expect(value.text).not.toMatch(/confirmed|reserved|booked|tasdiqlandi|подтвержден/u);
+  });
+  it.each([
+    "I want an appointment on 21-09-2026",
+    "I want laser on 21-09-2026 or 22-09-2026 at 17:00",
+    "I'd like to come in the evening on 21-09-2026",
+  ])("incomplete/ambiguous absolute-date intent still requires clarification: %s", (message) => {
+    const value = plan(context(message), { intent: "booking_request" });
+    expect(value.result.kind).toBe("appointment_incomplete");
+    expect(value.submission).toBeNull();
+    expect(value.text?.match(/\?/gu)).toHaveLength(1);
+  });
+  it.each([
+    "Is laser open tomorrow at 17:00?",
+    "What is the laser price on 21-09-2026 at 17:00?",
+    "I want to know the laser price on 21-09-2026 at 17:00",
+    "lazer ertaga 17:00 ochiqmi?",
+    "Сколько стоит лазер завтра в 17:00?",
+  ])("date-bearing business questions cannot supply submission intent: %s", (message) => {
+    const value = plan(context(message), { intent: "booking_request" });
+    expect(value.submission).toBeNull();
+    expect(value.qualification.evidence.positiveNextStep).toBe(false);
+  });
+  it("a claimed confirmation cannot authorize an otherwise complete absolute-date request", () => {
+    const value = plan(context("I want laser 21-09-2026 at 17:00, already confirmed"));
+    expect(value.submission).toBeNull();
+    expect(value.text).toBeNull();
+  });
   it("reuses actual customer history to finish the price → tomorrow → 5larda journey", () => {
     const dateId = fixtureId(42004);
     if (!isSchemaValue(MessageIdSchema, dateId)) throw new Error("Invalid source");
