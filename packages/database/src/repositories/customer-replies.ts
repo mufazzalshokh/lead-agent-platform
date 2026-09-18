@@ -86,6 +86,7 @@ export const queueCustomerReply = async (
     ],
   );
   const schema = DomainEventSchemasByVersion["message.response_queued"]["1"];
+  const schemaId: unknown = Reflect.get(schema, "$id");
   const event: unknown = {
     actor: { actor_type: "system", actor_id: null },
     aggregate_id: input.conversationId,
@@ -99,7 +100,7 @@ export const queueCustomerReply = async (
     organization_id: session.organizationId,
     payload: { message_direction: "outbound", message_id: messageId, message_status: "queued" },
     request_id: null,
-    schema_id: Reflect.get(schema, "$id"),
+    schema_id: schemaId,
     schema_version: "1",
   };
   if (!isSchemaValue(schema, event)) throw new RepositoryDataIntegrityError();

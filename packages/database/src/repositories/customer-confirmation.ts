@@ -34,6 +34,7 @@ import {
   validateAppointmentRequestReasonCode,
   type AppointmentRequest,
   type AppointmentRequestCommandResult,
+  type AppointmentRequestReasonCode,
   type Lead,
 } from "@lead-agent/domain";
 import { createSecurityIdentifierFactory, type CustomerDataProtection } from "@lead-agent/security";
@@ -69,7 +70,7 @@ const nonempty = <T>(values: readonly T[]): NonEmptyReadonlyArray<T> => {
   if (first === undefined) throw new RepositoryDataIntegrityError();
   return [first, ...rest];
 };
-const reason = (value: string): import("@lead-agent/domain").AppointmentRequestReasonCode => {
+const reason = (value: string): AppointmentRequestReasonCode => {
   const parsed = validateAppointmentRequestReasonCode(value);
   if (!parsed.ok) throw new RepositoryDataIntegrityError();
   return parsed.value;
@@ -175,7 +176,7 @@ const boundChannel = async (
   now: Date,
 ): Promise<"customer_session" | "telegram" | "instagram" | null> => {
   if (conversation.status === "closed" || conversation.status === "resolved") return null;
-  const rows = await executeTenantRead(
+  const rows = await executeTenantRead<Record<string, unknown>>(
     session,
     `select c.channel_type from channel_connections c join contacts p on p.organization_id=c.organization_id and p.id=$3
     where c.organization_id=$1 and c.id=$2 and c.status='active' and p.status='active'`,

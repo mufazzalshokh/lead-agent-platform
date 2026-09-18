@@ -46,6 +46,23 @@ type Harness = Readonly<{
     channelType?: "widget" | "telegram" | "instagram",
   ) => Promise<CanonicalInboundReceipt>;
 }>;
+type AppointmentStateRow = Readonly<{
+  status: string;
+  version: number;
+  confirmation_source: string | null;
+  confirmation_issued_at: Date | null;
+  offer_expires_at: Date | null;
+}>;
+type ConfirmationCountsRow = Readonly<{
+  evidence: number;
+  confirmed: number;
+  transitions: number;
+  audits: number;
+}>;
+const requireDate = (value: Date | null | undefined): Date => {
+  if (!(value instanceof Date)) throw new Error("Missing S18 fixture timestamp");
+  return value;
+};
 export const registerCustomerConfirmationTests = (harness: Harness): void => {
   describe("S18 real PostgreSQL customer confirmation", () => {
     let now = new Date(GROUNDING_NOW);
@@ -65,9 +82,10 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       const receipt = await harness.seedRequest(tenant, channelType),
         pool = harness.privilegedPool();
       const channel: unknown = (
-        await pool.query("select channel_connection_id from conversations where id=$1", [
-          receipt.conversationId,
-        ])
+        await pool.query<{ channel_connection_id: unknown }>(
+          "select channel_connection_id from conversations where id=$1",
+          [receipt.conversationId],
+        )
       ).rows[0]?.["channel_connection_id"];
       if (!isSchemaValue(ChannelConnectionIdSchema, channel))
         throw new Error("Invalid S18 channel fixture");
@@ -135,7 +153,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         "unused",
       );
       const value: unknown = (
-        await pool.query(
+        await pool.query<{ payload_jsonb: unknown }>(
           `select payload_jsonb from outbox_events where event_type='appointment_request.staff_accepted' and aggregate_id=$1`,
           [item.id],
         )
@@ -163,7 +181,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       (
         await harness
           .privilegedPool()
-          .query(
+          .query<AppointmentStateRow>(
             `select status,version,confirmation_source,confirmation_issued_at,offer_expires_at from appointment_requests order by created_at`,
           )
       ).rows;
@@ -208,14 +226,16 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         [fixtureId(28100), Buffer.alloc(32, 18), now, f.organizationId, f.receipt.conversationId],
       );
     };
-    const counts = async () =>
-      (
-        await harness.privilegedPool().query(`select
+    const counts = async (): Promise<ConfirmationCountsRow> => {
+      const result = await harness.privilegedPool().query<ConfirmationCountsRow>(`select
       (select count(*)::int from appointment_confirmation_evidence) as evidence,
       (select count(*)::int from outbox_events where event_type='appointment_request.confirmed') as confirmed,
       (select count(*)::int from appointment_request_transitions where to_status='confirmed') as transitions,
-      (select count(*)::int from audit_events where action='appointment_request.transition') as audits`)
-      ).rows[0];
+      (select count(*)::int from audit_events where action='appointment_request.transition') as audits`);
+      const row = result.rows[0];
+      if (!row) throw new Error("Missing S18 fixture counts");
+      return row;
+    };
     it("proves grounded price → qualification → requested → real staff acceptance → one prompt without confirmation", async () => {
       const f = await accepted();
       expect((await state())[0]).toMatchObject({ status: "staff_accepted" });
@@ -231,18 +251,20 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       const messages = (
         await harness
           .privilegedPool()
-          .query(
+          .query<{ body_ciphertext: Buffer | null }>(
             `select body_ciphertext from messages where knowledge_manifest_jsonb->>'confirmation_kind'='prompt'`,
           )
       ).rows;
       expect(messages).toHaveLength(1);
       expect((await counts())?.["confirmed"]).toBe(0);
       expect((await counts())?.["audits"]).toBe(before?.["audits"] + 1);
+      const ciphertext = messages[0]?.["body_ciphertext"];
+      if (!ciphertext) throw new Error("Missing S18 fixture prompt body");
       const text = harness.dataProtection.revealMessageBody({
         organizationId: f.organizationId,
         channelConnectionId: f.channelConnectionId,
         contentType: "text",
-        ciphertext: messages[0]?.["body_ciphertext"],
+        ciphertext,
       });
       expect(text).toContain("tasdiqlaysizmi?");
       expect(text).not.toContain(f.event.aggregate_id);
@@ -335,7 +357,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
     it("expires at the earlier accepted start and never opens a window at/past start", async () => {
       const f = await accepted("a", "2026-09-18T12:00:00.000Z");
       await store().prepare(f.event);
-      expect(new Date((await state())[0]?.["offer_expires_at"]).toISOString()).toBe(
+      expect(requireDate((await state())[0]?.["offer_expires_at"]).toISOString()).toBe(
         "2026-09-18T12:00:00.000Z",
       );
     });
@@ -345,7 +367,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       now = new Date(now.getTime() + 60000);
       expect(await store().prepare(f.event)).toBe("already_prepared");
       expect((await state())[0]).toEqual(original);
-      expect(new Date(original?.["offer_expires_at"]).toISOString()).toBe(
+      expect(requireDate(original?.["offer_expires_at"]).toISOString()).toBe(
         new Date(Date.parse(GROUNDING_NOW) + 86_400_000).toISOString(),
       );
     });
@@ -373,7 +395,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       const task = (
         await harness
           .privilegedPool()
-          .query(
+          .query<{ payload_jsonb: unknown; available_at: Date }>(
             `select payload_jsonb,available_at from outbox_events where event_type='appointment_request.customer_confirmation_requested'`,
           )
       ).rows[0];
@@ -385,7 +407,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         )
       )
         throw new Error("Missing expiry fact");
-      expect(new Date(task?.["available_at"]).toISOString()).toBe(
+      expect(requireDate(task?.["available_at"]).toISOString()).toBe(
         new Date(Date.parse(GROUNDING_NOW) + 86_400_000).toISOString(),
       );
       expect(await store().expire(value)).toBe("not_due");
@@ -478,7 +500,9 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         (
           await harness
             .privilegedPool()
-            .query("select status from appointment_requests where id=$1", [b.event.aggregate_id])
+            .query<{ status: string }>("select status from appointment_requests where id=$1", [
+              b.event.aggregate_id,
+            ])
         ).rows[0]?.["status"],
       ).toBe("awaiting_customer_confirmation");
     });
@@ -612,7 +636,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       });
       expect(
         (
-          await pool.query(
+          await pool.query<{ count: number }>(
             "select count(*)::int as count from messages where knowledge_manifest_jsonb->>'confirmation_kind'='prompt'",
           )
         ).rows[0]?.["count"],
@@ -625,7 +649,10 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       const client = await harness.privilegedPool().connect();
       const capture = async () =>
         (
-          await client.query(`select 'request' as kind,to_jsonb(r) as value from appointment_requests r
+          await client.query<{
+            kind: string;
+            value: unknown;
+          }>(`select 'request' as kind,to_jsonb(r) as value from appointment_requests r
         union all select 'evidence',to_jsonb(e) from appointment_confirmation_evidence e
         union all select 'v1_event',to_jsonb(o) from outbox_events o where event_type='appointment_request.confirmed' order by kind`)
         ).rows;
@@ -746,9 +773,11 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         const pool = harness.privilegedPool();
         expect(await store().prepare(f.event)).toBe("prepared");
         expect(
-          (await pool.query("select count(*)::int as count from widget_sessions")).rows[0]?.[
-            "count"
-          ],
+          (
+            await pool.query<{ count: number }>(
+              "select count(*)::int as count from widget_sessions",
+            )
+          ).rows[0]?.["count"],
         ).toBe(0);
         const ref = await inbound(f, "yes");
         expect(await store().respond(ref)).toMatchObject({ kind: "confirmed" });
@@ -757,7 +786,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         expect(await store().respond(duplicate)).toMatchObject({ reason: "already_processed" });
         expect((await state())[0]).toMatchObject({ confirmation_source: channel });
         const event = (
-          await pool.query(
+          await pool.query<{ schema_version: string; payload_jsonb: unknown }>(
             `select schema_version,payload_jsonb from outbox_events where event_type='appointment_request.confirmed'`,
           )
         ).rows[0];
