@@ -39,7 +39,13 @@ export type AIProviderResult = AIProviderMetadata &
         retryAfterMs: number | null;
       }>
   );
-export type AIFact = Readonly<{ reference: AgentFactualClaim; text: string }>;
+export type GroundingNeed = "price" | "hours" | "duration" | "location" | "service" | "faq";
+export type AIFact = Readonly<{
+  reference: AgentFactualClaim;
+  text: string;
+  /** Application-only approved rendering metadata; NEVER projected into provider input. */
+  grounding?: Readonly<{ locale: Locale; need: GroundingNeed; subject: string }>;
+}>;
 export type AIHistoryEntry = Readonly<{
   sequence: number;
   role: "customer" | "staff" | "system";
@@ -90,6 +96,9 @@ export type AIFallbackReason =
   | "invalid_output"
   | "context_too_large"
   | "policy_denied"
+  | "grounding_insufficient"
+  | "medical_safety_wording_unapproved"
+  | "booking_availability_unapproved"
   | "stale_context";
 export type AIOutcome =
   | Readonly<{

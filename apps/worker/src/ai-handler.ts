@@ -1,10 +1,14 @@
-import type { AIWorkReference, createAIOrchestrator } from "@lead-agent/application";
+import type { AIWorkReference } from "@lead-agent/application";
 import { DomainEventSchemasByVersion, isSchemaValue } from "@lead-agent/contracts";
 import type { WorkerEventHandler } from "./handler-registry.js";
 import { WorkerJobInvariantError } from "./job-executor.js";
 
 export const createAIMessageHandler =
-  (orchestrator: ReturnType<typeof createAIOrchestrator>): WorkerEventHandler =>
+  (
+    orchestrator: Readonly<{
+      run: (reference: AIWorkReference, signal?: AbortSignal) => Promise<unknown>;
+    }>,
+  ): WorkerEventHandler =>
   async (context) => {
     const event = context.canonicalEvent;
     if (

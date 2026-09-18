@@ -8,7 +8,10 @@ import type {
   AIProviderResult,
   AITelemetry,
   AIWorkReference,
+  AIContextSnapshot,
+  AIFallbackReason,
 } from "./ports.js";
+import type { AgentDecisionV1 } from "@lead-agent/contracts";
 
 export const createAIOrchestrator = (
   options: Readonly<{
@@ -16,6 +19,8 @@ export const createAIOrchestrator = (
     store: AIOrchestrationStore;
     timeoutMs: number;
     telemetry?: AITelemetry;
+    preflight?: (snapshot: AIContextSnapshot) => AIFallbackReason | null;
+    evaluateDecision?: (decision: AgentDecisionV1, snapshot: AIContextSnapshot) => AIOutcome;
   }>,
 ) => {
   if (
@@ -47,7 +52,9 @@ export const createAIOrchestrator = (
         if (reservation === null) return aiFallback("stale_context");
         let provider: AIProviderResult | null = null;
         let outcome: AIOutcome = aiFallback("provider_unavailable");
-        if (input === null) outcome = aiFallback("context_too_large");
+        const preflight = options.preflight?.(snapshot) ?? null;
+        if (preflight !== null) outcome = aiFallback(preflight);
+        else if (input === null) outcome = aiFallback("context_too_large");
         else if (deadline.aborted) outcome = aiFallback("timeout");
         else {
           try {
@@ -82,7 +89,8 @@ export const createAIOrchestrator = (
             if (deadline.aborted) outcome = aiFallback("timeout");
             else if (provider.kind === "completed")
               outcome = validateAgentDecision(provider.value)
-                ? evaluateAIDecision(provider.value, snapshot.policy)
+                ? (options.evaluateDecision?.(provider.value, snapshot) ??
+                  evaluateAIDecision(provider.value, snapshot.policy))
                 : aiFallback("invalid_output");
             else
               outcome = aiFallback(

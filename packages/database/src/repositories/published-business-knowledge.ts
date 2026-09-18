@@ -7,6 +7,8 @@ import type { ConfigurationResult, PublishedBusinessKnowledgeStore } from "@lead
 import type { QueryResultRow } from "pg";
 
 import type { TenantDatabaseRuntime } from "../runtime/tenant.js";
+import type { TenantDbSession } from "../runtime/tenant.js";
+import type { ConversationId, Locale, UtcTimestamp } from "@lead-agent/contracts";
 import { executeTenantQuery } from "../runtime/tenant.js";
 import { mapRepositoryFailure } from "./shared.js";
 
@@ -47,7 +49,7 @@ const deepFreeze = <Value>(value: Value): Value => {
   return Object.freeze(value);
 };
 
-const KNOWLEDGE_QUERY = `with
+const STAFF_SCOPE = `
 actual_scope as materialized (
   select coalesce(array_agg(mls.location_id order by mls.location_id), '{}'::uuid[]) as location_ids
     from membership_location_scopes mls
@@ -66,7 +68,21 @@ actor as materialized (
      and m.role in ('owner', 'admin', 'staff', 'analyst')
      and (($5::text = 'all' and cardinality($6::uuid[]) = 0)
        or ($5::text = 'restricted' and scope.location_ids = $6::uuid[]))
-),
+),`;
+
+// Trusted customer flow, not a fabricated staff AuthorizationContext. The only
+// lookup key is the conversation within the existing immutable TenantDbSession.
+const CONVERSATION_SCOPE = `actor as materialized (
+  select c.id from conversations c
+  join contacts contact on contact.organization_id=c.organization_id and contact.id=c.contact_id
+  join channel_connections channel on channel.organization_id=c.organization_id and channel.id=c.channel_connection_id
+  where c.organization_id=$1 and c.id=$2 and c.status='open' and c.automation_mode='ai'
+    and contact.status='active' and channel.status='active'
+    and $3::uuid is null and $4::text='conversation' and $5::text='all'
+    and cardinality($6::uuid[])=0
+),`;
+
+const knowledgeQuery = (scope: string): string => `with ${scope}
 organization_context as materialized (
   select o.default_locale
     from organizations o
@@ -394,6 +410,57 @@ knowledge_rows as (
 )
 select kind, payload from knowledge_rows order by kind, sort_key`;
 
+const parseKnowledge = (
+  rows: readonly KnowledgeRow[],
+  locale: Locale,
+  effectiveAt: UtcTimestamp,
+): ConfigurationResult<PublishedBusinessKnowledgeV2> => {
+  const meta = rows.find((row) => row.kind === "meta")?.payload;
+  if (!isKnowledgeMeta(meta)) return fail("business_rule_failed");
+  if (!meta.authorized) return fail("permission_denied");
+  if (!meta.organization_ready || !meta.requested_locations_valid)
+    return fail("resource_not_found");
+  if (!meta.bounded || !meta.integrity_valid || !meta.localization_valid)
+    return fail("business_rule_failed");
+  const value = {
+    effective_at: effectiveAt,
+    locale,
+    faqs: rows.filter((row) => row.kind === "faq").map((row) => row.payload),
+    locations: rows.filter((row) => row.kind === "location").map((row) => row.payload),
+    services: rows.filter((row) => row.kind === "service").map((row) => row.payload),
+    policies: rows.filter((row) => row.kind === "policy").map((row) => row.payload),
+  };
+  return isSchemaValue(PublishedBusinessKnowledgeV2Schema, value)
+    ? success(deepFreeze(value))
+    : fail("business_rule_failed");
+};
+
+export const readConversationPublishedKnowledge = async (
+  session: TenantDbSession,
+  query: Readonly<{
+    conversationId: ConversationId;
+    locale: Locale;
+    effectiveAt: UtcTimestamp;
+    locationIds: readonly string[] | null;
+  }>,
+): Promise<ConfigurationResult<PublishedBusinessKnowledgeV2>> => {
+  const rows = await executeTenantQuery<KnowledgeRow>(session, (organizationId) => ({
+    text: knowledgeQuery(CONVERSATION_SCOPE),
+    values: [
+      organizationId,
+      query.conversationId,
+      null,
+      "conversation",
+      "all",
+      [],
+      query.locationIds,
+      query.effectiveAt,
+      query.locale,
+    ],
+  }));
+  return parseKnowledge(rows.rows, query.locale, query.effectiveAt);
+};
+
 export const createPublishedBusinessKnowledgeStore = (
   runtime: TenantDatabaseRuntime,
 ): PublishedBusinessKnowledgeStore => ({
@@ -407,7 +474,7 @@ export const createPublishedBusinessKnowledgeStore = (
               ? [...query.authorization.allowedLocationIds].sort()
               : [];
           const rows = await executeTenantQuery<KnowledgeRow>(session, (organizationId) => ({
-            text: KNOWLEDGE_QUERY,
+            text: knowledgeQuery(STAFF_SCOPE),
             values: [
               organizationId,
               query.authorization.membershipId,
@@ -420,27 +487,7 @@ export const createPublishedBusinessKnowledgeStore = (
               query.locale,
             ],
           }));
-          const meta = rows.rows.find((row) => row.kind === "meta")?.payload;
-          if (!isKnowledgeMeta(meta)) return fail("business_rule_failed");
-          if (!meta.authorized) return fail("permission_denied");
-          if (!meta.organization_ready) return fail("resource_not_found");
-          if (!meta.requested_locations_valid) return fail("resource_not_found");
-          if (!meta.bounded || !meta.integrity_valid || !meta.localization_valid) {
-            return fail("business_rule_failed");
-          }
-
-          const value = {
-            effective_at: query.effectiveAt,
-            faqs: rows.rows.filter((row) => row.kind === "faq").map((row) => row.payload),
-            locale: query.locale,
-            locations: rows.rows.filter((row) => row.kind === "location").map((row) => row.payload),
-            policies: rows.rows.filter((row) => row.kind === "policy").map((row) => row.payload),
-            services: rows.rows.filter((row) => row.kind === "service").map((row) => row.payload),
-          };
-          if (!isSchemaValue(PublishedBusinessKnowledgeV2Schema, value)) {
-            return fail("business_rule_failed");
-          }
-          return success(deepFreeze<PublishedBusinessKnowledgeV2>(value));
+          return parseKnowledge(rows.rows, query.locale, query.effectiveAt);
         },
       );
     } catch (error) {

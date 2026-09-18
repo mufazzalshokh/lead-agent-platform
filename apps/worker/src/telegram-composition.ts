@@ -16,15 +16,20 @@ import {
   createTenantCanonicalOutboxEventSource,
   createTenantDatabaseRuntime,
   createAIOrchestrationStore,
+  createConversationKnowledgeReader,
   type OutboxRelayClaim,
 } from "@lead-agent/database";
 import {
   createTelegramPlatformClient,
   createInstagramPlatformClient,
 } from "@lead-agent/integrations";
-import { createAIOrchestrator, type CredentialSecretStore } from "@lead-agent/application";
+import {
+  createGroundedAnswerOrchestrator,
+  GROUNDED_ANSWER_PROMPT_VERSION,
+  type CredentialSecretStore,
+} from "@lead-agent/application";
 import { createCustomerDataProtection, createAIProposalProtection } from "@lead-agent/security";
-import { createCommercialV1AIProvider } from "@lead-agent/ai";
+import { createGroundedAnswerAIProvider } from "@lead-agent/ai";
 import { createAIMessageHandler } from "./ai-handler.js";
 
 import {
@@ -108,13 +113,15 @@ export const composeProductionWorkerRuntime = (
     aiConfig === null
       ? undefined
       : createAIMessageHandler(
-          createAIOrchestrator({
-            provider: createCommercialV1AIProvider(aiConfig),
+          createGroundedAnswerOrchestrator({
+            provider: createGroundedAnswerAIProvider(aiConfig),
             store: createAIOrchestrationStore(tenantRuntime, {
               requestedModel: aiConfig.model,
               providerId: COMMERCIAL_V1_AI_PROFILE.providerId,
               modelProfileVersion: COMMERCIAL_V1_AI_PROFILE.modelProfileVersion,
-              promptTemplateVersion: COMMERCIAL_V1_AI_PROFILE.promptTemplateVersion,
+              promptTemplateVersion: GROUNDED_ANSWER_PROMPT_VERSION,
+              groundedAnswers: true,
+              knowledge: createConversationKnowledgeReader(),
               dataProtection: createCustomerDataProtection(protectionConfig),
               protectProposal: createAIProposalProtection(protectionConfig).protect,
             }),

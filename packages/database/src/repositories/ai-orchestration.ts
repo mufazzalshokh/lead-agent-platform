@@ -9,6 +9,9 @@ import {
   type AIWorkReference,
   type AIRunFinish,
   type AIFact,
+  evaluateGroundedDecision,
+  groundingLocale,
+  groundingUncertaintyText,
 } from "@lead-agent/application";
 import {
   AgentFactualClaimSchema,
@@ -63,12 +66,16 @@ type AIStoreOptions = Readonly<{
       argumentsJSON: string;
     }>,
   ) => Uint8Array;
+  /** S14 only: deterministic approved text -> encrypted Message + canonical outbox. */
+  groundedAnswers?: boolean;
   /** Optional approved knowledge seam. S12 defaults to no facts; S14 owns grounded product behavior. */
   knowledge?: (
     session: TenantDbSession,
     snapshot: Readonly<{
       conversationId: AIWorkReference["conversationId"];
       locale: AIContextSnapshot["locale"];
+      message: string;
+      lock: boolean;
     }>,
   ) => Promise<readonly AIFact[]>;
   clock?: () => Date;
@@ -118,6 +125,8 @@ export const createAIOrchestrationStore = (
   options: AIStoreOptions,
 ): AIOrchestrationStore => {
   const providerId = options.providerId ?? "openai";
+  if (options.groundedAnswers === true && options.knowledge === undefined)
+    throw new TypeError("Grounded answers require the approved knowledge reader");
   const modelProfileVersion = options.modelProfileVersion ?? "s12-configured.v1";
   const promptTemplateVersion = options.promptTemplateVersion ?? "s12-instructions.v1";
   if (
@@ -214,6 +223,8 @@ export const createAIOrchestrationStore = (
         (await options.knowledge?.(session, {
           conversationId: reference.conversationId,
           locale: conversation.preferredLocale,
+          message: text,
+          lock: false,
         })) ?? [];
       return Object.freeze({
         conversationId: reference.conversationId,
@@ -276,7 +287,7 @@ export const createAIOrchestrationStore = (
             session,
             `insert into ai_runs
           (organization_id,id,conversation_id,trigger_message_id,expected_conversation_version,provider_id,requested_model_id,model_profile_version,orchestrator_version,prompt_template_version,decision_schema_version,policy_version,status,cost_currency,cost_catalog_version,attempt_no,knowledge_manifest_jsonb,input_hash,started_at,correlation_id)
-          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','s12-policy.v1','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
+          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','${options.groundedAnswers === true ? "s14-grounding.v1" : "s12-policy.v1"}','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
             [
               runId,
               input.reference.conversationId,
@@ -359,10 +370,14 @@ const finishAIRun = async (
     const currentFacts = await options.knowledge(session, {
       conversationId: conversation.conversationId,
       locale: conversation.preferredLocale,
+      message: input.snapshot.message,
+      lock: true,
     });
     if (!Buffer.from(hash(currentFacts)).equals(Buffer.from(hash(input.snapshot.policy.facts))))
       outcome = aiFallback("stale_context");
   }
+  if (options.groundedAnswers === true && outcome.kind === "decision")
+    outcome = evaluateGroundedDecision(outcome.decision, input.snapshot);
   const value = input.provider?.kind === "completed" ? input.provider.value : null;
   const schemaValid = input.provider?.kind === "completed" ? validateAgentDecision(value) : null;
   const decision = validateAgentDecision(value) ? value : null;
@@ -536,5 +551,130 @@ const finishAIRun = async (
       ],
     );
   }
+  if (
+    options.groundedAnswers === true &&
+    ((outcome.kind === "decision" && outcome.disposition === "candidate") ||
+      (outcome.kind === "fallback_required" && outcome.reason === "grounding_insufficient"))
+  ) {
+    const locale = groundingLocale(input.snapshot.message, input.snapshot.locale);
+    const text =
+      outcome.kind === "decision"
+        ? outcome.decision.message.draft_text
+        : groundingUncertaintyText(locale);
+    if (text !== null)
+      await queueGroundedReply(
+        session,
+        input,
+        options,
+        text,
+        locale,
+        outcome.kind === "decision" ? outcome.decision.factual_claims : [],
+        conversation.version,
+        nextId,
+        finishedAt,
+      );
+  }
   return outcome;
+};
+
+const queueGroundedReply = async (
+  session: TenantDbSession,
+  input: AIRunFinish,
+  options: AIStoreOptions,
+  text: string,
+  locale: AIContextSnapshot["locale"],
+  sources: readonly AIFact["reference"][],
+  version: number,
+  nextId: () => string,
+  occurredAt: Date,
+): Promise<void> => {
+  // Common smallest transport budget: Instagram plain-text UTF-8 bytes. Do not
+  // truncate a price/qualifier or split a claim into independently delivered jobs.
+  if (Buffer.byteLength(text, "utf8") > 1_000) throw new RepositoryDataIntegrityError();
+  const messageId = nextId();
+  const protectedBody = options.dataProtection.protectMessageBody({
+    organizationId: session.organizationId,
+    channelConnectionId: input.snapshot.channelConnectionId,
+    contentType: "text",
+    content: { type: "text", text, locale_hint: locale },
+  });
+  const sequences = await executeTenantRead(
+    session,
+    `update conversations set next_sequence_no=next_sequence_no+1,version=version+1,
+      last_activity_at=greatest(last_activity_at,$4),updated_at=greatest(updated_at,$4)
+      where organization_id=$1 and id=$2 and version=$3 returning next_sequence_no-1 as sequence_no`,
+    [input.reference.conversationId, version, occurredAt],
+  );
+  if (sequences.length !== 1) throw new RepositoryDataIntegrityError();
+  await executeTenantWrite(
+    session,
+    `insert into messages (organization_id,id,conversation_id,channel_connection_id,direction,sender_type,
+      sequence_no,content_type,body_ciphertext,body_hash,locale,processing_status,delivery_status,
+      reply_to_message_id,ai_run_id,knowledge_manifest_jsonb,created_at)
+      values ($1,$2,$3,$4,'outbound','system',$5,'text',$6,$7,$8,'processed','queued',$9,$10,$11::jsonb,$12)`,
+    [
+      messageId,
+      input.reference.conversationId,
+      input.snapshot.channelConnectionId,
+      mapSafeBigInt(sequences[0]?.["sequence_no"]),
+      protectedBody.ciphertext,
+      protectedBody.hash,
+      locale,
+      input.reference.messageId,
+      input.reservation.runId,
+      JSON.stringify({ sources }),
+      occurredAt,
+    ],
+  );
+  const schemaId: unknown = Reflect.get(
+    DomainEventSchemasByVersion["message.response_queued"]["1"],
+    "$id",
+  );
+  const event: unknown = {
+    actor: { actor_type: "system", actor_id: null },
+    aggregate_id: input.reference.conversationId,
+    aggregate_type: "conversation",
+    aggregate_version: version + 1,
+    causation_id: input.reference.causationId,
+    correlation_id: input.reference.correlationId,
+    event_id: nextId(),
+    event_type: "message.response_queued",
+    occurred_at: occurredAt.toISOString(),
+    organization_id: session.organizationId,
+    payload: { message_direction: "outbound", message_id: messageId, message_status: "queued" },
+    request_id: null,
+    schema_id: schemaId,
+    schema_version: "1",
+  };
+  if (!isSchemaValue(DomainEventSchemasByVersion["message.response_queued"]["1"], event))
+    throw new RepositoryDataIntegrityError();
+  await executeTenantWrite(
+    session,
+    `insert into audit_events (organization_id,id,event_type,actor_type,actor_id,target_type,target_id,
+      action,result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
+      values ($1,$2,'message.response_queued','system',null,'conversation',$3,'message.response_queued',
+      'succeeded',$4,$5,'{}'::jsonb,$6)`,
+    [
+      nextId(),
+      input.reference.conversationId,
+      `ai-answer:${input.reservation.runId}`,
+      input.reference.correlationId,
+      occurredAt,
+    ],
+  );
+  await executeTenantWrite(
+    session,
+    `insert into outbox_events (organization_id,id,event_type,schema_version,aggregate_type,aggregate_id,
+      aggregate_version,payload_jsonb,correlation_id,causation_id,occurred_at,status,available_at)
+      values ($1,$2,'message.response_queued','1','conversation',$3,$4,$5::jsonb,$6,$7,$8,'pending',$8)`,
+    [
+      event.event_id,
+      input.reference.conversationId,
+      version + 1,
+      JSON.stringify(event),
+      input.reference.correlationId,
+      input.reference.causationId,
+      occurredAt,
+    ],
+  );
 };

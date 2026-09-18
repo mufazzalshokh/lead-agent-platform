@@ -662,6 +662,22 @@ None of these questions blocks **S1 workspace bootstrap**. Before S1, the produc
 | What live-model quality/latency/cost thresholds, per-turn/conversation limits, tenant budgets, overage behavior, and reviewers are approved? | AI engineering + product/finance | Model selection and commercial margin require measured tradeoffs | Before S13 and final budgets before S20 |
 | What final Widget loader/iframe CSP, framing and host-page integration contract is required for the supported-browser UX? | Product + frontend/security | S10 freezes API trust/session/origin/body/rate/idempotency behavior; the embeddable visual boundary still needs browser E2E evidence | Before S19b |
 | What staff data-visibility rules apply to sensitive conversation/health-adjacent content, exports, and support access? | Privacy + security + product | Least privilege and privacy UI cannot be inferred from generic roles | Before S17/S19a/S21b |
-| Which reviewed emergency/medical safety wording is approved in Uzbek, Russian, and English for each launch jurisdiction? | Clinical safety + privacy/legal + product | The system is administrative, but unsafe wording cannot be improvised by a model or engineer | Before S14/S21b |
+| Which reviewed emergency/medical safety wording is approved in Uzbek, Russian, and English for each launch jurisdiction? | Clinical safety + privacy/legal + product | The system is administrative, but unsafe wording cannot be improvised by a model or engineer | Before S21b; owner-approved S14 deferral below |
 | Are the OpenAI processor terms, region, retention/data controls, and production-data suitability approved for launch content? | Privacy/legal + security + AI engineering | `store:false` does not itself answer processor, residency, or healthcare suitability questions | Before live data; gate S13/S21a |
 | At launch volume, do message/provider payloads remain in encrypted PostgreSQL or is separately governed object storage required? | Data/platform + privacy | It affects retention, deletion, backups, threat surface, and cost | Decide before S4b storage schema is frozen |
+
+### Owner-approved S14 medical/emergency wording deferral
+
+The original before-S14/S21b wording requirement is retained, but its reviewed
+Uzbek/Russian/English launch-jurisdiction wording approval gate is deferred to
+**S21b Security / Safety Hardening** by the project owner. S14 may demonstrate
+only safe fail-closed behavior: medical, symptom, emergency, and urgent-health
+cases return typed `grounding_insufficient` with internal reason
+`medical_safety_wording_unapproved`. No customer-facing clinical/emergency
+wording, urgency assessment, diagnosis, treatment/medication recommendation,
+Handoff, AppointmentRequest, or protected action is permitted.
+
+This exception does not approve medical/emergency response behavior for
+production. Healthcare/clinic staging and launch acceptance for emergency-message
+handling remain blocked until reviewed wording is approved. S14 acceptance must
+not claim medical/emergency readiness; actual Handoff workflows remain S15.
