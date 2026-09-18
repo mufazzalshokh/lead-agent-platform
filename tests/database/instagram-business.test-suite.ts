@@ -170,7 +170,7 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
               "select count(*)::integer as count from drizzle.__drizzle_migrations",
             )
           ).rows[0]?.count,
-        ).toBe(28);
+        ).toBe(29);
       } finally {
         await pool.end();
         await options.privilegedPool().query(`drop database "${name}"`);
