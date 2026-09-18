@@ -13,6 +13,7 @@ import type {
   LocationId,
   ServiceId,
   ResourceId,
+  PublishedBusinessKnowledgeV2,
 } from "@lead-agent/contracts";
 
 export type AIUsage = Readonly<{
@@ -56,6 +57,8 @@ export type AIHistoryEntry = Readonly<{
   text: string;
   /** Internal evidence binding, never projected into provider input. */
   messageId?: MessageId;
+  /** Server receipt instant for relative preferences; never provider instructions. */
+  receivedAt?: string;
 }>;
 export type SalesEvidence = Readonly<{
   serviceId: ServiceId | null;
@@ -86,6 +89,9 @@ export type SalesResult = Readonly<{
     | "qualified"
     | "handoff_requested"
     | "appointment_boundary"
+    | "appointment_incomplete"
+    | "appointment_requested"
+    | "appointment_existing"
     | "grounding_insufficient";
   reason: string | null;
   missing: readonly string[];
@@ -128,6 +134,16 @@ export type AIContextSnapshot = Readonly<{
   history: readonly AIHistoryEntry[];
   policy: AIPolicyContext;
   sales?: SalesContext;
+  sourceReceivedAt?: string;
+  booking?: AppointmentSubmissionContext;
+}>;
+/** Private trusted submission context, not a configurable booking policy. */
+export type AppointmentSubmissionContext = Readonly<{
+  now: string;
+  knowledge: PublishedBusinessKnowledgeV2 | null;
+  activeRequestId: AppointmentRequestId | null;
+  afterSequence: number;
+  staffActive: boolean;
 }>;
 export type AIFallbackReason =
   | "provider_unavailable"

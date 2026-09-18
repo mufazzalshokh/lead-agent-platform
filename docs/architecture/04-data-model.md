@@ -1022,6 +1022,13 @@ the same physical message unique key, not a second field or dedupe system.
 ### 6.1 `appointment_requests`
 
 - **Purpose:** Authoritative human-reviewed request and current booking state.
+- **S16 provenance:** Owner-approved temporary arrangement: `business_policy_id`
+  identifies the applied Qualification V1 policy, not configurable booking
+  authority. Immutable audit metadata separately records fixed submission
+  profile `s16_appointment_submission.v1`. No booking-policy JSON/table/public
+  field or migration is introduced. Future booking-policy work needs a separate
+  freeze and an explicit compatibility/migration decision before changing the
+  interpretation of historical S16 requests.
 - **Columns:** `id`, `organization_id`, `lead_id`, `contact_id`,
   `conversation_id`, `source_message_id`, `service_id`,
   `service_version_id`, `location_id`, `location_version_id`,

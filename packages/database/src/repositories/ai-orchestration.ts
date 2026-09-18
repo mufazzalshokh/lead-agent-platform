@@ -16,6 +16,9 @@ import {
   planSalesFlow,
   salesMissing,
   salesLocale,
+  APPOINTMENT_SUBMISSION_PROFILE,
+  appointmentSubmissionPreflight,
+  planAppointmentSubmission,
 } from "@lead-agent/application";
 import {
   AgentFactualClaimSchema,
@@ -43,10 +46,16 @@ import {
   mapChannelConnectionId,
   mapSafeBigInt,
   mapString,
+  mapUtcTimestamp,
   RepositoryDataIntegrityError,
 } from "./shared.js";
 import { readSalesContext } from "./sales-context.js";
 import { persistSalesPlan } from "./sales-persistence.js";
+import {
+  readAppointmentSubmissionContext,
+  appointmentSubmissionState,
+  persistAppointmentSubmission,
+} from "./appointment-submission.js";
 
 type SourceRow = QueryResultRow & {
   id: unknown;
@@ -58,6 +67,7 @@ type SourceRow = QueryResultRow & {
   redacted_at: unknown;
   sender_contact_id: unknown;
   channel_connection_id: unknown;
+  created_at: unknown;
 };
 type AIStoreOptions = Readonly<{
   requestedModel: string;
@@ -76,6 +86,8 @@ type AIStoreOptions = Readonly<{
   groundedAnswers?: boolean;
   /** S15: trusted qualification evidence and domain Handoff workflow, never model authorization. */
   salesFlow?: boolean;
+  /** S16 fixed deterministic submission profile; includes the S15 qualification flow. */
+  appointmentSubmission?: boolean;
   /** Optional approved knowledge seam. S12 defaults to no facts; S14 owns grounded product behavior. */
   knowledge?: (
     session: TenantDbSession,
@@ -121,7 +133,7 @@ const source = async (
 ): Promise<SourceRow | null> => {
   const rows = await executeTenantRead<SourceRow>(
     session,
-    `select id,sequence_no,sender_type,content_type,body_ciphertext,ai_run_id,redacted_at,sender_contact_id,channel_connection_id from messages
+    `select id,sequence_no,sender_type,content_type,body_ciphertext,ai_run_id,redacted_at,sender_contact_id,channel_connection_id,created_at from messages
       where organization_id = $1 and id = $2 and conversation_id = $3
         and direction = 'inbound' and sender_type = 'customer'${lock ? " for update" : ""}`,
     [reference.messageId, reference.conversationId],
@@ -133,6 +145,8 @@ export const createAIOrchestrationStore = (
   options: AIStoreOptions,
 ): AIOrchestrationStore => {
   const providerId = options.providerId ?? "openai";
+  if (options.appointmentSubmission === true && options.salesFlow !== true)
+    throw new TypeError("Appointment submission requires the trusted sales context");
   if (options.groundedAnswers === true && options.knowledge === undefined)
     throw new TypeError("Grounded answers require the approved knowledge reader");
   if (
@@ -188,12 +202,15 @@ export const createAIOrchestrationStore = (
       const sequence = mapSafeBigInt(message.sequence_no);
       const historyRows = await executeTenantRead<SourceRow>(
         session,
-        `select id,sequence_no,sender_type,content_type,body_ciphertext,ai_run_id,redacted_at from messages
+        `select id,sequence_no,sender_type,content_type,body_ciphertext,ai_run_id,redacted_at,created_at from messages
         where organization_id = $1 and conversation_id = $2 and sequence_no < $3 and direction in ('inbound','outbound') and redacted_at is null and body_ciphertext is not null
         order by sequence_no desc limit 12`,
         [reference.conversationId, sequence],
       );
       const history = historyRows.map((row) => ({
+        ...(options.appointmentSubmission === true
+          ? { receivedAt: mapUtcTimestamp(row.created_at) }
+          : {}),
         messageId: mapMessageId(row.id),
         sequence: mapSafeBigInt(row.sequence_no),
         role:
@@ -255,12 +272,25 @@ export const createAIOrchestrationStore = (
             })
           : null;
       if (sales !== null) facts = sales.facts;
+      const booking =
+        options.appointmentSubmission === true && sales !== null
+          ? await readAppointmentSubmissionContext(session, {
+              conversationId: reference.conversationId,
+              sales: sales.sales,
+              knowledge: sales.knowledge,
+              now: now(),
+              lock: false,
+            })
+          : null;
       const snapshot: AIContextSnapshot = {
         conversationId: reference.conversationId,
         sourceMessageId: mapMessageId(message.id),
         channelConnectionId: conversation.channelConnectionId,
         conversationVersion: conversation.version,
         sourceSequence: sequence,
+        ...(booking === null
+          ? {}
+          : { booking, sourceReceivedAt: mapUtcTimestamp(message.created_at) }),
         locale: conversation.preferredLocale,
         message: text,
         history: Object.freeze(history),
@@ -333,7 +363,7 @@ export const createAIOrchestrationStore = (
             session,
             `insert into ai_runs
           (organization_id,id,conversation_id,trigger_message_id,expected_conversation_version,provider_id,requested_model_id,model_profile_version,orchestrator_version,prompt_template_version,decision_schema_version,policy_version,status,cost_currency,cost_catalog_version,attempt_no,knowledge_manifest_jsonb,input_hash,started_at,correlation_id)
-          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','${options.salesFlow === true ? "s15-qualification-handoff.v1" : options.groundedAnswers === true ? "s14-grounding.v1" : "s12-policy.v1"}','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
+          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','${options.appointmentSubmission === true ? APPOINTMENT_SUBMISSION_PROFILE : options.salesFlow === true ? "s15-qualification-handoff.v1" : options.groundedAnswers === true ? "s14-grounding.v1" : "s12-policy.v1"}','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
             [
               runId,
               input.reference.conversationId,
@@ -397,6 +427,7 @@ const finishAIRun = async (
     [input.reference.conversationId],
   );
   let outcome = input.outcome;
+  let trustedSnapshot = input.snapshot;
   if (
     mapContactId(message.sender_contact_id) !== conversation.contactId ||
     mapChannelConnectionId(message.channel_connection_id) !== conversation.channelConnectionId
@@ -439,13 +470,35 @@ const finishAIRun = async (
       lock: true,
       now: now(),
     });
+    const booking =
+      options.appointmentSubmission === true
+        ? await readAppointmentSubmissionContext(session, {
+            conversationId: conversation.conversationId,
+            sales: current.sales,
+            knowledge: current.knowledge,
+            now: now(),
+            lock: true,
+          })
+        : null;
     if (
       !Buffer.from(hash(current.sales)).equals(Buffer.from(hash(input.snapshot.sales))) ||
-      !Buffer.from(hash(current.facts)).equals(Buffer.from(hash(input.snapshot.policy.facts)))
+      !Buffer.from(hash(current.facts)).equals(Buffer.from(hash(input.snapshot.policy.facts))) ||
+      (booking !== null &&
+        (input.snapshot.booking === undefined ||
+          !Buffer.from(hash(appointmentSubmissionState(booking))).equals(
+            Buffer.from(hash(appointmentSubmissionState(input.snapshot.booking))),
+          )))
     )
       outcome = aiFallback("stale_context");
-    else if (outcome.kind === "decision")
-      outcome = evaluateSalesDecision(outcome.decision, input.snapshot);
+    else {
+      if (booking !== null) trustedSnapshot = { ...input.snapshot, booking };
+      if (outcome.kind === "decision")
+        outcome = evaluateSalesDecision(outcome.decision, trustedSnapshot);
+      if (options.appointmentSubmission === true) {
+        const blocked = appointmentSubmissionPreflight(trustedSnapshot);
+        if (blocked !== null) outcome = aiFallback(blocked);
+      }
+    }
   }
   const value = input.provider?.kind === "completed" ? input.provider.value : null;
   const schemaValid = input.provider?.kind === "completed" ? validateAgentDecision(value) : null;
@@ -488,8 +541,20 @@ const finishAIRun = async (
       input.allowRepair
     )
   ) {
-    const plan = planSalesFlow(input.snapshot, outcome);
-    const persisted = await persistSalesPlan(session, input, plan, nextId, finishedAt);
+    const appointment =
+      options.appointmentSubmission === true
+        ? planAppointmentSubmission(trustedSnapshot, outcome)
+        : null;
+    const plan = appointment ?? planSalesFlow(input.snapshot, outcome);
+    const persisted = await persistSalesPlan(
+      session,
+      input,
+      appointment?.qualification ?? plan,
+      nextId,
+      finishedAt,
+    );
+    if (appointment !== null)
+      await persistAppointmentSubmission(session, input, appointment, nextId, finishedAt);
     if (plan.text !== null)
       await queueGroundedReply(
         session,
@@ -502,7 +567,7 @@ const finishAIRun = async (
         nextId,
         finishedAt,
       );
-    outcome = Object.freeze({ ...outcome, salesResult: persisted.result });
+    outcome = Object.freeze({ ...outcome, salesResult: appointment?.result ?? persisted.result });
   }
   const usage = input.provider?.usage;
   await executeTenantWrite(

@@ -4,6 +4,8 @@ import {
   GROUNDED_ANSWER_INSTRUCTIONS,
   createSalesFlowAIProvider,
   SALES_FLOW_INSTRUCTIONS,
+  createAppointmentSubmissionAIProvider,
+  APPOINTMENT_SUBMISSION_INSTRUCTIONS,
 } from "../../packages/ai/src/index.js";
 import { loadCommercialV1AIConfig } from "../../packages/config/src/index.js";
 import {
@@ -17,6 +19,7 @@ describe("S14 grounded provider composition", () => {
   it.each([
     [createGroundedAnswerAIProvider, GROUNDED_ANSWER_INSTRUCTIONS],
     [createSalesFlowAIProvider, SALES_FLOW_INSTRUCTIONS],
+    [createAppointmentSubmissionAIProvider, APPOINTMENT_SUBMISSION_INSTRUCTIONS],
   ] as const)(
     "keeps the exact approved stateless Gemini profile with a versioned product prompt",
     async (factory, instructions) => {

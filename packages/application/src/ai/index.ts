@@ -4,5 +4,7 @@ export { aiFallback, evaluateAIDecision, validateAgentDecision } from "./policy.
 export { createAIOrchestrator } from "./orchestrate.js";
 export * from "./grounded-answers.js";
 export * from "./sales-flow.js";
+export * from "./appointment-submission.js";
+export * from "./appointment-time.js";
 export { selectGroundingFacts } from "./grounding-facts.js";
 export { groundingPreflight, groundingLocale } from "./grounding-query.js";

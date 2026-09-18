@@ -23,12 +23,12 @@ import {
   createInstagramPlatformClient,
 } from "@lead-agent/integrations";
 import {
-  createSalesFlowOrchestrator,
-  SALES_FLOW_PROMPT_VERSION,
+  createAppointmentSubmissionOrchestrator,
+  APPOINTMENT_SUBMISSION_PROMPT,
   type CredentialSecretStore,
 } from "@lead-agent/application";
 import { createCustomerDataProtection, createAIProposalProtection } from "@lead-agent/security";
-import { createSalesFlowAIProvider } from "@lead-agent/ai";
+import { createAppointmentSubmissionAIProvider } from "@lead-agent/ai";
 import { createAIMessageHandler } from "./ai-handler.js";
 
 import {
@@ -112,14 +112,15 @@ export const composeProductionWorkerRuntime = (
     aiConfig === null
       ? undefined
       : createAIMessageHandler(
-          createSalesFlowOrchestrator({
-            provider: createSalesFlowAIProvider(aiConfig),
+          createAppointmentSubmissionOrchestrator({
+            provider: createAppointmentSubmissionAIProvider(aiConfig),
             store: createAIOrchestrationStore(tenantRuntime, {
               requestedModel: aiConfig.model,
               providerId: COMMERCIAL_V1_AI_PROFILE.providerId,
               modelProfileVersion: COMMERCIAL_V1_AI_PROFILE.modelProfileVersion,
-              promptTemplateVersion: SALES_FLOW_PROMPT_VERSION,
+              promptTemplateVersion: APPOINTMENT_SUBMISSION_PROMPT,
               salesFlow: true,
+              appointmentSubmission: true,
               dataProtection: createCustomerDataProtection(protectionConfig),
               protectProposal: createAIProposalProtection(protectionConfig).protect,
             }),

@@ -179,6 +179,14 @@ approved safety wording, consent notice references.
 - Medical diagnosis/suitability rules and model-authorized actions are invalid.
 - An appointment request stores the policy version used at submission.
 
+S16 owner-approved temporary provenance: `business_policy_id` references the
+applied Qualification V1 policy, not a configurable booking policy. Creation
+authority is the fixed internal `s16_appointment_submission.v1` profile; its
+version is recorded separately in immutable audit metadata. Unsupported booking
+JSON never authorizes creation. Configurable booking policies still require the
+separate freeze above and must not reinterpret historical S16 requests without
+an explicit compatibility/migration decision.
+
 ### 3.6.1 V1 qualification policy
 
 The launch qualification policy has `schema_version = 1` and a finite

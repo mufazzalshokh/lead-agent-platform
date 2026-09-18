@@ -15,6 +15,7 @@ import {
   isSchemaValue,
   type ConversationId,
   type Locale,
+  type PublishedBusinessKnowledgeV2,
 } from "@lead-agent/contracts";
 import type { TenantDbSession } from "../runtime/tenant.js";
 import { createConversationRepository } from "./conversations.js";
@@ -76,7 +77,13 @@ export const readSalesContext = async (
     lock: boolean;
     now: Date;
   }>,
-): Promise<Readonly<{ sales: SalesContext; facts: readonly AIFact[] }>> => {
+): Promise<
+  Readonly<{
+    sales: SalesContext;
+    facts: readonly AIFact[];
+    knowledge: PublishedBusinessKnowledgeV2 | null;
+  }>
+> => {
   const conversation = await createConversationRepository(session).getConversation(
     input.conversationId,
   );
@@ -200,5 +207,5 @@ export const readSalesContext = async (
           serviceId: evidence.serviceId,
           locationId: evidence.locationId,
         });
-  return Object.freeze({ sales, facts });
+  return Object.freeze({ sales, facts, knowledge });
 };
