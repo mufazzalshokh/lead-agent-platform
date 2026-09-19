@@ -9,7 +9,7 @@
 ![pnpm 11](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)
 ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![Public contracts](https://img.shields.io/badge/Public%20contracts-347-6C5CE7)
+![Public contracts](https://img.shields.io/badge/Public%20contracts-366-6C5CE7)
 ![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S18-00A86B)
 
 **Uzbek · Russian · English** · **Modular monolith** · **Human-controlled booking**
@@ -65,7 +65,7 @@ facts, state transitions, and side effects.
 
 ## What is already implemented
 
-- 347 versioned runtime contracts with compatibility snapshots and drift checks,
+- 366 versioned runtime contracts with compatibility snapshots and drift checks,
   including 63 semantic events represented by 66 schema variants.
 - Pure TypeScript domain state machines with deterministic transitions and typed errors.
 - PostgreSQL 17 and Drizzle schema covering tenant configuration, contacts, leads,
