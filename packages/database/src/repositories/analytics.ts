@@ -18,10 +18,31 @@ import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.j
 import { executeTenantRead, RepositoryDataIntegrityError } from "./shared.js";
 import { requireStaffActor } from "./staff-work.js";
 
+type AnalyticsRow = Record<string, unknown>;
+
 const safeNumber = (value: unknown): number => {
-  const number = typeof value === "bigint" ? Number(value) : Number(value);
+  let number: number;
+  if (typeof value === "bigint") number = Number(value);
+  else if (typeof value === "number") number = value;
+  else if (typeof value === "string" && /^-?(?:0|[1-9]\d*)$/u.test(value)) number = Number(value);
+  else throw new RepositoryDataIntegrityError();
   if (!Number.isSafeInteger(number)) throw new RepositoryDataIntegrityError();
   return number;
+};
+const safeBigInt = (value: unknown): bigint => {
+  if (typeof value === "bigint" && value >= 0n) return value;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
+  if (typeof value === "string" && /^(?:0|[1-9]\d*)$/u.test(value)) return BigInt(value);
+  throw new RepositoryDataIntegrityError();
+};
+const safeString = (value: unknown): string => {
+  if (typeof value !== "string") throw new RepositoryDataIntegrityError();
+  return value;
+};
+const safeChannel = (value: unknown): "widget" | "telegram" | "instagram" => {
+  if (value !== "widget" && value !== "telegram" && value !== "instagram")
+    throw new RepositoryDataIntegrityError();
+  return value;
 };
 const timestamp = (value: string): UtcTimestamp => {
   const result: unknown = new Date(value).toISOString();
@@ -105,14 +126,14 @@ const readReport = async (
   const from = new Date(input.query.from),
     to = new Date(input.query.to),
     range = [from, to] as const;
-  const organization = await executeTenantRead(
+  const organization = await executeTenantRead<AnalyticsRow>(
     session,
     "select default_time_zone from organizations where id=$1",
     [],
   );
   const timeZone = organization[0]?.["default_time_zone"];
   if (typeof timeZone !== "string") throw new RepositoryDataIntegrityError();
-  const [funnelRow] = await executeTenantRead(
+  const [funnelRow] = await executeTenantRead<AnalyticsRow>(
     session,
     `select
       (select count(*) from leads where organization_id=$1 and created_at >= $2 and created_at < $3)::bigint leads,
@@ -142,7 +163,7 @@ const readReport = async (
     staff_accepted: safeNumber(funnelRow["staff_accepted"]),
     unique_contacts: safeNumber(funnelRow["unique_contacts"]),
   };
-  const [conversionRow] = await executeTenantRead(
+  const [conversionRow] = await executeTenantRead<AnalyticsRow>(
     session,
     `select
       (select count(*) from leads where organization_id=$1 and created_at >= $2 and created_at < $3)::bigint lead_cohort,
@@ -172,7 +193,7 @@ const readReport = async (
     lead_with_confirmation: safeNumber(conversionRow["lead_with_confirmation"]),
     lead_with_request: safeNumber(conversionRow["lead_with_request"]),
   };
-  const channelRows = await executeTenantRead(
+  const channelRows = await executeTenantRead<AnalyticsRow>(
     session,
     `with channels(channel) as (values ('widget'),('telegram'),('instagram'))
      select channel,
@@ -184,7 +205,7 @@ const readReport = async (
      from channels order by channel`,
     range,
   );
-  const dailyRows = await executeTenantRead(
+  const dailyRows = await executeTenantRead<AnalyticsRow>(
     session,
     `select local_date,
       count(*) filter(where kind='lead')::bigint leads,
@@ -197,23 +218,23 @@ const readReport = async (
      ) activity group by local_date order by local_date`,
     [from, to, timeZone],
   );
-  const revenueRows = await executeTenantRead(
+  const revenueRows = await executeTenantRead<AnalyticsRow>(
     session,
     `select currency,sum(case when entry_type='reversal' then -amount_minor else amount_minor end)::bigint amount_minor
      from appointment_revenue_attributions where organization_id=$1 and recognized_at >= $2 and recognized_at < $3 group by currency order by currency`,
     range,
   );
-  const [usageRow] = await executeTenantRead(
+  const [usageRow] = await executeTenantRead<AnalyticsRow>(
     session,
     `select count(distinct trigger_message_id) filter(where status='succeeded')::bigint automated_messages
      from ai_runs where organization_id=$1 and started_at >= $2 and started_at < $3`,
     range,
   );
   const [platformRaw, platformNormal, externalRaw, externalNormal] = await Promise.all([
-    executeTenantRead(session, latencySql(platformObservationSql(false)), range),
-    executeTenantRead(session, latencySql(platformObservationSql(true)), range),
-    executeTenantRead(session, latencySql(externalObservationSql(false)), range),
-    executeTenantRead(session, latencySql(externalObservationSql(true)), range),
+    executeTenantRead<AnalyticsRow>(session, latencySql(platformObservationSql(false)), range),
+    executeTenantRead<AnalyticsRow>(session, latencySql(platformObservationSql(true)), range),
+    executeTenantRead<AnalyticsRow>(session, latencySql(externalObservationSql(false)), range),
+    executeTenantRead<AnalyticsRow>(session, latencySql(externalObservationSql(true)), range),
   ]);
   const widget = metrics?.widgetMeaningfulLatency(session.organizationId) ?? summarizeLatencies([]);
   const widgetLatency: AnalyticsLatencySummary = {
@@ -265,7 +286,7 @@ const readReport = async (
       ),
     },
     channels: channelRows.map((row) => ({
-      channel: row["channel"] as "widget" | "telegram" | "instagram",
+      channel: safeChannel(row["channel"]),
       appointment_requests: safeNumber(row["appointment_requests"]),
       confirmed_appointments: safeNumber(row["confirmed_appointments"]),
       conversations: safeNumber(row["conversations"]),
@@ -273,7 +294,7 @@ const readReport = async (
       leads: safeNumber(row["leads"]),
     })),
     daily: dailyRows.map((row) => ({
-      local_date: String(row["local_date"]),
+      local_date: safeString(row["local_date"]),
       appointment_requests: safeNumber(row["appointment_requests"]),
       confirmed_appointments: safeNumber(row["confirmed_appointments"]),
       leads: safeNumber(row["leads"]),
@@ -297,7 +318,7 @@ const readReport = async (
       available: revenueRows.length > 0,
       amounts: revenueRows.map((row) => ({
         amount_minor: safeNumber(row["amount_minor"]),
-        currency: String(row["currency"]),
+        currency: safeString(row["currency"]),
       })),
     },
   };
@@ -332,7 +353,7 @@ export const createInternalTenantEconomicsStore = (
       runtime.withTenantTransaction(
         input.organizationId,
         async (session): Promise<InternalTenantEconomics> => {
-          const [row] = await executeTenantRead(
+          const [row] = await executeTenantRead<AnalyticsRow>(
             session,
             `select coalesce(sum(estimated_cost_micros),0)::bigint known_cost,
             count(*) filter(where estimated_cost_micros is null)::bigint unknown_runs,
@@ -344,7 +365,7 @@ export const createInternalTenantEconomicsStore = (
             [input.from, input.to],
           );
           if (row === undefined) throw new RepositoryDataIntegrityError();
-          const knownCost = BigInt(String(row["known_cost"])),
+          const knownCost = safeBigInt(row["known_cost"]),
             unknown = safeNumber(row["unknown_runs"]),
             complete = unknown === 0;
           return Object.freeze({
@@ -352,19 +373,19 @@ export const createInternalTenantEconomicsStore = (
             contributionMarginBasisPoints: null,
             contributionMicros: null,
             costPerAppointmentRequestMicros: complete
-              ? unitCost(knownCost, BigInt(String(row["appointments"])))
+              ? unitCost(knownCost, safeBigInt(row["appointments"]))
               : null,
             costPerConfirmedAppointmentMicros: complete
-              ? unitCost(knownCost, BigInt(String(row["confirmed"])))
+              ? unitCost(knownCost, safeBigInt(row["confirmed"]))
               : null,
             costPerConversationMicros: complete
-              ? unitCost(knownCost, BigInt(String(row["conversations"])))
+              ? unitCost(knownCost, safeBigInt(row["conversations"]))
               : null,
-            costPerLeadMicros: complete ? unitCost(knownCost, BigInt(String(row["leads"]))) : null,
+            costPerLeadMicros: complete ? unitCost(knownCost, safeBigInt(row["leads"])) : null,
             knownProviderCostMicros: knownCost,
             providerCostComplete: complete,
             projectedCostPerThousandConversationsMicros: complete
-              ? unitCost(knownCost * 1_000n, BigInt(String(row["conversations"])))
+              ? unitCost(knownCost * 1_000n, safeBigInt(row["conversations"]))
               : null,
             subscriptionRevenueMicros: null,
             unknownCostRunCount: unknown,
@@ -377,7 +398,7 @@ export const createInternalTenantEconomicsStore = (
       runtime.withTenantTransaction(
         input.organizationId,
         async (session): Promise<InternalOperationalAnalytics> => {
-          const providerRows = await executeTenantRead(
+          const providerRows = await executeTenantRead<AnalyticsRow>(
             session,
             `select provider_id,coalesce(provider_resolved_model_id,requested_model_id) model,
             count(*)::bigint calls,
@@ -394,7 +415,7 @@ export const createInternalTenantEconomicsStore = (
            order by provider_id,model`,
             [input.from, input.to],
           );
-          const [queueRow] = await executeTenantRead(
+          const [queueRow] = await executeTenantRead<AnalyticsRow>(
             session,
             `select count(*) filter(where status='pending')::bigint pending,
             count(*) filter(where status='processing')::bigint processing,
@@ -405,7 +426,7 @@ export const createInternalTenantEconomicsStore = (
            from outbox_events where organization_id=$1`,
             [input.now],
           );
-          const [outboundRow] = await executeTenantRead(
+          const [outboundRow] = await executeTenantRead<AnalyticsRow>(
             session,
             `select
             count(*) filter(where event_type='telegram.delivery_sent')::bigint telegram_submissions,
@@ -430,14 +451,14 @@ export const createInternalTenantEconomicsStore = (
                   calls: safeNumber(row["calls"]),
                   failures: safeNumber(row["failures"]),
                   inputTokens:
-                    row["input_tokens"] === null ? null : BigInt(String(row["input_tokens"])),
+                    row["input_tokens"] === null ? null : safeBigInt(row["input_tokens"]),
                   latencyP50Ms: nullableSafeNumber(row["latency_p50_ms"]),
                   latencyP95Ms: nullableSafeNumber(row["latency_p95_ms"]),
                   latencyP99Ms: nullableSafeNumber(row["latency_p99_ms"]),
-                  model: String(row["model"]),
+                  model: safeString(row["model"]),
                   outputTokens:
-                    row["output_tokens"] === null ? null : BigInt(String(row["output_tokens"])),
-                  provider: String(row["provider_id"]),
+                    row["output_tokens"] === null ? null : safeBigInt(row["output_tokens"]),
+                  provider: safeString(row["provider_id"]),
                   repairsOrRetries: safeNumber(row["repairs_or_retries"]),
                   successes: safeNumber(row["successes"]),
                 }),
