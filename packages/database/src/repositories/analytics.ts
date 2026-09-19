@@ -199,14 +199,13 @@ const readReport = async (
   };
   const channelRows = await executeTenantRead<AnalyticsRow>(
     session,
-    `with channels(channel) as (values ('widget'),('telegram'),('instagram'))
-     select channel,
+    `select channel,
       (select count(*) from leads l join channel_connections cc on cc.organization_id=$1 and cc.id=l.source_channel_connection_id where l.organization_id=$1 and cc.channel_type=channel and l.created_at >= $2 and l.created_at < $3)::bigint leads,
       (select count(*) from conversations c join channel_connections cc on cc.organization_id=$1 and cc.id=c.channel_connection_id where c.organization_id=$1 and cc.channel_type=channel and c.started_at >= $2 and c.started_at < $3)::bigint conversations,
       (select count(*) from messages m join channel_connections cc on cc.organization_id=$1 and cc.id=m.channel_connection_id where m.organization_id=$1 and cc.channel_type=channel and m.direction='inbound' and m.content_type in ('text','quick_reply') and m.created_at >= $2 and m.created_at < $3)::bigint inbound_meaningful_messages,
       (select count(*) from appointment_requests a join conversations c on c.organization_id=$1 and c.id=a.conversation_id join channel_connections cc on cc.organization_id=$1 and cc.id=c.channel_connection_id where a.organization_id=$1 and cc.channel_type=channel and a.created_at >= $2 and a.created_at < $3)::bigint appointment_requests,
       (select count(*) from appointment_requests a join conversations c on c.organization_id=$1 and c.id=a.conversation_id join channel_connections cc on cc.organization_id=$1 and cc.id=c.channel_connection_id where a.organization_id=$1 and cc.channel_type=channel and a.confirmed_at >= $2 and a.confirmed_at < $3)::bigint confirmed_appointments
-     from channels order by channel`,
+     from (values ('widget'),('telegram'),('instagram')) channels(channel) order by channel`,
     range,
   );
   const dailyRows = await executeTenantRead<AnalyticsRow>(
