@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  description: "Workspace baseline for the Lead Agent Platform",
-  title: "Lead Agent Platform",
+  description: "Customer conversations and appointment requests, handled safely.",
+  title: "Lead Agent",
 };
 
 interface RootLayoutProperties {

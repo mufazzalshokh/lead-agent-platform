@@ -5,6 +5,7 @@ import {
   CorrelationIdSchema,
   OrganizationIdSchema,
   RequestIdSchema,
+  StaffMeResponseSchema,
   isSchemaValue,
   type OrganizationId,
 } from "@lead-agent/contracts";
@@ -29,6 +30,7 @@ import {
   canonicalizeInvitationEmailTarget,
   hashInvitationToken,
   isFreshStepUp,
+  hasPermission,
   requireAcceptableFetchMetadata,
   requireSessionBoundCsrf,
   requireTrustedStaffOrigin,
@@ -702,6 +704,42 @@ const registerStaffAuth = async (
       user_id: session.userId,
     };
   });
+
+  api.get(
+    "/v1/staff/me",
+    { schema: { response: { 200: StaffMeResponseSchema } } },
+    async (request, reply) => {
+      const { session } = await resolveSession(request, reply);
+      const organizationId = request.headers["x-organization-context"];
+      if (!isSchemaValue(OrganizationIdSchema, organizationId)) {
+        throw new AuthorizationDeniedError();
+      }
+      const context = await resolveAuthorizationContext(
+        session,
+        organizationId,
+        dependencies.authorizationResolver,
+      );
+      const candidateRequestId = `request:${request.id}`;
+      if (!isSchemaValue(RequestIdSchema, candidateRequestId)) {
+        throw new TypeError("Fastify request identifier is invalid");
+      }
+      reply.header("cache-control", "no-store");
+      return {
+        data: {
+          active_organization: {
+            allowed_location_ids: context.allowedLocationIds,
+            location_scope: context.locationScope,
+            membership_id: context.membershipId,
+            organization_id: context.organizationId,
+            role: context.role,
+            sensitive_fields_visible: hasPermission(context.role, "contacts.read_sensitive"),
+          },
+          user_id: context.userId,
+        },
+        meta: { request_id: candidateRequestId },
+      };
+    },
+  );
 
   api.post(STAFF_AUTH_PREFIX + "/logout", async (request, reply) => {
     const { credential } = await requireMutationSession(request, reply, false);

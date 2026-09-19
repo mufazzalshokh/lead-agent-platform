@@ -99,6 +99,8 @@ type FixtureControls = {
   acceptedOrganizations: OrganizationId[];
   authenticationLevel: "mfa" | "single_factor";
   identityUser: UserId | null;
+  membershipRole: "owner" | "admin" | "staff" | "analyst";
+  membershipStatus: "active" | "suspended" | "revoked";
   revokedTokens: string[];
   rotationDue: boolean;
   rotationCount: number;
@@ -109,6 +111,8 @@ const createFixture = () => {
     acceptedOrganizations: [],
     authenticationLevel: "mfa",
     identityUser: USER_ID,
+    membershipRole: "owner",
+    membershipStatus: "active",
     revokedTokens: [],
     rotationDue: false,
     rotationCount: 0,
@@ -181,8 +185,8 @@ const createFixture = () => {
               locationScope: "all",
               membershipId: MEMBERSHIP_ID,
               organizationId,
-              role: "owner",
-              status: "active",
+              role: controls.membershipRole,
+              status: controls.membershipStatus,
               userId,
             })
           : Promise.resolve(null),
@@ -256,6 +260,71 @@ const establishSession = async (fixture: ReturnType<typeof createFixture>) => {
 };
 
 describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () => {
+  it("returns only the currently authorized active organization context from private /me", async () => {
+    const fixture = createFixture();
+    const established = await establishSession(fixture);
+    const response = await fixture.api.inject({
+      headers: {
+        cookie: cookieHeader(["__Host-lead-session", established.session]),
+        "x-organization-context": ORGANIZATION_A,
+      },
+      method: "GET",
+      url: "/v1/staff/me",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toMatchObject({
+      data: {
+        active_organization: {
+          membership_id: MEMBERSHIP_ID,
+          organization_id: ORGANIZATION_A,
+          role: "owner",
+          sensitive_fields_visible: true,
+        },
+        user_id: USER_ID,
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toContain("clientSecret");
+
+    const other = await fixture.api.inject({
+      headers: {
+        cookie: cookieHeader(["__Host-lead-session", established.session]),
+        "x-organization-context": ORGANIZATION_B,
+      },
+      method: "GET",
+      url: "/v1/staff/me",
+    });
+    expect(other.statusCode).toBe(403);
+  });
+
+  it("fails /me closed for suspended membership and derives sensitive visibility server-side", async () => {
+    const fixture = createFixture();
+    const established = await establishSession(fixture);
+    fixture.controls.membershipRole = "analyst";
+    const analyst = await fixture.api.inject({
+      headers: {
+        cookie: cookieHeader(["__Host-lead-session", established.session]),
+        "x-organization-context": ORGANIZATION_A,
+      },
+      method: "GET",
+      url: "/v1/staff/me",
+    });
+    expect(analyst.statusCode).toBe(200);
+    expect(analyst.json()).toMatchObject({
+      data: { active_organization: { sensitive_fields_visible: false } },
+    });
+    fixture.controls.membershipStatus = "suspended";
+    const suspended = await fixture.api.inject({
+      headers: {
+        cookie: cookieHeader(["__Host-lead-session", established.session]),
+        "x-organization-context": ORGANIZATION_A,
+      },
+      method: "GET",
+      url: "/v1/staff/me",
+    });
+    expect(suspended.statusCode).toBe(403);
+  });
+
   it("initiates login at the trusted issuer with a hardened, short-lived transaction cookie", async () => {
     const fixture = createFixture();
     try {
