@@ -53177,6 +53177,230 @@
       "schema_version": "1"
     },
     {
+      "category": "api",
+      "export_name": "StaffMeResponseSchema",
+      "schema": {
+        "$id": "StaffMeResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "active_organization": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowed_location_ids": {
+                    "items": {
+                      "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                      "maxLength": 36,
+                      "minLength": 36,
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                      "type": "string"
+                    },
+                    "maxItems": 500,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "location_scope": {
+                    "anyOf": [
+                      {
+                        "const": "all",
+                        "type": "string"
+                      },
+                      {
+                        "const": "restricted",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "membership_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "organization_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "role": {
+                    "anyOf": [
+                      {
+                        "const": "owner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "admin",
+                        "type": "string"
+                      },
+                      {
+                        "const": "staff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "analyst",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "sensitive_fields_visible": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "allowed_location_ids",
+                  "location_scope",
+                  "membership_id",
+                  "organization_id",
+                  "role",
+                  "sensitive_fields_visible"
+                ],
+                "type": "object"
+              },
+              "user_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "active_organization",
+              "user_id"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffMeResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "StaffMeSchema",
+      "schema": {
+        "$id": "StaffMe.v1",
+        "additionalProperties": false,
+        "properties": {
+          "active_organization": {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_location_ids": {
+                "items": {
+                  "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                  "maxLength": 36,
+                  "minLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "location_scope": {
+                "anyOf": [
+                  {
+                    "const": "all",
+                    "type": "string"
+                  },
+                  {
+                    "const": "restricted",
+                    "type": "string"
+                  }
+                ]
+              },
+              "membership_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "organization_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "const": "owner",
+                    "type": "string"
+                  },
+                  {
+                    "const": "admin",
+                    "type": "string"
+                  },
+                  {
+                    "const": "staff",
+                    "type": "string"
+                  },
+                  {
+                    "const": "analyst",
+                    "type": "string"
+                  }
+                ]
+              },
+              "sensitive_fields_visible": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "allowed_location_ids",
+              "location_scope",
+              "membership_id",
+              "organization_id",
+              "role",
+              "sensitive_fields_visible"
+            ],
+            "type": "object"
+          },
+          "user_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "active_organization",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffMe.v1",
+      "schema_version": "1"
+    },
+    {
       "category": "conversation",
       "export_name": "StaffMessageCollectionResponseSchema",
       "schema": {
@@ -60283,6 +60507,415 @@
         "type": "object"
       },
       "schema_id": "WidgetConversation.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedGrantCreateInputSchema",
+      "schema": {
+        "$id": "WidgetEmbedGrantCreateInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "page_url": {
+            "format": "uri",
+            "maxLength": 2048,
+            "minLength": 8,
+            "type": "string"
+          },
+          "requested_locale": {
+            "anyOf": [
+              {
+                "const": "uz",
+                "type": "string"
+              },
+              {
+                "const": "ru",
+                "type": "string"
+              },
+              {
+                "const": "en",
+                "type": "string"
+              }
+            ],
+            "description": "Supported V1 customer presentation locale."
+          },
+          "widget_key": {
+            "maxLength": 255,
+            "minLength": 32,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_url",
+          "requested_locale",
+          "widget_key"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedGrantCreateInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedGrantCreateResponseSchema",
+      "schema": {
+        "$id": "WidgetEmbedGrantCreateResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "exchange_grant": {
+                "maxLength": 2048,
+                "minLength": 100,
+                "pattern": "^wex1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "iframe_origin": {
+                "format": "uri",
+                "maxLength": 2048,
+                "minLength": 9,
+                "type": "string"
+              },
+              "iframe_url": {
+                "format": "uri",
+                "maxLength": 4096,
+                "minLength": 12,
+                "type": "string"
+              }
+            },
+            "required": [
+              "exchange_grant",
+              "expires_at",
+              "iframe_origin",
+              "iframe_url"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedGrantCreateResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedGrantSchema",
+      "schema": {
+        "$id": "WidgetEmbedGrant.v1",
+        "additionalProperties": false,
+        "properties": {
+          "exchange_grant": {
+            "maxLength": 2048,
+            "minLength": 100,
+            "pattern": "^wex1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "iframe_origin": {
+            "format": "uri",
+            "maxLength": 2048,
+            "minLength": 9,
+            "type": "string"
+          },
+          "iframe_url": {
+            "format": "uri",
+            "maxLength": 4096,
+            "minLength": 12,
+            "type": "string"
+          }
+        },
+        "required": [
+          "exchange_grant",
+          "expires_at",
+          "iframe_origin",
+          "iframe_url"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedGrant.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedPolicyInputSchema",
+      "schema": {
+        "$id": "WidgetEmbedPolicyInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "exchange_grant": {
+            "maxLength": 2048,
+            "minLength": 100,
+            "pattern": "^wex1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exchange_grant"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedPolicyInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedPolicyResponseSchema",
+      "schema": {
+        "$id": "WidgetEmbedPolicyResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "embedding_origin": {
+                "format": "uri",
+                "maxLength": 2048,
+                "minLength": 9,
+                "type": "string"
+              },
+              "expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "iframe_origin": {
+                "format": "uri",
+                "maxLength": 2048,
+                "minLength": 9,
+                "type": "string"
+              }
+            },
+            "required": [
+              "embedding_origin",
+              "expires_at",
+              "iframe_origin"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedPolicyResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedPolicySchema",
+      "schema": {
+        "$id": "WidgetEmbedPolicy.v1",
+        "additionalProperties": false,
+        "properties": {
+          "embedding_origin": {
+            "format": "uri",
+            "maxLength": 2048,
+            "minLength": 9,
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "iframe_origin": {
+            "format": "uri",
+            "maxLength": 2048,
+            "minLength": 9,
+            "type": "string"
+          }
+        },
+        "required": [
+          "embedding_origin",
+          "expires_at",
+          "iframe_origin"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedPolicy.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedSessionRedeemInputSchema",
+      "schema": {
+        "$id": "WidgetEmbedSessionRedeemInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "exchange_grant": {
+            "maxLength": 2048,
+            "minLength": 100,
+            "pattern": "^wex1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exchange_grant"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedSessionRedeemInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetEmbedSessionRedeemResponseSchema",
+      "schema": {
+        "$id": "WidgetEmbedSessionRedeemResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "bearer_token": {
+                "maxLength": 4096,
+                "minLength": 80,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "type": "string"
+              },
+              "configuration": {
+                "additionalProperties": false,
+                "properties": {
+                  "max_message_characters": {
+                    "const": 4000,
+                    "type": "number"
+                  },
+                  "supported_locales": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "uz",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ru",
+                          "type": "string"
+                        },
+                        {
+                          "const": "en",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "Supported V1 customer presentation locale."
+                    },
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "max_message_characters",
+                  "supported_locales"
+                ],
+                "type": "object"
+              },
+              "expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "idle_timeout_seconds": {
+                "const": 1800,
+                "type": "number"
+              }
+            },
+            "required": [
+              "bearer_token",
+              "configuration",
+              "expires_at",
+              "idle_timeout_seconds"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetEmbedSessionRedeemResponse.v1",
       "schema_version": "1"
     },
     {

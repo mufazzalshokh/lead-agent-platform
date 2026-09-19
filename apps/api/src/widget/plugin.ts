@@ -1,5 +1,11 @@
 import {
   ProblemSchema,
+  WidgetEmbedGrantCreateInputSchema,
+  WidgetEmbedGrantCreateResponseSchema,
+  WidgetEmbedPolicyInputSchema,
+  WidgetEmbedPolicyResponseSchema,
+  WidgetEmbedSessionRedeemInputSchema,
+  WidgetEmbedSessionRedeemResponseSchema,
   WidgetConversationCreateInputSchema,
   WidgetConversationCreateResponseSchema,
   WidgetConversationReadParamsSchema,
@@ -11,6 +17,9 @@ import {
   WidgetSessionCreateInputSchema,
   WidgetSessionCreateResponseSchema,
   type RequestId,
+  type WidgetEmbedGrantCreateInput,
+  type WidgetEmbedPolicyInput,
+  type WidgetEmbedSessionRedeemInput,
   type WidgetConversationCreateInput,
   type WidgetConversationReadParams,
   type WidgetMessageCreateInput,
@@ -88,6 +97,103 @@ export const registerWidgetRoutes = (
     reply.header("vary", "Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
     await reply.code(204).send();
   });
+
+  api.post<{ Body: WidgetEmbedGrantCreateInput }>(
+    "/v1/widget/embed-grants",
+    {
+      bodyLimit: BODY_LIMIT,
+      schema: {
+        body: WidgetEmbedGrantCreateInputSchema,
+        response: {
+          201: WidgetEmbedGrantCreateResponseSchema,
+          "4xx": ProblemSchema,
+          "5xx": ProblemSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const origin = originOf(request);
+      const issued = await dependencies.useCases.createEmbedGrant({
+        clientIp: request.ip,
+        origin,
+        pageUrl: request.body.page_url,
+        requestedLocale: request.body.requested_locale,
+        widgetKey: request.body.widget_key,
+      });
+      secureResponse(reply, origin);
+      return await reply.code(201).send({
+        data: {
+          exchange_grant: issued.exchangeGrant,
+          expires_at: issued.expiresAt.toISOString(),
+          iframe_origin: issued.iframeOrigin,
+          iframe_url: issued.iframeUrl,
+        },
+        meta: { request_id: requestId(request) },
+      });
+    },
+  );
+
+  api.post<{ Body: WidgetEmbedPolicyInput }>(
+    "/v1/widget/embed-policy",
+    {
+      bodyLimit: BODY_LIMIT,
+      schema: {
+        body: WidgetEmbedPolicyInputSchema,
+        response: {
+          200: WidgetEmbedPolicyResponseSchema,
+          "4xx": ProblemSchema,
+          "5xx": ProblemSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const policy = dependencies.useCases.inspectEmbedGrant({
+        exchangeGrant: request.body.exchange_grant,
+      });
+      reply.header("cache-control", "no-store");
+      reply.header("referrer-policy", "no-referrer");
+      return {
+        data: {
+          embedding_origin: policy.embeddingOrigin,
+          expires_at: policy.expiresAt.toISOString(),
+          iframe_origin: policy.iframeOrigin,
+        },
+        meta: { request_id: requestId(request) },
+      };
+    },
+  );
+
+  api.post<{ Body: WidgetEmbedSessionRedeemInput }>(
+    "/v1/widget/embed-sessions/redeem",
+    {
+      bodyLimit: BODY_LIMIT,
+      schema: {
+        body: WidgetEmbedSessionRedeemInputSchema,
+        response: {
+          201: WidgetEmbedSessionRedeemResponseSchema,
+          "4xx": ProblemSchema,
+          "5xx": ProblemSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const origin = originOf(request);
+      const issued = await dependencies.useCases.redeemEmbedSession({
+        exchangeGrant: request.body.exchange_grant,
+        origin,
+      });
+      secureResponse(reply, origin);
+      return await reply.code(201).send({
+        data: {
+          bearer_token: issued.bearerToken,
+          configuration: { max_message_characters: 4_000, supported_locales: ["uz", "ru", "en"] },
+          expires_at: issued.expiresAt.toISOString(),
+          idle_timeout_seconds: 1_800,
+        },
+        meta: { request_id: requestId(request) },
+      });
+    },
+  );
 
   api.post<{ Body: WidgetSessionCreateInput }>(
     "/v1/widget/sessions",

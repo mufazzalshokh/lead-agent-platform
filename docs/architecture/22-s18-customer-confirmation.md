@@ -69,7 +69,7 @@ V1 remains unchanged: `customer_session | telegram | staff_attested_external`.
 The additive `appointment_request.confirmed.v2` supports those sources plus
 `instagram`, derived only from accepted S11 Instagram ingress/binding.
 Existing producers remain V1; Instagram produces V2. There are still 63 semantic
-event names, now 66 registered variants and 347 cataloged schemas.
+event names, with 66 registered variants and 347 cataloged schemas at the S18 checkpoint.
 
 Migration 0028 changes only confirmation source/version CHECK compatibility:
 no tables, indexes, role/RLS broadening, data rewrite, or historical backfill.

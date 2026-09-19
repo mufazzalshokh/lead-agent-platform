@@ -19,6 +19,19 @@ export const S17_STAFF_SCHEMA_NAMES = [
   "StaffMutationResponseSchema",
 ] as const;
 
+export const S19_STAFF_SCHEMA_NAMES = ["StaffMeSchema", "StaffMeResponseSchema"] as const;
+
+export const S19_WIDGET_SCHEMA_NAMES = [
+  "WidgetEmbedGrantCreateInputSchema",
+  "WidgetEmbedGrantCreateResponseSchema",
+  "WidgetEmbedGrantSchema",
+  "WidgetEmbedPolicyInputSchema",
+  "WidgetEmbedPolicyResponseSchema",
+  "WidgetEmbedPolicySchema",
+  "WidgetEmbedSessionRedeemInputSchema",
+  "WidgetEmbedSessionRedeemResponseSchema",
+] as const;
+
 export const PUBLIC_STATIC_SCHEMA_NAMES = {
   ai: [
     "AgentDecisionLanguageSchema",
@@ -40,6 +53,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
   ],
   api: [
     ...S17_STAFF_SCHEMA_NAMES,
+    ...S19_STAFF_SCHEMA_NAMES,
     "ApiErrorCodeSchema",
     "ValidationIssueSchema",
     "ProblemSchema",
@@ -230,6 +244,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "WidgetConversationReadParamsSchema",
     "WidgetConversationResponseSchema",
     "WidgetConversationSchema",
+    ...S19_WIDGET_SCHEMA_NAMES,
     "WidgetMessageCollectionResponseSchema",
     "WidgetMessageCreateInputSchema",
     "WidgetMessageCreateResponseSchema",

@@ -145,7 +145,7 @@ const authorizeInSession = async (
     (await originAllowed(
       session,
       row.channel_connection_id,
-      origin,
+      claims.embeddingOrigin ?? origin,
       row.widget_allowed_origin_id,
     )) === null
   )
@@ -283,7 +283,7 @@ export const createWidgetPersistenceStore = (
         (await originAllowed(
           session,
           row.channel_connection_id,
-          input.origin,
+          input.claims.embeddingOrigin ?? input.origin,
           row.widget_allowed_origin_id,
         )) === null
       )
@@ -445,6 +445,63 @@ export const createWidgetPersistenceStore = (
           sequenceNo: Number(row.sequence_no),
         }));
         return Object.freeze({ hasMore: result.rows.length > limit, items: Object.freeze(items) });
+      }),
+    redeemExchange: async ({
+      claims,
+      exchangeJtiHash,
+      newJtiHash,
+      now,
+    }: Parameters<WidgetPersistenceStore["redeemExchange"]>[0]) =>
+      await runtime.withTenantTransaction(claims.organizationId, async (session) => {
+        const row = await selectSession(session, claims.sessionId, true);
+        if (
+          row === null ||
+          row.organization_id !== claims.organizationId ||
+          row.channel_connection_id !== claims.channelConnectionId ||
+          row.status !== "active" ||
+          row.contact_id !== null ||
+          row.conversation_id !== null ||
+          !equal(row.session_token_jti_hash, exchangeJtiHash) ||
+          now >= row.expires_at ||
+          now.getTime() - row.last_seen_at.getTime() >= IDLE_LIFETIME_MS ||
+          (await originAllowed(
+            session,
+            row.channel_connection_id,
+            claims.embeddingOrigin,
+            row.widget_allowed_origin_id,
+          )) === null
+        ) {
+          return null;
+        }
+        const updated = await executeTenantQuery(session, (organizationId) => ({
+          text: `update widget_sessions
+                    set session_token_jti_hash = $3,
+                        last_seen_at = greatest(last_seen_at, $4),
+                        version = version + 1,
+                        updated_at = greatest(updated_at, $4)
+                  where organization_id = $1 and id = $2
+                    and session_token_jti_hash = $5
+                returning id`,
+          values: [
+            organizationId,
+            claims.sessionId,
+            Buffer.from(newJtiHash),
+            now,
+            Buffer.from(exchangeJtiHash),
+          ],
+        }));
+        if (updated.rowCount !== 1) return null;
+        return Object.freeze({
+          channelConnectionId: claims.channelConnectionId,
+          contactId: null,
+          conversationId: null,
+          expiresAt: row.expires_at,
+          issuedAt: row.issued_at,
+          lastSeenAt: now > row.last_seen_at ? now : row.last_seen_at,
+          organizationId: claims.organizationId,
+          requestedLocale: row.requested_locale,
+          sessionId: claims.sessionId,
+        });
       }),
   });
 };

@@ -35,8 +35,11 @@ export {
   type StaffWebAuthConfigInput,
 } from "./web-auth.js";
 export {
+  createWidgetEmbedConfig,
   createWidgetSecurityConfig,
+  loadWidgetEmbedConfig,
   loadWidgetSecurityConfig,
+  type WidgetEmbedConfig,
   type WidgetSecurityConfig,
 } from "./widget.js";
 export { loadTelegramPlatformConfig, type TelegramPlatformConfig } from "./telegram.js";

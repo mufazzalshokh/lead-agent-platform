@@ -4,7 +4,10 @@ import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 
 import { createWidgetUseCases } from "../../packages/application/src/index.js";
-import { createWidgetSecurityConfig } from "../../packages/config/src/index.js";
+import {
+  createWidgetEmbedConfig,
+  createWidgetSecurityConfig,
+} from "../../packages/config/src/index.js";
 import type { ChannelConnectionId, OrganizationId } from "../../packages/contracts/src/index.js";
 import {
   createWidgetPersistenceStore,
@@ -13,6 +16,7 @@ import {
 import {
   createCustomerDataProtection,
   createWidgetRateLimiter,
+  createWidgetExchangeGrantService,
   createWidgetTokenService,
 } from "../../packages/security/src/index.js";
 
@@ -26,6 +30,7 @@ type Options = Readonly<{
 
 const NOW = new Date("2026-09-15T10:00:00.000Z");
 const ORIGIN = "https://clinic.example";
+const PLATFORM_ORIGIN = "https://widget.example";
 const WIDGET_KEY = "public_widget_key_123456789012345";
 const OTHER_ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf1" as OrganizationId;
 const OTHER_CHANNEL_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf2" as ChannelConnectionId;
@@ -43,6 +48,18 @@ export const registerWidgetIntakeTests = (options: Options): void => {
     return createWidgetUseCases({
       clock: () => NOW,
       dataProtector: customerData,
+      embed: {
+        exchanges: createWidgetExchangeGrantService(
+          createWidgetEmbedConfig(
+            Buffer.alloc(32, 25).toString("base64url"),
+            PLATFORM_ORIGIN,
+            "https://api.example",
+            [Buffer.alloc(32, 23).toString("base64url")],
+          ),
+        ),
+        platformOrigin: PLATFORM_ORIGIN,
+        publicApiOrigin: "https://api.example",
+      },
       persistence: createWidgetPersistenceStore(options.runtime(), { clock: () => NOW }),
       rateLimiter: createWidgetRateLimiter({ clock: () => NOW, salt: Buffer.alloc(32, 24) }),
       routeResolver: {
@@ -58,6 +75,55 @@ export const registerWidgetIntakeTests = (options: Options): void => {
   };
 
   describe("S10.A secure Widget persistence", () => {
+    it("atomically redeems an embed grant once and keeps host Origin authorization", async () => {
+      await options.seed();
+      const pool = options.privilegedPool();
+      const useCases = createFixture();
+      const grant = await useCases.createEmbedGrant({
+        clientIp: "127.0.0.1",
+        origin: ORIGIN,
+        pageUrl: "https://spoof.invalid/path",
+        requestedLocale: "uz",
+        widgetKey: WIDGET_KEY,
+      });
+      expect((await pool.query("select id from widget_sessions")).rowCount).toBe(1);
+      const businessObjects = await pool.query<{ count: number }>(
+        "select ((select count(*) from contacts) + (select count(*) from leads) + (select count(*) from conversations))::int as count",
+      );
+      expect(businessObjects.rows[0]?.count).toBe(0);
+      await expect(
+        useCases.redeemEmbedSession({
+          exchangeGrant: grant.exchangeGrant,
+          origin: "https://evil.example",
+        }),
+      ).rejects.toMatchObject({ code: "origin_not_allowed" });
+      const redeemed = await useCases.redeemEmbedSession({
+        exchangeGrant: grant.exchangeGrant,
+        origin: PLATFORM_ORIGIN,
+      });
+      await expect(
+        useCases.redeemEmbedSession({
+          exchangeGrant: grant.exchangeGrant,
+          origin: PLATFORM_ORIGIN,
+        }),
+      ).rejects.toMatchObject({ code: "token_invalid" });
+      const created = await useCases.createConversation({
+        bearerToken: redeemed.bearerToken,
+        body: {
+          client_message_id: "browser.message-embedded-1",
+          kind: "text",
+          locale_hint: "uz",
+          text: "Salom",
+        },
+        idempotencyKey: "request-key-embedded-1",
+        origin: PLATFORM_ORIGIN,
+      });
+      expect(created.conversation.status).toBe("open");
+      expect((await pool.query("select id from contacts")).rowCount).toBe(1);
+      expect((await pool.query("select id from leads")).rowCount).toBe(1);
+      expect((await pool.query("select id from conversations")).rowCount).toBe(1);
+    });
+
     it("bootstraps without business state, then atomically binds the S9 inbound result", async () => {
       await options.seed();
       const pool = options.privilegedPool();

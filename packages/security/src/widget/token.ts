@@ -25,6 +25,7 @@ const MAXIMUM_TOKEN_LIFETIME_SECONDS = 2 * 60 * 60;
 export type WidgetTokenClaims = Readonly<{
   channelConnectionId: ChannelConnectionId;
   conversationId: ConversationId | null;
+  embeddingOrigin?: string;
   expiresAt: Date;
   issuedAt: Date;
   jti: string;
@@ -60,6 +61,9 @@ export const createWidgetTokenService = (config: WidgetSecurityConfig): WidgetTo
       await new SignJWT({
         channel_connection_id: claims.channelConnectionId,
         conversation_id: claims.conversationId,
+        ...(claims.embeddingOrigin === undefined
+          ? {}
+          : { embedding_origin: claims.embeddingOrigin }),
         organization_id: claims.organizationId,
         origin: claims.origin,
         scope: TOKEN_SCOPE,
@@ -91,6 +95,7 @@ export const createWidgetTokenService = (config: WidgetSecurityConfig): WidgetTo
           "aud",
           "channel_connection_id",
           "conversation_id",
+          "embedding_origin",
           "exp",
           "iat",
           "iss",
@@ -114,6 +119,10 @@ export const createWidgetTokenService = (config: WidgetSecurityConfig): WidgetTo
           !isSchemaValue(ChannelConnectionIdSchema, payload["channel_connection_id"]) ||
           !isString(payload["origin"], 9, 2_048) ||
           normalizeWidgetOrigin(payload["origin"]) !== payload["origin"] ||
+          (payload["embedding_origin"] !== undefined &&
+            (!isString(payload["embedding_origin"], 9, 2_048) ||
+              normalizeWidgetOrigin(payload["embedding_origin"]) !==
+                payload["embedding_origin"])) ||
           (payload["conversation_id"] !== null &&
             !isSchemaValue(ConversationIdSchema, payload["conversation_id"])) ||
           payload.iss !== config.issuer ||
@@ -133,6 +142,9 @@ export const createWidgetTokenService = (config: WidgetSecurityConfig): WidgetTo
         return Object.freeze({
           channelConnectionId: payload["channel_connection_id"],
           conversationId: payload["conversation_id"],
+          ...(payload["embedding_origin"] === undefined
+            ? {}
+            : { embeddingOrigin: payload["embedding_origin"] }),
           expiresAt: new Date(expiresAt * 1_000),
           issuedAt: new Date(issuedAt * 1_000),
           jti: payload.jti,

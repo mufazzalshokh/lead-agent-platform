@@ -4,6 +4,9 @@ import type { WidgetUseCases } from "@lead-agent/application";
 import {
   WidgetConversationCreateResponseSchema,
   WidgetConversationResponseSchema,
+  WidgetEmbedGrantCreateResponseSchema,
+  WidgetEmbedPolicyResponseSchema,
+  WidgetEmbedSessionRedeemResponseSchema,
   WidgetMessageCollectionResponseSchema,
   WidgetMessageCreateResponseSchema,
   WidgetSessionCreateResponseSchema,
@@ -26,6 +29,8 @@ const MESSAGE_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2d" as MessageId;
 const NOW = new Date("2026-09-15T10:00:00.000Z");
 const TOKEN = "x".repeat(100);
 const ORIGIN = "https://clinic.example";
+const PLATFORM_ORIGIN = "https://widget.example";
+const EXCHANGE_GRANT = `wex1.${"a".repeat(16)}.${"b".repeat(80)}.${"c".repeat(22)}`;
 const conversation: WidgetConversation = {
   closed_at: null,
   id: CONVERSATION_ID,
@@ -55,6 +60,15 @@ const dependencies = () => {
         expiresAt: new Date("2026-09-15T12:00:00.000Z"),
       }),
     ),
+    createEmbedGrant: vi.fn(({ origin }) => {
+      if (origin !== ORIGIN) throw new WidgetOriginInvalidError();
+      return Promise.resolve({
+        exchangeGrant: EXCHANGE_GRANT,
+        expiresAt: new Date("2026-09-15T10:01:00.000Z"),
+        iframeOrigin: PLATFORM_ORIGIN,
+        iframeUrl: `${PLATFORM_ORIGIN}/widget/frame?grant=${EXCHANGE_GRANT}`,
+      });
+    }),
     createConversation: vi.fn(({ bearerToken, origin }) => {
       if (origin === "") throw new WidgetOriginInvalidError();
       if (bearerToken === "") throw new WidgetTokenInvalidError();
@@ -74,6 +88,11 @@ const dependencies = () => {
         : Promise.reject(new Error("not found"));
     }),
     listMessages: vi.fn(() => Promise.resolve({ hasMore: false, items: [visibleMessage] })),
+    inspectEmbedGrant: vi.fn(() => ({
+      embeddingOrigin: ORIGIN,
+      expiresAt: new Date("2026-09-15T10:01:00.000Z"),
+      iframeOrigin: PLATFORM_ORIGIN,
+    })),
     postMessage: vi.fn(() =>
       Promise.resolve({
         messageId: OTHER_ID,
@@ -81,6 +100,13 @@ const dependencies = () => {
         sequenceNo: 2,
       }),
     ),
+    redeemEmbedSession: vi.fn(({ origin }) => {
+      if (origin !== PLATFORM_ORIGIN) throw new WidgetOriginInvalidError();
+      return Promise.resolve({
+        bearerToken: TOKEN,
+        expiresAt: new Date("2026-09-15T12:00:00.000Z"),
+      });
+    }),
   };
   return { calls, useCases };
 };
@@ -91,6 +117,72 @@ const headers = (extra: Record<string, string> = {}) => ({
 });
 
 describe("S10 Widget Fastify API", () => {
+  it("exchanges an allowed host grant without exposing the bearer to the host", async () => {
+    const widget = dependencies();
+    const api = createApi({ widget: { useCases: widget.useCases } });
+    try {
+      const grant = await api.inject({
+        method: "POST",
+        url: "/v1/widget/embed-grants",
+        headers: { origin: ORIGIN },
+        payload: {
+          page_url: "https://spoof.invalid/ignored",
+          requested_locale: "uz",
+          widget_key: "A".repeat(32),
+        },
+      });
+      expect(grant.statusCode).toBe(201);
+      expect(grant.headers["access-control-allow-origin"]).toBe(ORIGIN);
+      const grantBody: unknown = grant.json();
+      if (!isSchemaValue(WidgetEmbedGrantCreateResponseSchema, grantBody)) {
+        throw new TypeError("Expected valid Widget embed grant response");
+      }
+      expect(grantBody.data.exchange_grant).toBe(EXCHANGE_GRANT);
+      expect(grantBody.data).not.toHaveProperty("bearer_token");
+      expect(widget.useCases.createEmbedGrant).toHaveBeenCalledWith(
+        expect.objectContaining({ origin: ORIGIN, pageUrl: "https://spoof.invalid/ignored" }),
+      );
+
+      const policy = await api.inject({
+        method: "POST",
+        url: "/v1/widget/embed-policy",
+        payload: { exchange_grant: EXCHANGE_GRANT },
+      });
+      expect(policy.statusCode).toBe(200);
+      expect(policy.headers).not.toHaveProperty("access-control-allow-origin");
+      const policyBody: unknown = policy.json();
+      if (!isSchemaValue(WidgetEmbedPolicyResponseSchema, policyBody)) {
+        throw new TypeError("Expected valid Widget embed policy response");
+      }
+      expect(policyBody.data.embedding_origin).toBe(ORIGIN);
+
+      const redeemed = await api.inject({
+        method: "POST",
+        url: "/v1/widget/embed-sessions/redeem",
+        headers: { origin: PLATFORM_ORIGIN },
+        payload: { exchange_grant: EXCHANGE_GRANT },
+      });
+      expect(redeemed.statusCode).toBe(201);
+      expect(redeemed.headers["access-control-allow-origin"]).toBe(PLATFORM_ORIGIN);
+      const redeemedBody: unknown = redeemed.json();
+      if (!isSchemaValue(WidgetEmbedSessionRedeemResponseSchema, redeemedBody)) {
+        throw new TypeError("Expected valid Widget embed redemption response");
+      }
+      expect(redeemedBody.data.bearer_token).toBe(TOKEN);
+
+      const wrongOrigin = await api.inject({
+        method: "POST",
+        url: "/v1/widget/embed-sessions/redeem",
+        headers: { origin: ORIGIN },
+        payload: { exchange_grant: EXCHANGE_GRANT },
+      });
+      expect(wrongOrigin.statusCode).toBe(403);
+      expect(wrongOrigin.headers).not.toHaveProperty("access-control-allow-origin");
+    } finally {
+      await api.close();
+    }
+  });
+
   it("implements the five isolated Widget routes with safe headers and projections", async () => {
     const widget = dependencies();
     const api = createApi({ widget: { useCases: widget.useCases } });

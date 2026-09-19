@@ -7,6 +7,7 @@ import {
   loadTelegramPlatformConfig,
   loadInstagramPlatformConfig,
   loadWidgetSecurityConfig,
+  loadWidgetEmbedConfig,
 } from "@lead-agent/config";
 import {
   createAuthorizationDatabaseRuntime,
@@ -157,6 +158,7 @@ export const createApiFromEnvironment = (
       ingressRuntime,
       customerDataConfig,
       loadWidgetSecurityConfig(environment),
+      loadWidgetEmbedConfig(environment),
     ),
   });
   api.addHook("onClose", async () => {

@@ -40,6 +40,13 @@ const widgetKey = () => Type.String({ maxLength: 255, minLength: 32, pattern: "^
 const pageUrl = () => Type.String({ format: "uri", maxLength: 2_048, minLength: 8 });
 const bearerToken = () =>
   Type.String({ maxLength: 4_096, minLength: 80, pattern: "^[A-Za-z0-9._-]+$" });
+const exchangeGrant = () =>
+  Type.String({
+    maxLength: 2_048,
+    minLength: 100,
+    pattern: "^wex1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+  });
+const httpsOrigin = () => Type.String({ format: "uri", maxLength: 2_048, minLength: 9 });
 const clientMessageId = () =>
   Type.String({ maxLength: 128, minLength: 8, pattern: CLIENT_MESSAGE_ID_PATTERN });
 const messageText = () =>
@@ -54,6 +61,69 @@ export const WidgetSessionCreateInputSchema = Type.Object(
   { $id: "WidgetSessionCreateInput.v1", additionalProperties: false },
 );
 export type WidgetSessionCreateInput = Type.Static<typeof WidgetSessionCreateInputSchema>;
+
+export const WidgetEmbedGrantCreateInputSchema = Type.Object(
+  {
+    page_url: pageUrl(),
+    requested_locale: locale(),
+    widget_key: widgetKey(),
+  },
+  { $id: "WidgetEmbedGrantCreateInput.v1", additionalProperties: false },
+);
+export type WidgetEmbedGrantCreateInput = Type.Static<typeof WidgetEmbedGrantCreateInputSchema>;
+
+export const WidgetEmbedGrantSchema = Type.Object(
+  {
+    exchange_grant: exchangeGrant(),
+    expires_at: timestamp(),
+    iframe_origin: httpsOrigin(),
+    iframe_url: Type.String({ format: "uri", maxLength: 4_096, minLength: 12 }),
+  },
+  { $id: "WidgetEmbedGrant.v1", additionalProperties: false },
+);
+export type WidgetEmbedGrant = Type.Static<typeof WidgetEmbedGrantSchema>;
+
+export const WidgetEmbedGrantCreateResponseSchema = Type.Object(
+  {
+    data: withoutSchemaId<WidgetEmbedGrant>(WidgetEmbedGrantSchema),
+    meta: Type.Object({ request_id: requestId() }, { additionalProperties: false }),
+  },
+  { $id: "WidgetEmbedGrantCreateResponse.v1", additionalProperties: false },
+);
+export type WidgetEmbedGrantCreateResponse = Type.Static<
+  typeof WidgetEmbedGrantCreateResponseSchema
+>;
+
+export const WidgetEmbedPolicyInputSchema = Type.Object(
+  { exchange_grant: exchangeGrant() },
+  { $id: "WidgetEmbedPolicyInput.v1", additionalProperties: false },
+);
+export type WidgetEmbedPolicyInput = Type.Static<typeof WidgetEmbedPolicyInputSchema>;
+
+export const WidgetEmbedPolicySchema = Type.Object(
+  {
+    embedding_origin: httpsOrigin(),
+    expires_at: timestamp(),
+    iframe_origin: httpsOrigin(),
+  },
+  { $id: "WidgetEmbedPolicy.v1", additionalProperties: false },
+);
+export type WidgetEmbedPolicy = Type.Static<typeof WidgetEmbedPolicySchema>;
+
+export const WidgetEmbedPolicyResponseSchema = Type.Object(
+  {
+    data: withoutSchemaId<WidgetEmbedPolicy>(WidgetEmbedPolicySchema),
+    meta: Type.Object({ request_id: requestId() }, { additionalProperties: false }),
+  },
+  { $id: "WidgetEmbedPolicyResponse.v1", additionalProperties: false },
+);
+export type WidgetEmbedPolicyResponse = Type.Static<typeof WidgetEmbedPolicyResponseSchema>;
+
+export const WidgetEmbedSessionRedeemInputSchema = Type.Object(
+  { exchange_grant: exchangeGrant() },
+  { $id: "WidgetEmbedSessionRedeemInput.v1", additionalProperties: false },
+);
+export type WidgetEmbedSessionRedeemInput = Type.Static<typeof WidgetEmbedSessionRedeemInputSchema>;
 
 export const WidgetPublicConfigurationSchema = Type.Object(
   {
@@ -83,6 +153,17 @@ export const WidgetSessionCreateResponseSchema = Type.Object(
   { $id: "WidgetSessionCreateResponse.v1", additionalProperties: false },
 );
 export type WidgetSessionCreateResponse = Type.Static<typeof WidgetSessionCreateResponseSchema>;
+
+export const WidgetEmbedSessionRedeemResponseSchema = Type.Object(
+  {
+    data: withoutSchemaId<WidgetSession>(WidgetSessionSchema),
+    meta: Type.Object({ request_id: requestId() }, { additionalProperties: false }),
+  },
+  { $id: "WidgetEmbedSessionRedeemResponse.v1", additionalProperties: false },
+);
+export type WidgetEmbedSessionRedeemResponse = Type.Static<
+  typeof WidgetEmbedSessionRedeemResponseSchema
+>;
 
 export const WidgetTextMessageInputSchema = Type.Object(
   {

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { SignJWT } from "jose";
 
-import { createWidgetSecurityConfig } from "../../packages/config/src/index.js";
+import {
+  createWidgetEmbedConfig,
+  createWidgetSecurityConfig,
+} from "../../packages/config/src/index.js";
 import {
   WidgetOriginInvalidError,
   WidgetRateLimitError,
   WidgetTokenInvalidError,
+  createWidgetExchangeGrantService,
   createWidgetRateLimiter,
   createWidgetTokenService,
   normalizeWidgetOrigin,
@@ -17,6 +21,7 @@ const CHANNEL_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2c" as never;
 const SESSION_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2d" as never;
 const KEY = Buffer.alloc(32, 7).toString("base64url");
 const TOKEN_NOW = new Date("2026-09-15T10:00:00.000Z");
+const EXCHANGE_KEY = Buffer.alloc(32, 17).toString("base64url");
 
 const signCandidate = async (
   overrides: Readonly<Record<string, unknown>> = {},
@@ -155,6 +160,88 @@ describe("S10 Widget bearer tokens", () => {
     expect(tokens.deriveBoundJti(SESSION_ID, "request-key")).toBe(
       tokens.deriveBoundJti(SESSION_ID, "request-key"),
     );
+  });
+
+  it("preserves the validated embedding Origin on iframe-bound tokens", async () => {
+    const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
+    const token = await tokens.issue({
+      channelConnectionId: CHANNEL_ID,
+      conversationId: null,
+      embeddingOrigin: "https://clinic.example",
+      expiresAt: new Date("2026-09-15T12:00:00.000Z"),
+      issuedAt: TOKEN_NOW,
+      jti: tokens.createJti(),
+      organizationId: ORGANIZATION_ID,
+      origin: "https://widget.example",
+      sessionId: SESSION_ID,
+    });
+    await expect(tokens.verify(token, TOKEN_NOW)).resolves.toMatchObject({
+      embeddingOrigin: "https://clinic.example",
+      origin: "https://widget.example",
+    });
+    await expect(
+      tokens.verify(await signCandidate({ embedding_origin: "https://CLINIC.example" }), TOKEN_NOW),
+    ).rejects.toBeInstanceOf(WidgetTokenInvalidError);
+  });
+});
+
+describe("S19 one-time Widget exchange grants", () => {
+  const config = () =>
+    createWidgetEmbedConfig(EXCHANGE_KEY, "https://widget.example", "https://api.example", [KEY]);
+
+  it("encrypts exact host/session authority and expires at the 60-second boundary", () => {
+    const exchanges = createWidgetExchangeGrantService(config());
+    const expiresAt = new Date(TOKEN_NOW.getTime() + 60_000);
+    const grant = exchanges.issue({
+      channelConnectionId: CHANNEL_ID,
+      embeddingOrigin: "https://clinic.example",
+      expiresAt,
+      issuedAt: TOKEN_NOW,
+      jti: exchanges.createJti(),
+      organizationId: ORGANIZATION_ID,
+      sessionId: SESSION_ID,
+    });
+    expect(grant).toMatch(/^wex1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+    expect(grant).not.toContain(ORGANIZATION_ID);
+    expect(grant).not.toContain("clinic.example");
+    expect(exchanges.open(grant, TOKEN_NOW)).toMatchObject({
+      embeddingOrigin: "https://clinic.example",
+      organizationId: ORGANIZATION_ID,
+      sessionId: SESSION_ID,
+    });
+    expect(() => exchanges.open(grant, expiresAt)).toThrow(WidgetTokenInvalidError);
+  });
+
+  it("fails closed for tampering, wrong keys, invalid origins, and key reuse", () => {
+    const exchanges = createWidgetExchangeGrantService(config());
+    const grant = exchanges.issue({
+      channelConnectionId: CHANNEL_ID,
+      embeddingOrigin: "https://clinic.example",
+      expiresAt: new Date(TOKEN_NOW.getTime() + 60_000),
+      issuedAt: TOKEN_NOW,
+      jti: exchanges.createJti(),
+      organizationId: ORGANIZATION_ID,
+      sessionId: SESSION_ID,
+    });
+    expect(() => exchanges.open(grant.slice(0, -1) + "x", TOKEN_NOW)).toThrow(
+      WidgetTokenInvalidError,
+    );
+    const wrong = createWidgetExchangeGrantService(
+      createWidgetEmbedConfig(
+        Buffer.alloc(32, 18).toString("base64url"),
+        "https://widget.example",
+        "https://api.example",
+      ),
+    );
+    expect(() => wrong.open(grant, TOKEN_NOW)).toThrow(WidgetTokenInvalidError);
+    expect(() =>
+      createWidgetEmbedConfig(EXCHANGE_KEY, "http://widget.example", "https://api.example"),
+    ).toThrow("WIDGET_PLATFORM_ORIGIN");
+    expect(() =>
+      createWidgetEmbedConfig(EXCHANGE_KEY, "https://widget.example", "https://api.example", [
+        EXCHANGE_KEY,
+      ]),
+    ).toThrow("WIDGET_EXCHANGE_KEY_PURPOSE_SEPARATION");
   });
 });
 

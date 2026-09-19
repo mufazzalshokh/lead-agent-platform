@@ -11,6 +11,8 @@ import {
   getPublicContractCatalog,
   PUBLIC_STATIC_SCHEMA_NAMES,
   S17_STAFF_SCHEMA_NAMES,
+  S19_STAFF_SCHEMA_NAMES,
+  S19_WIDGET_SCHEMA_NAMES,
   type PublicContractEntry,
 } from "../../scripts/contracts/catalog.js";
 import {
@@ -151,16 +153,16 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(347);
+    expect(snapshot.contracts).toHaveLength(357);
     expect(counts).toEqual({
       ai: 16,
-      api: 24,
+      api: 26,
       channel: 24,
       configuration: 65,
       conversation: 37,
       event: 135,
       shared: 28,
-      widget: 18,
+      widget: 26,
     });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
@@ -169,12 +171,14 @@ describe("public contract inventory and snapshot", () => {
 
   it("adds exactly the S17 schemas without changing any of the 329 accepted entries", () => {
     const full = buildContractSnapshot();
+    const s19 = new Set<string>([...S19_STAFF_SCHEMA_NAMES, ...S19_WIDGET_SCHEMA_NAMES]);
     const candidate = {
       ...full,
       contracts: full.contracts.filter(
         (contract) =>
-          !contract.export_name.startsWith("AppointmentRequestConfirmedDomainEvent") ||
-          contract.schema_version !== "2",
+          !s19.has(contract.export_name) &&
+          (!contract.export_name.startsWith("AppointmentRequestConfirmedDomainEvent") ||
+            contract.schema_version !== "2"),
       ),
     };
     const additions = new Set<string>(S17_STAFF_SCHEMA_NAMES);
@@ -190,7 +194,12 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds only S18 confirmed V2 while preserving all 345 accepted contracts", () => {
-    const candidate = buildContractSnapshot();
+    const full = buildContractSnapshot();
+    const s19 = new Set<string>([...S19_STAFF_SCHEMA_NAMES, ...S19_WIDGET_SCHEMA_NAMES]);
+    const candidate = {
+      ...full,
+      contracts: full.contracts.filter((contract) => !s19.has(contract.export_name)),
+    };
     const added = new Set([
       "AppointmentRequestConfirmedDomainEventV2Schema",
       "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
@@ -240,7 +249,12 @@ describe("public contract inventory and snapshot", () => {
   );
 
   it("classifies the S10 Widget contracts as additive only", () => {
-    const candidate = buildContractSnapshot();
+    const full = buildContractSnapshot();
+    const s19Widget = new Set<string>(S19_WIDGET_SCHEMA_NAMES);
+    const candidate = {
+      ...full,
+      contracts: full.contracts.filter((contract) => !s19Widget.has(contract.export_name)),
+    };
     const widgetContracts = candidate.contracts.filter(
       (contract) => contract.category === "widget",
     );
@@ -252,6 +266,19 @@ describe("public contract inventory and snapshot", () => {
 
     expect(widgetContracts).toHaveLength(18);
     expect(findings).toHaveLength(18);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("adds exactly the S19 private staff and Widget embed contracts", () => {
+    const candidate = buildContractSnapshot();
+    const additions = new Set<string>([...S19_STAFF_SCHEMA_NAMES, ...S19_WIDGET_SCHEMA_NAMES]);
+    const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
+    expect(legacy).toHaveLength(347);
+    expect(createHash("sha256").update(JSON.stringify(legacy)).digest("hex")).toBe(
+      "fa2ce8008912fbde8f4da9e6c2f8b8c8e64d19769c6fcc14a592809b4194ed24",
+    );
+    const findings = compareContractSnapshots({ ...candidate, contracts: legacy }, candidate);
+    expect(findings).toHaveLength(10);
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 
@@ -641,6 +668,7 @@ describe("cross-contract security and drift audit", () => {
       "tool_name",
       "webhook_payload",
     ]);
+    const authorizedOrganizationSelectors = new Set(["StaffMeSchema", "StaffMeResponseSchema"]);
     const failures: string[] = [];
 
     for (const entry of getPublicContractCatalog()) {
@@ -657,7 +685,8 @@ describe("cross-contract security and drift audit", () => {
           if (
             property === "organization_id" &&
             entry.category !== "event" &&
-            entry.exportName !== "SendChannelMessageSchema"
+            entry.exportName !== "SendChannelMessageSchema" &&
+            !authorizedOrganizationSelectors.has(entry.exportName)
           ) {
             failures.push(`${entry.exportName}${path}.${property}: unexpected authority field`);
           }

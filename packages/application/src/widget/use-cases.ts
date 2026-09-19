@@ -22,6 +22,8 @@ import {
   createSecurityIdentifierFactory,
   normalizeWidgetOrigin,
   type SecurityIdentifierFactory,
+  type WidgetExchangeGrantClaims,
+  type WidgetExchangeGrantService,
   type WidgetRateLimiter,
   type WidgetTokenClaims,
   type WidgetTokenService,
@@ -38,6 +40,7 @@ import {
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$/u;
 const ABSOLUTE_LIFETIME_MS = 2 * 60 * 60 * 1_000;
+const EXCHANGE_LIFETIME_MS = 60 * 1_000;
 
 export type WidgetRoute = TrustedInboundRoute;
 export type WidgetRouteResolver = InboundRouteResolver;
@@ -138,6 +141,14 @@ export interface WidgetPersistenceStore {
       origin: string;
     }>,
   ): Promise<Readonly<{ items: readonly WidgetProtectedMessageRecord[]; hasMore: boolean }> | null>;
+  redeemExchange(
+    input: Readonly<{
+      claims: WidgetExchangeGrantClaims;
+      exchangeJtiHash: Uint8Array;
+      newJtiHash: Uint8Array;
+      now: Date;
+    }>,
+  ): Promise<WidgetSessionAuthority | null>;
 }
 
 export class WidgetApplicationError extends Error {
@@ -165,6 +176,22 @@ export type WidgetUseCases = Readonly<{
       widgetKey: string;
     }>,
   ): Promise<Readonly<{ bearerToken: string; expiresAt: Date }>>;
+  createEmbedGrant(
+    input: Readonly<{
+      clientIp: string;
+      origin: unknown;
+      pageUrl: string;
+      requestedLocale: "en" | "ru" | "uz";
+      widgetKey: string;
+    }>,
+  ): Promise<
+    Readonly<{
+      exchangeGrant: string;
+      expiresAt: Date;
+      iframeOrigin: string;
+      iframeUrl: string;
+    }>
+  >;
   createConversation(
     input: Readonly<{
       bearerToken: string;
@@ -194,6 +221,9 @@ export type WidgetUseCases = Readonly<{
       origin: unknown;
     }>,
   ): Promise<Readonly<{ items: readonly WidgetMessage[]; hasMore: boolean }>>;
+  inspectEmbedGrant(
+    input: Readonly<{ exchangeGrant: string }>,
+  ): Readonly<{ embeddingOrigin: string; expiresAt: Date; iframeOrigin: string }>;
   postMessage(
     input: Readonly<{
       bearerToken: string;
@@ -209,6 +239,9 @@ export type WidgetUseCases = Readonly<{
       sequenceNo: number;
     }>
   >;
+  redeemEmbedSession(
+    input: Readonly<{ exchangeGrant: string; origin: unknown }>,
+  ): Promise<Readonly<{ bearerToken: string; expiresAt: Date }>>;
 }>;
 
 const hash = (value: string): Uint8Array => createHash("sha256").update(value, "utf8").digest();
@@ -258,6 +291,11 @@ export const createWidgetUseCases = (
   dependencies: Readonly<{
     clock?: () => Date;
     dataProtector: CanonicalInboundDataProtector & WidgetCustomerDataRevealer;
+    embed?: Readonly<{
+      exchanges: WidgetExchangeGrantService;
+      platformOrigin: string;
+      publicApiOrigin: string;
+    }>;
     identifierFactory?: SecurityIdentifierFactory;
     persistence: WidgetPersistenceStore;
     rateLimiter: WidgetRateLimiter;
@@ -267,6 +305,10 @@ export const createWidgetUseCases = (
 ): WidgetUseCases => {
   const clock = dependencies.clock ?? (() => new Date());
   const identifiers = dependencies.identifierFactory ?? createSecurityIdentifierFactory();
+  const requireEmbed = () => {
+    if (dependencies.embed === undefined) throw new WidgetApplicationError("channel_unavailable");
+    return dependencies.embed;
+  };
   const verifyRequest = async (
     bearerToken: string,
     rawOrigin: unknown,
@@ -396,6 +438,57 @@ export const createWidgetUseCases = (
         expiresAt,
       });
     },
+    createEmbedGrant: async (input) => {
+      const embed = requireEmbed();
+      const now = clock();
+      const origin = normalizeWidgetOrigin(input.origin);
+      dependencies.rateLimiter.consume(
+        ["embed-grant", input.clientIp, input.widgetKey, origin],
+        10,
+      );
+      const route = await dependencies.routeResolver.resolveInboundRoute(
+        "widget_key",
+        hash(input.widgetKey),
+      );
+      if (route === null) throw new WidgetApplicationError("channel_unavailable");
+      dependencies.rateLimiter.consume(["embed-grant-tenant", route.organizationId], 100);
+      const sessionId = identifiers.issueResourceId(now);
+      const protectedParticipant = await dependencies.dataProtector.protectParticipant({
+        channelConnectionId: route.channelConnectionId,
+        externalParticipantId: `widget:${sessionId}`,
+        identityType: "widget_participant",
+        organizationId: route.organizationId,
+      });
+      const jti = embed.exchanges.createJti();
+      const sessionExpiresAt = new Date(now.getTime() + ABSOLUTE_LIFETIME_MS);
+      const created = await dependencies.persistence.createSession({
+        ...route,
+        expiresAt: sessionExpiresAt,
+        jtiHash: dependencies.tokens.hashJti(jti),
+        now,
+        origin,
+        participantLookupHash: protectedParticipant.lookupHash,
+        requestedLocale: input.requestedLocale,
+        sessionId,
+      });
+      if (!created) throw new WidgetApplicationError("channel_unavailable");
+      const expiresAt = new Date(now.getTime() + EXCHANGE_LIFETIME_MS);
+      const exchangeGrant = embed.exchanges.issue({
+        ...route,
+        embeddingOrigin: origin,
+        expiresAt,
+        issuedAt: now,
+        jti,
+        sessionId,
+      });
+      const iframeUrl = new URL("/widget/frame", embed.platformOrigin);
+      return Object.freeze({
+        exchangeGrant,
+        expiresAt,
+        iframeOrigin: embed.platformOrigin,
+        iframeUrl: iframeUrl.toString(),
+      });
+    },
     createConversation: async ({ bearerToken, body, idempotencyKey, origin }) => {
       if (!isSchemaValue(WidgetConversationCreateInputSchema, body))
         throw new WidgetApplicationError("validation_failed");
@@ -481,6 +574,15 @@ export const createWidgetUseCases = (
       });
       return Object.freeze({ hasMore: page.hasMore, items: Object.freeze(items) });
     },
+    inspectEmbedGrant: ({ exchangeGrant }) => {
+      const embed = requireEmbed();
+      const claims = embed.exchanges.open(exchangeGrant, clock());
+      return Object.freeze({
+        embeddingOrigin: claims.embeddingOrigin,
+        expiresAt: claims.expiresAt,
+        iframeOrigin: embed.platformOrigin,
+      });
+    },
     postMessage: async ({ bearerToken, body, conversationId, idempotencyKey, origin }) => {
       if (!isSchemaValue(WidgetMessageCreateInputSchema, body))
         throw new WidgetApplicationError("validation_failed");
@@ -499,6 +601,37 @@ export const createWidgetUseCases = (
             ? ("suppressed" as const)
             : ("accepted" as const),
         sequenceNo: accepted.receipt.messageSequenceNo,
+      });
+    },
+    redeemEmbedSession: async ({ exchangeGrant, origin: rawOrigin }) => {
+      const embed = requireEmbed();
+      const now = clock();
+      const origin = normalizeWidgetOrigin(rawOrigin);
+      if (origin !== embed.platformOrigin) throw new WidgetOriginInvalidError();
+      const claims = embed.exchanges.open(exchangeGrant, now);
+      dependencies.rateLimiter.consume(["embed-redeem", claims.sessionId], 5);
+      dependencies.rateLimiter.consume(["tenant-authenticated", claims.organizationId], 300);
+      const jti = dependencies.tokens.createJti();
+      const authority = await dependencies.persistence.redeemExchange({
+        claims,
+        exchangeJtiHash: dependencies.tokens.hashJti(claims.jti),
+        newJtiHash: dependencies.tokens.hashJti(jti),
+        now,
+      });
+      if (authority === null) throw new WidgetTokenInvalidError();
+      return Object.freeze({
+        bearerToken: await dependencies.tokens.issue({
+          channelConnectionId: claims.channelConnectionId,
+          conversationId: null,
+          embeddingOrigin: claims.embeddingOrigin,
+          expiresAt: authority.expiresAt,
+          issuedAt: now,
+          jti,
+          organizationId: claims.organizationId,
+          origin,
+          sessionId: claims.sessionId,
+        }),
+        expiresAt: authority.expiresAt,
       });
     },
   });

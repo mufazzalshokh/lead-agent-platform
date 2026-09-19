@@ -7,7 +7,10 @@ import {
   WidgetApplicationError,
   type WidgetPersistenceStore,
 } from "../../packages/application/src/index.js";
-import { createWidgetSecurityConfig } from "../../packages/config/src/index.js";
+import {
+  createWidgetEmbedConfig,
+  createWidgetSecurityConfig,
+} from "../../packages/config/src/index.js";
 import type {
   CanonicalInboundEvent,
   ChannelConnectionId,
@@ -20,6 +23,7 @@ import type {
 } from "../../packages/contracts/src/index.js";
 import {
   createWidgetRateLimiter,
+  createWidgetExchangeGrantService,
   createWidgetTokenService,
   WidgetRateLimitError,
   type WidgetRateLimiter,
@@ -36,6 +40,8 @@ const MESSAGE_ID = "0193f1a8-7f65-7c28-a434-a10796c41c30" as MessageId;
 const NOW = new Date("2026-09-15T10:00:00.000Z");
 const ORIGIN = "https://clinic.example";
 const KEY = Buffer.alloc(32, 3).toString("base64url");
+const EXCHANGE_KEY = Buffer.alloc(32, 4).toString("base64url");
+const PLATFORM_ORIGIN = "https://widget.example";
 const digest = (value: string) => createHash("sha256").update(value).digest();
 const conversation: WidgetConversation = {
   closed_at: null,
@@ -57,6 +63,8 @@ const fixture = (
   let acceptedInitial = 0;
   let acceptedBound = 0;
   let revealedMessages = 0;
+  let redeemedExchanges = 0;
+  let exchangeRedeemed = false;
   let preparedEvent: CanonicalInboundEvent | undefined;
   const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
   let authorityClaims: WidgetTokenClaims | null = null;
@@ -159,6 +167,22 @@ const fixture = (
             }
           : null,
       ),
+    redeemExchange: ({ claims, now }) => {
+      if (exchangeRedeemed) return Promise.resolve(null);
+      exchangeRedeemed = true;
+      redeemedExchanges += 1;
+      return Promise.resolve({
+        channelConnectionId: claims.channelConnectionId,
+        contactId: null,
+        conversationId: null,
+        expiresAt: new Date("2026-09-15T12:00:00.000Z"),
+        issuedAt: NOW,
+        lastSeenAt: now,
+        organizationId: claims.organizationId,
+        requestedLocale: "uz",
+        sessionId: claims.sessionId,
+      });
+    },
   };
   const useCases = createWidgetUseCases({
     clock: () => NOW,
@@ -178,6 +202,13 @@ const fixture = (
       },
       threadHash: ({ externalConversationId }) => digest(externalConversationId),
     },
+    embed: {
+      exchanges: createWidgetExchangeGrantService(
+        createWidgetEmbedConfig(EXCHANGE_KEY, PLATFORM_ORIGIN, "https://api.example", [KEY]),
+      ),
+      platformOrigin: PLATFORM_ORIGIN,
+      publicApiOrigin: "https://api.example",
+    },
     persistence,
     rateLimiter:
       options.rateLimiter ??
@@ -195,12 +226,54 @@ const fixture = (
     counts: () => ({ acceptedBound, acceptedInitial, createdSessions }),
     prepared: () => preparedEvent,
     reveals: () => revealedMessages,
+    redemptions: () => redeemedExchanges,
     tokens,
     useCases,
   };
 };
 
 describe("S10 Widget application use cases", () => {
+  it("creates an opaque host-bound grant and redeems it exactly once from the platform Origin", async () => {
+    const test = fixture();
+    const issued = await test.useCases.createEmbedGrant({
+      clientIp: "127.0.0.1",
+      origin: ORIGIN,
+      pageUrl: "https://spoof.invalid/tenant",
+      requestedLocale: "uz",
+      widgetKey: "A".repeat(32),
+    });
+    expect(issued.exchangeGrant).not.toContain(ORGANIZATION_ID);
+    expect(issued.iframeOrigin).toBe(PLATFORM_ORIGIN);
+    expect(issued.iframeUrl).toBe(`${PLATFORM_ORIGIN}/widget/frame`);
+    expect(test.useCases.inspectEmbedGrant({ exchangeGrant: issued.exchangeGrant })).toMatchObject({
+      embeddingOrigin: ORIGIN,
+      iframeOrigin: PLATFORM_ORIGIN,
+    });
+    await expect(
+      test.useCases.redeemEmbedSession({
+        exchangeGrant: issued.exchangeGrant,
+        origin: ORIGIN,
+      }),
+    ).rejects.toMatchObject({ code: "origin_not_allowed" });
+    const redeemed = await test.useCases.redeemEmbedSession({
+      exchangeGrant: issued.exchangeGrant,
+      origin: PLATFORM_ORIGIN,
+    });
+    await expect(test.tokens.verify(redeemed.bearerToken, NOW)).resolves.toMatchObject({
+      conversationId: null,
+      embeddingOrigin: ORIGIN,
+      origin: PLATFORM_ORIGIN,
+    });
+    await expect(
+      test.useCases.redeemEmbedSession({
+        exchangeGrant: issued.exchangeGrant,
+        origin: PLATFORM_ORIGIN,
+      }),
+    ).rejects.toMatchObject({ code: "token_invalid" });
+    expect(test.redemptions()).toBe(1);
+    expect(test.counts()).toEqual({ acceptedBound: 0, acceptedInitial: 0, createdSessions: 1 });
+  });
+
   it("bootstraps a short-lived session without creating business entities", async () => {
     const test = fixture();
     const issued = await test.useCases.bootstrap({
