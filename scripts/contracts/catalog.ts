@@ -32,6 +32,21 @@ export const S19_WIDGET_SCHEMA_NAMES = [
   "WidgetEmbedSessionRedeemResponseSchema",
 ] as const;
 
+export const S20_ANALYTICS_SCHEMA_NAMES = [
+  "AnalyticsChannelBreakdownSchema",
+  "AnalyticsDailyBucketSchema",
+  "AnalyticsLatencySummarySchema",
+  "StaffAnalyticsQuerySchema",
+  "StaffAnalyticsResponseSchema",
+  "StaffAnalyticsSchema",
+] as const;
+
+export const S20_WIDGET_SCHEMA_NAMES = [
+  "WidgetTelemetryInputSchema",
+  "WidgetTelemetryResponseSchema",
+  "WidgetTelemetryResultSchema",
+] as const;
+
 export const PUBLIC_STATIC_SCHEMA_NAMES = {
   ai: [
     "AgentDecisionLanguageSchema",
@@ -54,6 +69,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
   api: [
     ...S17_STAFF_SCHEMA_NAMES,
     ...S19_STAFF_SCHEMA_NAMES,
+    ...S20_ANALYTICS_SCHEMA_NAMES,
     "ApiErrorCodeSchema",
     "ValidationIssueSchema",
     "ProblemSchema",
@@ -245,6 +261,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "WidgetConversationResponseSchema",
     "WidgetConversationSchema",
     ...S19_WIDGET_SCHEMA_NAMES,
+    ...S20_WIDGET_SCHEMA_NAMES,
     "WidgetMessageCollectionResponseSchema",
     "WidgetMessageCreateInputSchema",
     "WidgetMessageCreateResponseSchema",

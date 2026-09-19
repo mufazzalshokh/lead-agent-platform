@@ -77,6 +77,9 @@ importers:
       '@lead-agent/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations
+      '@lead-agent/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@lead-agent/security':
         specifier: workspace:*
         version: link:../../packages/security
@@ -166,6 +169,9 @@ importers:
       '@lead-agent/domain':
         specifier: workspace:*
         version: link:../domain
+      '@lead-agent/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@lead-agent/security':
         specifier: workspace:*
         version: link:../security

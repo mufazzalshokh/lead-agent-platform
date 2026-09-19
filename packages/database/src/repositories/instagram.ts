@@ -98,11 +98,12 @@ const appendAudit = async (
   action: string,
   now: Date,
   actor?: AuthorizationContext,
+  target?: Readonly<{ id: string; type: "message" }>,
 ): Promise<void> => {
   const id = identifiers.issueResourceId(now);
   await executeTenantQuery(session, (organizationId) => ({
     text: `insert into audit_events (id,organization_id,event_type,actor_type,actor_id,actor_membership_id,target_type,target_id,action,result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
-      values ($1,$2,$3,$4,$5,$6,'channel_connection',$7,$3,'succeeded',$8,$9,'{"source":"instagram_business"}'::jsonb,$10)`,
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$3,'succeeded',$9,$10,'{"source":"instagram_business"}'::jsonb,$11)`,
     values: [
       id,
       organizationId,
@@ -110,7 +111,8 @@ const appendAudit = async (
       actor === undefined ? "system" : "member",
       actor?.userId ?? null,
       actor?.membershipId ?? null,
-      channel,
+      target?.type ?? "channel_connection",
+      target?.id ?? channel,
       `instagram:${id}`,
       identifiers.issueResourceId(now),
       now,
@@ -417,6 +419,8 @@ export const createInstagramOutboundPersistenceStore = (
           channel,
           externalMessageId === null ? "instagram.delivery_failed" : "instagram.delivery_sent",
           new Date(),
+          undefined,
+          { id: messageId, type: "message" },
         );
       return result.rowCount === 1;
     });

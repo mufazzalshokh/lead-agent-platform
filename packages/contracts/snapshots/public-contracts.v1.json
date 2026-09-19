@@ -1713,6 +1713,243 @@
     },
     {
       "category": "api",
+      "export_name": "AnalyticsChannelBreakdownSchema",
+      "schema": {
+        "$id": "AnalyticsChannelBreakdown.v1",
+        "additionalProperties": false,
+        "properties": {
+          "appointment_requests": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "const": "widget",
+                "type": "string"
+              },
+              {
+                "const": "telegram",
+                "type": "string"
+              },
+              {
+                "const": "instagram",
+                "type": "string"
+              }
+            ]
+          },
+          "confirmed_appointments": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "conversations": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inbound_meaningful_messages": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leads": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "appointment_requests",
+          "confirmed_appointments",
+          "conversations",
+          "inbound_meaningful_messages",
+          "leads"
+        ],
+        "type": "object"
+      },
+      "schema_id": "AnalyticsChannelBreakdown.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "AnalyticsDailyBucketSchema",
+      "schema": {
+        "$id": "AnalyticsDailyBucket.v1",
+        "additionalProperties": false,
+        "properties": {
+          "appointment_requests": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "confirmed_appointments": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "leads": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "local_date": {
+            "maxLength": 10,
+            "minLength": 10,
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "local_date",
+          "appointment_requests",
+          "confirmed_appointments",
+          "leads"
+        ],
+        "type": "object"
+      },
+      "schema_id": "AnalyticsDailyBucket.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "AnalyticsLatencySummarySchema",
+      "schema": {
+        "$id": "AnalyticsLatencySummary.v1",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_ms": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "over_60_seconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "p50_ms": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "p75_ms": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "p90_ms": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "p99_ms": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "within_10_seconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "within_30_seconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "within_3_seconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "within_5_seconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "within_60_seconds": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "p50_ms",
+          "p75_ms",
+          "p90_ms",
+          "p95_ms",
+          "p99_ms",
+          "max_ms",
+          "within_3_seconds",
+          "within_5_seconds",
+          "within_10_seconds",
+          "within_30_seconds",
+          "within_60_seconds",
+          "over_60_seconds"
+        ],
+        "type": "object"
+      },
+      "schema_id": "AnalyticsLatencySummary.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
       "export_name": "ApiErrorCodeSchema",
       "schema": {
         "$id": "ApiErrorCode.v1",
@@ -45514,6 +45751,2419 @@
     },
     {
       "category": "api",
+      "export_name": "StaffAnalyticsQuerySchema",
+      "schema": {
+        "$id": "StaffAnalyticsQuery.v1",
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "group_by": {
+            "const": "day",
+            "type": "string"
+          },
+          "to": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffAnalyticsQuery.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "StaffAnalyticsResponseSchema",
+      "schema": {
+        "$id": "StaffAnalyticsResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "channels": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "appointment_requests": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "channel": {
+                      "anyOf": [
+                        {
+                          "const": "widget",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telegram",
+                          "type": "string"
+                        },
+                        {
+                          "const": "instagram",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "confirmed_appointments": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "conversations": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "inbound_meaningful_messages": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "leads": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "channel",
+                    "appointment_requests",
+                    "confirmed_appointments",
+                    "conversations",
+                    "inbound_meaningful_messages",
+                    "leads"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 3,
+                "type": "array"
+              },
+              "conversion_basis_points": {
+                "additionalProperties": false,
+                "properties": {
+                  "appointment_request_to_confirmed": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "appointment_request_to_staff_accepted": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "confirmed_to_attended": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lead_to_appointment_request": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lead_to_attended": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lead_to_confirmed": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "staff_accepted_to_confirmed": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "appointment_request_to_staff_accepted",
+                  "appointment_request_to_confirmed",
+                  "confirmed_to_attended",
+                  "lead_to_appointment_request",
+                  "lead_to_attended",
+                  "lead_to_confirmed",
+                  "staff_accepted_to_confirmed"
+                ],
+                "type": "object"
+              },
+              "daily": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "appointment_requests": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "confirmed_appointments": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "leads": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "local_date": {
+                      "maxLength": 10,
+                      "minLength": 10,
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "local_date",
+                    "appointment_requests",
+                    "confirmed_appointments",
+                    "leads"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 367,
+                "type": "array"
+              },
+              "funnel": {
+                "additionalProperties": false,
+                "properties": {
+                  "appointment_requests": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "attended": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "awaiting_customer_confirmation": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "confirmed_appointments": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "conversations": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "handoffs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "inbound_meaningful_messages": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "leads": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "qualified_leads": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "staff_accepted": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "unique_contacts": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "appointment_requests",
+                  "attended",
+                  "awaiting_customer_confirmation",
+                  "confirmed_appointments",
+                  "conversations",
+                  "handoffs",
+                  "inbound_meaningful_messages",
+                  "leads",
+                  "qualified_leads",
+                  "staff_accepted",
+                  "unique_contacts"
+                ],
+                "type": "object"
+              },
+              "latency": {
+                "additionalProperties": false,
+                "properties": {
+                  "acknowledgement": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "max_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "over_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "p50_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p75_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p90_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p95_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p99_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "within_10_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_30_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_3_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_5_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "p50_ms",
+                      "p75_ms",
+                      "p90_ms",
+                      "p95_ms",
+                      "p99_ms",
+                      "max_ms",
+                      "within_3_seconds",
+                      "within_5_seconds",
+                      "within_10_seconds",
+                      "within_30_seconds",
+                      "within_60_seconds",
+                      "over_60_seconds"
+                    ],
+                    "type": "object"
+                  },
+                  "external_message_to_submit_normal_availability": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "max_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "over_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "p50_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p75_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p90_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p95_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p99_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "within_10_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_30_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_3_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_5_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "p50_ms",
+                      "p75_ms",
+                      "p90_ms",
+                      "p95_ms",
+                      "p99_ms",
+                      "max_ms",
+                      "within_3_seconds",
+                      "within_5_seconds",
+                      "within_10_seconds",
+                      "within_30_seconds",
+                      "within_60_seconds",
+                      "over_60_seconds"
+                    ],
+                    "type": "object"
+                  },
+                  "external_message_to_submit_raw": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "max_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "over_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "p50_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p75_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p90_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p95_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p99_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "within_10_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_30_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_3_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_5_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "p50_ms",
+                      "p75_ms",
+                      "p90_ms",
+                      "p95_ms",
+                      "p99_ms",
+                      "max_ms",
+                      "within_3_seconds",
+                      "within_5_seconds",
+                      "within_10_seconds",
+                      "within_30_seconds",
+                      "within_60_seconds",
+                      "over_60_seconds"
+                    ],
+                    "type": "object"
+                  },
+                  "platform_meaningful_normal_availability": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "max_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "over_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "p50_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p75_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p90_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p95_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p99_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "within_10_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_30_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_3_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_5_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "p50_ms",
+                      "p75_ms",
+                      "p90_ms",
+                      "p95_ms",
+                      "p99_ms",
+                      "max_ms",
+                      "within_3_seconds",
+                      "within_5_seconds",
+                      "within_10_seconds",
+                      "within_30_seconds",
+                      "within_60_seconds",
+                      "over_60_seconds"
+                    ],
+                    "type": "object"
+                  },
+                  "platform_meaningful_raw": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "max_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "over_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "p50_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p75_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p90_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p95_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p99_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "within_10_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_30_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_3_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_5_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "p50_ms",
+                      "p75_ms",
+                      "p90_ms",
+                      "p95_ms",
+                      "p99_ms",
+                      "max_ms",
+                      "within_3_seconds",
+                      "within_5_seconds",
+                      "within_10_seconds",
+                      "within_30_seconds",
+                      "within_60_seconds",
+                      "over_60_seconds"
+                    ],
+                    "type": "object"
+                  },
+                  "widget_customer_render": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "max_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "over_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "p50_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p75_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p90_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p95_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "p99_ms": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "within_10_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_30_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_3_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_5_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "within_60_seconds": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "count",
+                      "p50_ms",
+                      "p75_ms",
+                      "p90_ms",
+                      "p95_ms",
+                      "p99_ms",
+                      "max_ms",
+                      "within_3_seconds",
+                      "within_5_seconds",
+                      "within_10_seconds",
+                      "within_30_seconds",
+                      "within_60_seconds",
+                      "over_60_seconds"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "acknowledgement",
+                  "platform_meaningful_raw",
+                  "platform_meaningful_normal_availability",
+                  "external_message_to_submit_raw",
+                  "external_message_to_submit_normal_availability",
+                  "widget_customer_render"
+                ],
+                "type": "object"
+              },
+              "range": {
+                "additionalProperties": false,
+                "properties": {
+                  "boundary": {
+                    "const": "from_inclusive_to_exclusive",
+                    "type": "string"
+                  },
+                  "from": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "time_zone": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "to": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "time_zone",
+                  "boundary"
+                ],
+                "type": "object"
+              },
+              "recorded_attributed_revenue": {
+                "additionalProperties": false,
+                "properties": {
+                  "amounts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "amount_minor": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "currency": {
+                          "maxLength": 3,
+                          "minLength": 3,
+                          "pattern": "^[A-Z]{3}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount_minor",
+                        "currency"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 32,
+                    "type": "array"
+                  },
+                  "available": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "available",
+                  "amounts"
+                ],
+                "type": "object"
+              },
+              "usage": {
+                "additionalProperties": false,
+                "properties": {
+                  "automated_messages": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "automation_rate_basis_points": {
+                    "anyOf": [
+                      {
+                        "maximum": 10000,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "automated_messages",
+                  "automation_rate_basis_points"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "range",
+              "funnel",
+              "conversion_basis_points",
+              "channels",
+              "daily",
+              "latency",
+              "usage",
+              "recorded_attributed_revenue"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffAnalyticsResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "StaffAnalyticsSchema",
+      "schema": {
+        "$id": "StaffAnalytics.v1",
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "appointment_requests": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "channel": {
+                  "anyOf": [
+                    {
+                      "const": "widget",
+                      "type": "string"
+                    },
+                    {
+                      "const": "telegram",
+                      "type": "string"
+                    },
+                    {
+                      "const": "instagram",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "confirmed_appointments": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "conversations": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "inbound_meaningful_messages": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "leads": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "channel",
+                "appointment_requests",
+                "confirmed_appointments",
+                "conversations",
+                "inbound_meaningful_messages",
+                "leads"
+              ],
+              "type": "object"
+            },
+            "maxItems": 3,
+            "type": "array"
+          },
+          "conversion_basis_points": {
+            "additionalProperties": false,
+            "properties": {
+              "appointment_request_to_confirmed": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "appointment_request_to_staff_accepted": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "confirmed_to_attended": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lead_to_appointment_request": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lead_to_attended": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "lead_to_confirmed": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "staff_accepted_to_confirmed": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "appointment_request_to_staff_accepted",
+              "appointment_request_to_confirmed",
+              "confirmed_to_attended",
+              "lead_to_appointment_request",
+              "lead_to_attended",
+              "lead_to_confirmed",
+              "staff_accepted_to_confirmed"
+            ],
+            "type": "object"
+          },
+          "daily": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "appointment_requests": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "confirmed_appointments": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "leads": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "local_date": {
+                  "maxLength": 10,
+                  "minLength": 10,
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "local_date",
+                "appointment_requests",
+                "confirmed_appointments",
+                "leads"
+              ],
+              "type": "object"
+            },
+            "maxItems": 367,
+            "type": "array"
+          },
+          "funnel": {
+            "additionalProperties": false,
+            "properties": {
+              "appointment_requests": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "attended": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "awaiting_customer_confirmation": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "confirmed_appointments": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "conversations": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "handoffs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "inbound_meaningful_messages": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "leads": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "qualified_leads": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "staff_accepted": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "unique_contacts": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "appointment_requests",
+              "attended",
+              "awaiting_customer_confirmation",
+              "confirmed_appointments",
+              "conversations",
+              "handoffs",
+              "inbound_meaningful_messages",
+              "leads",
+              "qualified_leads",
+              "staff_accepted",
+              "unique_contacts"
+            ],
+            "type": "object"
+          },
+          "latency": {
+            "additionalProperties": false,
+            "properties": {
+              "acknowledgement": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "max_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "over_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "p50_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p75_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p90_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p99_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "within_10_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_30_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_3_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_5_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "count",
+                  "p50_ms",
+                  "p75_ms",
+                  "p90_ms",
+                  "p95_ms",
+                  "p99_ms",
+                  "max_ms",
+                  "within_3_seconds",
+                  "within_5_seconds",
+                  "within_10_seconds",
+                  "within_30_seconds",
+                  "within_60_seconds",
+                  "over_60_seconds"
+                ],
+                "type": "object"
+              },
+              "external_message_to_submit_normal_availability": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "max_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "over_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "p50_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p75_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p90_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p99_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "within_10_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_30_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_3_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_5_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "count",
+                  "p50_ms",
+                  "p75_ms",
+                  "p90_ms",
+                  "p95_ms",
+                  "p99_ms",
+                  "max_ms",
+                  "within_3_seconds",
+                  "within_5_seconds",
+                  "within_10_seconds",
+                  "within_30_seconds",
+                  "within_60_seconds",
+                  "over_60_seconds"
+                ],
+                "type": "object"
+              },
+              "external_message_to_submit_raw": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "max_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "over_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "p50_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p75_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p90_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p99_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "within_10_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_30_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_3_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_5_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "count",
+                  "p50_ms",
+                  "p75_ms",
+                  "p90_ms",
+                  "p95_ms",
+                  "p99_ms",
+                  "max_ms",
+                  "within_3_seconds",
+                  "within_5_seconds",
+                  "within_10_seconds",
+                  "within_30_seconds",
+                  "within_60_seconds",
+                  "over_60_seconds"
+                ],
+                "type": "object"
+              },
+              "platform_meaningful_normal_availability": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "max_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "over_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "p50_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p75_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p90_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p99_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "within_10_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_30_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_3_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_5_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "count",
+                  "p50_ms",
+                  "p75_ms",
+                  "p90_ms",
+                  "p95_ms",
+                  "p99_ms",
+                  "max_ms",
+                  "within_3_seconds",
+                  "within_5_seconds",
+                  "within_10_seconds",
+                  "within_30_seconds",
+                  "within_60_seconds",
+                  "over_60_seconds"
+                ],
+                "type": "object"
+              },
+              "platform_meaningful_raw": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "max_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "over_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "p50_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p75_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p90_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p99_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "within_10_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_30_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_3_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_5_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "count",
+                  "p50_ms",
+                  "p75_ms",
+                  "p90_ms",
+                  "p95_ms",
+                  "p99_ms",
+                  "max_ms",
+                  "within_3_seconds",
+                  "within_5_seconds",
+                  "within_10_seconds",
+                  "within_30_seconds",
+                  "within_60_seconds",
+                  "over_60_seconds"
+                ],
+                "type": "object"
+              },
+              "widget_customer_render": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "max_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "over_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "p50_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p75_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p90_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p99_ms": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "within_10_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_30_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_3_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_5_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "within_60_seconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "count",
+                  "p50_ms",
+                  "p75_ms",
+                  "p90_ms",
+                  "p95_ms",
+                  "p99_ms",
+                  "max_ms",
+                  "within_3_seconds",
+                  "within_5_seconds",
+                  "within_10_seconds",
+                  "within_30_seconds",
+                  "within_60_seconds",
+                  "over_60_seconds"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "acknowledgement",
+              "platform_meaningful_raw",
+              "platform_meaningful_normal_availability",
+              "external_message_to_submit_raw",
+              "external_message_to_submit_normal_availability",
+              "widget_customer_render"
+            ],
+            "type": "object"
+          },
+          "range": {
+            "additionalProperties": false,
+            "properties": {
+              "boundary": {
+                "const": "from_inclusive_to_exclusive",
+                "type": "string"
+              },
+              "from": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "time_zone": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "to": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to",
+              "time_zone",
+              "boundary"
+            ],
+            "type": "object"
+          },
+          "recorded_attributed_revenue": {
+            "additionalProperties": false,
+            "properties": {
+              "amounts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "amount_minor": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "currency": {
+                      "maxLength": 3,
+                      "minLength": 3,
+                      "pattern": "^[A-Z]{3}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "amount_minor",
+                    "currency"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              "available": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "available",
+              "amounts"
+            ],
+            "type": "object"
+          },
+          "usage": {
+            "additionalProperties": false,
+            "properties": {
+              "automated_messages": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "automation_rate_basis_points": {
+                "anyOf": [
+                  {
+                    "maximum": 10000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "automated_messages",
+              "automation_rate_basis_points"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "range",
+          "funnel",
+          "conversion_basis_points",
+          "channels",
+          "daily",
+          "latency",
+          "usage",
+          "recorded_attributed_revenue"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffAnalytics.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
       "export_name": "StaffAttendanceInputSchema",
       "schema": {
         "$id": "StaffAttendanceInput.v1",
@@ -61683,6 +64333,98 @@
         "type": "object"
       },
       "schema_id": "WidgetSession.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetTelemetryInputSchema",
+      "schema": {
+        "$id": "WidgetTelemetryInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "duration_ms": {
+            "maximum": 300000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "const": "meaningful_first_response",
+            "type": "string"
+          }
+        },
+        "required": [
+          "duration_ms",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetTelemetryInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetTelemetryResponseSchema",
+      "schema": {
+        "$id": "WidgetTelemetryResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "accepted": {
+                "const": true,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "accepted"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetTelemetryResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetTelemetryResultSchema",
+      "schema": {
+        "$id": "WidgetTelemetryResult.v1",
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetTelemetryResult.v1",
       "schema_version": "1"
     },
     {

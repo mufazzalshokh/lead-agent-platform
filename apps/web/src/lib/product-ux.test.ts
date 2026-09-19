@@ -71,6 +71,12 @@ describe("S19 secure Widget documents", () => {
     expect(document).toContain('maxlength="4000"');
     expect(document).toContain('event.key==="Enter"&&!event.shiftKey');
     expect(document).toContain("idempotency-key");
+    expect(document).toContain("performance.now()");
+    expect(document).toContain("/v1/widget/telemetry");
+    expect(document).toContain(
+      'JSON.stringify({duration_ms:duration,kind:"meaningful_first_response"})',
+    );
+    expect(document).not.toContain("client_sent_at");
     expect(document).not.toContain("Uzbek");
     expect(document).not.toContain("Gemini");
     expect(document).not.toContain("JWT");

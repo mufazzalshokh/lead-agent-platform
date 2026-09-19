@@ -45,6 +45,17 @@ type DetailState = Readonly<{
   lead: RecordValue | null;
   messages: readonly RecordValue[];
 }>;
+type AnalyticsView = Readonly<{
+  appointmentRequests: number;
+  confirmed: number;
+  leadToConfirmedBasisPoints: number | null;
+  leads: number;
+  p50Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  within60: number;
+  samples: number;
+}>;
 
 const isRecord = (value: unknown): value is RecordValue =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,6 +63,39 @@ const stringValue = (value: unknown): string | null => (typeof value === "string
 const numberValue = (value: unknown): number | null =>
   typeof value === "number" && Number.isSafeInteger(value) ? value : null;
 const recordValue = (value: unknown): RecordValue | null => (isRecord(value) ? value : null);
+const parseAnalytics = (value: unknown): AnalyticsView | null => {
+  if (!isRecord(value)) return null;
+  const funnel = recordValue(value["funnel"]),
+    conversion = recordValue(value["conversion_basis_points"]),
+    latency = recordValue(value["latency"]),
+    platform = recordValue(latency?.["platform_meaningful_raw"]);
+  const leads = numberValue(funnel?.["leads"]),
+    requests = numberValue(funnel?.["appointment_requests"]),
+    confirmed = numberValue(funnel?.["confirmed_appointments"]),
+    samples = numberValue(platform?.["count"]),
+    within60 = numberValue(platform?.["within_60_seconds"]);
+  if (
+    leads === null ||
+    requests === null ||
+    confirmed === null ||
+    samples === null ||
+    within60 === null
+  )
+    return null;
+  return {
+    appointmentRequests: requests,
+    confirmed,
+    leadToConfirmedBasisPoints: numberValue(conversion?.["lead_to_confirmed"]),
+    leads,
+    p50Ms: numberValue(platform?.["p50_ms"]),
+    p95Ms: numberValue(platform?.["p95_ms"]),
+    p99Ms: numberValue(platform?.["p99_ms"]),
+    samples,
+    within60,
+  };
+};
+const durationLabel = (value: number | null): string =>
+  value === null ? "Unavailable" : `${(value / 1_000).toFixed(1)}s`;
 
 const parseAppointmentPreference = (value: unknown): AppointmentPreference | null => {
   if (!isRecord(value)) return null;
@@ -169,6 +213,7 @@ export function StaffWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsView | null>(null);
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
 
@@ -189,6 +234,20 @@ export function StaffWorkspace({
       }),
     [apiOrigin, headers],
   );
+
+  const loadAnalytics = useCallback(async () => {
+    const to = new Date(),
+      from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1_000),
+      query = new URLSearchParams({
+        from: from.toISOString(),
+        to: to.toISOString(),
+        group_by: "day",
+      });
+    const response = await request(`/v1/staff/analytics?${query.toString()}`);
+    if (response.status === 403) return;
+    if (!response.ok) throw new Error("analytics_unavailable");
+    setAnalytics(parseAnalytics(await responseData(response)));
+  }, [request]);
 
   const loadInbox = useCallback(
     async (cursor?: string, append = false) => {
@@ -213,6 +272,7 @@ export function StaffWorkspace({
         return;
       }
       setAuthState("ready");
+      void loadAnalytics().catch(() => setAnalytics(null));
       const response = await request(`/v1/staff/inbox?${query.toString()}`);
       if (!response.ok) throw new Error("inbox_unavailable");
       const body: unknown = await response.json();
@@ -243,7 +303,7 @@ export function StaffWorkspace({
       setNextCursor(stringValue(body["meta"]["next_cursor"]));
       setLoading(false);
     },
-    [organizationId, request],
+    [loadAnalytics, organizationId, request],
   );
 
   useEffect(() => {
@@ -414,6 +474,9 @@ export function StaffWorkspace({
           <a className="staff-nav-link" href="#context">
             Customer context
           </a>
+          <a className="staff-nav-link" href="#analytics">
+            Analytics
+          </a>
         </nav>
         <section className="staff-list" id="work" aria-busy={loading}>
           <div className="section-heading">
@@ -430,6 +493,55 @@ export function StaffWorkspace({
               Refresh
             </button>
           </div>
+          {analytics !== null && (
+            <section
+              className="analytics-overview"
+              id="analytics"
+              aria-label="Last seven days analytics"
+            >
+              <div className="analytics-overview__heading">
+                <div>
+                  <p className="eyebrow">Last 7 days</p>
+                  <h2>Business pulse</h2>
+                </div>
+                <span>Recorded activity</span>
+              </div>
+              <div className="analytics-cards">
+                <article>
+                  <small>Leads</small>
+                  <strong>{analytics.leads}</strong>
+                </article>
+                <article>
+                  <small>Appointment requests</small>
+                  <strong>{analytics.appointmentRequests}</strong>
+                </article>
+                <article>
+                  <small>Confirmed</small>
+                  <strong>{analytics.confirmed}</strong>
+                </article>
+                <article>
+                  <small>Lead to confirmed</small>
+                  <strong>
+                    {analytics.leadToConfirmedBasisPoints === null
+                      ? "N/A"
+                      : `${(analytics.leadToConfirmedBasisPoints / 100).toFixed(1)}%`}
+                  </strong>
+                </article>
+              </div>
+              <div className="analytics-latency">
+                <span>Meaningful response</span>
+                <b>p50 {durationLabel(analytics.p50Ms)}</b>
+                <b>p95 {durationLabel(analytics.p95Ms)}</b>
+                <b>p99 {durationLabel(analytics.p99Ms)}</b>
+                <b>
+                  ≤60s{" "}
+                  {analytics.samples === 0
+                    ? "N/A"
+                    : `${((analytics.within60 / analytics.samples) * 100).toFixed(1)}%`}
+                </b>
+              </div>
+            </section>
+          )}
           {error !== null && (
             <div className="notice notice--error" role="alert">
               {error}{" "}

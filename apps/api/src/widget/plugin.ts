@@ -16,6 +16,8 @@ import {
   WidgetMessageListQuerySchema,
   WidgetSessionCreateInputSchema,
   WidgetSessionCreateResponseSchema,
+  WidgetTelemetryInputSchema,
+  WidgetTelemetryResponseSchema,
   type RequestId,
   type WidgetEmbedGrantCreateInput,
   type WidgetEmbedPolicyInput,
@@ -25,8 +27,10 @@ import {
   type WidgetMessageCreateInput,
   type WidgetMessageListQuery,
   type WidgetSessionCreateInput,
+  type WidgetTelemetryInput,
 } from "@lead-agent/contracts";
 import { WidgetApplicationError, type WidgetUseCases } from "@lead-agent/application";
+import type { OperationalMetrics } from "@lead-agent/observability";
 import { WidgetOriginInvalidError, normalizeWidgetOrigin } from "@lead-agent/security";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -38,7 +42,10 @@ const PREFLIGHT_HEADERS = new Set([
   "idempotency-key",
   "x-request-id",
 ]);
-export type WidgetDependencies = Readonly<{ useCases: WidgetUseCases }>;
+export type WidgetDependencies = Readonly<{
+  metrics?: OperationalMetrics;
+  useCases: WidgetUseCases;
+}>;
 const requestId = (request: FastifyRequest): RequestId => `request:${request.id}` as RequestId;
 const originOf = (request: FastifyRequest): string =>
   typeof request.headers.origin === "string" ? request.headers.origin : "";
@@ -362,6 +369,34 @@ export const registerWidgetRoutes = (
             sequence_no: accepted.sequenceNo,
           },
         },
+        meta: { request_id: requestId(request) },
+      });
+    },
+  );
+
+  api.post<{ Body: WidgetTelemetryInput }>(
+    "/v1/widget/telemetry",
+    {
+      bodyLimit: BODY_LIMIT,
+      schema: {
+        body: WidgetTelemetryInputSchema,
+        response: {
+          202: WidgetTelemetryResponseSchema,
+          "4xx": ProblemSchema,
+          "5xx": ProblemSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const origin = originOf(request);
+      await dependencies.useCases.recordTelemetry({
+        bearerToken: bearerOf(request),
+        body: request.body,
+        origin,
+      });
+      secureResponse(reply, origin);
+      return await reply.code(202).send({
+        data: { accepted: true },
         meta: { request_id: requestId(request) },
       });
     },

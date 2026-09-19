@@ -1785,6 +1785,24 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
           status,
         })),
       );
+      expect(
+        (
+          await harness
+            .privilegedPool()
+            .query(
+              `select estimated_cost_micros,cost_catalog_version from ai_runs order by attempt_no`,
+            )
+        ).rows,
+      ).toEqual([
+        {
+          cost_catalog_version: "ai-provider-prices.2026-09-17.v1",
+          estimated_cost_micros: "83",
+        },
+        {
+          cost_catalog_version: "ai-provider-prices.2026-09-17.v1",
+          estimated_cost_micros: "83",
+        },
+      ]);
       expect(decide).toHaveBeenCalledTimes(2);
       expect(await counts(harness.privilegedPool())).toMatchObject({
         completed: 1,

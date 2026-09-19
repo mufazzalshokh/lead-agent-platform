@@ -108,6 +108,7 @@ const appendTelegramAudit = async (
   action: string,
   now: Date,
   actor?: AuthorizationContext,
+  target?: Readonly<{ id: string; type: "message" }>,
 ): Promise<void> => {
   const auditId = identifiers.issueResourceId(now);
   const correlationId = identifiers.issueResourceId(now);
@@ -115,8 +116,8 @@ const appendTelegramAudit = async (
     text: `insert into audit_events
       (id,organization_id,event_type,actor_type,actor_id,actor_membership_id,
        target_type,target_id,action,result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
-      values ($1,$2,$3,$4,$5,$6,'channel_connection',$7,$3,'succeeded',$8,$9,
-              '{"source":"telegram_business"}'::jsonb,$10)`,
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$3,'succeeded',$9,$10,
+              '{"source":"telegram_business"}'::jsonb,$11)`,
     values: [
       auditId,
       organizationId,
@@ -124,7 +125,8 @@ const appendTelegramAudit = async (
       actor === undefined ? "system" : "member",
       actor?.userId ?? null,
       actor?.membershipId ?? null,
-      channelConnectionId,
+      target?.type ?? "channel_connection",
+      target?.id ?? channelConnectionId,
       `telegram:${auditId}`,
       correlationId,
       now,
@@ -545,6 +547,8 @@ export const createTelegramOutboundPersistenceStore = (
             channel,
             "telegram.delivery_failed",
             new Date(),
+            undefined,
+            { id: messageId, type: "message" },
           );
         }
         return result.rowCount === 1;
@@ -573,6 +577,8 @@ export const createTelegramOutboundPersistenceStore = (
             channel,
             "telegram.delivery_sent",
             new Date(),
+            undefined,
+            { id: messageId, type: "message" },
           );
         }
         return result.rowCount === 1;

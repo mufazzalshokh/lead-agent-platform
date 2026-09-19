@@ -6,6 +6,7 @@ export * from "./instagram/index.js";
 export * from "./widget/index.js";
 export * from "./ai/index.js";
 export * from "./staff/operations.js";
+export * from "./analytics/index.js";
 export {
   CUSTOMER_CONFIRMATION_PROFILE,
   customerConfirmationExpiry,

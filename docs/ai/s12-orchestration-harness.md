@@ -101,8 +101,9 @@ Provenance source references use an explicit four-field whitelist; invalid or
 over-limit reference sets are omitted from failed-run manifests, not copied as
 arbitrary objects. The provider still receives no context when bounds fail.
 `not-priced.v1` explicitly denotes no S12 estimate. USD is a storage denomination,
-not a claimed price. Commercial cost catalogs and authoritative pricing are later
-work.
+not a claimed price. S20 adds versioned pricing for new exact supported-model
+attempts; historical `not-priced.v1` rows remain unknown rather than being
+retroactively repriced.
 
 Snapshots and capture-policy IDs remain NULL. Evaluations persist only encrypted
 finite action arguments, bound by AES-GCM tenant/run/purpose AAD; no plaintext

@@ -31,6 +31,7 @@ import {
   type DomainEvent,
 } from "@lead-agent/contracts";
 import { createSecurityIdentifierFactory, type CustomerDataProtection } from "@lead-agent/security";
+import { estimateAIUsageCost, resolveAIPrice } from "@lead-agent/observability";
 import type { QueryResultRow } from "pg";
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
 import { createConversationRepository } from "./conversations.js";
@@ -360,11 +361,13 @@ export const createAIOrchestrationStore = (
           const attemptNo = mapSafeBigInt(attempts[0]?.["attempt"]);
           if (attemptNo > 32) return null;
           const runId = nextId();
+          const startedAt = now();
+          const initialPrice = resolveAIPrice(providerId, options.requestedModel, startedAt);
           await executeTenantWrite(
             session,
             `insert into ai_runs
           (organization_id,id,conversation_id,trigger_message_id,expected_conversation_version,provider_id,requested_model_id,model_profile_version,orchestrator_version,prompt_template_version,decision_schema_version,policy_version,status,cost_currency,cost_catalog_version,attempt_no,knowledge_manifest_jsonb,input_hash,started_at,correlation_id)
-          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','${options.appointmentSubmission === true ? APPOINTMENT_SUBMISSION_PROFILE : options.salesFlow === true ? "s15-qualification-handoff.v1" : options.groundedAnswers === true ? "s14-grounding.v1" : "s12-policy.v1"}','started','USD','not-priced.v1',$7,$8::jsonb,$9,$10,$11)`,
+          values ($1,$2,$3,$4,$5,$12,$6,$13,'s12-orchestrator.v1',$14,'1','${options.appointmentSubmission === true ? APPOINTMENT_SUBMISSION_PROFILE : options.salesFlow === true ? "s15-qualification-handoff.v1" : options.groundedAnswers === true ? "s14-grounding.v1" : "s12-policy.v1"}','started','USD',$15,$7,$8::jsonb,$9,$10,$11)`,
             [
               runId,
               input.reference.conversationId,
@@ -376,11 +379,12 @@ export const createAIOrchestrationStore = (
                 sources: manifestSources(input.snapshot),
               }),
               input.inputHash,
-              now(),
+              startedAt,
               input.reference.correlationId,
               providerId,
               modelProfileVersion,
               promptTemplateVersion,
+              initialPrice?.version ?? "not-priced.v1",
             ],
           );
           return Object.freeze({ runId, attemptNo });
@@ -407,7 +411,7 @@ const finishAIRun = async (
   if (message === null) throw new RepositoryDataIntegrityError();
   const runRows = await executeTenantRead(
     session,
-    `select status,started_at from ai_runs where organization_id = $1 and id = $2 and trigger_message_id = $3 and conversation_id = $4 for update`,
+    `select status,started_at,provider_id,requested_model_id from ai_runs where organization_id = $1 and id = $2 and trigger_message_id = $3 and conversation_id = $4 for update`,
     [input.reservation.runId, input.reference.messageId, input.reference.conversationId],
   );
   const run = runRows[0];
@@ -571,9 +575,23 @@ const finishAIRun = async (
     outcome = Object.freeze({ ...outcome, salesResult: appointment?.result ?? persisted.result });
   }
   const usage = input.provider?.usage;
+  const resolvedModel = input.provider?.model ?? null;
+  const price =
+    typeof run["provider_id"] === "string" && resolvedModel !== null
+      ? resolveAIPrice(run["provider_id"], resolvedModel, run["started_at"])
+      : null;
+  const estimatedCost =
+    price === null || usage === undefined
+      ? null
+      : estimateAIUsageCost(price, {
+          cachedInput: usage.cachedInput,
+          input: usage.input,
+          output: usage.output,
+          total: usage.total,
+        });
   await executeTenantWrite(
     session,
-    `update ai_runs set status=$3,provider_resolved_model_id=$4,input_units=$5,output_units=$6,cached_input_units=$7,reasoning_units=$8,total_units=$9,latency_ms=$10,failure_category=$11,output_hash=$12,schema_valid=$13,policy_allowed=$14,finished_at=$15 where organization_id = $1 and id = $2`,
+    `update ai_runs set status=$3,provider_resolved_model_id=$4,input_units=$5,output_units=$6,cached_input_units=$7,reasoning_units=$8,total_units=$9,latency_ms=$10,failure_category=$11,output_hash=$12,schema_valid=$13,policy_allowed=$14,finished_at=$15,estimated_cost_micros=$16,cost_catalog_version=$17 where organization_id = $1 and id = $2`,
     [
       input.reservation.runId,
       status,
@@ -589,6 +607,8 @@ const finishAIRun = async (
       schemaRejected ? false : schemaValid,
       decision === null ? null : outcome.kind === "decision",
       finishedAt,
+      estimatedCost,
+      price?.version ?? "not-priced.v1",
     ],
   );
   if (decision !== null) {

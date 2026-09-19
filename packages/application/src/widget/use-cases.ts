@@ -4,6 +4,7 @@ import {
   CanonicalInboundEventSchema,
   WidgetConversationCreateInputSchema,
   WidgetMessageCreateInputSchema,
+  WidgetTelemetryInputSchema,
   isSchemaValue,
   type CanonicalInboundEvent,
   type ChannelConnectionId,
@@ -15,6 +16,7 @@ import {
   type WidgetConversationCreateInput,
   type WidgetMessage,
   type WidgetMessageCreateInput,
+  type WidgetTelemetryInput,
 } from "@lead-agent/contracts";
 import {
   WidgetOriginInvalidError,
@@ -239,6 +241,13 @@ export type WidgetUseCases = Readonly<{
       sequenceNo: number;
     }>
   >;
+  recordTelemetry(
+    input: Readonly<{
+      bearerToken: string;
+      body: WidgetTelemetryInput;
+      origin: unknown;
+    }>,
+  ): Promise<void>;
   redeemEmbedSession(
     input: Readonly<{ exchangeGrant: string; origin: unknown }>,
   ): Promise<Readonly<{ bearerToken: string; expiresAt: Date }>>;
@@ -301,6 +310,15 @@ export const createWidgetUseCases = (
     rateLimiter: WidgetRateLimiter;
     routeResolver: WidgetRouteResolver;
     tokens: WidgetTokenService;
+    telemetry?: Readonly<{
+      observe(
+        input: Readonly<{
+          durationMs: number;
+          kind: "meaningful_first_response";
+          organizationId: OrganizationId;
+        }>,
+      ): void;
+    }>;
   }>,
 ): WidgetUseCases => {
   const clock = dependencies.clock ?? (() => new Date());
@@ -601,6 +619,18 @@ export const createWidgetUseCases = (
             ? ("suppressed" as const)
             : ("accepted" as const),
         sequenceNo: accepted.receipt.messageSequenceNo,
+      });
+    },
+    recordTelemetry: async ({ bearerToken, body, origin }) => {
+      if (!isSchemaValue(WidgetTelemetryInputSchema, body))
+        throw new WidgetApplicationError("validation_failed");
+      const authenticated = await authenticate(bearerToken, origin, "mutation");
+      if (authenticated.authority.conversationId === null)
+        throw new WidgetApplicationError("business_rule_failed");
+      dependencies.telemetry?.observe({
+        durationMs: body.duration_ms,
+        kind: body.kind,
+        organizationId: authenticated.authority.organizationId,
       });
     },
     redeemEmbedSession: async ({ exchangeGrant, origin: rawOrigin }) => {

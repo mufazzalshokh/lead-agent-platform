@@ -24,6 +24,9 @@ export default defineConfig({
       "@lead-agent/integrations": fileURLToPath(
         new URL("./packages/integrations/src/index.ts", import.meta.url),
       ),
+      "@lead-agent/observability": fileURLToPath(
+        new URL("./packages/observability/src/index.ts", import.meta.url),
+      ),
       "@lead-agent/database": fileURLToPath(
         new URL("./packages/database/src/index.ts", import.meta.url),
       ),

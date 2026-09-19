@@ -326,3 +326,24 @@ export const WidgetMessageCollectionResponseSchema = Type.Object(
 export type WidgetMessageCollectionResponse = Type.Static<
   typeof WidgetMessageCollectionResponseSchema
 >;
+
+export const WidgetTelemetryInputSchema = Type.Object(
+  {
+    duration_ms: Type.Integer({ minimum: 0, maximum: 300_000 }),
+    kind: Type.Literal("meaningful_first_response"),
+  },
+  { $id: "WidgetTelemetryInput.v1", additionalProperties: false },
+);
+export type WidgetTelemetryInput = Type.Static<typeof WidgetTelemetryInputSchema>;
+
+export const WidgetTelemetryResultSchema = Type.Object(
+  { accepted: Type.Literal(true) },
+  { $id: "WidgetTelemetryResult.v1", additionalProperties: false },
+);
+export const WidgetTelemetryResponseSchema = Type.Object(
+  {
+    data: withoutSchemaId(WidgetTelemetryResultSchema),
+    meta: Type.Object({ request_id: requestId() }, { additionalProperties: false }),
+  },
+  { $id: "WidgetTelemetryResponse.v1", additionalProperties: false },
+);

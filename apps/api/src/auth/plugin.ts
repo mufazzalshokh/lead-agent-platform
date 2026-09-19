@@ -67,7 +67,8 @@ import {
 } from "../conversations/plugin.js";
 import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
 import { registerStaffOperations, type StaffOperationsDependencies } from "../staff/plugin.js";
-import { StaffOperationError } from "@lead-agent/application";
+import { AnalyticsApplicationError, StaffOperationError } from "@lead-agent/application";
+import { registerStaffAnalytics, type StaffAnalyticsDependencies } from "../analytics/plugin.js";
 import {
   registerStaffTelegramManagement,
   registerTelegramWebhook,
@@ -134,6 +135,7 @@ export type ApiOptions = Readonly<{
   staffConfiguration?: StaffConfigurationDependencies;
   staffConversations?: StaffConversationDependencies;
   staffOperations?: StaffOperationsDependencies;
+  staffAnalytics?: StaffAnalyticsDependencies;
   staffTelegram?: StaffTelegramDependencies;
   telegramWebhook?: TelegramWebhookDependencies;
   staffInstagram?: StaffInstagramDependencies;
@@ -350,6 +352,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
             : error.code === "business_rule_failed"
               ? 422
               : 409;
+  } else if (error instanceof AnalyticsApplicationError) {
+    code = error.code;
+    status = error.code === "permission_denied" ? 403 : 400;
   } else if (error instanceof StaffConversationHttpError) {
     code = error.code;
     status =
@@ -432,6 +437,7 @@ const registerStaffAuth = async (
   staffTelegram?: StaffTelegramDependencies,
   staffInstagram?: StaffInstagramDependencies,
   staffOperations?: StaffOperationsDependencies,
+  staffAnalytics?: StaffAnalyticsDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -843,6 +849,12 @@ const registerStaffAuth = async (
       resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
+  if (staffAnalytics !== undefined) {
+    registerStaffAnalytics(api, staffAnalytics, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
   if (staffTelegram !== undefined) {
     registerStaffTelegramManagement(api, staffTelegram, {
       authorizationResolver: dependencies.authorizationResolver,
@@ -862,6 +874,8 @@ const registerStaffAuth = async (
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   if (options.staffOperations !== undefined && options.staffAuth === undefined)
     throw new TypeError("Private staff operations require staff authentication");
+  if (options.staffAnalytics !== undefined && options.staffAuth === undefined)
+    throw new TypeError("Private staff analytics require staff authentication");
   if (options.staffConfiguration !== undefined && options.staffAuth === undefined) {
     throw new TypeError("Staff configuration routes require the staff authentication boundary");
   }
@@ -893,6 +907,25 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
     void api.register((widgetApi) => {
       widgetApi.setErrorHandler((error, request, reply) => {
         const problem = safeProblem(request, error);
+        if (error instanceof WidgetRateLimitError) {
+          widget.metrics?.observe({
+            channel: "widget",
+            kind: "rate_limit_rejection",
+            outcome: "denied",
+          });
+        } else if (error instanceof WidgetOriginInvalidError) {
+          widget.metrics?.observe({
+            channel: "widget",
+            kind: "origin_denial",
+            outcome: "denied",
+          });
+        } else if (error instanceof WidgetTokenInvalidError) {
+          widget.metrics?.observe({
+            channel: "widget",
+            kind: "authentication_denial",
+            outcome: "denied",
+          });
+        }
         reply.header("cache-control", "no-store");
         reply.header("referrer-policy", "no-referrer");
         reply.header("vary", "Origin");
@@ -980,6 +1013,7 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         options.staffTelegram,
         options.staffInstagram,
         options.staffOperations,
+        options.staffAnalytics,
       ),
     );
   }

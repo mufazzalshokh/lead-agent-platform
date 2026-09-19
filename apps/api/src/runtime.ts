@@ -37,6 +37,8 @@ import { createWidgetDependencies } from "./widget/composition.js";
 import { createTelegramApiComposition } from "./telegram/composition.js";
 import { createInstagramApiComposition } from "./instagram/composition.js";
 import type { CredentialSecretStore } from "@lead-agent/application";
+import { createOperationalMetrics } from "@lead-agent/observability";
+import { createStaffAnalyticsDependencies } from "./analytics/composition.js";
 
 const requireEnvironment = (environment: NodeJS.ProcessEnv, name: string): string => {
   const value = environment[name];
@@ -83,6 +85,7 @@ export const createApiFromEnvironment = (
   const ingressRuntime = createInboundRouteDatabaseRuntime(ingressDatabase, {
     onUnexpectedPoolError: observeDatabaseFailure,
   });
+  const metrics = createOperationalMetrics();
   const customerDataConfig = loadCustomerDataProtectionConfig(environment);
   const telegram = createTelegramApiComposition(
     tenantRuntime,
@@ -147,6 +150,7 @@ export const createApiFromEnvironment = (
     },
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffOperations: createStaffOperationsDependencies(tenantRuntime, web.browserEnvelopeKey),
+    staffAnalytics: createStaffAnalyticsDependencies(tenantRuntime, metrics),
     staffConversations: conversations.staff,
     staffTelegram: telegram.staff,
     telegramWebhook: telegram.webhook,
@@ -159,6 +163,7 @@ export const createApiFromEnvironment = (
       customerDataConfig,
       loadWidgetSecurityConfig(environment),
       loadWidgetEmbedConfig(environment),
+      metrics,
     ),
   });
   api.addHook("onClose", async () => {

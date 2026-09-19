@@ -123,6 +123,7 @@ import { registerWidgetIntakeTests } from "./widget-intake.test-suite.js";
 import { registerTelegramBusinessPersistenceTests } from "./telegram-business.test-suite.js";
 import { registerInstagramBusinessPersistenceTests } from "./instagram-business.test-suite.js";
 import { registerAIOrchestrationTests } from "./ai-orchestration.test-suite.js";
+import { registerAnalyticsPersistenceTests } from "./analytics.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -10023,4 +10024,188 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     runtime: requireTenantRuntime,
   });
   registerAIOrchestrationTests({ privilegedPool: database, runtime: requireTenantRuntime });
+  registerAnalyticsPersistenceTests({
+    fixtures: {
+      membershipA: MEMBERSHIP_A,
+      organizationA: ORGANIZATION_A,
+      organizationB: ORGANIZATION_B,
+      userA: USER_A,
+    },
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
+    seed: async () => {
+      await seedWorkflowTenant(WORKFLOW_A, "s20-tenant-a", "s20-a", "s20-service-a");
+      await seedWorkflowTenant(WORKFLOW_B, "s20-tenant-b", "s20-b", "s20-service-b");
+      await insertChannelConnection(
+        syntheticUuid(0x2010),
+        ORGANIZATION_A,
+        "telegram",
+        "S20 Telegram",
+        "s20-telegram-account",
+      );
+      await insertChannelConnection(
+        syntheticUuid(0x2011),
+        ORGANIZATION_A,
+        "instagram",
+        "S20 Instagram",
+        "s20-instagram-account",
+      );
+      await insertConversation(
+        syntheticUuid(0x2012),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        syntheticUuid(0x2010),
+      );
+      await insertConversation(
+        syntheticUuid(0x2013),
+        ORGANIZATION_A,
+        CONTACT_A,
+        LEAD_A,
+        syntheticUuid(0x2011),
+      );
+      await insertInboundMessage(
+        syntheticUuid(0x2014),
+        ORGANIZATION_A,
+        syntheticUuid(0x2012),
+        syntheticUuid(0x2010),
+        CONTACT_A,
+        1,
+        "s20-telegram-inbound",
+      );
+      await insertInboundMessage(
+        syntheticUuid(0x2015),
+        ORGANIZATION_A,
+        syntheticUuid(0x2013),
+        syntheticUuid(0x2011),
+        CONTACT_A,
+        1,
+        "s20-instagram-inbound",
+      );
+      await database().query(
+        `update messages set created_at=timestamptz '2026-01-01 00:01:00+00'
+          where id in ($1,$2)`,
+        [syntheticUuid(0x2014), syntheticUuid(0x2015)],
+      );
+      await database().query(
+        "update memberships set role='analyst',location_scope='all' where id=$1",
+        [MEMBERSHIP_A],
+      );
+      await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A, "confirmed");
+      await insertAppointmentRequest(TEST_ID_1, WORKFLOW_B, "requested");
+      await insertHandoff(HANDOFF_A, WORKFLOW_A);
+      await insertInboundMessage(
+        syntheticUuid(0x2001),
+        ORGANIZATION_A,
+        CONVERSATION_A,
+        CHANNEL_CONNECTION_A,
+        CONTACT_A,
+        2,
+        "s20-second-meaningful-message",
+      );
+      await insertAiRun(AI_RUN_A, WORKFLOW_A, { attemptNo: 1 });
+      await insertAiRun(syntheticUuid(0x2002), WORKFLOW_A, { attemptNo: 2 });
+      await database().query(
+        `insert into messages
+          (id,organization_id,conversation_id,channel_connection_id,direction,
+           sender_type,sequence_no,content_type,body_ciphertext,body_hash,locale,
+           processing_status,delivery_status,ai_run_id,created_at)
+         values ($1,$2,$3,$4,'outbound','system',3,'text',$5,$6,'en',
+           'processed','queued',$7,statement_timestamp()+interval '10 seconds')`,
+        [
+          syntheticUuid(0x2003),
+          ORGANIZATION_A,
+          CONVERSATION_A,
+          CHANNEL_CONNECTION_A,
+          Buffer.from("synthetic-s20-outbound-ciphertext"),
+          Buffer.from("synthetic-s20-outbound-hash"),
+          syntheticUuid(0x2002),
+        ],
+      );
+      await database().query(
+        `insert into messages
+          (id,organization_id,conversation_id,channel_connection_id,direction,
+           sender_type,sequence_no,content_type,body_ciphertext,body_hash,locale,
+           processing_status,delivery_status,created_at)
+         values
+          ($1,$2,$3,$4,'outbound','system',2,'text',$5,$6,'en','processed','sent',
+           timestamptz '2026-01-01 00:01:03+00'),
+          ($7,$2,$8,$9,'outbound','system',2,'text',$10,$11,'en','processed','sent',
+           timestamptz '2026-01-01 00:01:07+00')`,
+        [
+          syntheticUuid(0x2016),
+          ORGANIZATION_A,
+          syntheticUuid(0x2012),
+          syntheticUuid(0x2010),
+          Buffer.from("synthetic-s20-telegram-outbound"),
+          Buffer.from("synthetic-s20-telegram-outbound-hash"),
+          syntheticUuid(0x2017),
+          syntheticUuid(0x2013),
+          syntheticUuid(0x2011),
+          Buffer.from("synthetic-s20-instagram-outbound"),
+          Buffer.from("synthetic-s20-instagram-outbound-hash"),
+        ],
+      );
+      await database().query(
+        `insert into audit_events
+          (id,organization_id,event_type,actor_type,target_type,target_id,action,
+           result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
+         values
+          ($1,$2,'telegram.delivery_sent','system','message',$3,
+           'telegram.delivery_sent','succeeded','request:s20-telegram',$4,
+           '{"source":"telegram_business"}'::jsonb,
+           timestamptz '2026-01-01 00:01:04+00'),
+          ($5,$2,'instagram.delivery_sent','system','message',$6,
+           'instagram.delivery_sent','succeeded','request:s20-instagram',$7,
+           '{"source":"instagram_business"}'::jsonb,
+           timestamptz '2026-01-01 00:01:08+00')`,
+        [
+          syntheticUuid(0x2018),
+          ORGANIZATION_A,
+          syntheticUuid(0x2016),
+          syntheticUuid(0x2019),
+          syntheticUuid(0x2020),
+          syntheticUuid(0x2017),
+          syntheticUuid(0x2021),
+        ],
+      );
+      await database().query(
+        `insert into appointment_request_transitions
+          (id,organization_id,appointment_request_id,from_status,to_status,
+           aggregate_version,command,actor_type,actor_membership_id,correlation_id,occurred_at)
+         values
+          ($1,$2,$3,'requested','staff_accepted',2,'staff_accept','member',$4,$5,now()),
+          ($6,$2,$3,'staff_accepted','awaiting_customer_confirmation',3,
+           'prepare_customer_confirmation','system',null,$5,now()+interval '1 second')`,
+        [
+          syntheticUuid(0x2004),
+          ORGANIZATION_A,
+          APPOINTMENT_REQUEST_A,
+          MEMBERSHIP_A,
+          CORRELATION_A,
+          syntheticUuid(0x2005),
+        ],
+      );
+      await database().query(
+        `insert into appointment_request_attendance
+          (id,organization_id,appointment_request_id,outcome,occurred_at,
+           recorded_by_membership_id,recorded_at,source,is_current,reason_code)
+         values ($1,$2,$3,'attended',now(),$4,now(),'staff_manual',true,'staff_verified')`,
+        [ATTENDANCE_A, ORGANIZATION_A, APPOINTMENT_REQUEST_A, MEMBERSHIP_A],
+      );
+      await database().query(
+        `insert into appointment_revenue_attributions
+          (id,organization_id,appointment_request_id,amount_minor,currency,
+           entry_type,category_code,recognized_at,recorded_by_membership_id,
+           recorded_at,source,reason_code)
+         values ($1,$2,$3,250000,'UZS','charge','treatment_revenue',now(),$4,
+           now(),'staff_manual','staff_recorded')`,
+        [REVENUE_ATTRIBUTION_A, ORGANIZATION_A, APPOINTMENT_REQUEST_A, MEMBERSHIP_A],
+      );
+      await insertOutboxEvent(syntheticUuid(0x2006), ORGANIZATION_A);
+      await insertOutboxEvent(syntheticUuid(0x2007), ORGANIZATION_A, {
+        status: "dead_lettered",
+      });
+    },
+  });
 });

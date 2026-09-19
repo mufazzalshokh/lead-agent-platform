@@ -244,6 +244,61 @@ input:focus-visible {
 .section-heading h1 {
   font-size: 1.65rem;
 }
+.analytics-overview {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #cddbd5;
+  border-radius: 1rem;
+  background: linear-gradient(145deg, #fff 0%, #eef6f2 100%);
+}
+.analytics-overview__heading,
+.analytics-latency {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.analytics-overview__heading h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.analytics-overview__heading > span,
+.analytics-latency {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+.analytics-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+}
+.analytics-cards article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.55rem;
+  border-radius: 0.7rem;
+  background: rgb(255 255 255 / 78%);
+}
+.analytics-cards small {
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+.analytics-cards strong {
+  color: var(--accent-dark);
+  font-size: 1rem;
+}
+.analytics-latency {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.analytics-latency span {
+  margin-right: auto;
+}
+.analytics-latency b {
+  color: var(--ink);
+}
 .work-list {
   display: grid;
   gap: 0.55rem;
@@ -569,6 +624,9 @@ input:focus-visible {
   .detail-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .analytics-cards {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

@@ -15,6 +15,7 @@ import {
   createWidgetRateLimiter,
   createWidgetTokenService,
 } from "@lead-agent/security";
+import type { OperationalMetrics } from "@lead-agent/observability";
 
 import type { WidgetDependencies } from "./plugin.js";
 
@@ -24,9 +25,11 @@ export const createWidgetDependencies = (
   customerDataConfig: CustomerDataProtectionConfig,
   widgetSecurityConfig: WidgetSecurityConfig,
   widgetEmbedConfig: WidgetEmbedConfig,
+  metrics?: OperationalMetrics,
 ): WidgetDependencies => {
   const dataProtector = createCustomerDataProtection(customerDataConfig);
   return Object.freeze({
+    ...(metrics === undefined ? {} : { metrics }),
     useCases: createWidgetUseCases({
       dataProtector,
       embed: {
@@ -37,6 +40,14 @@ export const createWidgetDependencies = (
       persistence: createWidgetPersistenceStore(tenantRuntime),
       rateLimiter: createWidgetRateLimiter(),
       routeResolver: ingressRuntime,
+      ...(metrics === undefined
+        ? {}
+        : {
+            telemetry: {
+              observe: (input: Readonly<{ durationMs: number; organizationId: string }>) =>
+                metrics.observeWidgetMeaningfulLatency(input.organizationId, input.durationMs),
+            },
+          }),
       tokens: createWidgetTokenService(widgetSecurityConfig),
     }),
   });

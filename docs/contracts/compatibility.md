@@ -3,7 +3,8 @@
 S11.B adds ContactIdentityAdded payload/event V2 and eight identity-bearing staff
 read V2 schemas without changing accepted V1 schemas. S19 then adds two private
 staff-context schemas and eight Widget-embed schemas without changing the 347
-accepted entries. The verified public catalog now contains 357 schemas, 63
+accepted entries. S20 adds nine private analytics/bounded Widget telemetry
+schemas without mutating those accepted contracts. The verified public catalog now contains 366 schemas, 63
 semantic event names and 66 registered event variants.
 Instagram identities produce `contact.identity_added` V2; unrelated producers
 remain V1. Exact staff route versioning and V1 projections are frozen in

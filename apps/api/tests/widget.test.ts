@@ -100,6 +100,7 @@ const dependencies = () => {
         sequenceNo: 2,
       }),
     ),
+    recordTelemetry: vi.fn(() => Promise.resolve()),
     redeemEmbedSession: vi.fn(({ origin }) => {
       if (origin !== PLATFORM_ORIGIN) throw new WidgetOriginInvalidError();
       return Promise.resolve({
@@ -183,7 +184,7 @@ describe("S10 Widget Fastify API", () => {
     }
   });
 
-  it("implements the five isolated Widget routes with safe headers and projections", async () => {
+  it("implements the isolated Widget routes with safe headers and projections", async () => {
     const widget = dependencies();
     const api = createApi({ widget: { useCases: widget.useCases } });
     try {
@@ -246,6 +247,19 @@ describe("S10 Widget Fastify API", () => {
         expect.objectContaining({ body_text: "<b>plain data</b>" }),
       );
       expect(messageBody.data[0]).not.toHaveProperty("body_ciphertext");
+
+      const telemetry = await api.inject({
+        method: "POST",
+        url: "/v1/widget/telemetry",
+        headers: headers(),
+        payload: { duration_ms: 4_200, kind: "meaningful_first_response" },
+      });
+      expect(telemetry.statusCode).toBe(202);
+      expect(widget.useCases.recordTelemetry).toHaveBeenCalledWith({
+        bearerToken: TOKEN,
+        body: { duration_ms: 4_200, kind: "meaningful_first_response" },
+        origin: ORIGIN,
+      });
 
       const post = await api.inject({
         method: "POST",

@@ -17,6 +17,7 @@ export * from "./staff-conversation-queries.js";
 export * from "./telegram.js";
 export * from "./instagram.js";
 export * from "./widget.js";
+export * from "./analytics.js";
 export {
   InvalidRepositoryMutationPlanError,
   InvalidRepositoryQueryError,

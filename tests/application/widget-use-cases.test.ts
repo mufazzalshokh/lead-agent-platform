@@ -65,6 +65,7 @@ const fixture = (
   let revealedMessages = 0;
   let redeemedExchanges = 0;
   let exchangeRedeemed = false;
+  const telemetry: number[] = [];
   let preparedEvent: CanonicalInboundEvent | undefined;
   const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
   let authorityClaims: WidgetTokenClaims | null = null;
@@ -221,6 +222,7 @@ const fixture = (
         }),
     },
     tokens,
+    telemetry: { observe: (input) => telemetry.push(input.durationMs) },
   });
   return {
     counts: () => ({ acceptedBound, acceptedInitial, createdSessions }),
@@ -228,11 +230,48 @@ const fixture = (
     reveals: () => revealedMessages,
     redemptions: () => redeemedExchanges,
     tokens,
+    telemetry: () => [...telemetry],
     useCases,
   };
 };
 
 describe("S10 Widget application use cases", () => {
+  it("accepts bounded content-free TTFR only from an authorized bound session", async () => {
+    const test = fixture();
+    const bootstrap = await test.useCases.bootstrap({
+      clientIp: "127.0.0.1",
+      origin: ORIGIN,
+      pageUrl: ORIGIN,
+      requestedLocale: "uz",
+      widgetKey: "A".repeat(32),
+    });
+    const created = await test.useCases.createConversation({
+      bearerToken: bootstrap.bearerToken,
+      body: {
+        client_message_id: "browser.message-1",
+        kind: "text",
+        locale_hint: null,
+        text: "Salom",
+      },
+      idempotencyKey: "request-key-1",
+      origin: ORIGIN,
+    });
+    await test.useCases.recordTelemetry({
+      bearerToken: created.bearerToken,
+      body: { duration_ms: 4_200, kind: "meaningful_first_response" },
+      origin: ORIGIN,
+    });
+    expect(test.telemetry()).toEqual([4_200]);
+    await expect(
+      test.useCases.recordTelemetry({
+        bearerToken: created.bearerToken,
+        body: { duration_ms: 4_200, kind: "meaningful_first_response" },
+        origin: "https://attacker.invalid",
+      }),
+    ).rejects.toMatchObject({ code: "origin_not_allowed" });
+    expect(test.telemetry()).toEqual([4_200]);
+  });
+
   it("creates an opaque host-bound grant and redeems it exactly once from the platform Origin", async () => {
     const test = fixture();
     const issued = await test.useCases.createEmbedGrant({

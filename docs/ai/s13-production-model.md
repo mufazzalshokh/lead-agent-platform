@@ -70,7 +70,8 @@ commercial targets, not measured channel TTFR guarantees. The evaluation timeout
 tail remains operational evidence; the evaluated 60-second timeout does not widen
 the production deadline. Production transport retries, budgets, launch data
 controls, provider terms/region/retention and end-to-end latency validation are not
-silently approved by a model pin. Unknown usage/cost remains unknown, not zero;
+silently approved by a model pin. Unknown usage/cost remains unknown, not zero.
+S20 prices new complete physical attempts against the effective versioned catalog;
 existing `not-priced.v1` persistence is not replaced by fabricated billing.
 The 560 cases still derive from 60 correlated seed clusters; the native 40-pair
 packet is diagnostic, not a representative population sample.
