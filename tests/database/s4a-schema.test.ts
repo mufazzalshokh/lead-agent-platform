@@ -10172,11 +10172,13 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       await database().query(
         `insert into appointment_request_transitions
           (id,organization_id,appointment_request_id,from_status,to_status,
-           aggregate_version,command,actor_type,actor_membership_id,correlation_id,occurred_at)
+           aggregate_version,command,offer_version,actor_type,actor_membership_id,
+           correlation_id,occurred_at)
          values
-          ($1,$2,$3,'requested','staff_accepted',2,'staff_accept','member',$4,$5,now()),
+          ($1,$2,$3,'requested','staff_accepted',2,
+           'staff_accept_appointment_request',1,'member',$4,$5,now()),
           ($6,$2,$3,'staff_accepted','awaiting_customer_confirmation',3,
-           'prepare_customer_confirmation','system',null,$5,now()+interval '1 second')`,
+           'prepare_customer_confirmation',1,'system',null,$5,now()+interval '1 second')`,
         [
           syntheticUuid(0x2004),
           ORGANIZATION_A,
