@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildContractSnapshot } from "../../scripts/contracts/snapshot.js";
-import { S17_STAFF_SCHEMA_NAMES } from "../../scripts/contracts/catalog.js";
+import {
+  S17_STAFF_SCHEMA_NAMES,
+  S19_STAFF_SCHEMA_NAMES,
+  S19_WIDGET_SCHEMA_NAMES,
+} from "../../scripts/contracts/catalog.js";
 import {
   DOMAIN_EVENT_NAMES,
   DomainEventSchemas,
@@ -50,6 +54,8 @@ describe("Instagram additive identity/event version compatibility", () => {
   it("preserves all 319 accepted contract entries including every V1 schema byte-for-byte", () => {
     const laterAdditions = new Set<string>([
       ...S17_STAFF_SCHEMA_NAMES,
+      ...S19_STAFF_SCHEMA_NAMES,
+      ...S19_WIDGET_SCHEMA_NAMES,
       "AppointmentRequestConfirmedDomainEventV2Schema",
       "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
     ]);
