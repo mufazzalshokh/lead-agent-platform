@@ -10027,9 +10027,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
   registerAnalyticsPersistenceTests({
     fixtures: {
       membershipA: MEMBERSHIP_A,
+      membershipB: MEMBERSHIP_B,
       organizationA: ORGANIZATION_A,
       organizationB: ORGANIZATION_B,
       userA: USER_A,
+      userB: USER_B,
     },
     privilegedPool: database,
     runtime: requireTenantRuntime,
@@ -10088,11 +10090,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         [syntheticUuid(0x2014), syntheticUuid(0x2015)],
       );
       await database().query(
-        "update memberships set role='analyst',location_scope='all' where id=$1",
-        [MEMBERSHIP_A],
+        "update memberships set role='analyst',location_scope='all' where id in ($1,$2)",
+        [MEMBERSHIP_A, MEMBERSHIP_B],
       );
       await insertAppointmentRequest(APPOINTMENT_REQUEST_A, WORKFLOW_A, "confirmed");
-      await insertAppointmentRequest(TEST_ID_1, WORKFLOW_B, "requested");
+      await insertAppointmentRequest(TEST_ID_1, WORKFLOW_B, "confirmed");
       await insertHandoff(HANDOFF_A, WORKFLOW_A);
       await insertInboundMessage(
         syntheticUuid(0x2001),
@@ -10105,6 +10107,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       );
       await insertAiRun(AI_RUN_A, WORKFLOW_A, { attemptNo: 1 });
       await insertAiRun(syntheticUuid(0x2002), WORKFLOW_A, { attemptNo: 2 });
+      await insertAiRun(syntheticUuid(0x2022), WORKFLOW_B);
       await database().query(
         `insert into messages
           (id,organization_id,conversation_id,channel_connection_id,direction,
@@ -10120,6 +10123,22 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
           Buffer.from("synthetic-s20-outbound-ciphertext"),
           Buffer.from("synthetic-s20-outbound-hash"),
           syntheticUuid(0x2002),
+        ],
+      );
+      await database().query(
+        `insert into messages
+          (id,organization_id,conversation_id,channel_connection_id,direction,
+           sender_type,sequence_no,content_type,body_ciphertext,body_hash,locale,
+           processing_status,delivery_status,created_at)
+         values ($1,$2,$3,$4,'outbound','system',2,'text',$5,$6,'en',
+           'processed','sent',statement_timestamp()+interval '20 seconds')`,
+        [
+          syntheticUuid(0x2023),
+          ORGANIZATION_B,
+          CONVERSATION_B,
+          CHANNEL_CONNECTION_B,
+          Buffer.from("synthetic-s20-tenant-b-outbound"),
+          Buffer.from("synthetic-s20-tenant-b-outbound-hash"),
         ],
       );
       await database().query(
@@ -10196,6 +10215,13 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         [ATTENDANCE_A, ORGANIZATION_A, APPOINTMENT_REQUEST_A, MEMBERSHIP_A],
       );
       await database().query(
+        `insert into appointment_request_attendance
+          (id,organization_id,appointment_request_id,outcome,occurred_at,
+           recorded_by_membership_id,recorded_at,source,is_current,reason_code)
+         values ($1,$2,$3,'attended',now(),$4,now(),'staff_manual',true,'staff_verified')`,
+        [ATTENDANCE_B, ORGANIZATION_B, TEST_ID_1, MEMBERSHIP_B],
+      );
+      await database().query(
         `insert into appointment_revenue_attributions
           (id,organization_id,appointment_request_id,amount_minor,currency,
            entry_type,category_code,recognized_at,recorded_by_membership_id,
@@ -10203,6 +10229,15 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
          values ($1,$2,$3,250000,'UZS','charge','treatment_revenue',now(),$4,
            now(),'staff_manual','staff_recorded')`,
         [REVENUE_ATTRIBUTION_A, ORGANIZATION_A, APPOINTMENT_REQUEST_A, MEMBERSHIP_A],
+      );
+      await database().query(
+        `insert into appointment_revenue_attributions
+          (id,organization_id,appointment_request_id,amount_minor,currency,
+           entry_type,category_code,recognized_at,recorded_by_membership_id,
+           recorded_at,source,reason_code)
+         values ($1,$2,$3,900000,'UZS','charge','treatment_revenue',now(),$4,
+           now(),'staff_manual','staff_recorded')`,
+        [REVENUE_ATTRIBUTION_B, ORGANIZATION_B, TEST_ID_1, MEMBERSHIP_B],
       );
       await insertOutboxEvent(syntheticUuid(0x2006), ORGANIZATION_A);
       await insertOutboxEvent(syntheticUuid(0x2007), ORGANIZATION_A, {

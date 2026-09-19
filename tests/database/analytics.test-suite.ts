@@ -25,9 +25,11 @@ import {
 type Harness = Readonly<{
   fixtures: Readonly<{
     membershipA: string;
+    membershipB: string;
     organizationA: string;
     organizationB: string;
     userA: string;
+    userB: string;
   }>;
   privilegedPool(): Pool;
   runtime(): TenantDatabaseRuntime;
@@ -44,13 +46,19 @@ const range = (): StaffAnalyticsQuery => {
   return value;
 };
 
-const authorize = async (harness: Harness): Promise<AuthorizationContext> => {
-  const { membershipA, organizationA, userA } = harness.fixtures;
+const authorize = async (
+  harness: Harness,
+  tenant: "a" | "b" = "a",
+): Promise<AuthorizationContext> => {
+  const { membershipA, membershipB, organizationA, organizationB, userA, userB } = harness.fixtures;
+  const membershipId = tenant === "a" ? membershipA : membershipB;
+  const organizationId = tenant === "a" ? organizationA : organizationB;
+  const userId = tenant === "a" ? userA : userB;
   const sessionId = "0199f1a8-7f65-7c28-a434-a10796c49999";
   if (
-    !isSchemaValue(OrganizationIdSchema, organizationA) ||
-    !isSchemaValue(UserIdSchema, userA) ||
-    !isSchemaValue(MembershipIdSchema, membershipA) ||
+    !isSchemaValue(OrganizationIdSchema, organizationId) ||
+    !isSchemaValue(UserIdSchema, userId) ||
+    !isSchemaValue(MembershipIdSchema, membershipId) ||
     !isSchemaValue(ResourceIdSchema, sessionId)
   )
     throw new TypeError("Invalid S20 authorization fixture");
@@ -65,18 +73,18 @@ const authorize = async (harness: Harness): Promise<AuthorizationContext> => {
     rotatedAt: now,
     rotationDue: false,
     sessionId,
-    userId: userA,
+    userId,
   };
-  return resolveAuthorizationContext(session, organizationA, {
+  return resolveAuthorizationContext(session, organizationId, {
     resolveCurrentMembership: () =>
       Promise.resolve({
         allowedLocationIds: [],
         locationScope: "all",
-        membershipId: membershipA,
-        organizationId: organizationA,
+        membershipId,
+        organizationId,
         role: "analyst",
         status: "active",
-        userId: userA,
+        userId,
       }),
   });
 };
@@ -85,6 +93,14 @@ const organizationId = (value: string): OrganizationId => {
   if (!isSchemaValue(OrganizationIdSchema, value))
     throw new TypeError("Invalid S20 tenant fixture");
   return value;
+};
+
+const serializeForPrivacyAssertion = (value: unknown): string => {
+  const serialized = JSON.stringify(value, (_key: string, nestedValue: unknown): unknown =>
+    typeof nestedValue === "bigint" ? nestedValue.toString() : nestedValue,
+  );
+  if (serialized === undefined) throw new TypeError("Unable to serialize S20 privacy fixture");
+  return serialized;
 };
 
 export const registerAnalyticsPersistenceTests = (harness: Harness): void => {
@@ -181,6 +197,64 @@ export const registerAnalyticsPersistenceTests = (harness: Harness): void => {
       });
     });
 
+    it("isolates tenant value, outcome, latency, and cost aggregates symmetrically", async () => {
+      await harness.seed();
+      const [tenantA, tenantB] = await Promise.all([
+        createTenantAnalyticsStore(harness.runtime()).read({
+          authorization: await authorize(harness, "a"),
+          query: range(),
+        }),
+        createTenantAnalyticsStore(harness.runtime()).read({
+          authorization: await authorize(harness, "b"),
+          query: range(),
+        }),
+      ]);
+      expect(tenantA.funnel).toMatchObject({
+        appointment_requests: 1,
+        attended: 1,
+        confirmed_appointments: 1,
+        conversations: 3,
+        leads: 1,
+      });
+      expect(tenantA.recorded_attributed_revenue.amounts).toEqual([
+        { amount_minor: 250_000, currency: "UZS" },
+      ]);
+      expect(tenantA.latency.platform_meaningful_raw.count).toBe(4);
+      expect(tenantB.funnel).toMatchObject({
+        appointment_requests: 1,
+        attended: 1,
+        confirmed_appointments: 1,
+        conversations: 1,
+        leads: 1,
+      });
+      expect(tenantB.recorded_attributed_revenue.amounts).toEqual([
+        { amount_minor: 900_000, currency: "UZS" },
+      ]);
+      expect(tenantB.latency.platform_meaningful_raw.count).toBe(1);
+
+      const economics = createInternalTenantEconomicsStore(harness.runtime());
+      const [economicsA, economicsB] = await Promise.all([
+        economics.readInternalEconomics({
+          from: new Date("2025-12-31T00:00:00.000Z"),
+          organizationId: organizationId(harness.fixtures.organizationA),
+          to: new Date("2027-01-01T00:00:00.000Z"),
+        }),
+        economics.readInternalEconomics({
+          from: new Date("2025-12-31T00:00:00.000Z"),
+          organizationId: organizationId(harness.fixtures.organizationB),
+          to: new Date("2027-01-01T00:00:00.000Z"),
+        }),
+      ]);
+      expect(economicsA).toMatchObject({
+        costPerConfirmedAppointmentMicros: 5_000n,
+        knownProviderCostMicros: 5_000n,
+      });
+      expect(economicsB).toMatchObject({
+        costPerConfirmedAppointmentMicros: 2_500n,
+        knownProviderCostMicros: 2_500n,
+      });
+    });
+
     it("reports provider attempts and current queue health without customer payloads", async () => {
       await harness.seed();
       const operations = await createInternalTenantEconomicsStore(
@@ -195,7 +269,9 @@ export const registerAnalyticsPersistenceTests = (harness: Harness): void => {
         expect.objectContaining({ calls: 2, repairsOrRetries: 1, successes: 2 }),
       ]);
       expect(operations.queue).toMatchObject({ deadLettered: 1, pending: 1, retried: 1 });
-      expect(JSON.stringify(operations)).not.toMatch(/message|phone|email|ciphertext|payload/iu);
+      expect(serializeForPrivacyAssertion(operations)).not.toMatch(
+        /message|phone|email|ciphertext|payload/iu,
+      );
     });
   });
 };

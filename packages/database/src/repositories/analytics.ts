@@ -15,7 +15,11 @@ import {
 import { summarizeLatencies, type OperationalMetrics } from "@lead-agent/observability";
 
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
-import { executeTenantRead, RepositoryDataIntegrityError } from "./shared.js";
+import {
+  executeTenantRead,
+  executeTenantRootRead,
+  RepositoryDataIntegrityError,
+} from "./shared.js";
 import { requireStaffActor } from "./staff-work.js";
 
 type AnalyticsRow = Record<string, unknown>;
@@ -126,7 +130,7 @@ const readReport = async (
   const from = new Date(input.query.from),
     to = new Date(input.query.to),
     range = [from, to] as const;
-  const organization = await executeTenantRead<AnalyticsRow>(
+  const organization = await executeTenantRootRead<AnalyticsRow>(
     session,
     "select default_time_zone from organizations where id=$1",
     [],
