@@ -18,6 +18,8 @@ import {
 } from "../../packages/security/src/index.js";
 import { describe, expect, it } from "vitest";
 
+import { flipBase64UrlByte } from "./token-tampering.js";
+
 const NOW = new Date("2026-09-12T08:00:00.000Z");
 const USER_VALUE = "0193f1a8-7f65-7c28-a434-a10796c46601";
 const ORGANIZATION_VALUE = "0193f1a8-7f65-7c28-a434-a10796c46602";
@@ -57,7 +59,9 @@ describe("S6.6 browser authentication security primitives", () => {
       purpose: "login",
       returnPath: "/dashboard?tab=leads",
     });
-    expect(() => protector.openTransaction(sealed.slice(0, -1) + "A", NOW)).toThrow(
+    const tampered = flipBase64UrlByte(sealed, 1 + 12);
+    expect(tampered).not.toBe(sealed);
+    expect(() => protector.openTransaction(tampered, NOW)).toThrow(
       BrowserAuthenticationTokenInvalidError,
     );
     expect(() => protector.openTransaction(sealed, new Date(NOW.getTime() + 600_000))).toThrow(

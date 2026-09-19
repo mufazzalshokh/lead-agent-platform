@@ -15,6 +15,7 @@ import {
   normalizeWidgetOrigin,
   widgetOriginMatches,
 } from "../../packages/security/src/index.js";
+import { flipBase64UrlByte } from "./token-tampering.js";
 
 const ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2b" as never;
 const CHANNEL_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2c" as never;
@@ -223,9 +224,15 @@ describe("S19 one-time Widget exchange grants", () => {
       organizationId: ORGANIZATION_ID,
       sessionId: SESSION_ID,
     });
-    expect(() => exchanges.open(grant.slice(0, -1) + "x", TOKEN_NOW)).toThrow(
-      WidgetTokenInvalidError,
-    );
+    const grantParts = grant.split(".");
+    const authenticationTag = grantParts[3];
+    if (grantParts.length !== 4 || authenticationTag === undefined) {
+      throw new TypeError("Expected a versioned Widget exchange grant");
+    }
+    grantParts[3] = flipBase64UrlByte(authenticationTag, 0);
+    const tamperedGrant = grantParts.join(".");
+    expect(tamperedGrant).not.toBe(grant);
+    expect(() => exchanges.open(tamperedGrant, TOKEN_NOW)).toThrow(WidgetTokenInvalidError);
     const wrong = createWidgetExchangeGrantService(
       createWidgetEmbedConfig(
         Buffer.alloc(32, 18).toString("base64url"),
