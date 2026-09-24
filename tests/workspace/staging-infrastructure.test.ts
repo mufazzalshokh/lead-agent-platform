@@ -78,6 +78,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(bootstrap).toContain("/.github/workflows/staging-images.yml@");
     expect(bootstrap).toContain("/.github/workflows/staging-terraform.yml@");
     expect(bootstrap).toContain("assertion.environment == 'staging'");
+    expect(bootstrap).toContain('"cloudbilling.googleapis.com"');
+    expect(bootstrap).toContain('"cloudresourcemanager.googleapis.com"');
+    expect(bootstrap).toContain('"storage.googleapis.com"');
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(workflow).toContain("google-github-actions/auth@");
     expect(workflow).toContain("sha256sum --check s22.tfplan.sha256");

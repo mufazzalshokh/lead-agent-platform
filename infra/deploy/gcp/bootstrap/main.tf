@@ -2,6 +2,8 @@ locals {
   required_services = toset([
     "artifactregistry.googleapis.com",
     "billingbudgets.googleapis.com",
+    "cloudbilling.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
@@ -13,6 +15,7 @@ locals {
     "serviceusage.googleapis.com",
     "sqladmin.googleapis.com",
     "sts.googleapis.com",
+    "storage.googleapis.com",
   ])
 
   deployer_project_roles = toset([
@@ -72,6 +75,8 @@ resource "google_service_account" "deployer" {
   account_id   = "lead-agent-staging-deploy"
   display_name = "Lead Agent staging deployment"
   description  = "GitHub OIDC deployment identity; no service-account key is permitted."
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_project_iam_member" "deployer" {
@@ -92,6 +97,8 @@ resource "google_billing_account_iam_member" "deployer_budget" {
   billing_account_id = var.billing_account_id
   role               = "roles/billing.costsManager"
   member             = "serviceAccount:${google_service_account.deployer.email}"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_iam_workload_identity_pool" "github" {
