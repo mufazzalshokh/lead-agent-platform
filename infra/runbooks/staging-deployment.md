@@ -15,7 +15,25 @@ only and records its project ID. With an authorized owner workstation identity:
    `terraform plan -out=s22-bootstrap.tfplan` in `infra/deploy/gcp/bootstrap`;
 4. stop for the required owner review before the first apply;
 5. after approval, apply that exact plan and migrate the bootstrap state into the new
-   versioned GCS bucket.
+   versioned GCS bucket before any runtime plan.
+
+The initial bootstrap apply necessarily starts with local state because it creates its
+own backend bucket. In the same preserved Cloud Shell working directory that contains
+that local `terraform.tfstate`, update to the reviewed repository commit containing the
+bootstrap `backend "gcs"` block, then run:
+
+```bash
+terraform init \
+  -migrate-state \
+  -backend-config="bucket=$STATE_BUCKET"
+terraform state list
+terraform plan -detailed-exitcode
+```
+
+The operator must answer the state-copy confirmation affirmatively. Exit code `0` from
+the final plan means convergence; exit code `2` means drift and must be reviewed. Never
+run the migration from a fresh directory with no local bootstrap state, and never delete
+the local state until the versioned GCS object has been verified.
 
 Bootstrap creates required APIs, state storage, the deployment service account, and
 GitHub OIDC trust restricted to repository `mufazzalshokh/lead-agent-platform`, ref

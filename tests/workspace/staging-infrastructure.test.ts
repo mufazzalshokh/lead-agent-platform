@@ -70,6 +70,9 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile(".github/workflows/staging-terraform.yml"),
     ]);
+    const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
+    expect(bootstrapVersions).toContain('backend "gcs"');
+    expect(bootstrapVersions).toContain('prefix = "lead-agent-platform/bootstrap"');
     expect(bootstrap).toContain("assertion.repository == '${var.github_repository}'");
     expect(bootstrap).toContain("assertion.ref == 'refs/heads/main'");
     expect(bootstrap).toContain(
