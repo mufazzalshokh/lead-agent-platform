@@ -1,0 +1,150 @@
+name: Build staging images
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact 40-character commit on the dispatched approved branch to package
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-images
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build immutable OCI images
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    steps:
+      - name: Validate requested commit
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$DISPATCH_REF" in
+            refs/heads/main|refs/heads/verify/s22-staging-recovery-capacity) ;;
+            *) echo "Staging images may run only from main or the S22 verification branch." >&2; exit 1 ;;
+          esac
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Check out exact commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Prove commit is preserved on the dispatched branch
+        env:
+          DISPATCH_BRANCH: ${{ github.ref_name }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          git fetch --no-tags origin "$DISPATCH_BRANCH"
+          git merge-base --is-ancestor "$REQUESTED_SHA" "origin/$DISPATCH_BRANCH"
+
+      - name: Authenticate to Google Cloud without a key
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Sign in to Artifact Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: me-central1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push API
+        id: api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: api
+          push: true
+          build-args: GIT_SHA=${{ inputs.commit_sha }}
+          tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/api:${{ inputs.commit_sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=staging-api
+          cache-to: type=gha,mode=max,scope=staging-api
+
+      - name: Build and push Web
+        id: web
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: web
+          push: true
+          build-args: GIT_SHA=${{ inputs.commit_sha }}
+          tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/web:${{ inputs.commit_sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=staging-web
+          cache-to: type=gha,mode=max,scope=staging-web
+
+      - name: Build and push worker
+        id: worker
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: worker
+          push: true
+          build-args: GIT_SHA=${{ inputs.commit_sha }}
+          tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/worker:${{ inputs.commit_sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=staging-worker
+          cache-to: type=gha,mode=max,scope=staging-worker
+
+      - name: Build and push migrator
+        id: migrator
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: migrator
+          push: true
+          build-args: GIT_SHA=${{ inputs.commit_sha }}
+          tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/migrator:${{ inputs.commit_sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=staging-migrator
+          cache-to: type=gha,mode=max,scope=staging-migrator
+
+      - name: Record immutable image manifest
+        env:
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          MIGRATOR_DIGEST: ${{ steps.migrator.outputs.digest }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          WEB_DIGEST: ${{ steps.web.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for digest in "$API_DIGEST" "$WEB_DIGEST" "$WORKER_DIGEST" "$MIGRATOR_DIGEST"; do
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          done
+          {
+            echo "## S22 immutable image manifest"
+            echo
+            echo "Commit: \`$REQUESTED_SHA\`"
+            echo "- API: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/api@$API_DIGEST\`"
+            echo "- Web: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/web@$WEB_DIGEST\`"
+            echo "- Worker: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/worker@$WORKER_DIGEST\`"
+            echo "- Migrator: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/migrator@$MIGRATOR_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"

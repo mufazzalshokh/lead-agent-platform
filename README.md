@@ -10,7 +10,7 @@
 ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Public contracts](https://img.shields.io/badge/Public%20contracts-372-6C5CE7)
-![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S21-00A86B)
+![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S22-00A86B)
 
 **Uzbek · Russian · English** · **Modular monolith** · **Human-controlled booking**
 
@@ -35,9 +35,10 @@ facts, state transitions, and side effects.
 > remains proposal-only. S14–S17 grounded responses, qualification/handoff, appointment
 > requests and private staff operations are accepted. S18 customer confirmation,
 > S19 staff/widget UX, and S20 analytics/observability/cost controls are accepted.
-> S21 privacy/security hardening is in progress. Full customer-perceived latency and
-> production launch readiness remain later work. The reviewed EN/RU/UZ medical
-> safety wording is owner-approved; the final S21 security/CI gate remains in progress.
+> S21 privacy/security hardening is accepted. S22 is implementing an isolated GCP
+> staging environment, managed secrets, recovery drills, and measured capacity evidence.
+> Full customer-perceived latency and production launch readiness remain unproven until
+> S22 execution and the S23 evidence-based go/no-go review.
 
 ## Current progress
 
@@ -64,8 +65,9 @@ facts, state transitions, and side effects.
 | S18 — Customer confirmation         |     ✅      | Bound customer evidence, atomic confirmation/decline and immutable fixed expiry                       |
 | S19 — Product UX                    |     ✅      | Tenant-scoped staff workspace and secure cross-origin Widget experience                               |
 | S20 — Analytics/observability/cost  |     ✅      | Privacy-safe funnel/TTFR metrics, internal cost controls and operational signals                      |
-| S21 — Privacy and security          | In progress | Mixed-use social-thread eligibility, privacy controls and security hardening                          |
-| S22+ — Launch readiness             |     ⏳      | Staging, recovery/capacity rehearsal and production acceptance                                        |
+| S21 — Privacy and security          |     ✅      | Mixed-use social-thread eligibility, privacy controls and security hardening                          |
+| S22 — Staging/recovery/capacity     | In progress | GCP staging IaC, managed secrets, deployment, restore and capacity rehearsal                          |
+| S23 — Production readiness          |     ⏳      | Evidence-based launch acceptance                                                                      |
 
 ## What is already implemented
 
@@ -110,6 +112,9 @@ facts, state transitions, and side effects.
 - [S21 privacy/security](docs/architecture/25-s21-privacy-security.md): pre-entity
   automation eligibility keeps uncertain, personal, and staff-only social threads out
   of business ingestion and AI processing.
+- [S22 staging/recovery/capacity](docs/architecture/26-s22-staging-recovery-capacity.md):
+  reviewable GCP staging IaC, digest-only containers, managed credentials, private
+  PostgreSQL recovery and bounded capacity evidence.
 
 ## Safety model
 
@@ -164,6 +169,7 @@ apps/
   web/             Next.js staff and widget composition shell
   api/             Fastify HTTP composition shell
   worker/          Background-worker composition shell
+  migrator/        One-shot advisory-locked staging migration process
 packages/
   contracts/       Canonical runtime schemas and public event contracts
   domain/          Pure values, state machines, and cross-machine workflows
@@ -233,9 +239,8 @@ Repository-wide engineering rules are defined in [AGENTS.md](AGENTS.md).
 
 ## Product direction
 
-Secure channel intake, grounded responses, qualification, appointment requests and
-staff operations are implemented. S18 adds bound customer confirmation, with stage
-acceptance gated by authoritative CI. The next roadmap slices are
-**S19a — Staff UX** and **S19b — Widget UX**.
+Secure intake through customer confirmation, staff/Widget UX, analytics, privacy and
+security hardening are implemented. S22 now owns staging deployment, real-integration
+proof, recovery and capacity measurement. S23 remains the production go/no-go gate.
 WhatsApp, external calendars, CRM synchronization, billing and additional verticals
 remain behind reviewed integration boundaries.

@@ -1,0 +1,250 @@
+name: Staging Terraform
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Plan is always safe; apply requires the explicit owner approval token
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+      phase:
+        description: Foundation, URL bootstrap, or full application runtime
+        required: true
+        type: choice
+        options:
+          - foundation
+          - bootstrap
+          - migration
+          - full
+      commit_sha:
+        description: Exact 40-character commit preserved on the dispatched approved branch
+        required: true
+        type: string
+      deployment_timestamp:
+        description: UTC RFC3339 deployment timestamp for runtime phases
+        required: false
+        type: string
+      api_image:
+        description: Immutable API image reference by digest
+        required: false
+        type: string
+      web_image:
+        description: Immutable Web image reference by digest
+        required: false
+        type: string
+      worker_image:
+        description: Immutable worker image reference by digest (full phase)
+        required: false
+        type: string
+      migrator_image:
+        description: Immutable migrator image reference by digest (full phase)
+        required: false
+        type: string
+      owner_approval_token:
+        description: Leave empty for plan; apply requires S22-APPLY-APPROVED
+        required: false
+        type: string
+      plan_run_id:
+        description: GitHub run ID containing the exact reviewed plan; required only for apply
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-terraform
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    name: Terraform ${{ inputs.action }} / ${{ inputs.phase }}
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    env:
+      TF_IN_AUTOMATION: true
+      TF_INPUT: false
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_region: me-central1
+      TF_VAR_git_commit_sha: ${{ inputs.commit_sha }}
+      TF_VAR_deployment_timestamp: ${{ inputs.deployment_timestamp }}
+      TF_VAR_api_image: ${{ inputs.api_image }}
+      TF_VAR_web_image: ${{ inputs.web_image }}
+      TF_VAR_worker_image: ${{ inputs.worker_image }}
+      TF_VAR_migrator_image: ${{ inputs.migrator_image }}
+      TF_VAR_api_public_origin: ${{ vars.STAGING_API_ORIGIN }}
+      TF_VAR_web_public_origin: ${{ vars.STAGING_WEB_ORIGIN }}
+      TF_VAR_auth0_issuer: ${{ vars.STAGING_AUTH0_ISSUER }}
+      TF_VAR_auth0_client_id: ${{ vars.STAGING_AUTH0_CLIENT_ID }}
+      TF_VAR_telegram_bot_username: ${{ vars.STAGING_TELEGRAM_BOT_USERNAME }}
+      TF_VAR_instagram_app_id: ${{ vars.STAGING_INSTAGRAM_APP_ID }}
+      TF_VAR_instagram_graph_api_version: ${{ vars.STAGING_INSTAGRAM_GRAPH_API_VERSION }}
+      TF_VAR_billing_account_id: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
+      TF_VAR_monitoring_notification_channel_ids: ${{ vars.STAGING_MONITORING_NOTIFICATION_CHANNEL_IDS_JSON }}
+    steps:
+      - name: Validate request boundary
+        env:
+          ACTION: ${{ inputs.action }}
+          APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
+          DISPATCH_REF: ${{ github.ref }}
+          PHASE: ${{ inputs.phase }}
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$DISPATCH_REF" in
+            refs/heads/main|refs/heads/verify/s22-staging-recovery-capacity) ;;
+            *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
+          esac
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]; then
+            echo "Apply requires the exact owner approval token." >&2
+            exit 1
+          fi
+          if [[ "$ACTION" == "apply" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Apply requires the exact reviewed plan run ID." >&2
+            exit 1
+          fi
+          if [[ "$PHASE" == "foundation" ]]; then
+            echo 'TF_VAR_deploy_runtime=false' >> "$GITHUB_ENV"
+            echo 'TF_VAR_bootstrap_runtime=false' >> "$GITHUB_ENV"
+            echo 'TF_VAR_prepare_migration=false' >> "$GITHUB_ENV"
+          elif [[ "$PHASE" == "bootstrap" ]]; then
+            echo 'TF_VAR_deploy_runtime=true' >> "$GITHUB_ENV"
+            echo 'TF_VAR_bootstrap_runtime=true' >> "$GITHUB_ENV"
+            echo 'TF_VAR_prepare_migration=false' >> "$GITHUB_ENV"
+          elif [[ "$PHASE" == "migration" ]]; then
+            echo 'TF_VAR_deploy_runtime=true' >> "$GITHUB_ENV"
+            echo 'TF_VAR_bootstrap_runtime=true' >> "$GITHUB_ENV"
+            echo 'TF_VAR_prepare_migration=true' >> "$GITHUB_ENV"
+          else
+            echo 'TF_VAR_deploy_runtime=true' >> "$GITHUB_ENV"
+            echo 'TF_VAR_bootstrap_runtime=false' >> "$GITHUB_ENV"
+            echo 'TF_VAR_prepare_migration=true' >> "$GITHUB_ENV"
+          fi
+
+      - name: Check out exact commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Prove commit is preserved on the dispatched branch
+        env:
+          DISPATCH_BRANCH: ${{ github.ref_name }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          git fetch --no-tags origin "$DISPATCH_BRANCH"
+          git merge-base --is-ancestor "$REQUESTED_SHA" "origin/$DISPATCH_BRANCH"
+
+      - name: Authenticate to Google Cloud without a key
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.14.7
+
+      - name: Initialize Terraform
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
+
+      - name: Validate Terraform
+        working-directory: infra/deploy/gcp/staging
+        run: terraform validate
+
+      - name: Create reviewed plan
+        if: inputs.action == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform plan -lock-timeout=5m -out=s22.tfplan
+          sha256sum s22.tfplan > s22.tfplan.sha256
+
+      - name: Upload exact reviewed plan
+        if: inputs.action == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-terraform-plan-${{ inputs.phase }}-${{ inputs.commit_sha }}
+          path: |
+            infra/deploy/gcp/staging/s22.tfplan
+            infra/deploy/gcp/staging/s22.tfplan.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Download exact owner-reviewed plan
+        if: inputs.action == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+        shell: bash
+        run: >-
+          gh run download "$PLAN_RUN_ID"
+          --repo "$GITHUB_REPOSITORY"
+          --name "s22-terraform-plan-${{ inputs.phase }}-${{ inputs.commit_sha }}"
+          --dir infra/deploy/gcp/staging
+
+      - name: Verify reviewed plan integrity
+        if: inputs.action == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        run: sha256sum --check s22.tfplan.sha256
+
+      - name: Apply exact reviewed plan
+        if: inputs.action == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
+
+      - name: Set up Google Cloud CLI
+        if: inputs.action == 'apply' && inputs.phase == 'migration'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Execute one-shot migrator
+        if: inputs.action == 'apply' && inputs.phase == 'migration'
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+        run: >-
+          gcloud run jobs execute lead-agent-staging-migrator
+          --project="${{ vars.GCP_PROJECT_ID }}"
+          --region=me-central1
+          --wait
+
+      - name: Record deployment provenance
+        if: inputs.action == 'apply'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
+          MIGRATOR_IMAGE: ${{ inputs.migrator_image }}
+          PHASE: ${{ inputs.phase }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          WEB_IMAGE: ${{ inputs.web_image }}
+          WORKER_IMAGE: ${{ inputs.worker_image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## S22 staging deployment"
+            echo "- Environment: staging"
+            echo "- Region: me-central1"
+            echo "- Phase: $PHASE"
+            echo "- Commit: \`$REQUESTED_SHA\`"
+            echo "- Migration head: \`0029_s21_thread_automation_controls\`"
+            echo "- Timestamp: \`$DEPLOYED_AT\`"
+            [[ -z "$API_IMAGE" ]] || echo "- API: \`$API_IMAGE\`"
+            [[ -z "$WEB_IMAGE" ]] || echo "- Web: \`$WEB_IMAGE\`"
+            [[ -z "$WORKER_IMAGE" ]] || echo "- Worker: \`$WORKER_IMAGE\`"
+            [[ -z "$MIGRATOR_IMAGE" ]] || echo "- Migrator: \`$MIGRATOR_IMAGE\`"
+          } >> "$GITHUB_STEP_SUMMARY"

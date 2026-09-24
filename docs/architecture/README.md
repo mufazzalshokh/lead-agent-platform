@@ -36,7 +36,8 @@ Later owner-approved freezes include
 [S18 customer confirmation and Instagram/expiry compatibility](22-s18-customer-confirmation.md),
 [S19 product UX](23-s19-product-ux.md),
 [S20 analytics/observability/cost](24-s20-analytics-observability-cost.md), and
-[S21 privacy/security](25-s21-privacy-security.md).
+[S21 privacy/security](25-s21-privacy-security.md), and
+[S22 staging/recovery/capacity](26-s22-staging-recovery-capacity.md).
 
 ## Source-of-truth precedence
 

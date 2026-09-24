@@ -34,3 +34,13 @@ Thumbs.db
 
 # Hosting-specific local state
 .vercel/
+
+# Terraform local state and owner-specific inputs
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
