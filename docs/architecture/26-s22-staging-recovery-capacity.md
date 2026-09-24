@@ -19,16 +19,19 @@ Cloud Run API/worker/migrator
   -> private-IP Cloud SQL PostgreSQL 17
 
 Cloud Run worker pool
-  -> exactly one continuously running instance
+  -> zero instances while dormant; exactly one during approved test windows
 
 Cloud Run migrator job
   -> one task, zero retries, advisory-locked migrations, then exit
 ```
 
-The VPC is isolated and Cloud SQL has no public IPv4 address. The initial database
-is Enterprise, zonal, `db-custom-1-3840`, 20 GiB SSD with bounded autoresize,
-automated backups, PITR, and seven-day log/backup retention. Staging deliberately
-does not imitate production HA.
+The VPC is isolated and Cloud SQL has no public IPv4 address. The dormant/functional
+database profile is Enterprise, zonal, shared-core `db-f1-micro`, 10 GiB SSD with
+autoresize bounded at 20 GiB, automated backups, PITR, and seven-day log/backup
+retention. The instance is stopped while staging is inactive. Capacity exercises
+temporarily use `db-custom-1-3840`, then return to the stopped shared-core profile.
+Staging deliberately does not imitate production HA; shared-core is explicitly a
+test/development profile and provides no Cloud SQL SLA.
 
 ## Trust and secrets
 
@@ -79,20 +82,26 @@ Pricing was checked on 2026-09-24 against the official
 [Cloud Run](https://cloud.google.com/run/pricing),
 [Artifact Registry](https://cloud.google.com/artifact-registry/pricing), and
 [Secret Manager](https://cloud.google.com/secret-manager/pricing) pages. Using 730
-hours/month, the fixed baseline is approximately:
+hours/month, the cost model is approximately:
 
-- Cloud SQL compute (`1 vCPU + 3.75 GiB`): USD 49.31;
-- Cloud SQL 20 GiB SSD plus up to 20 GiB used backup storage: USD 5.00;
-- one continuously running `1 vCPU + 1 GiB` Cloud Run worker pool: USD 32.80 before
-  any applicable free-tier credit;
+- stopped Cloud SQL: no instance charge; 10 GiB SSD plus backup/PITR storage is
+  expected to remain about USD 3.40-5.10 depending on retained/log volume;
+- running `db-f1-micro`: USD 0.0105/hour, or USD 7.67 for a continuously running
+  730-hour month, plus storage/backup/PITR;
+- temporary `db-custom-1-3840`: about USD 0.06755/hour for compute and memory;
+- one active `1 vCPU + 512 MiB` Cloud Run worker: conservatively about USD
+  0.0427/hour using the published worker-pool resource rates, before free-tier credit;
 - initial secret versions and modest Artifact Registry/state storage: about USD 2.
 
-API/Web scale to zero, the migrator is one-shot, and logging, requests, operations,
-backup growth, and egress are usage-dependent. The planned normal monthly envelope is
-therefore approximately USD 90-100 before taxes and paid Gemini calls. This is an
-estimate, not a billing guarantee. Terraform creates both the USD 100 target budget
-and the USD 150 hard-ceiling budget; actual billing must be watched during S22 and
-nonessential staging resources stopped before the ceiling is approached.
+API/Web scale to zero, default to one maximum instance each, and the migrator is
+one-shot. The estimated list-price envelopes are USD 5-8/month mostly dormant, USD
+12-20/month for up to 80 normal test hours, about USD 7-12 for a representative
+40-hour S22 test week, and under USD 2 incremental for an eight-hour temporary load
+profile. A bounded heavy month of 160 normal hours plus 16 load hours is estimated at
+USD 20-25. An accidentally continuous normal worker/database month approaches USD
+45 before meaningful API/Web traffic, so the OFF procedure and USD 25/USD 50 budget
+alerts are mandatory. Promotional credits are not included. These are estimates, not
+billing guarantees; logging, requests, backup growth, and egress remain usage-dependent.
 
 ## Explicit non-goals and pending evidence
 

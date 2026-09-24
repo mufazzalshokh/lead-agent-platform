@@ -23,6 +23,18 @@ output "cloud_sql_private_ip" {
   value       = google_sql_database_instance.staging.private_ip_address
 }
 
+output "cost_control_profile" {
+  description = "Non-secret lifecycle/capacity settings active in this exact plan."
+  value = {
+    api_max_instances     = var.api_max_instance_count
+    cloud_sql_policy      = var.cloud_sql_activation_policy
+    cloud_sql_tier        = var.cloud_sql_tier
+    web_max_instances     = var.web_max_instance_count
+    worker_instance_count = var.worker_instance_count
+    worker_memory         = var.worker_memory
+  }
+}
+
 output "migrator_job_name" {
   description = "One-shot migration job name after full runtime deployment."
   value       = var.prepare_migration ? google_cloud_run_v2_job.migrator[0].name : null

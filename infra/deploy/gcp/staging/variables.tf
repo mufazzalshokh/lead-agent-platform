@@ -58,6 +58,72 @@ variable "prepare_migration" {
   }
 }
 
+variable "cloud_sql_tier" {
+  description = "Cost-bounded Cloud SQL tier. Shared-core is the dormant/functional default; dedicated-core is temporary for capacity drills."
+  type        = string
+  default     = "db-f1-micro"
+
+  validation {
+    condition     = contains(["db-f1-micro", "db-custom-1-3840"], var.cloud_sql_tier)
+    error_message = "S22 permits only db-f1-micro or the temporary db-custom-1-3840 capacity profile."
+  }
+}
+
+variable "cloud_sql_activation_policy" {
+  description = "ALWAYS during approved test windows; NEVER while staging is dormant."
+  type        = string
+  default     = "NEVER"
+
+  validation {
+    condition     = contains(["ALWAYS", "NEVER"], var.cloud_sql_activation_policy)
+    error_message = "cloud_sql_activation_policy must be ALWAYS or NEVER."
+  }
+}
+
+variable "api_max_instance_count" {
+  description = "Bounded API scale ceiling; normally one and temporarily three for capacity measurement."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([1, 3], var.api_max_instance_count)
+    error_message = "api_max_instance_count must be 1 normally or 3 for the approved load profile."
+  }
+}
+
+variable "web_max_instance_count" {
+  description = "Bounded Web scale ceiling; normally one and temporarily two for capacity measurement."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([1, 2], var.web_max_instance_count)
+    error_message = "web_max_instance_count must be 1 normally or 2 for the approved load profile."
+  }
+}
+
+variable "worker_instance_count" {
+  description = "Worker pool is off while dormant and exactly one during approved test windows."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = contains([0, 1], var.worker_instance_count)
+    error_message = "worker_instance_count must be zero or one."
+  }
+}
+
+variable "worker_memory" {
+  description = "Worker memory is 512 MiB normally and may be raised to 1 GiB for capacity measurement."
+  type        = string
+  default     = "512Mi"
+
+  validation {
+    condition     = contains(["512Mi", "1Gi"], var.worker_memory)
+    error_message = "worker_memory must be 512Mi or 1Gi."
+  }
+}
+
 variable "git_commit_sha" {
   description = "Exact source commit for deployment provenance. Required for runtime plans."
   type        = string

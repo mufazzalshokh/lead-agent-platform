@@ -8,6 +8,12 @@ monitoring_notification_channel_ids = [
 deploy_runtime    = false
 bootstrap_runtime = false
 prepare_migration = false
+cloud_sql_tier              = "db-f1-micro"
+cloud_sql_activation_policy = "NEVER"
+api_max_instance_count      = 1
+web_max_instance_count      = 1
+worker_instance_count       = 0
+worker_memory               = "512Mi"
 
 # Runtime values are supplied only after foundation, immutable image build, and
 # the health-only origin bootstrap described in infra/runbooks/staging-deployment.md.

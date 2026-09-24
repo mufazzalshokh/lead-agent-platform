@@ -11,7 +11,7 @@ on:
           - plan
           - apply
       phase:
-        description: Foundation, URL bootstrap, or full application runtime
+        description: Reviewed lifecycle/cost profile
         required: true
         type: choice
         options:
@@ -19,6 +19,8 @@ on:
           - bootstrap
           - migration
           - full
+          - load
+          - dormant
       commit_sha:
         description: Exact 40-character commit preserved on the dispatched approved branch
         required: true
@@ -40,7 +42,7 @@ on:
         required: false
         type: string
       migrator_image:
-        description: Immutable migrator image reference by digest (full phase)
+        description: Immutable migrator image reference by digest (migration and later phases)
         required: false
         type: string
       owner_approval_token:
@@ -112,23 +114,61 @@ jobs:
             echo "Apply requires the exact reviewed plan run ID." >&2
             exit 1
           fi
-          if [[ "$PHASE" == "foundation" ]]; then
-            echo 'TF_VAR_deploy_runtime=false' >> "$GITHUB_ENV"
-            echo 'TF_VAR_bootstrap_runtime=false' >> "$GITHUB_ENV"
-            echo 'TF_VAR_prepare_migration=false' >> "$GITHUB_ENV"
-          elif [[ "$PHASE" == "bootstrap" ]]; then
-            echo 'TF_VAR_deploy_runtime=true' >> "$GITHUB_ENV"
-            echo 'TF_VAR_bootstrap_runtime=true' >> "$GITHUB_ENV"
-            echo 'TF_VAR_prepare_migration=false' >> "$GITHUB_ENV"
-          elif [[ "$PHASE" == "migration" ]]; then
-            echo 'TF_VAR_deploy_runtime=true' >> "$GITHUB_ENV"
-            echo 'TF_VAR_bootstrap_runtime=true' >> "$GITHUB_ENV"
-            echo 'TF_VAR_prepare_migration=true' >> "$GITHUB_ENV"
-          else
-            echo 'TF_VAR_deploy_runtime=true' >> "$GITHUB_ENV"
-            echo 'TF_VAR_bootstrap_runtime=false' >> "$GITHUB_ENV"
-            echo 'TF_VAR_prepare_migration=true' >> "$GITHUB_ENV"
-          fi
+          DEPLOY_RUNTIME=false
+          BOOTSTRAP_RUNTIME=false
+          PREPARE_MIGRATION=false
+          SQL_POLICY=NEVER
+          SQL_TIER=db-f1-micro
+          API_MAX=1
+          WEB_MAX=1
+          WORKER_COUNT=0
+          WORKER_MEMORY=512Mi
+
+          case "$PHASE" in
+            foundation) ;;
+            bootstrap)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              ;;
+            migration)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
+            full)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
+            load)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              SQL_TIER=db-custom-1-3840
+              API_MAX=3
+              WEB_MAX=2
+              WORKER_COUNT=1
+              WORKER_MEMORY=1Gi
+              ;;
+            dormant)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              ;;
+          esac
+
+          {
+            echo "TF_VAR_deploy_runtime=$DEPLOY_RUNTIME"
+            echo "TF_VAR_bootstrap_runtime=$BOOTSTRAP_RUNTIME"
+            echo "TF_VAR_prepare_migration=$PREPARE_MIGRATION"
+            echo "TF_VAR_cloud_sql_activation_policy=$SQL_POLICY"
+            echo "TF_VAR_cloud_sql_tier=$SQL_TIER"
+            echo "TF_VAR_api_max_instance_count=$API_MAX"
+            echo "TF_VAR_web_max_instance_count=$WEB_MAX"
+            echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
+            echo "TF_VAR_worker_memory=$WORKER_MEMORY"
+          } >> "$GITHUB_ENV"
 
       - name: Check out exact commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

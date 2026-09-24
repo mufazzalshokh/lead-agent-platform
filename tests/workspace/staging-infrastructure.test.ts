@@ -35,20 +35,34 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("keeps the Terraform staging foundation private, bounded and in Doha", async () => {
-    const [foundation, runtime, variables] = await Promise.all([
+    const [foundation, monitoring, runtime, variables, workflow] = await Promise.all([
       repositoryFile("infra/deploy/gcp/staging/foundation.tf"),
+      repositoryFile("infra/deploy/gcp/staging/monitoring.tf"),
       repositoryFile("infra/deploy/gcp/staging/runtime.tf"),
       repositoryFile("infra/deploy/gcp/staging/variables.tf"),
+      repositoryFile(".github/workflows/staging-terraform.yml"),
     ]);
     expect(variables).toContain('default     = "me-central1"');
+    expect(variables).toContain('default     = "db-f1-micro"');
+    expect(variables).toContain('default     = "NEVER"');
+    expect(variables).toMatch(/variable "worker_instance_count"[\s\S]*?default\s+= 0/u);
     expect(foundation).toContain('database_version    = "POSTGRES_17"');
+    expect(foundation).toContain("tier                        = var.cloud_sql_tier");
+    expect(foundation).toContain("activation_policy           = var.cloud_sql_activation_policy");
+    expect(foundation).toMatch(/disk_size\s+= 10/u);
     expect(foundation).toContain("ipv4_enabled");
     expect(foundation).toMatch(/ipv4_enabled\s+= false/u);
     expect(foundation).toContain("point_in_time_recovery_enabled = true");
     expect(foundation).toContain("transaction_log_retention_days = 7");
-    expect(runtime).toContain("manual_instance_count = 1");
+    expect(runtime).toContain("manual_instance_count = var.worker_instance_count");
     expect(runtime).toContain('egress = "PRIVATE_RANGES_ONLY"');
     expect(runtime).not.toContain(":latest");
+    expect(monitoring).toContain('display_name    = "Lead Agent S22 staging USD 25 target"');
+    expect(monitoring).toContain('display_name    = "Lead Agent S22 staging USD 50 hard ceiling"');
+    expect(workflow).toContain("SQL_TIER=db-custom-1-3840");
+    expect(workflow).toContain("WORKER_COUNT=0");
+    expect(workflow).toContain("WORKER_COUNT=1");
+    expect(workflow).toContain("dormant)");
   });
 
   it("requires reviewed-plan integrity and GitHub OIDC instead of service-account keys", async () => {

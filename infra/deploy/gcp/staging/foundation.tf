@@ -70,13 +70,14 @@ resource "google_sql_database_instance" "staging" {
   deletion_protection = true
 
   settings {
-    tier                        = "db-custom-1-3840"
+    tier                        = var.cloud_sql_tier
     edition                     = "ENTERPRISE"
     availability_type           = "ZONAL"
+    activation_policy           = var.cloud_sql_activation_policy
     disk_type                   = "PD_SSD"
-    disk_size                   = 20
+    disk_size                   = 10
     disk_autoresize             = true
-    disk_autoresize_limit       = 50
+    disk_autoresize_limit       = 20
     deletion_protection_enabled = true
     user_labels                 = local.common_labels
 
@@ -114,6 +115,8 @@ resource "google_sql_database_instance" "staging" {
 }
 
 resource "google_sql_database" "application" {
+  count = var.prepare_migration ? 1 : 0
+
   name      = "lead_agent_staging"
   project   = var.project_id
   instance  = google_sql_database_instance.staging.name

@@ -105,7 +105,7 @@ resource "google_cloud_run_v2_service" "api" {
 
     scaling {
       min_instance_count = 0
-      max_instance_count = 3
+      max_instance_count = var.api_max_instance_count
     }
 
     containers {
@@ -212,7 +212,7 @@ resource "google_cloud_run_v2_service" "web" {
 
     scaling {
       min_instance_count = 0
-      max_instance_count = 2
+      max_instance_count = var.web_max_instance_count
     }
 
     containers {
@@ -286,7 +286,7 @@ resource "google_cloud_run_v2_worker_pool" "worker" {
 
   scaling {
     scaling_mode          = "MANUAL"
-    manual_instance_count = 1
+    manual_instance_count = var.worker_instance_count
   }
 
   template {
@@ -298,7 +298,7 @@ resource "google_cloud_run_v2_worker_pool" "worker" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "1Gi"
+          memory = var.worker_memory
         }
       }
 
@@ -343,6 +343,13 @@ resource "google_cloud_run_v2_job" "migrator" {
   location            = var.region
   deletion_protection = true
   labels              = local.deployment_labels
+
+  lifecycle {
+    precondition {
+      condition     = var.cloud_sql_activation_policy == "ALWAYS"
+      error_message = "The one-shot migrator requires an active Cloud SQL instance."
+    }
+  }
 
   template {
     task_count  = 1

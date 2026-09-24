@@ -52,7 +52,7 @@ resource "google_monitoring_alert_policy" "database_cpu" {
 
 resource "google_billing_budget" "staging" {
   billing_account = var.billing_account_id
-  display_name    = "Lead Agent S22 staging USD 100 target"
+  display_name    = "Lead Agent S22 staging USD 25 target"
 
   budget_filter {
     projects = ["projects/${data.google_project.staging.number}"]
@@ -61,7 +61,7 @@ resource "google_billing_budget" "staging" {
   amount {
     specified_amount {
       currency_code = "USD"
-      units         = "100"
+      units         = "25"
     }
   }
 
@@ -79,7 +79,7 @@ resource "google_billing_budget" "staging" {
 
 resource "google_billing_budget" "staging_hard_ceiling" {
   billing_account = var.billing_account_id
-  display_name    = "Lead Agent S22 staging USD 150 hard ceiling"
+  display_name    = "Lead Agent S22 staging USD 50 hard ceiling"
 
   budget_filter {
     projects = ["projects/${data.google_project.staging.number}"]
@@ -88,7 +88,7 @@ resource "google_billing_budget" "staging_hard_ceiling" {
   amount {
     specified_amount {
       currency_code = "USD"
-      units         = "150"
+      units         = "50"
     }
   }
 

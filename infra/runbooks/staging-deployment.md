@@ -50,6 +50,11 @@ exact verified commit. Review the plan, monthly estimate, IAM, network, SQL, bac
 and destructive operations. The plan must create only the approved resources and must
 show no destroy/replace operation.
 
+The staging foundation creates the PostgreSQL instance in stopped `db-f1-micro` mode,
+with 10 GiB SSD and no application database yet. It creates no Cloud Run workload.
+The application database is created only by the reviewed `migration` phase after the
+database has been started.
+
 After the explicit owner checkpoint, dispatch `action=apply` with the same phase,
 commit, the reviewed plan run ID, and approval token. The workflow downloads and
 checksum-verifies that binary plan; it does not generate a replacement plan.
@@ -97,11 +102,40 @@ SHA, migrator digest, migration count `30`, and head
 and the frozen FORCE-RLS manifest before proceeding.
 
 Plan/review/apply the `full` phase only after migration proof. This activates the real
-API/Web images and one worker-pool instance. Validate `/health` without exposing a
+API/Web images, starts shared-core PostgreSQL, and activates one 512 MiB worker-pool
+instance. Validate `/health` without exposing a
 configuration dump; then execute the synthetic tenant and provider checklist in the S22
 architecture brief.
 
-## 7. Rollback
+## 7. Cost-control lifecycle
+
+Every lifecycle change remains plan-first. Substitute the exact preserved commit,
+timestamp, and four digest references; no value below is a secret.
+
+**STAGING ON (normal integration window):** dispatch `Staging Terraform` with
+`action=plan`, `phase=full`, and the exact current digest/provenance inputs. Review the
+plan, then use the separately approved exact-plan apply flow. This starts shared-core
+PostgreSQL, keeps API/Web at min zero and max one, and sets the worker to exactly one.
+
+**TEMPORARY LOAD PROFILE:** use `phase=load`. It temporarily selects
+`db-custom-1-3840`, API max three, Web max two, one 1 GiB worker, and no minimum service
+instances. Time-box the exercise, observe the stop conditions, then immediately plan
+and apply `phase=dormant`.
+
+**STAGING OFF:** first disable/pause external synthetic webhook traffic, confirm no
+required migration or queued business work is running, then plan/review/apply
+`phase=dormant` with the same image/provenance inputs. It sets the worker to zero,
+leaves API/Web at min zero/max one, returns SQL to `db-f1-micro`, and sets SQL activation
+policy to `NEVER`. Data, bounded SSD, retained backups/PITR logs, Terraform state,
+Secret Manager resources, image digests, and Cloud Run configuration remain. Because
+there are no writes while stopped, no new PITR log is expected; verify a successful
+backup before entering a long dormant period.
+
+Cloud SQL documents `ALWAYS`/`NEVER` as its start/stop control. Do not use ad hoc
+console changes: they create Terraform drift. If an emergency console stop is required,
+record it and reconcile with an exact reviewed dormant plan before the next test window.
+
+## 8. Rollback
 
 For an application defect, stop new promotion, identify the last known-good digest and
 its database compatibility, plan the exact Cloud Run image reversion, obtain approval,
