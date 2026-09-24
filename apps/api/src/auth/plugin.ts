@@ -67,7 +67,11 @@ import {
 } from "../conversations/plugin.js";
 import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
 import { registerStaffOperations, type StaffOperationsDependencies } from "../staff/plugin.js";
-import { AnalyticsApplicationError, StaffOperationError } from "@lead-agent/application";
+import {
+  AnalyticsApplicationError,
+  StaffOperationError,
+  ThreadAutomationControlError,
+} from "@lead-agent/application";
 import { registerStaffAnalytics, type StaffAnalyticsDependencies } from "../analytics/plugin.js";
 import {
   registerStaffTelegramManagement,
@@ -352,6 +356,16 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
             : error.code === "business_rule_failed"
               ? 422
               : 409;
+  } else if (error instanceof ThreadAutomationControlError) {
+    code = error.code;
+    status =
+      error.code === "permission_denied"
+        ? 403
+        : error.code === "resource_not_found"
+          ? 404
+          : error.code === "validation_failed"
+            ? 400
+            : 409;
   } else if (error instanceof AnalyticsApplicationError) {
     code = error.code;
     status = error.code === "permission_denied" ? 403 : 400;

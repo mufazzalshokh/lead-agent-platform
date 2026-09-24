@@ -47,6 +47,15 @@ export const S20_WIDGET_SCHEMA_NAMES = [
   "WidgetTelemetryResultSchema",
 ] as const;
 
+export const S21_THREAD_AUTOMATION_SCHEMA_NAMES = [
+  "ThreadAutomationEligibilityStateSchema",
+  "ThreadAutomationDecisionSourceSchema",
+  "ThreadAutomationControlSchema",
+  "ThreadAutomationControlParamsSchema",
+  "ThreadAutomationTransitionInputSchema",
+  "ThreadAutomationControlResponseSchema",
+] as const;
+
 export const PUBLIC_STATIC_SCHEMA_NAMES = {
   ai: [
     "AgentDecisionLanguageSchema",
@@ -70,6 +79,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     ...S17_STAFF_SCHEMA_NAMES,
     ...S19_STAFF_SCHEMA_NAMES,
     ...S20_ANALYTICS_SCHEMA_NAMES,
+    ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
     "ApiErrorCodeSchema",
     "ValidationIssueSchema",
     "ProblemSchema",

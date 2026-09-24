@@ -1161,13 +1161,13 @@ export const registerFaqPolicyConfigurationTests = (harness: Harness): void => {
       });
     });
 
-    it("keeps 51 tables, FORCE RLS, and the exact S7.4 integrity triggers", async () => {
+    it("keeps 52 tables, FORCE RLS, and the exact S7.4 integrity triggers", async () => {
       const pool = harness.privilegedPool();
       const tables = await pool.query<{ table_name: string }>(
         `select table_name from information_schema.tables
           where table_schema = 'public' and table_type = 'BASE TABLE'`,
       );
-      expect(tables.rows).toHaveLength(51);
+      expect(tables.rows).toHaveLength(52);
       const security = await pool.query<{
         relname: string;
         relforcerowsecurity: boolean;

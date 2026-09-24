@@ -20,7 +20,7 @@ const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
 const S8_MIGRATION = "0021_s8_pgboss_infrastructure.sql";
 
 const isUnknownArray = (candidate: unknown): candidate is unknown[] => Array.isArray(candidate);
-const BUSINESS_TABLE_COUNT = 51;
+const BUSINESS_TABLE_COUNT = 52;
 const EXPECTED_BASE_TABLES = [
   "bam",
   "job",
@@ -260,7 +260,7 @@ describe("S8.1 PostgreSQL 17 pg-boss infrastructure", { timeout: 30_000 }, () =>
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows[0]?.count).toBe(29);
+    expect(migrations.rows[0]?.count).toBe(30);
     const version = await database().query<{ version: number }>(
       "select version from pgboss.version",
     );

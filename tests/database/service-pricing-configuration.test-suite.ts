@@ -1280,13 +1280,13 @@ export const registerServicePricingConfigurationTests = (harness: Harness): void
       ).rejects.toMatchObject({ code: "23514" });
     });
 
-    it("keeps the 51-table manifest and FORCE RLS protections unchanged", async () => {
+    it("keeps the 52-table manifest and FORCE RLS protections unchanged", async () => {
       const pool = harness.privilegedPool();
       const tables = await pool.query<{ table_name: string }>(
         `select table_name from information_schema.tables
           where table_schema = 'public' and table_type = 'BASE TABLE'`,
       );
-      expect(tables.rows).toHaveLength(51);
+      expect(tables.rows).toHaveLength(52);
       const security = await pool.query<{
         rel: string;
         relforcerowsecurity: boolean;

@@ -44,7 +44,7 @@ import { createWorkerRuntime, type WorkerRuntime } from "../../apps/worker/src/w
 
 const QUEUE_RUNTIME_ROLE = "lead_agent_queue_runtime";
 const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
-const BUSINESS_TABLE_COUNT = 51;
+const BUSINESS_TABLE_COUNT = 52;
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-000000000001";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-000000000002";
 const ACTIVE_ORGANIZATION_CREATED = createActiveEventRoutes([
@@ -392,7 +392,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_000 }, () => {
-  it("bootstraps current head twice without changing the 51-table business manifest", async () => {
+  it("bootstraps current head twice with the approved 52-table business manifest", async () => {
     expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     const tables = await database().query<{ count: number }>(
       `select count(*)::integer as count
@@ -403,7 +403,7 @@ describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 29 }]);
+    expect(migrations.rows).toEqual([{ count: 30 }]);
   });
 
   it("observes pg-boss 12.31.0 returning null for an exact duplicate queue and ID", async () => {

@@ -9,8 +9,8 @@
 ![pnpm 11](https://img.shields.io/badge/pnpm-11-F69220?logo=pnpm&logoColor=white)
 ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![Public contracts](https://img.shields.io/badge/Public%20contracts-366-6C5CE7)
-![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S18-00A86B)
+![Public contracts](https://img.shields.io/badge/Public%20contracts-372-6C5CE7)
+![Current roadmap checkpoint](https://img.shields.io/badge/Roadmap-S21-00A86B)
 
 **Uzbek · Russian · English** · **Modular monolith** · **Human-controlled booking**
 
@@ -33,10 +33,11 @@ facts, state transitions, and side effects.
 > widget, and Telegram/Instagram Business DM integrations are accepted. S13 selected
 > paid-tier Gemini 3.8 Flash after automated and native Uzbek evaluation; the model
 > remains proposal-only. S14–S17 grounded responses, qualification/handoff, appointment
-> requests and private staff operations are accepted. S18 customer confirmation is
-> implemented and CI-gated. Staff/widget UX, full customer-perceived latency and
-> production launch readiness remain later work. Medical/emergency response readiness
-> remains blocked pending reviewed EN/RU/UZ safety wording in S21b.
+> requests and private staff operations are accepted. S18 customer confirmation,
+> S19 staff/widget UX, and S20 analytics/observability/cost controls are accepted.
+> S21 privacy/security hardening is in progress. Full customer-perceived latency and
+> production launch readiness remain later work. The reviewed EN/RU/UZ medical
+> safety wording is owner-approved; the final S21 security/CI gate remains in progress.
 
 ## Current progress
 
@@ -60,19 +61,22 @@ facts, state transitions, and side effects.
 | S15 — Qualification and handoff     |     ✅      | Deterministic qualification and safe human escalation                                                 |
 | S16 — Appointment request           |     ✅      | Trusted fixed submission profile, atomic requests and provenance                                      |
 | S17 — Staff private operations      |     ✅      | Scoped inbox, handoff operations and staff acceptance/rejection                                       |
-| S18 — Customer confirmation         | Implemented | Bound customer evidence, atomic confirmation/decline and immutable fixed expiry                       |
-| S19+ — UX and launch readiness      |     ⏳      | Staff/widget UX, analytics, security hardening and production acceptance                              |
+| S18 — Customer confirmation         |     ✅      | Bound customer evidence, atomic confirmation/decline and immutable fixed expiry                       |
+| S19 — Product UX                    |     ✅      | Tenant-scoped staff workspace and secure cross-origin Widget experience                               |
+| S20 — Analytics/observability/cost  |     ✅      | Privacy-safe funnel/TTFR metrics, internal cost controls and operational signals                      |
+| S21 — Privacy and security          | In progress | Mixed-use social-thread eligibility, privacy controls and security hardening                          |
+| S22+ — Launch readiness             |     ⏳      | Staging, recovery/capacity rehearsal and production acceptance                                        |
 
 ## What is already implemented
 
-- 366 versioned runtime contracts with compatibility snapshots and drift checks,
+- 372 versioned runtime contracts with compatibility snapshots and drift checks,
   including 63 semantic events represented by 66 schema variants.
 - Pure TypeScript domain state machines with deterministic transitions and typed errors.
 - PostgreSQL 17 and Drizzle schema covering tenant configuration, contacts, leads,
   conversations, appointments, handoffs, notifications, reliability, audit, privacy,
   analytics, and AI provenance.
-- Fifty-one production business tables and 29 explicit migrations (`0000` through
-  `0028`); S18 adds only source/version CHECK compatibility, not new tables.
+- Fifty-two production business tables and 30 explicit migrations (`0000` through
+  `0029`); S21 adds one FORCE-RLS thread-automation eligibility table.
 - FORCE RLS across the tenant table manifest with a non-owner, `NOBYPASSRLS` runtime
   role and transaction-local tenant context.
 - Immutable tenant database sessions, tenant-qualified repositories, active-record
@@ -99,6 +103,13 @@ facts, state transitions, and side effects.
 - [S18 customer confirmation](docs/architecture/22-s18-customer-confirmation.md):
   bound Widget/Telegram/Instagram evidence, atomic state/history/audit/Outbox and
   fixed expiry at the earlier of issuance + 24 hours or the accepted start.
+- [S19 product UX](docs/architecture/23-s19-product-ux.md) and
+  [S20 analytics/observability/cost](docs/architecture/24-s20-analytics-observability-cost.md):
+  private staff operations, secure Widget presentation, and privacy-safe business
+  value/operational metrics.
+- [S21 privacy/security](docs/architecture/25-s21-privacy-security.md): pre-entity
+  automation eligibility keeps uncertain, personal, and staff-only social threads out
+  of business ingestion and AI processing.
 
 ## Safety model
 
@@ -120,8 +131,10 @@ business knowledge text as untrusted data.
 ```mermaid
 flowchart LR
     A[Inbound message] --> B[Resolve channel and tenant]
-    B --> C[Deduplicate and load state]
-    C --> D[Load authoritative facts]
+    B --> C{Business eligible?}
+    C -- No --> K[Safely acknowledge and suppress]
+    C -- Yes --> D0[Deduplicate and load state]
+    D0 --> D[Load authoritative facts]
     D --> E[AI structured decision]
     E --> F[Schema and policy validation]
     F --> G[Deterministic domain action]

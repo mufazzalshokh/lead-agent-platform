@@ -1,5 +1,7 @@
 import {
   StaffOperationError,
+  ThreadAutomationControlError,
+  type ThreadAutomationControlUseCases,
   type StaffOperations,
   type StaffWorkKind,
   type StaffOperation,
@@ -18,11 +20,15 @@ import {
   StaffRevenueInputSchema,
   StaffMutationResponseSchema,
   StaffOutcomeCollectionResponseSchema,
+  ThreadAutomationControlParamsSchema,
+  ThreadAutomationControlResponseSchema,
+  ThreadAutomationTransitionInputSchema,
   OrganizationIdSchema,
   RequestIdSchema,
   isSchemaValue,
   type StaffWorkListQuery,
   type ResourceId,
+  type ThreadAutomationTransitionInput,
 } from "@lead-agent/contracts";
 import { resolveAuthorizationContext } from "@lead-agent/security";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
@@ -32,7 +38,10 @@ import {
   type StaffConfigurationSecurityBoundary,
 } from "../configuration/plugin.js";
 
-export type StaffOperationsDependencies = Readonly<{ operations: StaffOperations }>;
+export type StaffOperationsDependencies = Readonly<{
+  operations: StaffOperations;
+  threadAutomation?: ThreadAutomationControlUseCases;
+}>;
 const requestId = (request: FastifyRequest): string => {
   const supplied = request.headers["x-request-id"];
   if (isSchemaValue(RequestIdSchema, supplied)) return supplied;
@@ -201,6 +210,49 @@ export const registerStaffOperations = (
             next_cursor: page.nextCursor,
           },
         };
+      },
+    );
+  }
+
+  if (dependencies.threadAutomation !== undefined) {
+    const controls = dependencies.threadAutomation;
+    api.get<{ Params: { id: ResourceId } }>(
+      "/v1/staff/thread-automation-controls/:id",
+      {
+        schema: {
+          params: ThreadAutomationControlParamsSchema,
+          response: { 200: ThreadAutomationControlResponseSchema },
+        },
+      },
+      async (request, reply) => {
+        const value = await controls.get(await authorize(request, reply), request.params.id);
+        reply.header("etag", formatConfigurationEtag(value.id, value.version));
+        return { data: value, meta: { request_id: requestId(request) } };
+      },
+    );
+    api.post<{ Params: { id: ResourceId }; Body: ThreadAutomationTransitionInput }>(
+      "/v1/staff/thread-automation-controls/:id/transition",
+      {
+        schema: {
+          params: ThreadAutomationControlParamsSchema,
+          body: ThreadAutomationTransitionInputSchema,
+          response: { 200: ThreadAutomationControlResponseSchema },
+        },
+      },
+      async (request, reply) => {
+        const id = request.params.id;
+        if (!isSchemaValue(ThreadAutomationTransitionInputSchema, request.body)) {
+          throw new ThreadAutomationControlError("validation_failed");
+        }
+        const value = await controls.transition(
+          await authorize(request, reply, true),
+          id,
+          parseConfigurationIfMatch(request.headers["if-match"], id),
+          request.body,
+          requestId(request),
+        );
+        reply.header("etag", formatConfigurationEtag(value.id, value.version));
+        return { data: value, meta: { request_id: requestId(request) } };
       },
     );
   }

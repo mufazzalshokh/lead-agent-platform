@@ -630,8 +630,20 @@ export const createCustomerConfirmationStore = (
         };
         const intent = confirmationReplyIntent(text);
         if (intent === "medical") {
+          await reply(
+            session,
+            conversation,
+            "medical",
+            "",
+            reference.correlationId,
+            reference.causationId,
+            now,
+            reference.messageId,
+            undefined,
+            confirmationLocale(text, conversation.preferredLocale),
+          );
           await mark();
-          return { kind: "grounding_insufficient", reason: "medical_safety_wording_unapproved" };
+          return { kind: "grounding_insufficient", reason: "medical_safety_response" };
         }
         if (candidates.length === 0) {
           const terminal = await executeTenantRead(

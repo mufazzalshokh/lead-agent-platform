@@ -18,6 +18,7 @@ import {
   type CanonicalInboundDataProtector,
   type CanonicalInboundPersistenceStore,
 } from "../conversations/inbound-use-cases.js";
+import type { ThreadAutomationEligibilityStore } from "../conversations/thread-automation-controls.js";
 
 const DISPLAY_NAME_PATTERN = /^\S(?:.{0,198}\S)?$/u;
 const ONBOARDING_NONCE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
@@ -192,6 +193,7 @@ export const createTelegramBusinessUseCases = (dependencies: {
   platformProvisioner: TelegramPlatformProvisioner;
   routeResolver: InboundRouteResolver;
   canonicalStore: CanonicalInboundPersistenceStore;
+  eligibilityStore: ThreadAutomationEligibilityStore;
   randomNonce?: () => string;
 }): TelegramBusinessUseCases => {
   const clock = dependencies.clock ?? (() => new Date());
@@ -199,6 +201,7 @@ export const createTelegramBusinessUseCases = (dependencies: {
   const canonical = createCanonicalInboundUseCases(
     dependencies.canonicalStore,
     dependencies.dataProtector,
+    dependencies.eligibilityStore,
   );
 
   const route = async (hash: Uint8Array): Promise<TrustedInboundRoute | null> =>
@@ -261,7 +264,9 @@ export const createTelegramBusinessUseCases = (dependencies: {
         dependencies.onCallbackAcknowledgementFailure?.();
       }
     }
-    return Object.freeze({ status: result.value.status });
+    return Object.freeze({
+      status: result.value.status === "suppressed" ? "ignored" : result.value.status,
+    });
   };
 
   return Object.freeze({

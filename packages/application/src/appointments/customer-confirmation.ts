@@ -6,6 +6,7 @@ import {
   type UtcTimestamp,
 } from "@lead-agent/contracts";
 import { groundingPreflight, normalizeGroundingQuery } from "../ai/grounding-query.js";
+import { medicalSafetyText } from "../ai/medical-safety.js";
 import type { AIWorkReference } from "../ai/ports.js";
 
 export const CUSTOMER_CONFIRMATION_PROFILE = "s18_customer_confirmation.v1";
@@ -60,7 +61,7 @@ export const confirmationReplyIntent = (text: string): ConfirmationReplyIntent =
     /\b(?:boladi|boladimi|bolsin|bolsa|bolmaydi)\b/gu,
     " ",
   );
-  if (groundingPreflight(safetyText) === "medical_safety_wording_unapproved") return "medical";
+  if (groundingPreflight(safetyText) === "medical_safety_response") return "medical";
   if (/["«»]/u.test(text)) return "clarify";
   const value = text
     .normalize("NFKC")
@@ -126,10 +127,11 @@ export const confirmationLocale = (text: string, preferred: Locale): Locale => {
 };
 
 export const confirmationText = (
-  kind: "prompt" | "confirmed" | "declined" | "clarify" | "expired",
+  kind: "prompt" | "confirmed" | "declined" | "clarify" | "expired" | "medical",
   locale: Locale,
   localStart: string,
 ): string => {
+  if (kind === "medical") return medicalSafetyText(locale);
   const date = localStart.slice(0, 10).split("-").reverse().join("-"),
     time = localStart.slice(11, 16);
   const texts = {

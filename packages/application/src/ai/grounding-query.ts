@@ -83,7 +83,7 @@ export const groundingPreflight = (message: string): AIFallbackReason | null => 
       query,
     )
   )
-    return "medical_safety_wording_unapproved";
+    return "medical_safety_response";
   if (
     /\b(available|availability|slot\w*|reserve|book\w*|appointment|svobodno|zapis\w*|bron\w*|band qil\w*|bosh joy|uchrashuv)\b/u.test(
       query,
@@ -91,11 +91,17 @@ export const groundingPreflight = (message: string): AIFallbackReason | null => 
   )
     return "booking_availability_unapproved";
   if (
-    /\b(ignore\w*|system prompt|api key|secret\w*|database|all tenants|every company|adminman|barcha tenant\w*|hamma kompaniya\w*)\b/u.test(
+    /\b(ignore\w*|forget (?:the )?(?:rules|business|instructions)|system prompt|developer message|api key|secret\w*|database|all tenants|every company|other customers?|boshqa klient\w*|boshqa mijoz\w*|adminman|administrator deb|ya admin|barcha tenant\w*|hamma kompaniya\w*|you are chatgpt|sen chatgpt|ti chatgpt|role ?play|jailbreak)\b/u.test(
       query,
     )
   )
     return "policy_denied";
+  if (
+    /\b(messi|ronaldo|futbol|football|world cup|politic\w*|siyosat\w*|politika|video game\w*|kompyuter oyin\w*|anekdot|joke\w*|ob havo|weather|write (?:me )?(?:code|a program)|kod yoz\w*|napishi kod)\b/u.test(
+      query,
+    )
+  )
+    return "outside_business_scope";
   return null;
 };
 

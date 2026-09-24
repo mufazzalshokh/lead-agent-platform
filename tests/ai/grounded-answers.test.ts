@@ -222,14 +222,14 @@ describe("S14 approved relational fact grounding", () => {
     });
     expect(await orchestrator.run(AI_REFERENCE)).toEqual({
       kind: "grounding_insufficient",
-      reason: "medical_safety_wording_unapproved",
+      reason: "medical_safety_response",
       protectedActionApplied: false,
     });
     expect(decide).not.toHaveBeenCalled();
   });
   it("model medical intent is fail-closed even when lexical preflight misses it", () =>
     expect(answer(snapshot("lazer narxi"), { intent: "medical_question" })).toMatchObject({
-      reason: "medical_safety_wording_unapproved",
+      reason: "medical_safety_response",
     }));
   it.each(["create_appointment_request", "request_handoff"])(
     "protected proposal %s is never applied",

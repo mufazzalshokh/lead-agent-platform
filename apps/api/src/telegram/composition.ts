@@ -5,6 +5,7 @@ import {
 import type { CustomerDataProtectionConfig, TelegramPlatformConfig } from "@lead-agent/config";
 import {
   createCanonicalInboundPersistenceStore,
+  createThreadAutomationControlStore,
   createTelegramPersistenceStore,
   type InboundRouteDatabaseRuntime,
   type TenantDatabaseRuntime,
@@ -30,11 +31,13 @@ export const createTelegramApiComposition = (
   telegramConfig: TelegramPlatformConfig,
 ): TelegramApiComposition => {
   const client = createTelegramPlatformClient(telegramConfig);
+  const eligibility = createThreadAutomationControlStore(tenantRuntime);
   const useCases = createTelegramBusinessUseCases({
     botUsername: telegramConfig.botUsername,
     callbackAcknowledger: client,
     canonicalStore: createCanonicalInboundPersistenceStore(tenantRuntime),
     dataProtector: createCustomerDataProtection(customerDataConfig),
+    eligibilityStore: eligibility,
     onCallbackAcknowledgementFailure: () => {
       console.error("Telegram callback acknowledgement failed");
     },

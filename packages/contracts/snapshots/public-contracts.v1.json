@@ -61777,6 +61777,407 @@
       "schema_version": "1"
     },
     {
+      "category": "api",
+      "export_name": "ThreadAutomationControlParamsSchema",
+      "schema": {
+        "$id": "ThreadAutomationControlParams.v1",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "schema_id": "ThreadAutomationControlParams.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "ThreadAutomationControlResponseSchema",
+      "schema": {
+        "$id": "ThreadAutomationControlResponse.v1",
+        "additionalProperties": false,
+        "description": "V1 successful single-resource response envelope.",
+        "properties": {
+          "data": {
+            "$id": "ThreadAutomationControl.v1",
+            "additionalProperties": false,
+            "properties": {
+              "channel_connection_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "created_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "decided_by_membership_id": {
+                "anyOf": [
+                  {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "decision_source": {
+                "anyOf": [
+                  {
+                    "const": "system_default",
+                    "type": "string"
+                  },
+                  {
+                    "const": "staff",
+                    "type": "string"
+                  },
+                  {
+                    "const": "owner_configuration",
+                    "type": "string"
+                  },
+                  {
+                    "const": "provider_rule",
+                    "type": "string"
+                  },
+                  {
+                    "const": "platform_policy",
+                    "type": "string"
+                  }
+                ]
+              },
+              "eligibility_state": {
+                "anyOf": [
+                  {
+                    "const": "business_eligible",
+                    "type": "string"
+                  },
+                  {
+                    "const": "excluded_personal",
+                    "type": "string"
+                  },
+                  {
+                    "const": "uncertain",
+                    "type": "string"
+                  },
+                  {
+                    "const": "staff_only",
+                    "type": "string"
+                  }
+                ]
+              },
+              "id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "reason_code": {
+                "maxLength": 100,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "updated_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "version": {
+                "description": "Positive safe integer used for optimistic concurrency.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id",
+              "channel_connection_id",
+              "eligibility_state",
+              "decision_source",
+              "reason_code",
+              "decided_by_membership_id",
+              "version",
+              "created_at",
+              "updated_at"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "description": "Correlation metadata returned by a successful API request.",
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "ThreadAutomationControlResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "ThreadAutomationControlSchema",
+      "schema": {
+        "$id": "ThreadAutomationControl.v1",
+        "additionalProperties": false,
+        "properties": {
+          "channel_connection_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "decided_by_membership_id": {
+            "anyOf": [
+              {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decision_source": {
+            "anyOf": [
+              {
+                "const": "system_default",
+                "type": "string"
+              },
+              {
+                "const": "staff",
+                "type": "string"
+              },
+              {
+                "const": "owner_configuration",
+                "type": "string"
+              },
+              {
+                "const": "provider_rule",
+                "type": "string"
+              },
+              {
+                "const": "platform_policy",
+                "type": "string"
+              }
+            ]
+          },
+          "eligibility_state": {
+            "anyOf": [
+              {
+                "const": "business_eligible",
+                "type": "string"
+              },
+              {
+                "const": "excluded_personal",
+                "type": "string"
+              },
+              {
+                "const": "uncertain",
+                "type": "string"
+              },
+              {
+                "const": "staff_only",
+                "type": "string"
+              }
+            ]
+          },
+          "id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "reason_code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "version": {
+            "description": "Positive safe integer used for optimistic concurrency.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "channel_connection_id",
+          "eligibility_state",
+          "decision_source",
+          "reason_code",
+          "decided_by_membership_id",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "schema_id": "ThreadAutomationControl.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "ThreadAutomationDecisionSourceSchema",
+      "schema": {
+        "$id": "ThreadAutomationDecisionSource.v1",
+        "anyOf": [
+          {
+            "const": "system_default",
+            "type": "string"
+          },
+          {
+            "const": "staff",
+            "type": "string"
+          },
+          {
+            "const": "owner_configuration",
+            "type": "string"
+          },
+          {
+            "const": "provider_rule",
+            "type": "string"
+          },
+          {
+            "const": "platform_policy",
+            "type": "string"
+          }
+        ]
+      },
+      "schema_id": "ThreadAutomationDecisionSource.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "ThreadAutomationEligibilityStateSchema",
+      "schema": {
+        "$id": "ThreadAutomationEligibilityState.v1",
+        "anyOf": [
+          {
+            "const": "business_eligible",
+            "type": "string"
+          },
+          {
+            "const": "excluded_personal",
+            "type": "string"
+          },
+          {
+            "const": "uncertain",
+            "type": "string"
+          },
+          {
+            "const": "staff_only",
+            "type": "string"
+          }
+        ]
+      },
+      "schema_id": "ThreadAutomationEligibilityState.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "ThreadAutomationTransitionInputSchema",
+      "schema": {
+        "$id": "ThreadAutomationTransitionInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "eligibility_state": {
+            "anyOf": [
+              {
+                "const": "business_eligible",
+                "type": "string"
+              },
+              {
+                "const": "excluded_personal",
+                "type": "string"
+              },
+              {
+                "const": "uncertain",
+                "type": "string"
+              },
+              {
+                "const": "staff_only",
+                "type": "string"
+              }
+            ]
+          },
+          "reason_code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "eligibility_state",
+          "reason_code"
+        ],
+        "type": "object"
+      },
+      "schema_id": "ThreadAutomationTransitionInput.v1",
+      "schema_version": "1"
+    },
+    {
       "category": "configuration",
       "export_name": "UpdateBusinessPolicyDraftInputSchema",
       "schema": {

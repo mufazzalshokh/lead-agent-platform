@@ -7,6 +7,7 @@ import {
   normalizeGroundingQuery,
 } from "./grounding-query.js";
 import { createAIOrchestrator } from "./orchestrate.js";
+import { medicalSafetyText } from "./medical-safety.js";
 import { aiFallback } from "./policy.js";
 import type {
   AIContextSnapshot,
@@ -64,7 +65,7 @@ const positiveNextStep = (text: string): boolean => {
 /** Medical remains first, including combined medical + human requests. Booking is only a boundary, not authority. */
 export const salesPreflight = (snapshot: AIContextSnapshot): AIFallbackReason | null => {
   const grounding = groundingPreflight(snapshot.message);
-  if (grounding === "medical_safety_wording_unapproved") return grounding;
+  if (grounding === "medical_safety_response") return grounding;
   if (snapshot.policy.conversationStatus !== "open" || snapshot.policy.automationMode !== "ai")
     return "stale_context";
   const query = normalizeGroundingQuery(snapshot.message);
@@ -207,6 +208,12 @@ const handoffText = (locale: Locale, explicit: boolean): string =>
         ru: "Запрос передан сотруднику, чтобы уточнить этот вопрос.",
         en: "A request has been sent to a staff member to clarify this question.",
       }[locale];
+const businessRedirectText = (locale: Locale): string =>
+  ({
+    uz: "Men faqat shu biznesning xizmatlari va uchrashuv so'rovlari bo'yicha yordam bera olaman. Sizni qaysi xizmat qiziqtiryapti?",
+    ru: "Я могу помочь только с услугами этой компании и заявками на запись. Какая услуга вас интересует?",
+    en: "I can only help with this business's services and appointment requests. Which service are you interested in?",
+  })[locale];
 
 export type SalesPlan = Readonly<{
   evidence: SalesEvidence;
@@ -231,7 +238,7 @@ export const evaluateSalesDecision = (
     decision.intent === "medical_question" ||
     decision.safety.risk_flags.includes("medical_content")
   )
-    return aiFallback("medical_safety_wording_unapproved");
+    return aiFallback("medical_safety_response");
   const evidence = resolveSalesEvidence(snapshot);
   // A model cannot manufacture customer facts, tenant identity, or escalation authority.
   if (
@@ -294,6 +301,30 @@ export const planSalesFlow = (snapshot: AIContextSnapshot, outcome: AIOutcome): 
     handoffReason: null,
   });
   const preflight = salesPreflight(snapshot);
+  if (preflight === "medical_safety_response")
+    return {
+      evidence,
+      result: { kind: "grounding_insufficient", reason: preflight, missing },
+      text: medicalSafetyText(locale),
+      sources: [],
+      handoffReason: null,
+    };
+  if (preflight === "outside_business_scope")
+    return {
+      evidence,
+      result: { kind: "grounding_insufficient", reason: preflight, missing },
+      text: businessRedirectText(locale),
+      sources: [],
+      handoffReason: null,
+    };
+  if (outcome.kind === "fallback_required" && outcome.reason === "medical_safety_response")
+    return {
+      evidence,
+      result: { kind: "grounding_insufficient", reason: outcome.reason, missing },
+      text: medicalSafetyText(locale),
+      sources: [],
+      handoffReason: null,
+    };
   if (preflight !== null && preflight !== "staff_requested") return none(preflight);
   if (
     outcome.kind === "fallback_required" &&

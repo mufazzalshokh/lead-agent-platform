@@ -47,6 +47,7 @@ export { organizations } from "./organizations.js";
 export { idempotencyKeys, outboxEvents, webhookReceipts } from "./reliability-records.js";
 export { retentionPolicies } from "./retention-policies.js";
 export { retentionPolicyRules } from "./retention-policy-rules.js";
+export { threadAutomationControls } from "./thread-automation-controls.js";
 export {
   businessPolicies,
   faqs,

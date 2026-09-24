@@ -10,6 +10,7 @@ import {
   salesLocale,
   selectGroundingFacts,
   createSalesFlowOrchestrator,
+  medicalSafetyText,
   type AIContextSnapshot,
   type SalesContext,
   type AIRunFinish,
@@ -283,13 +284,13 @@ describe("S15 shared deterministic sales flow", () => {
     },
   );
   it.each(["pain", "og'riq", "У меня болит зуб", "urgent, human please"])(
-    "medical deferral produces neither text nor Handoff: %s",
+    "medical safety produces only approved wording and no Handoff: %s",
     (message) => {
       const value = plan(context(message));
       expect(value).toMatchObject({
-        text: null,
+        text: medicalSafetyText(salesLocale(message, "uz")),
         handoffReason: null,
-        result: { kind: "grounding_insufficient", reason: "medical_safety_wording_unapproved" },
+        result: { kind: "grounding_insufficient", reason: "medical_safety_response" },
       });
     },
   );
@@ -299,7 +300,7 @@ describe("S15 shared deterministic sales flow", () => {
         intent: "medical_question",
         safety: { safe_to_send: true, risk_flags: ["medical_content"] },
       }).text,
-    ).toBeNull();
+    ).toBe(medicalSafetyText("uz"));
   });
   it("a complete approved answer plus follow-up that exceeds the transport limit escalates without truncation", () => {
     const snapshot = context("lazer narxi");

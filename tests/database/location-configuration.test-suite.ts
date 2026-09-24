@@ -997,13 +997,13 @@ export const registerLocationConfigurationTests = (harness: LocationConfiguratio
       ).toMatchObject({ rows: [{ count: 1 }] });
     });
 
-    it("keeps the 51-table manifest and FORCE RLS protections unchanged", async () => {
+    it("keeps the 52-table manifest and FORCE RLS protections unchanged", async () => {
       const pool = harness.privilegedPool();
       const tables = await pool.query<{ table_name: string }>(
         `select table_name from information_schema.tables
           where table_schema = 'public' and table_type = 'BASE TABLE'`,
       );
-      expect(tables.rows).toHaveLength(51);
+      expect(tables.rows).toHaveLength(52);
       const rls = await pool.query<{ relforcerowsecurity: boolean; relrowsecurity: boolean }>(
         `select relrowsecurity, relforcerowsecurity
            from pg_catalog.pg_class

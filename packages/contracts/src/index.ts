@@ -8,4 +8,5 @@ export * from "./shared/index.js";
 export * from "./widget/index.js";
 export * from "./staff/operations.js";
 export * from "./staff/me.js";
+export * from "./staff/thread-automation.js";
 export * from "./analytics/contracts.js";

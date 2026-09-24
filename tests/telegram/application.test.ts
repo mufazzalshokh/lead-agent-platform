@@ -19,7 +19,10 @@ import {
   NOW,
 } from "./fixtures.js";
 
-const fixture = () => {
+const fixture = (
+  eligibilityState:
+    "business_eligible" | "excluded_personal" | "uncertain" | "staff_only" = "business_eligible",
+) => {
   let routeHash = digest(NONCE);
   let phase: "awaiting_owner" | "awaiting_connection" | "active" | "disabled" = "awaiting_owner";
   let canReply = true;
@@ -100,6 +103,10 @@ const fixture = () => {
     canonicalStore,
     clock: () => NOW,
     dataProtector: dataProtection,
+    eligibilityStore: {
+      resolveInbound: () =>
+        Promise.resolve({ controlId: IDS.control, state: eligibilityState, version: 1 }),
+    },
     onCallbackAcknowledgementFailure: acknowledgementFailure,
     persistence,
     platformProvisioner: { ensureWebhook: () => Promise.resolve() },
@@ -227,6 +234,17 @@ describe("Telegram Business application trust chain", () => {
       });
     expect(test.canonicalInputs).toHaveLength(0);
   });
+  it.each(["uncertain", "excluded_personal", "staff_only"] as const)(
+    "safely acknowledges %s threads without canonical business persistence",
+    async (eligibilityState) => {
+      const test = fixture(eligibilityState);
+      await test.bind();
+      expect(
+        await test.useCases.processUpdate(normalizeTelegramUpdate(businessMessage(), NOW)),
+      ).toEqual({ status: "ignored" });
+      expect(test.canonicalInputs).toHaveLength(0);
+    },
+  );
   it("keeps read acceptance with reply rights removed, then disconnects without reactivation", async () => {
     const test = fixture();
     await test.bind();

@@ -1,6 +1,14 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
-import { createStaffOperations, createStaffQueryCursorCodec } from "@lead-agent/application";
-import { createStaffOperationsStore, type TenantDatabaseRuntime } from "@lead-agent/database";
+import {
+  createStaffOperations,
+  createStaffQueryCursorCodec,
+  createThreadAutomationControlUseCases,
+} from "@lead-agent/application";
+import {
+  createStaffOperationsStore,
+  createThreadAutomationControlStore,
+  type TenantDatabaseRuntime,
+} from "@lead-agent/database";
 import type { StaffOperationsDependencies } from "./plugin.js";
 
 export const createStaffOperationsDependencies = (
@@ -40,6 +48,10 @@ export const createStaffOperationsDependencies = (
     operations: createStaffOperations(
       createStaffOperationsStore(runtime, protector),
       createStaffQueryCursorCodec(derive("cursor-v1")),
+      clock,
+    ),
+    threadAutomation: createThreadAutomationControlUseCases(
+      createThreadAutomationControlStore(runtime),
       clock,
     ),
   };

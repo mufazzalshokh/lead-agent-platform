@@ -11,6 +11,7 @@ import type { CustomerDataProtectionConfig } from "@lead-agent/config";
 import {
   createCanonicalInboundPersistenceStore,
   createStaffConversationQueryStore,
+  createThreadAutomationControlStore,
   type TenantDatabaseRuntime,
 } from "@lead-agent/database";
 import { createCustomerDataProtection } from "@lead-agent/security";
@@ -45,6 +46,7 @@ export const createS9ConversationComposition = (
     inbound: createCanonicalInboundUseCases(
       createCanonicalInboundPersistenceStore(runtime),
       customerData,
+      createThreadAutomationControlStore(runtime),
     ),
     staff: Object.freeze({
       queries: createStaffConversationQueryUseCases(store, customerData, cursors),

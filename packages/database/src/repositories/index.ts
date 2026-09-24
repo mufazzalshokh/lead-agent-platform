@@ -15,6 +15,7 @@ export { createConversationKnowledgeReader } from "./conversation-knowledge.js";
 export * from "./service-configuration.js";
 export * from "./staff-conversation-queries.js";
 export * from "./telegram.js";
+export * from "./thread-automation-controls.js";
 export * from "./instagram.js";
 export * from "./widget.js";
 export * from "./analytics.js";

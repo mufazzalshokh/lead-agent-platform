@@ -59,6 +59,7 @@ import { createConversationRepository, type ConversationRecord } from "./convers
 import { createCustomerRepository, type ContactRecord } from "./customers.js";
 import { createHandoffNotificationRepository } from "./handoffs.js";
 import { createLeadRepository, type LeadRecord } from "./leads.js";
+import { requireBusinessEligibleInbound } from "./thread-automation-controls.js";
 import {
   persistDomainMutationPlan,
   type CoreAggregateMutation,
@@ -744,6 +745,27 @@ const processInbound = async (
   identifiers: SecurityIdentifierFactory,
   clock: () => Date,
 ): Promise<CanonicalInboundResult> => {
+  if (input.event.channel === "telegram" || input.event.channel === "instagram") {
+    if (input.eligibilityDecision === null) return failure("eligibility_unavailable");
+    const current = await requireBusinessEligibleInbound(session, {
+      channelConnectionId: input.event.channel_connection_id,
+      controlId: input.eligibilityDecision.controlId,
+      threadHash: input.threadHash,
+    });
+    if (current === null) return failure("eligibility_unavailable");
+    if (current.state !== "business_eligible") {
+      return Object.freeze({
+        ok: true,
+        value: Object.freeze({
+          automationControlId: input.eligibilityDecision.controlId,
+          eligibilityState: current.state,
+          status: "suppressed",
+        }),
+      });
+    }
+  } else if (input.eligibilityDecision !== null) {
+    return failure("validation_failed");
+  }
   const lockKeys = [
     `event:${input.event.channel_connection_id}:${input.event.event_id}`,
     `identity:${input.event.channel_connection_id}:${Buffer.from(input.identity.lookupHash).toString("hex")}`,

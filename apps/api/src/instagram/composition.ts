@@ -6,6 +6,7 @@ import type { CustomerDataProtectionConfig, InstagramPlatformConfig } from "@lea
 import {
   createCanonicalInboundPersistenceStore,
   createInstagramPersistenceStore,
+  createThreadAutomationControlStore,
   type InboundRouteDatabaseRuntime,
   type TenantDatabaseRuntime,
 } from "@lead-agent/database";
@@ -20,11 +21,13 @@ export const createInstagramApiComposition = (
   config: InstagramPlatformConfig,
   credentials: CredentialSecretStore,
 ): Readonly<{ staff: StaffInstagramDependencies; webhook: InstagramWebhookDependencies }> => {
+  const eligibility = createThreadAutomationControlStore(tenantRuntime);
   const useCases = createInstagramBusinessUseCases({
     appId: config.appId,
     oauthRedirectUri: config.oauthRedirectUri,
     canonicalStore: createCanonicalInboundPersistenceStore(tenantRuntime),
     dataProtector: createCustomerDataProtection(customerDataConfig),
+    eligibilityStore: eligibility,
     credentials,
     oauth: createInstagramPlatformClient(config),
     persistence: createInstagramPersistenceStore(tenantRuntime),

@@ -8,6 +8,7 @@ import {
   MembershipIdSchema,
   MessageIdSchema,
   OrganizationIdSchema,
+  ResourceIdSchema,
   UserIdSchema,
   isSchemaValue,
 } from "../../packages/contracts/src/index.js";
@@ -28,6 +29,7 @@ const lead = "0193f1a8-7f65-7c28-a434-000000000006";
 const message = "0193f1a8-7f65-7c28-a434-000000000007";
 const user = "0193f1a8-7f65-7c28-a434-000000000008";
 const membership = "0193f1a8-7f65-7c28-a434-000000000009";
+const control = "0193f1a8-7f65-7c28-a434-000000000010";
 if (
   !isSchemaValue(OrganizationIdSchema, organization) ||
   !isSchemaValue(OrganizationIdSchema, otherOrganization) ||
@@ -37,7 +39,8 @@ if (
   !isSchemaValue(LeadIdSchema, lead) ||
   !isSchemaValue(MessageIdSchema, message) ||
   !isSchemaValue(UserIdSchema, user) ||
-  !isSchemaValue(MembershipIdSchema, membership)
+  !isSchemaValue(MembershipIdSchema, membership) ||
+  !isSchemaValue(ResourceIdSchema, control)
 )
   throw new Error("Invalid Telegram test identifiers");
 export const IDS = Object.freeze({
@@ -50,6 +53,7 @@ export const IDS = Object.freeze({
   message,
   user,
   membership,
+  control,
 });
 export const NOW = new Date("2026-09-16T08:00:00.000Z");
 export const NONCE = Buffer.alloc(32, 17).toString("base64url");

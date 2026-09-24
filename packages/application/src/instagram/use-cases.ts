@@ -20,6 +20,7 @@ import {
   createCanonicalInboundUseCases,
   type CanonicalInboundDataProtector,
   type CanonicalInboundPersistenceStore,
+  type ThreadAutomationEligibilityStore,
 } from "../conversations/index.js";
 import {
   InstagramApplicationError,
@@ -85,6 +86,7 @@ export const createInstagramBusinessUseCases = (
     oauthRedirectUri: string;
     canonicalStore: CanonicalInboundPersistenceStore;
     dataProtector: CanonicalInboundDataProtector;
+    eligibilityStore: ThreadAutomationEligibilityStore;
     credentials: CredentialSecretStore;
     oauth: InstagramOAuthClient;
     persistence: InstagramPersistenceStore;
@@ -98,6 +100,7 @@ export const createInstagramBusinessUseCases = (
   const canonical = createCanonicalInboundUseCases(
     dependencies.canonicalStore,
     dependencies.dataProtector,
+    dependencies.eligibilityStore,
   );
   const deleteCredential = async (reference: string): Promise<void> => {
     try {
@@ -299,7 +302,9 @@ export const createInstagramBusinessUseCases = (
             ? "channel_unavailable"
             : "business_rule_failed",
         );
-      return Object.freeze({ status: result.value.status });
+      return Object.freeze({
+        status: result.value.status === "suppressed" ? "ignored" : result.value.status,
+      });
     },
   });
 };

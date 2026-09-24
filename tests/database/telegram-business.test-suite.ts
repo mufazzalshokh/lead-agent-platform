@@ -2,11 +2,13 @@ import type { Pool, PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 import {
   createTelegramBusinessUseCases,
+  telegramConversationIdentity,
   type TelegramNormalizedUpdate,
 } from "../../packages/application/src/index.js";
 import {
   createCanonicalInboundPersistenceStore,
   createTelegramPersistenceStore,
+  createThreadAutomationControlStore,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import { executeTenantQuery } from "../../packages/database/src/runtime/tenant.js";
@@ -285,6 +287,7 @@ export const registerTelegramBusinessPersistenceTests = (options: Options): void
       canonicalStore: createCanonicalInboundPersistenceStore(options.runtime()),
       clock: () => NOW,
       dataProtector: dataProtection,
+      eligibilityStore: createThreadAutomationControlStore(options.runtime()),
       persistence,
       platformProvisioner: { ensureWebhook: () => Promise.resolve() },
       randomNonce: () => NONCE,
@@ -324,6 +327,18 @@ export const registerTelegramBusinessPersistenceTests = (options: Options): void
       establishedAt: NOW.toISOString(),
       updateId: "2",
     });
+    const threadHash = dataProtection.threadHash({
+      channelConnectionId: IDS.channel,
+      externalConversationId: telegramConversationIdentity("business-test-1", "123"),
+      organizationId: IDS.organization,
+    });
+    await pool.query(
+      `insert into thread_automation_controls
+       (id,organization_id,channel_connection_id,external_thread_hash,eligibility_state,
+        decision_source,reason_code,version,created_at,updated_at)
+       values($1,$2,$3,$4,'business_eligible','platform_policy','verified_test_business_thread',1,$5,$5)`,
+      [IDS.control, IDS.organization, IDS.channel, Buffer.from(threadHash), NOW],
+    );
     return { pool, useCases };
   };
   describe("S11.A real Telegram canonical persistence", () => {

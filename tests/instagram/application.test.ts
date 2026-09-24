@@ -25,7 +25,10 @@ import {
 } from "./fixtures.js";
 
 const context = { organizationId: IDS.organization, channelConnectionId: IDS.channel };
-const fixture = () => {
+const fixture = (
+  eligibilityState:
+    "business_eligible" | "excluded_personal" | "uncertain" | "staff_only" = "business_eligible",
+) => {
   let now = NOW;
   let routeHash = digest(NONCE);
   let connection: InstagramConnection = {
@@ -163,6 +166,10 @@ const fixture = () => {
     canonicalStore,
     credentials,
     dataProtector: dataProtection,
+    eligibilityStore: {
+      resolveInbound: () =>
+        Promise.resolve({ controlId: IDS.control, state: eligibilityState, version: 1 }),
+    },
     oauth: { exchangeCode, refreshToken, subscribeMessages },
     persistence,
     routeResolver: { resolveInboundRoute: resolver },
@@ -356,6 +363,15 @@ describe("Instagram application trust and short-transaction choreography", () =>
     );
     expect(input?.consentEvidence).toBeNull();
   });
+  it.each(["uncertain", "excluded_personal", "staff_only"] as const)(
+    "safely acknowledges %s threads without canonical business persistence",
+    async (eligibilityState) => {
+      const test = fixture(eligibilityState);
+      await test.connect();
+      expect(await test.useCases.processMessage(message)).toEqual({ status: "ignored" });
+      expect(test.inputs).toHaveLength(0);
+    },
+  );
   it("deduplicates a stable mid and passes reordered occurred_at unchanged to existing canonical persistence", async () => {
     const test = fixture();
     await test.connect();

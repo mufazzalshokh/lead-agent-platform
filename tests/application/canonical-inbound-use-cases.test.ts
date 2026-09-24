@@ -5,6 +5,7 @@ import {
   type CanonicalInboundDataProtector,
   type CanonicalInboundPersistenceStore,
   type PreparedCanonicalInbound,
+  type ThreadAutomationEligibilityStore,
 } from "../../packages/application/src/index.js";
 import {
   CanonicalInboundEventSchema,
@@ -117,13 +118,22 @@ const createHarness = () => {
     protectParticipant,
     threadHash,
   };
+  const eligibilityStore: ThreadAutomationEligibilityStore = {
+    resolveInbound: vi.fn(() =>
+      Promise.resolve({
+        controlId: CONSENT_ID,
+        state: "business_eligible" as const,
+        version: 1,
+      }),
+    ),
+  };
   return {
     accepted,
     protectContent,
     protectParticipant,
     protector,
     threadHash,
-    useCases: createCanonicalInboundUseCases(store, protector),
+    useCases: createCanonicalInboundUseCases(store, protector, eligibilityStore),
   };
 };
 
@@ -167,6 +177,46 @@ describe("S9.A canonical inbound application boundary", () => {
       identityType: "telegram_user",
       organizationId: ORGANIZATION_ID,
     });
+  });
+
+  it.each(["uncertain", "excluded_personal", "staff_only"] as const)(
+    "suppresses a %s social thread before participant or content protection",
+    async (state) => {
+      const harness = createHarness();
+      const eligibility: ThreadAutomationEligibilityStore = {
+        resolveInbound: vi.fn(() => Promise.resolve({ controlId: CONSENT_ID, state, version: 1 })),
+      };
+      const useCases = createCanonicalInboundUseCases(
+        { acceptInbound: vi.fn() },
+        harness.protector,
+        eligibility,
+      );
+
+      await expect(
+        useCases.acceptInbound({
+          context: { channelConnectionId: CHANNEL_ID, organizationId: ORGANIZATION_ID },
+          event: event({ channel: "instagram" }),
+        }),
+      ).resolves.toEqual({
+        ok: true,
+        value: { automationControlId: CONSENT_ID, eligibilityState: state, status: "suppressed" },
+      });
+      expect(harness.protectParticipant).not.toHaveBeenCalled();
+      expect(harness.protectContent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails closed when a social ingress path has no eligibility authority", async () => {
+    const harness = createHarness();
+    const useCases = createCanonicalInboundUseCases({ acceptInbound: vi.fn() }, harness.protector);
+    await expect(
+      useCases.acceptInbound({
+        context: { channelConnectionId: CHANNEL_ID, organizationId: ORGANIZATION_ID },
+        event: event({ channel: "telegram" }),
+      }),
+    ).resolves.toEqual({ error: { code: "eligibility_unavailable" }, ok: false });
+    expect(harness.protectParticipant).not.toHaveBeenCalled();
+    expect(harness.protectContent).not.toHaveBeenCalled();
   });
 
   it.each([

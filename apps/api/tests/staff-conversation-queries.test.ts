@@ -26,6 +26,7 @@ import {
   type StaffConversation,
   type StaffLead,
   type StaffMessage,
+  type ThreadAutomationControl,
   type UserId,
   type UtcTimestamp,
 } from "@lead-agent/contracts";
@@ -175,6 +176,17 @@ const message: StaffMessage = {
   sender_type: "customer",
   sequence_no: 1,
 };
+const automationControl: ThreadAutomationControl = {
+  id: ids.identity,
+  channel_connection_id: CHANNEL_ID,
+  eligibility_state: "uncertain",
+  decision_source: "system_default",
+  reason_code: "unseen_social_thread",
+  decided_by_membership_id: null,
+  version: 1,
+  created_at: NOW_TEXT,
+  updated_at: NOW_TEXT,
+};
 
 type Controls = {
   calls: { authorization: unknown; operation: string }[];
@@ -306,6 +318,26 @@ const createFixture = (withOperations = false) => {
               createStaffQueryCursorCodec(new Uint8Array(32).fill(17)),
               () => NOW,
             ),
+            threadAutomation: {
+              get: (authorization, controlId) => {
+                controls.calls.push({ authorization, operation: `thread.get:${controlId}` });
+                return Promise.resolve(automationControl);
+              },
+              transition: (authorization, controlId, expectedVersion, input) => {
+                controls.calls.push({
+                  authorization,
+                  operation: `thread.transition:${controlId}:${expectedVersion}:${input.eligibility_state}`,
+                });
+                return Promise.resolve({
+                  ...automationControl,
+                  eligibility_state: input.eligibility_state,
+                  decision_source: "staff",
+                  decided_by_membership_id: MEMBERSHIP_ID,
+                  reason_code: input.reason_code,
+                  version: expectedVersion + 1,
+                });
+              },
+            },
           },
         }
       : {}),
@@ -401,6 +433,49 @@ describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () 
         /awaiting_customer_confirmation|"confirmed"|confirmation_sent/u,
       );
       expect(f.controls.calls[0]?.operation).toBe("accept");
+    } finally {
+      await f.api.close();
+    }
+  });
+  it("reads and transitions thread eligibility only through authenticated staff boundaries", async () => {
+    const f = createFixture(true);
+    try {
+      const read = await f.api.inject({
+        method: "GET",
+        url: `/v1/staff/thread-automation-controls/${automationControl.id}`,
+        headers: f.headers(),
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.headers["cache-control"]).toBe("no-store");
+      expect(read.headers["etag"]).toBe(`"${automationControl.id}:1"`);
+      expect(read.json()).toMatchObject({ data: { eligibility_state: "uncertain" } });
+
+      const changed = await f.api.inject({
+        method: "POST",
+        url: `/v1/staff/thread-automation-controls/${automationControl.id}/transition`,
+        headers: {
+          ...f.headers(),
+          origin: STAFF_ORIGIN,
+          "x-csrf-token": f.csrf,
+          "if-match": `"${automationControl.id}:1"`,
+        },
+        payload: {
+          eligibility_state: "business_eligible",
+          reason_code: "staff_verified_business",
+        },
+      });
+      expect(changed.statusCode).toBe(200);
+      expect(changed.json()).toMatchObject({
+        data: {
+          decision_source: "staff",
+          eligibility_state: "business_eligible",
+          version: 2,
+        },
+      });
+      expect(f.controls.calls.map(({ operation }) => operation)).toEqual([
+        `thread.get:${automationControl.id}`,
+        `thread.transition:${automationControl.id}:1:business_eligible`,
+      ]);
     } finally {
       await f.api.close();
     }

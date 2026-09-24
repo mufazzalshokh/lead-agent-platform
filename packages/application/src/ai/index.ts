@@ -8,3 +8,4 @@ export * from "./appointment-submission.js";
 export * from "./appointment-time.js";
 export { selectGroundingFacts } from "./grounding-facts.js";
 export { groundingPreflight, groundingLocale } from "./grounding-query.js";
+export { MEDICAL_SAFETY_WORDING_V1, medicalSafetyText } from "./medical-safety.js";

@@ -688,3 +688,11 @@ This exception does not approve medical/emergency response behavior for
 production. Healthcare/clinic staging and launch acceptance for emergency-message
 handling remain blocked until reviewed wording is approved. S14 acceptance must
 not claim medical/emergency readiness; actual Handoff workflows remain S15.
+
+S21 implementation preserves this original deferral as historical context. On
+2026-09-24 the owner explicitly approved the final Uzbek Latin, Russian, and
+English wording. Deterministic application policy now selects the versioned
+`MEDICAL_SAFETY_WORDING_V1` response before provider processing; the model cannot
+rewrite it or authorize a protected action. This approval does not authorize
+clinical assessment, diagnosis, treatment advice, medication instructions, AI
+urgency assessment, or invented jurisdiction-specific emergency numbers.

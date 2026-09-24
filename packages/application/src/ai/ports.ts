@@ -152,8 +152,9 @@ export type AIFallbackReason =
   | "invalid_output"
   | "context_too_large"
   | "policy_denied"
+  | "outside_business_scope"
   | "grounding_insufficient"
-  | "medical_safety_wording_unapproved"
+  | "medical_safety_response"
   | "booking_availability_unapproved"
   | "staff_requested"
   | "stale_context";

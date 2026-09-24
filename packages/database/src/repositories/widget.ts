@@ -324,36 +324,42 @@ export const createWidgetPersistenceStore = (
         clock,
         identifierFactory: identifiers,
       }).acceptInbound(input.prepared);
-      if (result.ok && initial) {
-        if (row.conversation_id !== null && row.conversation_id !== result.value.conversationId)
+      if (result.ok) {
+        const receipt = result.value;
+        if (receipt.status === "suppressed") {
           throw new WidgetApplicationError("business_rule_failed");
-        await executeTenantQuery(session, (organizationId) => ({
-          text: `update widget_sessions set contact_id = $3, conversation_id = $4,
-                    session_token_jti_hash = $5, last_seen_at = greatest(last_seen_at, $6),
-                    version = version + 1, updated_at = greatest(updated_at, $6)
-                  where organization_id = $1 and id = $2`,
-          values: [
-            organizationId,
-            input.claims.sessionId,
-            result.value.contactId,
-            result.value.conversationId,
-            Buffer.from(
-              (input as Parameters<WidgetPersistenceStore["acceptInitialInbound"]>[0]).newJtiHash,
-            ),
+        }
+        if (initial) {
+          if (row.conversation_id !== null && row.conversation_id !== receipt.conversationId)
+            throw new WidgetApplicationError("business_rule_failed");
+          await executeTenantQuery(session, (organizationId) => ({
+            text: `update widget_sessions set contact_id = $3, conversation_id = $4,
+                      session_token_jti_hash = $5, last_seen_at = greatest(last_seen_at, $6),
+                      version = version + 1, updated_at = greatest(updated_at, $6)
+                    where organization_id = $1 and id = $2`,
+            values: [
+              organizationId,
+              input.claims.sessionId,
+              receipt.contactId,
+              receipt.conversationId,
+              Buffer.from(
+                (input as Parameters<WidgetPersistenceStore["acceptInitialInbound"]>[0]).newJtiHash,
+              ),
+              input.now,
+            ],
+          }));
+        }
+        if (!replay) {
+          await persistIdempotency(
+            session,
+            scope,
+            input.claims,
+            input.idempotencyKeyHash,
+            input.requestHash,
             input.now,
-          ],
-        }));
-      }
-      if (result.ok && !replay) {
-        await persistIdempotency(
-          session,
-          scope,
-          input.claims,
-          input.idempotencyKeyHash,
-          input.requestHash,
-          input.now,
-          identifiers,
-        );
+            identifiers,
+          );
+        }
       }
       return result;
     });

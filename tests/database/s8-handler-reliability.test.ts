@@ -41,7 +41,7 @@ import { createWorkerRuntime, type WorkerRuntime } from "../../apps/worker/src/w
 const QUEUE_ROLE = "lead_agent_queue_runtime";
 const OPERATOR_ROLE = "lead_agent_async_operator";
 const TENANT_ROLE = "lead_agent_runtime";
-const BUSINESS_TABLE_COUNT = 51;
+const BUSINESS_TABLE_COUNT = 52;
 const ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-000000001001";
 const OPERATOR_ID = "0193f1a8-7f65-7c28-a434-000000001002";
 const SOURCE_IP_HASH = Buffer.alloc(32, 7);
@@ -301,7 +301,7 @@ afterAll(async () => {
 }, 60_000);
 
 describe("S8.5 PostgreSQL 17 reliability migration", { timeout: 30_000 }, () => {
-  it("bootstraps the current migration head without changing the 51-table business manifest", async () => {
+  it("bootstraps the current migration head with the approved 52-table business manifest", async () => {
     expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     const journal: unknown = JSON.parse(
       await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
@@ -311,8 +311,8 @@ describe("S8.5 PostgreSQL 17 reliability migration", { timeout: 30_000 }, () => 
         ? (journal as Record<string, unknown>)["entries"]
         : undefined;
     expect(Array.isArray(entries) ? entries.at(-1) : undefined).toMatchObject({
-      idx: 28,
-      tag: "0028_s18_instagram_confirmation",
+      idx: 29,
+      tag: "0029_s21_thread_automation_controls",
     });
     const publicTables = await database().query<{ count: number }>(
       `select count(*)::integer as count from information_schema.tables

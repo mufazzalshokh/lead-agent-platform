@@ -4,6 +4,7 @@ import {
   LocaleSchema,
   OrganizationIdSchema,
   ResourceIdSchema,
+  UtcTimestampSchema,
   isSchemaValue,
   type CanonicalInboundEvent,
   type ChannelConnectionId,
@@ -13,7 +14,13 @@ import {
   type MessageId,
   type OrganizationId,
   type ResourceId,
+  type ThreadAutomationEligibilityState,
 } from "@lead-agent/contracts";
+
+import type {
+  InboundEligibilityDecision,
+  ThreadAutomationEligibilityStore,
+} from "./thread-automation-controls.js";
 
 const HASH_MINIMUM_BYTES = 16;
 const HASH_MAXIMUM_BYTES = 128;
@@ -100,6 +107,7 @@ export type PreparedCanonicalInbound = Readonly<{
       processingStatus: InitialInboundMessageProcessingStatus;
     }>;
   organizationId: OrganizationId;
+  eligibilityDecision: InboundEligibilityDecision | null;
   threadHash: Uint8Array;
 }>;
 
@@ -116,16 +124,30 @@ export type CanonicalInboundReceipt = Readonly<{
   status: "accepted" | "duplicate";
 }>;
 
+export type CanonicalInboundSuppressedReceipt = Readonly<{
+  automationControlId: ResourceId;
+  eligibilityState: Exclude<ThreadAutomationEligibilityState, "business_eligible">;
+  status: "suppressed";
+}>;
+
+export type CanonicalInboundSuccessReceipt =
+  CanonicalInboundReceipt | CanonicalInboundSuppressedReceipt;
+
 export type CanonicalInboundFailureCode =
   | "channel_unavailable"
   | "contact_unavailable"
   | "identity_conflict"
+  | "eligibility_unavailable"
   | "persistence_conflict"
   | "unsupported_channel"
   | "unsupported_event_kind"
   | "validation_failed";
 
 export type CanonicalInboundResult =
+  | Readonly<{ ok: true; value: CanonicalInboundSuccessReceipt }>
+  | Readonly<{ error: Readonly<{ code: CanonicalInboundFailureCode }>; ok: false }>;
+
+export type CanonicalInboundBusinessResult =
   | Readonly<{ ok: true; value: CanonicalInboundReceipt }>
   | Readonly<{ error: Readonly<{ code: CanonicalInboundFailureCode }>; ok: false }>;
 
@@ -141,6 +163,12 @@ export interface CanonicalInboundUseCases {
       event: CanonicalInboundEvent;
     }>,
   ): Promise<CanonicalInboundResult>;
+}
+
+export interface CanonicalInboundBusinessUseCases {
+  acceptInbound(
+    command: Parameters<CanonicalInboundUseCases["acceptInbound"]>[0],
+  ): Promise<CanonicalInboundBusinessResult>;
 }
 
 const failure = (code: CanonicalInboundFailureCode): CanonicalInboundResult =>
@@ -239,11 +267,31 @@ const validProtectedContent = (value: unknown): value is ProtectedInboundContent
   isBoundedBytes(value["bodyHash"], HASH_MINIMUM_BYTES, HASH_MAXIMUM_BYTES) &&
   isBoundedBytes(value["bodyCiphertext"], 1, MESSAGE_CIPHERTEXT_MAXIMUM_BYTES);
 
-export const createCanonicalInboundUseCases = (
+const validEligibilityDecision = (value: unknown): value is InboundEligibilityDecision =>
+  isRecord(value) &&
+  Object.keys(value).length === 3 &&
+  isSchemaValue(ResourceIdSchema, value["controlId"]) &&
+  ["business_eligible", "excluded_personal", "uncertain", "staff_only"].includes(
+    String(value["state"]),
+  ) &&
+  Number.isSafeInteger(value["version"]) &&
+  Number(value["version"]) > 0;
+
+export function createCanonicalInboundUseCases(
   store: CanonicalInboundPersistenceStore,
   protector: CanonicalInboundDataProtector,
-): CanonicalInboundUseCases =>
-  Object.freeze({
+): CanonicalInboundBusinessUseCases;
+export function createCanonicalInboundUseCases(
+  store: CanonicalInboundPersistenceStore,
+  protector: CanonicalInboundDataProtector,
+  eligibilityStore: ThreadAutomationEligibilityStore,
+): CanonicalInboundUseCases;
+export function createCanonicalInboundUseCases(
+  store: CanonicalInboundPersistenceStore,
+  protector: CanonicalInboundDataProtector,
+  eligibilityStore?: ThreadAutomationEligibilityStore,
+): CanonicalInboundUseCases {
+  return Object.freeze({
     acceptInbound: async (command: Parameters<CanonicalInboundUseCases["acceptInbound"]>[0]) => {
       if (
         !isRecord(command) ||
@@ -268,7 +316,40 @@ export const createCanonicalInboundUseCases = (
         return failure("validation_failed");
       }
 
-      const [identity, message, threadHash] = await Promise.all([
+      const threadHash = await protector.threadHash({
+        channelConnectionId: context.channelConnectionId,
+        externalConversationId: event.external_conversation_id,
+        organizationId: context.organizationId,
+      });
+      if (!isBoundedBytes(threadHash, HASH_MINIMUM_BYTES, HASH_MAXIMUM_BYTES)) {
+        return failure("validation_failed");
+      }
+
+      let eligibilityDecision: InboundEligibilityDecision | null = null;
+      if (event.channel === "telegram" || event.channel === "instagram") {
+        if (eligibilityStore === undefined) return failure("eligibility_unavailable");
+        const receivedAt: unknown = event.received_at;
+        if (!isSchemaValue(UtcTimestampSchema, receivedAt)) return failure("validation_failed");
+        eligibilityDecision = await eligibilityStore.resolveInbound({
+          channel: event.channel,
+          context,
+          occurredAt: receivedAt,
+          threadHash: new Uint8Array(threadHash),
+        });
+        if (!validEligibilityDecision(eligibilityDecision)) return failure("validation_failed");
+        if (eligibilityDecision.state !== "business_eligible") {
+          return Object.freeze({
+            ok: true,
+            value: Object.freeze({
+              automationControlId: eligibilityDecision.controlId,
+              eligibilityState: eligibilityDecision.state,
+              status: "suppressed",
+            }),
+          });
+        }
+      }
+
+      const [identity, message] = await Promise.all([
         protector.protectParticipant({
           channelConnectionId: context.channelConnectionId,
           externalParticipantId: event.external_sender_id,
@@ -280,21 +361,12 @@ export const createCanonicalInboundUseCases = (
           content: event.content,
           organizationId: context.organizationId,
         }),
-        protector.threadHash({
-          channelConnectionId: context.channelConnectionId,
-          externalConversationId: event.external_conversation_id,
-          organizationId: context.organizationId,
-        }),
       ]);
-      if (
-        !validProtectedParticipant(identity) ||
-        !validProtectedContent(message) ||
-        !isBoundedBytes(threadHash, HASH_MINIMUM_BYTES, HASH_MAXIMUM_BYTES)
-      ) {
+      if (!validProtectedParticipant(identity) || !validProtectedContent(message)) {
         return failure("validation_failed");
       }
 
-      return await store.acceptInbound(
+      const result = await store.acceptInbound(
         Object.freeze({
           consentEvidence,
           event,
@@ -313,8 +385,14 @@ export const createCanonicalInboundUseCases = (
             processingStatus: processingStatusFor(event),
           }),
           organizationId: context.organizationId,
+          eligibilityDecision,
           threadHash: new Uint8Array(threadHash),
         }),
       );
+      if (eligibilityDecision === null && result.ok && result.value.status === "suppressed") {
+        return failure("persistence_conflict");
+      }
+      return result;
     },
   });
+}

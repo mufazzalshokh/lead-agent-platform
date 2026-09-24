@@ -11,6 +11,7 @@ import {
 import {
   type AIWorkReference,
   type CanonicalInboundReceipt,
+  medicalSafetyText,
 } from "../../packages/application/src/index.js";
 import {
   DomainEventSchemasByVersion,
@@ -464,12 +465,31 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       expect(await store().respond(ref)).toMatchObject({ kind: "ignored" });
       expect((await counts())?.["confirmed"]).toBe(0);
     });
-    it("medical content stays typed fail-closed with no clinical response or protected action", async () => {
+    it("medical content queues only approved wording and performs no protected action", async () => {
       const f = await prepared();
       expect(await store().respond(await inbound(f, "yes chest pain emergency"))).toMatchObject({
         kind: "grounding_insufficient",
-        reason: "medical_safety_wording_unapproved",
+        reason: "medical_safety_response",
       });
+      const messages = (
+        await harness
+          .privilegedPool()
+          .query<{ body_ciphertext: Buffer | null }>(
+            `select body_ciphertext from messages where knowledge_manifest_jsonb->>'confirmation_kind'='medical'`,
+          )
+      ).rows;
+      expect(messages).toHaveLength(1);
+      const ciphertext = messages[0]?.body_ciphertext;
+      if (ciphertext === null || ciphertext === undefined)
+        throw new Error("Missing S21 medical safety response body");
+      expect(
+        harness.dataProtection.revealMessageBody({
+          organizationId: f.organizationId,
+          channelConnectionId: f.channelConnectionId,
+          contentType: "text",
+          ciphertext,
+        }),
+      ).toBe(medicalSafetyText("en"));
       expect((await state())[0]).toMatchObject({ status: "awaiting_customer_confirmation" });
       expect((await counts())?.["confirmed"]).toBe(0);
     });

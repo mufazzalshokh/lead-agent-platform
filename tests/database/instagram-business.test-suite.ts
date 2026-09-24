@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   createInstagramBusinessUseCases,
   instagramAccountRouteHash,
+  instagramConversationIdentity,
   type CredentialSecretStore,
   type InstagramInboundMessage,
 } from "../../packages/application/src/index.js";
@@ -20,6 +21,7 @@ import {
   createInstagramPersistenceStore,
   createCanonicalInboundPersistenceStore,
   createStaffConversationQueryStore,
+  createThreadAutomationControlStore,
   migrationsFolder,
   runMigrations,
   type TenantDatabaseRuntime,
@@ -162,7 +164,7 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
         expect(await identityCheck()).not.toContain("instagram_user");
         await runMigrations(pool);
         expect(await identityCheck()).toContain("instagram_user");
-        expect(await tables()).toBe(51);
+        expect(await tables()).toBe(52);
         await runMigrations(pool);
         expect(
           (
@@ -170,7 +172,7 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
               "select count(*)::integer as count from drizzle.__drizzle_migrations",
             )
           ).rows[0]?.count,
-        ).toBe(29);
+        ).toBe(30);
       } finally {
         await pool.end();
         await options.privilegedPool().query(`drop database "${name}"`);
@@ -389,6 +391,7 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
       clock: () => NOW,
       randomState: () => NONCE,
       dataProtector: dataProtection,
+      eligibilityStore: createThreadAutomationControlStore(options.runtime()),
       canonicalStore: createCanonicalInboundPersistenceStore(options.runtime()),
       persistence: createInstagramPersistenceStore(options.runtime()),
       credentials,
@@ -419,6 +422,18 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
       displayName: "Instagram Professional",
     });
     await useCases.completeOnboarding({ code: "synthetic-code", state: NONCE });
+    const threadHash = dataProtection.threadHash({
+      channelConnectionId: IDS.channel,
+      externalConversationId: instagramConversationIdentity(ACCOUNT_ID, CUSTOMER_ID),
+      organizationId: IDS.organization,
+    });
+    await pool.query(
+      `insert into thread_automation_controls
+       (id,organization_id,channel_connection_id,external_thread_hash,eligibility_state,
+        decision_source,reason_code,version,created_at,updated_at)
+       values($1,$2,$3,$4,'business_eligible','platform_policy','verified_test_business_thread',1,$5,$5)`,
+      [IDS.control, IDS.organization, IDS.channel, Buffer.from(threadHash), NOW],
+    );
     return { pool, useCases };
   };
   const incoming: InstagramInboundMessage = {

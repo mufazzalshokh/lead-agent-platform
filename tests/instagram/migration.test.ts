@@ -32,13 +32,17 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       "4528878af70ef7bec527fd18f75602b21d5bf09262e4fcbb3083be34887d6de0",
     );
   });
-  it("has the approved S18 migration head, 51 business tables, and ordered history", async () => {
+  it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
     const files = (await readdir(folder)).filter((name) => name.endsWith(".sql")).sort();
     expect(files.map((name) => name.slice(0, 4))).toEqual(
-      Array.from({ length: 29 }, (_, index) => String(index).padStart(4, "0")),
+      Array.from({ length: 30 }, (_, index) => String(index).padStart(4, "0")),
     );
-    expect(files.at(-1)).toBe("0028_s18_instagram_confirmation.sql");
-    for (const name of ["0027", "0028"]) {
+    expect(files.at(-1)).toBe("0029_s21_thread_automation_controls.sql");
+    for (const [name, expectedTables] of [
+      ["0027", 51],
+      ["0028", 51],
+      ["0029", 52],
+    ] as const) {
       const snapshot: unknown = JSON.parse(
         await readFile(new URL(`meta/${name}_snapshot.json`, folder), "utf8"),
       );
@@ -50,7 +54,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
         snapshot.tables === null
       )
         throw new Error("Invalid snapshot");
-      expect(Object.keys(snapshot.tables)).toHaveLength(51);
+      expect(Object.keys(snapshot.tables)).toHaveLength(expectedTables);
     }
     const journal: unknown = JSON.parse(
       await readFile(new URL("meta/_journal.json", folder), "utf8"),
@@ -62,7 +66,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       !Array.isArray(journal.entries)
     )
       throw new Error("Invalid journal");
-    expect(journal.entries).toHaveLength(29);
+    expect(journal.entries).toHaveLength(30);
     let previous = -1;
     const entries: readonly unknown[] = journal.entries;
     for (const [index, entry] of entries.entries()) {

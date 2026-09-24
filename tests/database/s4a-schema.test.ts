@@ -84,6 +84,7 @@ import {
   webhookReceipts,
   widgetAllowedOrigins,
   widgetSessions,
+  threadAutomationControls,
   type AuthorizationDatabaseRuntime,
   type IdentityDatabaseRuntime,
   type MembershipLifecycleDatabaseRuntime,
@@ -124,6 +125,7 @@ import { registerTelegramBusinessPersistenceTests } from "./telegram-business.te
 import { registerInstagramBusinessPersistenceTests } from "./instagram-business.test-suite.js";
 import { registerAIOrchestrationTests } from "./ai-orchestration.test-suite.js";
 import { registerAnalyticsPersistenceTests } from "./analytics.test-suite.js";
+import { registerThreadAutomationControlTests } from "./thread-automation-controls.test-suite.js";
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-a10796c41c2b";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-a10796c41c2c";
@@ -412,6 +414,7 @@ const S6_1_TABLES = [
   "membership_invitations",
   "membership_location_scopes",
 ].sort();
+const S21_TABLES = [...S6_1_TABLES, "thread_automation_controls"].sort();
 const S5_RUNTIME_ROLE = "lead_agent_runtime";
 const S5_INGRESS_ROLE = "lead_agent_ingress";
 const S5_INBOUND_ROUTE_DEFINER_ROLE = "lead_agent_inbound_route_definer";
@@ -471,6 +474,7 @@ const S6_1_RLS_TABLES = [
   "membership_invitations",
   "membership_location_scopes",
 ].sort();
+const S21_RLS_TABLES = [...S6_1_RLS_TABLES, "thread_automation_controls"].sort();
 const S6_1_GLOBAL_TABLES = [...S5_GLOBAL_TABLES, "auth_sessions", "external_identities"] as const;
 const SCHEMA_TABLES = {
   analytics_events: analyticsEvents,
@@ -524,6 +528,7 @@ const SCHEMA_TABLES = {
   webhook_receipts: webhookReceipts,
   widget_allowed_origins: widgetAllowedOrigins,
   widget_sessions: widgetSessions,
+  thread_automation_controls: threadAutomationControls,
 } as const;
 
 const isDrizzleColumn = (value: unknown): value is { name: string; table: unknown } =>
@@ -2535,6 +2540,7 @@ beforeEach(async () => {
      delete from messages;
      delete from lead_qualification_evaluations;
      delete from widget_sessions;
+     delete from thread_automation_controls;
      delete from conversations;
      delete from leads;
      delete from contact_identities;
@@ -2709,12 +2715,12 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     expect(Number(version.rows[0]?.server_version_num)).toBeGreaterThanOrEqual(170_000);
     expect(Number(version.rows[0]?.server_version_num)).toBeLessThan(180_000);
 
-    expect(await productionTables(database())).toEqual(S6_1_TABLES);
+    expect(await productionTables(database())).toEqual(S21_TABLES);
 
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(29);
+    expect(migrationCount.rows[0]?.count).toBe(30);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -3732,7 +3738,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     );
     const declaredNames = Object.keys(SCHEMA_TABLES).sort();
 
-    expect(declaredNames).toEqual(S6_1_TABLES);
+    expect(declaredNames).toEqual(S21_TABLES);
     for (const [tableName, table] of Object.entries(SCHEMA_TABLES)) {
       const declaredColumns = Object.values(table as unknown as Record<string, unknown>)
         .filter(isDrizzleColumn)
@@ -5565,9 +5571,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
           and relkind = 'r'
         order by relname`,
     );
-    const rlsTableSet = new Set(S6_1_RLS_TABLES);
+    const rlsTableSet = new Set(S21_RLS_TABLES);
     expect(rls.rows).toEqual(
-      S6_1_TABLES.map((relname) => ({
+      S21_TABLES.map((relname) => ({
         relforcerowsecurity: rlsTableSet.has(relname),
         relname,
         relrowsecurity: rlsTableSet.has(relname),
@@ -9421,9 +9427,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
           and relkind = 'r'
         order by relname`,
     );
-    const expectedRlsTables = new Set(S6_1_RLS_TABLES);
+    const expectedRlsTables = new Set(S21_RLS_TABLES);
     expect(relationSecurity.rows).toEqual(
-      S6_1_TABLES.map((tableName) => ({
+      S21_TABLES.map((tableName) => ({
         relforcerowsecurity: expectedRlsTables.has(tableName),
         relname: tableName,
         relrowsecurity: expectedRlsTables.has(tableName),
@@ -9444,12 +9450,12 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S6_1_RLS_TABLES.length + 14);
+    expect(policies.rows).toHaveLength(S21_RLS_TABLES.length + 14);
     const tenantIsolationPolicies = policies.rows.filter(({ policyname }) =>
       policyname.endsWith("_tenant_isolation"),
     );
-    expect(tenantIsolationPolicies).toHaveLength(S6_1_RLS_TABLES.length);
-    for (const tableName of S6_1_RLS_TABLES) {
+    expect(tenantIsolationPolicies).toHaveLength(S21_RLS_TABLES.length);
+    for (const tableName of S21_RLS_TABLES) {
       const policy = tenantIsolationPolicies.find(({ tablename }) => tablename === tableName);
       const identityColumn = tableName === "organizations" ? "id" : "organization_id";
       expect(policy).toMatchObject({
@@ -10244,5 +10250,9 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         status: "dead_lettered",
       });
     },
+  });
+  registerThreadAutomationControlTests({
+    privilegedPool: database,
+    runtime: requireTenantRuntime,
   });
 });

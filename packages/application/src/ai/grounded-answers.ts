@@ -29,7 +29,7 @@ export const evaluateGroundedDecision = (
     decision.intent === "medical_question" ||
     decision.safety.risk_flags.includes("medical_content")
   )
-    return aiFallback("medical_safety_wording_unapproved");
+    return aiFallback("medical_safety_response");
   if (["booking_request", "booking_confirmation", "booking_decline"].includes(decision.intent))
     return aiFallback("booking_availability_unapproved");
   if (
