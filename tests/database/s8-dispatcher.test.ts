@@ -44,7 +44,7 @@ import { createWorkerRuntime, type WorkerRuntime } from "../../apps/worker/src/w
 
 const QUEUE_RUNTIME_ROLE = "lead_agent_queue_runtime";
 const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
-const BUSINESS_TABLE_COUNT = 52;
+const CURRENT_BUSINESS_TABLE_COUNT = 52;
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-000000000001";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-000000000002";
 const ACTIVE_ORGANIZATION_CREATED = createActiveEventRoutes([
@@ -399,7 +399,7 @@ describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_
          from information_schema.tables
         where table_schema = 'public' and table_type = 'BASE TABLE'`,
     );
-    expect(tables.rows).toEqual([{ count: BUSINESS_TABLE_COUNT }]);
+    expect(tables.rows).toEqual([{ count: CURRENT_BUSINESS_TABLE_COUNT }]);
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );

@@ -41,7 +41,7 @@ import { createWorkerRuntime, type WorkerRuntime } from "../../apps/worker/src/w
 const QUEUE_ROLE = "lead_agent_queue_runtime";
 const OPERATOR_ROLE = "lead_agent_async_operator";
 const TENANT_ROLE = "lead_agent_runtime";
-const BUSINESS_TABLE_COUNT = 52;
+const CURRENT_BUSINESS_TABLE_COUNT = 52;
 const ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-000000001001";
 const OPERATOR_ID = "0193f1a8-7f65-7c28-a434-000000001002";
 const SOURCE_IP_HASH = Buffer.alloc(32, 7);
@@ -318,7 +318,7 @@ describe("S8.5 PostgreSQL 17 reliability migration", { timeout: 30_000 }, () => 
       `select count(*)::integer as count from information_schema.tables
         where table_schema = 'public' and table_type = 'BASE TABLE'`,
     );
-    expect(publicTables.rows).toEqual([{ count: BUSINESS_TABLE_COUNT }]);
+    expect(publicTables.rows).toEqual([{ count: CURRENT_BUSINESS_TABLE_COUNT }]);
     const ledger = await database().query<{ count: number }>(
       `select count(*)::integer as count from information_schema.tables
         where table_schema = 'app' and table_name = 'worker_handler_executions'`,

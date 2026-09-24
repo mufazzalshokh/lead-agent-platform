@@ -23,7 +23,7 @@ const S8_ACTIVE_ROUTE_MIGRATION = "0023_s8_active_route_claim.sql";
 const QUEUE_RUNTIME_ROLE = "lead_agent_queue_runtime";
 const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
 const RELAY_DEFINER_ROLE = "lead_agent_outbox_relay_definer";
-const BUSINESS_TABLE_COUNT = 52;
+const CURRENT_BUSINESS_TABLE_COUNT = 52;
 
 const ORGANIZATION_A = "0193f1a8-7f65-7c28-a434-000000000001";
 const ORGANIZATION_B = "0193f1a8-7f65-7c28-a434-000000000002";
@@ -409,7 +409,7 @@ describe("S8.2/S8.3 PostgreSQL 17 narrow outbox relay persistence", { timeout: 3
   it("upgrades 0022 to 0023 without changing business tables or pg-boss", async () => {
     expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     expect(pgbossUpgradeUnchanged).toBe(true);
-    expect(await publicTableCount(database())).toBe(BUSINESS_TABLE_COUNT);
+    expect(await publicTableCount(database())).toBe(CURRENT_BUSINESS_TABLE_COUNT);
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );

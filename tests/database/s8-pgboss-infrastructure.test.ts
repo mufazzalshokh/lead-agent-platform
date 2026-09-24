@@ -20,7 +20,8 @@ const TENANT_RUNTIME_ROLE = "lead_agent_runtime";
 const S8_MIGRATION = "0021_s8_pgboss_infrastructure.sql";
 
 const isUnknownArray = (candidate: unknown): candidate is unknown[] => Array.isArray(candidate);
-const BUSINESS_TABLE_COUNT = 52;
+const CURRENT_BUSINESS_TABLE_COUNT = 52;
+const S8_0020_BUSINESS_TABLE_COUNT = 51;
 const EXPECTED_BASE_TABLES = [
   "bam",
   "job",
@@ -251,12 +252,12 @@ afterAll(async () => {
 describe("S8.1 PostgreSQL 17 pg-boss infrastructure", { timeout: 30_000 }, () => {
   it("upgrades the accepted 0020 baseline without changing business tables", () => {
     expect(serverVersion).toMatch(/^17\./u);
-    expect(upgradeBusinessTableCount).toBe(BUSINESS_TABLE_COUNT);
+    expect(upgradeBusinessTableCount).toBe(S8_0020_BUSINESS_TABLE_COUNT);
     expect(upgradeSchemaVersion).toBe(PG_BOSS_SCHEMA_VERSION);
   });
 
   it("fresh-bootstraps current head and reruns the migration runner safely", async () => {
-    expect(await publicTableCount(database())).toBe(BUSINESS_TABLE_COUNT);
+    expect(await publicTableCount(database())).toBe(CURRENT_BUSINESS_TABLE_COUNT);
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
