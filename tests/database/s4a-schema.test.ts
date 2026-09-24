@@ -3668,7 +3668,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         ?.filter(({ column_name }) => ["value_ciphertext", "lookup_hash"].includes(column_name))
         .every(({ data_type }) => data_type === "bytea"),
     ).toBe(true);
-    expect(utcTimestamps).toHaveLength(53);
+    expect(utcTimestamps).toHaveLength(55);
     expect(utcTimestamps.every(({ data_type }) => data_type === "timestamp with time zone")).toBe(
       true,
     );

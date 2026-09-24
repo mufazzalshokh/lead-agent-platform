@@ -327,8 +327,17 @@ export const registerTelegramBusinessPersistenceTests = (options: Options): void
       establishedAt: NOW.toISOString(),
       updateId: "2",
     });
+    const activeChannel = (
+      await pool.query<{ id: string }>(
+        `select id::text from channel_connections
+          where organization_id=$1 and channel_type='telegram' and status='active'`,
+        [IDS.organization],
+      )
+    ).rows[0]?.id;
+    if (!isSchemaValue(ChannelConnectionIdSchema, activeChannel))
+      throw new Error("Invalid active Telegram eligibility fixture");
     const threadHash = dataProtection.threadHash({
-      channelConnectionId: IDS.channel,
+      channelConnectionId: activeChannel,
       externalConversationId: telegramConversationIdentity("business-test-1", "123"),
       organizationId: IDS.organization,
     });
@@ -337,7 +346,7 @@ export const registerTelegramBusinessPersistenceTests = (options: Options): void
        (id,organization_id,channel_connection_id,external_thread_hash,eligibility_state,
         decision_source,reason_code,version,created_at,updated_at)
        values($1,$2,$3,$4,'business_eligible','platform_policy','verified_test_business_thread',1,$5,$5)`,
-      [IDS.control, IDS.organization, IDS.channel, Buffer.from(threadHash), NOW],
+      [IDS.control, IDS.organization, activeChannel, Buffer.from(threadHash), NOW],
     );
     return { pool, useCases };
   };

@@ -422,8 +422,19 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
       displayName: "Instagram Professional",
     });
     await useCases.completeOnboarding({ code: "synthetic-code", state: NONCE });
+    const activeChannelValue = (
+      await pool.query<{ id: unknown }>(
+        `select id::text as id from channel_connections
+          where organization_id=$1 and channel_type='instagram' and status='active'`,
+        [IDS.organization],
+      )
+    ).rows[0]?.id;
+    if (!isSchemaValue(ChannelConnectionIdSchema, activeChannelValue)) {
+      throw new Error("Missing active Instagram fixture channel");
+    }
+    const activeChannel = activeChannelValue;
     const threadHash = dataProtection.threadHash({
-      channelConnectionId: IDS.channel,
+      channelConnectionId: activeChannel,
       externalConversationId: instagramConversationIdentity(ACCOUNT_ID, CUSTOMER_ID),
       organizationId: IDS.organization,
     });
@@ -432,7 +443,7 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
        (id,organization_id,channel_connection_id,external_thread_hash,eligibility_state,
         decision_source,reason_code,version,created_at,updated_at)
        values($1,$2,$3,$4,'business_eligible','platform_policy','verified_test_business_thread',1,$5,$5)`,
-      [IDS.control, IDS.organization, IDS.channel, Buffer.from(threadHash), NOW],
+      [IDS.control, IDS.organization, activeChannel, Buffer.from(threadHash), NOW],
     );
     return { pool, useCases };
   };
