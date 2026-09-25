@@ -272,3 +272,13 @@ variable "billing_account_id" {
     error_message = "billing_account_id must use the canonical XXXXXX-XXXXXX-XXXXXX form."
   }
 }
+
+variable "deployer_service_account_email" {
+  description = "Bootstrap-created GitHub deployment identity granted actAs only on the four staging runtime service accounts."
+  type        = string
+
+  validation {
+    condition     = var.deployer_service_account_email == "lead-agent-staging-deploy@${var.project_id}.iam.gserviceaccount.com"
+    error_message = "deployer_service_account_email must be the bootstrap-created deployer in this staging project."
+  }
+}

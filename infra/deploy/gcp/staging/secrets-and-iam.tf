@@ -120,6 +120,19 @@ resource "google_service_account" "migrator" {
   display_name = "Lead Agent staging database migrator"
 }
 
+resource "google_service_account_iam_member" "deployer_act_as" {
+  for_each = {
+    api      = google_service_account.api.name
+    migrator = google_service_account.migrator.name
+    web      = google_service_account.web.name
+    worker   = google_service_account.worker.name
+  }
+
+  service_account_id = each.value
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.deployer_service_account_email}"
+}
+
 resource "google_project_iam_member" "runtime_logging" {
   for_each = local.runtime_service_accounts
 

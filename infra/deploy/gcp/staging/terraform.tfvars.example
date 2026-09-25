@@ -1,5 +1,6 @@
 project_id = "lead-agent-staging-unique"
 billing_account_id = "000000-000000-000000"
+deployer_service_account_email = "lead-agent-staging-deploy@lead-agent-staging-unique.iam.gserviceaccount.com"
 monitoring_notification_channel_ids = [
   "projects/lead-agent-staging-unique/notificationChannels/0000000000000000000",
 ]

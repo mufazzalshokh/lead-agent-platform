@@ -20,16 +20,16 @@ locals {
 
   deployer_project_roles = toset([
     "roles/artifactregistry.admin",
+    "roles/cloudsql.admin",
     "roles/compute.networkAdmin",
     "roles/iam.serviceAccountAdmin",
-    "roles/iam.serviceAccountUser",
-    "roles/logging.configWriter",
-    "roles/monitoring.admin",
+    "roles/monitoring.alertPolicyEditor",
+    "roles/monitoring.notificationChannelViewer",
     "roles/resourcemanager.projectIamAdmin",
     "roles/run.admin",
     "roles/secretmanager.admin",
-    "roles/serviceusage.serviceUsageAdmin",
-    "roles/cloudsql.admin",
+    "roles/servicenetworking.networksAdmin",
+    "roles/serviceusage.serviceUsageConsumer",
   ])
 }
 

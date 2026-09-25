@@ -38,14 +38,17 @@ the local state until the versioned GCS object has been verified.
 Bootstrap creates required APIs, state storage, the deployment service account, and
 GitHub OIDC trust restricted to repository `mufazzalshokh/lead-agent-platform`, ref
 `refs/heads/main` or the temporary `refs/heads/verify/s22-staging-recovery-capacity`
-verification branch, the two S22 staging workflows, and GitHub environment `staging`.
+verification branch, and the two S22 staging workflows. Terraform does not create the
+GitHub environment; the owner must create the exact `staging` environment separately.
 This permits pre-promotion staging proof without merging partial S22 work; after S22
 acceptance, normal staging deployments use `main`.
 
 ## 2. GitHub staging environment
 
-Create the protected GitHub environment `staging`, require the owner as reviewer, and
-set non-secret environment variables:
+In GitHub, open **Settings -> Environments -> New environment**, create the exact
+case-sensitive name `staging`, require the owner as reviewer, and restrict deployment
+branches to `main` and `verify/s22-staging-recovery-capacity`. Set these non-secret
+environment variables:
 
 - `GCP_PROJECT_ID`
 - `GCP_TERRAFORM_STATE_BUCKET`
@@ -60,6 +63,11 @@ set non-secret environment variables:
 
 Do not store provider tokens, database URLs, encryption/signing keys, or client secrets
 as GitHub variables.
+
+`GCP_DEPLOYER_SERVICE_ACCOUNT` must be the bootstrap-created
+`lead-agent-staging-deploy@PROJECT_ID.iam.gserviceaccount.com` identity. Terraform
+grants that identity `roles/iam.serviceAccountUser` only on the API, Web, worker, and
+migrator service accounts; it is not granted project-wide act-as permission.
 
 ## 3. Foundation plan and apply
 

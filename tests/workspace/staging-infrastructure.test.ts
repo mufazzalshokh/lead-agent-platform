@@ -66,8 +66,9 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("requires reviewed-plan integrity and GitHub OIDC instead of service-account keys", async () => {
-    const [bootstrap, workflow] = await Promise.all([
+    const [bootstrap, runtimeIam, workflow] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
+      repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
       repositoryFile(".github/workflows/staging-terraform.yml"),
     ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
@@ -84,8 +85,22 @@ describe("S22 staging infrastructure boundary", () => {
     expect(bootstrap).toContain('"cloudbilling.googleapis.com"');
     expect(bootstrap).toContain('"cloudresourcemanager.googleapis.com"');
     expect(bootstrap).toContain('"storage.googleapis.com"');
+    expect(bootstrap).toContain('"roles/monitoring.alertPolicyEditor"');
+    expect(bootstrap).toContain('"roles/monitoring.notificationChannelViewer"');
+    expect(bootstrap).toContain('"roles/servicenetworking.networksAdmin"');
+    expect(bootstrap).toContain('"roles/serviceusage.serviceUsageConsumer"');
+    expect(bootstrap).not.toContain('"roles/iam.serviceAccountUser"');
+    expect(bootstrap).not.toContain('"roles/logging.configWriter"');
+    expect(bootstrap).not.toContain('"roles/monitoring.admin"');
+    expect(bootstrap).not.toContain('"roles/serviceusage.serviceUsageAdmin"');
+    expect(runtimeIam).toContain('resource "google_service_account_iam_member" "deployer_act_as"');
+    expect(runtimeIam).toContain('role               = "roles/iam.serviceAccountUser"');
+    expect(runtimeIam).toContain(
+      'member             = "serviceAccount:${var.deployer_service_account_email}"',
+    );
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(workflow).toContain("google-github-actions/auth@");
+    expect(workflow).toContain("TF_VAR_deployer_service_account_email");
     expect(workflow).toContain("sha256sum --check s22.tfplan.sha256");
     expect(workflow).not.toMatch(/service[_-]account[_-]key/u);
   });

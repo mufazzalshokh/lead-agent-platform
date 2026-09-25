@@ -88,6 +88,7 @@ jobs:
       TF_VAR_instagram_app_id: ${{ vars.STAGING_INSTAGRAM_APP_ID }}
       TF_VAR_instagram_graph_api_version: ${{ vars.STAGING_INSTAGRAM_GRAPH_API_VERSION }}
       TF_VAR_billing_account_id: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
+      TF_VAR_deployer_service_account_email: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
       TF_VAR_monitoring_notification_channel_ids: ${{ vars.STAGING_MONITORING_NOTIFICATION_CHANNEL_IDS_JSON }}
     steps:
       - name: Validate request boundary

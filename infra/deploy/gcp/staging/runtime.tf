@@ -183,6 +183,8 @@ resource "google_cloud_run_v2_service" "api" {
       error_message = "Full runtime deployment requires the staging Auth0, Telegram and Instagram public identifiers."
     }
   }
+
+  depends_on = [google_service_account_iam_member.deployer_act_as]
 }
 
 resource "google_cloud_run_v2_service_iam_member" "api_public" {
@@ -264,6 +266,8 @@ resource "google_cloud_run_v2_service" "web" {
       }
     }
   }
+
+  depends_on = [google_service_account_iam_member.deployer_act_as]
 }
 
 resource "google_cloud_run_v2_service_iam_member" "web_public" {
@@ -333,6 +337,8 @@ resource "google_cloud_run_v2_worker_pool" "worker" {
       }
     }
   }
+
+  depends_on = [google_service_account_iam_member.deployer_act_as]
 }
 
 resource "google_cloud_run_v2_job" "migrator" {
@@ -404,4 +410,6 @@ resource "google_cloud_run_v2_job" "migrator" {
       }
     }
   }
+
+  depends_on = [google_service_account_iam_member.deployer_act_as]
 }
