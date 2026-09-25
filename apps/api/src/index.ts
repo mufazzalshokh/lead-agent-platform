@@ -1,4 +1,5 @@
 import { createApiFromEnvironment } from "./runtime.js";
+import { createGoogleSecretManagerCredentialStoreFromEnvironment } from "@lead-agent/integrations";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3001;
@@ -17,7 +18,12 @@ const parsePort = (value: string | undefined): number => {
 };
 
 const start = async (): Promise<void> => {
-  const api = createApiFromEnvironment(process.env);
+  const credentialSecretStore = createGoogleSecretManagerCredentialStoreFromEnvironment(
+    process.env,
+  );
+  const api = createApiFromEnvironment(process.env, {
+    ...(credentialSecretStore === undefined ? {} : { credentialSecretStore }),
+  });
   const host = process.env["HOST"]?.trim() || DEFAULT_HOST;
   const port = parsePort(process.env["PORT"]);
 

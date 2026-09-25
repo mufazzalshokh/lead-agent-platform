@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import type { WorkerRuntime } from "./worker-runtime.js";
 import type { CredentialSecretStore } from "@lead-agent/application";
+import { createGoogleSecretManagerCredentialStoreFromEnvironment } from "@lead-agent/integrations";
 import { createWorkerShutdownCoordinator } from "./worker-signals.js";
 
 const safeErrorMetadata = (error: unknown): Readonly<{ code?: string; name: string }> => {
@@ -19,7 +20,12 @@ export const createProductionWorkerRuntime = async (
   options: Readonly<{ credentialSecretStore?: CredentialSecretStore }> = {},
 ): Promise<WorkerRuntime> => {
   const { composeProductionWorkerRuntime } = await import("./telegram-composition.js");
-  return composeProductionWorkerRuntime(environment, options);
+  const credentialSecretStore =
+    options.credentialSecretStore ??
+    createGoogleSecretManagerCredentialStoreFromEnvironment(environment);
+  return composeProductionWorkerRuntime(environment, {
+    ...(credentialSecretStore === undefined ? {} : { credentialSecretStore }),
+  });
 };
 
 export const startWorker = async (

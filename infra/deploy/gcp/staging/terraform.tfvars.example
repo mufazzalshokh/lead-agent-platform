@@ -1,0 +1,30 @@
+project_id = "lead-agent-staging-unique"
+billing_account_id = "000000-000000-000000"
+deployer_service_account_email = "lead-agent-staging-deploy@lead-agent-staging-unique.iam.gserviceaccount.com"
+monitoring_notification_channel_ids = [
+  "projects/lead-agent-staging-unique/notificationChannels/0000000000000000000",
+]
+
+# Foundation apply: keep both false. No runtime or secret value is required.
+deploy_runtime    = false
+bootstrap_runtime = false
+prepare_migration = false
+cloud_sql_tier              = "db-f1-micro"
+cloud_sql_activation_policy = "NEVER"
+api_max_instance_count      = 1
+web_max_instance_count      = 1
+worker_instance_count       = 0
+worker_memory               = "512Mi"
+
+# Runtime values are supplied only after foundation, immutable image build, and
+# the health-only origin bootstrap described in infra/runbooks/staging-deployment.md.
+# git_commit_sha       = "0000000000000000000000000000000000000000"
+# deployment_timestamp = "2026-09-24T00:00:00Z"
+# api_image             = "me-central1-docker.pkg.dev/PROJECT/lead-agent/api@sha256:..."
+# web_image             = "me-central1-docker.pkg.dev/PROJECT/lead-agent/web@sha256:..."
+# worker_image          = "me-central1-docker.pkg.dev/PROJECT/lead-agent/worker@sha256:..."
+# migrator_image        = "me-central1-docker.pkg.dev/PROJECT/lead-agent/migrator@sha256:..."
+# auth0_issuer          = "https://TENANT.auth0.com/"
+# auth0_client_id       = "..."
+# telegram_bot_username = "..."
+# instagram_app_id      = "..."
