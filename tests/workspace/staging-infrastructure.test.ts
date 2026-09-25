@@ -104,13 +104,22 @@ describe("S22 staging infrastructure boundary", () => {
       "S22_ACTION: ${{ github.event_name == 'push' && 'plan' || inputs.action }}",
     );
     expect(workflow).toContain(
-      "S22_PHASE: ${{ github.event_name == 'push' && 'foundation' || inputs.phase }}",
+      "S22_PHASE: ${{ github.event_name == 'push' && 'bootstrap-iam' || inputs.phase }}",
     );
     expect(workflow).toContain('[[ "$ACTION" == "plan" ]]');
-    expect(workflow).toContain('[[ "$PHASE" == "foundation" ]]');
+    expect(workflow).toContain('[[ "$PHASE" == "bootstrap-iam" ]]');
     expect(workflow).toContain('[[ -z "$APPROVAL_TOKEN" ]]');
     expect(workflow).toContain('[[ -z "$PLAN_RUN_ID" ]]');
-    expect(workflow).toContain("if: env.S22_ACTION == 'apply'");
+    expect(workflow).toContain("working-directory: infra/deploy/gcp/bootstrap");
+    expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]');
+    expect(workflow).toContain("terraform plan -lock-timeout=5m -out=s22-bootstrap-iam.tfplan");
+    expect(workflow).toContain("sha256sum s22-bootstrap-iam.tfplan");
+    expect(workflow).not.toContain(
+      "terraform apply -lock-timeout=5m -auto-approve s22-bootstrap-iam.tfplan",
+    );
+    expect(workflow).toContain(
+      "if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply'",
+    );
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain(
       'if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]',

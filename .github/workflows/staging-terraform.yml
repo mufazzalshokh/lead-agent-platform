@@ -76,7 +76,7 @@ jobs:
       S22_ACTION: ${{ github.event_name == 'push' && 'plan' || inputs.action }}
       S22_APPROVAL_TOKEN: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_approval_token || '' }}
       S22_COMMIT_SHA: ${{ github.event_name == 'push' && github.sha || inputs.commit_sha }}
-      S22_PHASE: ${{ github.event_name == 'push' && 'foundation' || inputs.phase }}
+      S22_PHASE: ${{ github.event_name == 'push' && 'bootstrap-iam' || inputs.phase }}
       S22_PLAN_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.plan_run_id || '' }}
       TF_IN_AUTOMATION: true
       TF_INPUT: false
@@ -97,7 +97,9 @@ jobs:
       TF_VAR_instagram_graph_api_version: ${{ vars.STAGING_INSTAGRAM_GRAPH_API_VERSION }}
       TF_VAR_billing_account_id: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
       TF_VAR_deployer_service_account_email: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      TF_VAR_github_repository: ${{ github.repository }}
       TF_VAR_monitoring_notification_channel_ids: ${{ vars.STAGING_MONITORING_NOTIFICATION_CHANNEL_IDS_JSON }}
+      TF_VAR_state_bucket_name: ${{ vars.GCP_TERRAFORM_STATE_BUCKET }}
     steps:
       - name: Validate request boundary
         env:
@@ -118,7 +120,7 @@ jobs:
           if [[ "$EVENT_NAME" == "push" ]]; then
             [[ "$DISPATCH_REF" == "refs/heads/verify/s22-staging-recovery-capacity" ]]
             [[ "$ACTION" == "plan" ]]
-            [[ "$PHASE" == "foundation" ]]
+            [[ "$PHASE" == "bootstrap-iam" ]]
             [[ -z "$APPROVAL_TOKEN" ]]
             [[ -z "$PLAN_RUN_ID" ]]
           fi
@@ -142,6 +144,7 @@ jobs:
           WORKER_MEMORY=512Mi
 
           case "$PHASE" in
+            bootstrap-iam) ;;
             foundation) ;;
             bootstrap)
               DEPLOY_RUNTIME=true
@@ -214,17 +217,60 @@ jobs:
         with:
           terraform_version: 1.14.7
 
-      - name: Initialize Terraform
+      - name: Initialize bootstrap Terraform
+        if: github.event_name == 'push'
+        working-directory: infra/deploy/gcp/bootstrap
+        shell: bash
+        run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
+
+      - name: Validate bootstrap Terraform
+        if: github.event_name == 'push'
+        working-directory: infra/deploy/gcp/bootstrap
+        run: terraform validate
+
+      - name: Verify authoritative bootstrap state
+        if: github.event_name == 'push'
+        working-directory: infra/deploy/gcp/bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          BOOTSTRAP_STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
+          [[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]
+          echo "Authoritative bootstrap state resources: $BOOTSTRAP_STATE_COUNT"
+
+      - name: Create reviewed bootstrap IAM plan
+        if: github.event_name == 'push'
+        working-directory: infra/deploy/gcp/bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform plan -lock-timeout=5m -out=s22-bootstrap-iam.tfplan
+          sha256sum s22-bootstrap-iam.tfplan > s22-bootstrap-iam.tfplan.sha256
+
+      - name: Upload exact reviewed bootstrap IAM plan
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-bootstrap-iam-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/bootstrap/s22-bootstrap-iam.tfplan
+            infra/deploy/gcp/bootstrap/s22-bootstrap-iam.tfplan.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Initialize staging Terraform
+        if: github.event_name == 'workflow_dispatch'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
 
-      - name: Validate Terraform
+      - name: Validate staging Terraform
+        if: github.event_name == 'workflow_dispatch'
         working-directory: infra/deploy/gcp/staging
         run: terraform validate
 
       - name: Create reviewed plan
-        if: env.S22_ACTION == 'plan'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -233,7 +279,7 @@ jobs:
           sha256sum s22.tfplan > s22.tfplan.sha256
 
       - name: Upload exact reviewed plan
-        if: env.S22_ACTION == 'plan'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
@@ -244,7 +290,7 @@ jobs:
           retention-days: 7
 
       - name: Download exact owner-reviewed plan
-        if: env.S22_ACTION == 'apply'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
@@ -256,21 +302,21 @@ jobs:
           --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: env.S22_ACTION == 'apply'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
       - name: Apply exact reviewed plan
-        if: env.S22_ACTION == 'apply'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 
       - name: Set up Google Cloud CLI
-        if: env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Execute one-shot migrator
-        if: env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
         env:
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
         run: >-
@@ -280,7 +326,7 @@ jobs:
           --wait
 
       - name: Record deployment provenance
-        if: env.S22_ACTION == 'apply'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
