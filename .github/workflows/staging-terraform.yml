@@ -244,7 +244,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          terraform plan -lock-timeout=5m -out=s22-bootstrap-iam.tfplan
+          terraform plan \
+            -lock-timeout=5m \
+            -target=google_project_iam_member.deployer \
+            -out=s22-bootstrap-iam.tfplan
           sha256sum s22-bootstrap-iam.tfplan > s22-bootstrap-iam.tfplan.sha256
 
       - name: Upload exact reviewed bootstrap IAM plan

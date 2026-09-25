@@ -112,7 +112,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('[[ -z "$PLAN_RUN_ID" ]]');
     expect(workflow).toContain("working-directory: infra/deploy/gcp/bootstrap");
     expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]');
-    expect(workflow).toContain("terraform plan -lock-timeout=5m -out=s22-bootstrap-iam.tfplan");
+    expect(workflow).toContain("-target=google_project_iam_member.deployer");
+    expect(workflow).toContain("-out=s22-bootstrap-iam.tfplan");
     expect(workflow).toContain("sha256sum s22-bootstrap-iam.tfplan");
     expect(workflow).not.toContain(
       "terraform apply -lock-timeout=5m -auto-approve s22-bootstrap-iam.tfplan",
