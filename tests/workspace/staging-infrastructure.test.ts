@@ -99,6 +99,25 @@ describe("S22 staging infrastructure boundary", () => {
       'member             = "serviceAccount:${var.deployer_service_account_email}"',
     );
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
+    expect(workflow).toMatch(/push:\s+branches:\s+- verify\/s22-staging-recovery-capacity/u);
+    expect(workflow).toContain(
+      "S22_ACTION: ${{ github.event_name == 'push' && 'plan' || inputs.action }}",
+    );
+    expect(workflow).toContain(
+      "S22_PHASE: ${{ github.event_name == 'push' && 'foundation' || inputs.phase }}",
+    );
+    expect(workflow).toContain('[[ "$ACTION" == "plan" ]]');
+    expect(workflow).toContain('[[ "$PHASE" == "foundation" ]]');
+    expect(workflow).toContain('[[ -z "$APPROVAL_TOKEN" ]]');
+    expect(workflow).toContain('[[ -z "$PLAN_RUN_ID" ]]');
+    expect(workflow).toContain("if: env.S22_ACTION == 'apply'");
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain(
+      'if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]',
+    );
+    expect(workflow).toContain(
+      'if [[ "$ACTION" == "apply" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+    );
     expect(workflow).toContain("google-github-actions/auth@");
     expect(workflow).toContain("TF_VAR_deployer_service_account_email");
     expect(workflow).toContain("sha256sum --check s22.tfplan.sha256");

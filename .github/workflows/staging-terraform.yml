@@ -1,6 +1,9 @@
 name: Staging Terraform
 
 on:
+  push:
+    branches:
+      - verify/s22-staging-recovery-capacity
   workflow_dispatch:
     inputs:
       action:
@@ -70,11 +73,16 @@ jobs:
     environment: staging
     timeout-minutes: 45
     env:
+      S22_ACTION: ${{ github.event_name == 'push' && 'plan' || inputs.action }}
+      S22_APPROVAL_TOKEN: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_approval_token || '' }}
+      S22_COMMIT_SHA: ${{ github.event_name == 'push' && github.sha || inputs.commit_sha }}
+      S22_PHASE: ${{ github.event_name == 'push' && 'foundation' || inputs.phase }}
+      S22_PLAN_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.plan_run_id || '' }}
       TF_IN_AUTOMATION: true
       TF_INPUT: false
       TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
       TF_VAR_region: me-central1
-      TF_VAR_git_commit_sha: ${{ inputs.commit_sha }}
+      TF_VAR_git_commit_sha: ${{ github.event_name == 'push' && github.sha || inputs.commit_sha }}
       TF_VAR_deployment_timestamp: ${{ inputs.deployment_timestamp }}
       TF_VAR_api_image: ${{ inputs.api_image }}
       TF_VAR_web_image: ${{ inputs.web_image }}
@@ -93,12 +101,13 @@ jobs:
     steps:
       - name: Validate request boundary
         env:
-          ACTION: ${{ inputs.action }}
-          APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
+          ACTION: ${{ env.S22_ACTION }}
+          APPROVAL_TOKEN: ${{ env.S22_APPROVAL_TOKEN }}
           DISPATCH_REF: ${{ github.ref }}
-          PHASE: ${{ inputs.phase }}
-          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
-          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PHASE: ${{ env.S22_PHASE }}
+          PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
+          REQUESTED_SHA: ${{ env.S22_COMMIT_SHA }}
         shell: bash
         run: |
           set -euo pipefail
@@ -106,6 +115,13 @@ jobs:
             refs/heads/main|refs/heads/verify/s22-staging-recovery-capacity) ;;
             *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
           esac
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            [[ "$DISPATCH_REF" == "refs/heads/verify/s22-staging-recovery-capacity" ]]
+            [[ "$ACTION" == "plan" ]]
+            [[ "$PHASE" == "foundation" ]]
+            [[ -z "$APPROVAL_TOKEN" ]]
+            [[ -z "$PLAN_RUN_ID" ]]
+          fi
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]; then
             echo "Apply requires the exact owner approval token." >&2
@@ -174,12 +190,12 @@ jobs:
       - name: Check out exact commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ env.S22_COMMIT_SHA }}
 
       - name: Prove commit is preserved on the dispatched branch
         env:
           DISPATCH_BRANCH: ${{ github.ref_name }}
-          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          REQUESTED_SHA: ${{ env.S22_COMMIT_SHA }}
         shell: bash
         run: |
           set -euo pipefail
@@ -208,7 +224,7 @@ jobs:
         run: terraform validate
 
       - name: Create reviewed plan
-        if: inputs.action == 'plan'
+        if: env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -217,10 +233,10 @@ jobs:
           sha256sum s22.tfplan > s22.tfplan.sha256
 
       - name: Upload exact reviewed plan
-        if: inputs.action == 'plan'
+        if: env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: s22-terraform-plan-${{ inputs.phase }}-${{ inputs.commit_sha }}
+          name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
           path: |
             infra/deploy/gcp/staging/s22.tfplan
             infra/deploy/gcp/staging/s22.tfplan.sha256
@@ -228,33 +244,33 @@ jobs:
           retention-days: 7
 
       - name: Download exact owner-reviewed plan
-        if: inputs.action == 'apply'
+        if: env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
-          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
         shell: bash
         run: >-
           gh run download "$PLAN_RUN_ID"
           --repo "$GITHUB_REPOSITORY"
-          --name "s22-terraform-plan-${{ inputs.phase }}-${{ inputs.commit_sha }}"
+          --name "s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}"
           --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: inputs.action == 'apply'
+        if: env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
       - name: Apply exact reviewed plan
-        if: inputs.action == 'apply'
+        if: env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 
       - name: Set up Google Cloud CLI
-        if: inputs.action == 'apply' && inputs.phase == 'migration'
+        if: env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Execute one-shot migrator
-        if: inputs.action == 'apply' && inputs.phase == 'migration'
+        if: env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
         env:
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
         run: >-
@@ -264,13 +280,13 @@ jobs:
           --wait
 
       - name: Record deployment provenance
-        if: inputs.action == 'apply'
+        if: env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
           MIGRATOR_IMAGE: ${{ inputs.migrator_image }}
-          PHASE: ${{ inputs.phase }}
-          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          PHASE: ${{ env.S22_PHASE }}
+          REQUESTED_SHA: ${{ env.S22_COMMIT_SHA }}
           WEB_IMAGE: ${{ inputs.web_image }}
           WORKER_IMAGE: ${{ inputs.worker_image }}
         shell: bash
