@@ -99,28 +99,28 @@ describe("S22 staging infrastructure boundary", () => {
       'member             = "serviceAccount:${var.deployer_service_account_email}"',
     );
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
-    expect(workflow).toMatch(/push:\s+branches:\s+- verify\/s22-staging-recovery-capacity/u);
-    expect(workflow).toContain(
-      "S22_ACTION: ${{ github.event_name == 'push' && 'plan' || inputs.action }}",
-    );
-    expect(workflow).toContain(
-      "S22_PHASE: ${{ github.event_name == 'push' && 'bootstrap-iam' || inputs.phase }}",
-    );
-    expect(workflow).toContain('[[ "$ACTION" == "plan" ]]');
-    expect(workflow).toContain('[[ "$PHASE" == "bootstrap-iam" ]]');
-    expect(workflow).toContain('[[ -z "$APPROVAL_TOKEN" ]]');
-    expect(workflow).toContain('[[ -z "$PLAN_RUN_ID" ]]');
+    expect(workflow).not.toMatch(/^  push:/mu);
+    expect(workflow).toContain("S22_ACTION: ${{ inputs.action }}");
+    expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");
+    expect(workflow).toContain("approved_plan_sha256:");
     expect(workflow).toContain("working-directory: infra/deploy/gcp/bootstrap");
     expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]');
     expect(workflow).toContain("-target=google_project_iam_member.deployer");
     expect(workflow).toContain("-out=s22-bootstrap-iam.tfplan");
     expect(workflow).toContain("sha256sum s22-bootstrap-iam.tfplan");
-    expect(workflow).not.toContain(
-      "terraform apply -lock-timeout=5m -auto-approve s22-bootstrap-iam.tfplan",
+    expect(workflow).toContain(
+      '[[ "$REQUESTED_SHA" == "87216fcd8d2047e292c398a459e49e40c4ff2b9a" ]]',
+    );
+    expect(workflow).toContain('[[ "$PLAN_RUN_ID" == "36179081896" ]]');
+    expect(workflow).toContain(
+      '[[ "$APPROVED_PLAN_SHA256" == "1408052e615385b4a01651a8b64605d13746ddde10a6950f7ba4d380a18c60e0" ]]',
     );
     expect(workflow).toContain(
-      "if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply'",
+      "terraform apply -lock-timeout=5m -auto-approve s22-bootstrap-iam.tfplan",
     );
+    expect(workflow).toContain("if: env.S22_PHASE == 'bootstrap-iam' && env.S22_ACTION == 'apply'");
+    expect(workflow).toContain("POST_APPLY_IAM_PLAN_EXIT_CODE");
+    expect(workflow).toContain("terraform plan -refresh=false -detailed-exitcode -lock-timeout=5m");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain(
       'if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]',
