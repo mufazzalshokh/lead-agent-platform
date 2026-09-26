@@ -7,7 +7,7 @@ set -euo pipefail
 
 JOB_NAME="lead-agent-staging-migrator"
 MIGRATOR_SERVICE_ACCOUNT="lead-agent-staging-migrator@${PROJECT_ID}.iam.gserviceaccount.com"
-FAILED_EXECUTION="lead-agent-staging-migrator-bkcxf"
+FAILED_EXECUTION="${FAILED_EXECUTION:-}"
 EVIDENCE="s22-migration-wiring-diagnostic-evidence.txt"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -23,6 +23,25 @@ matches_resource_name() {
 }
 
 ACCESS_TOKEN="$(gcloud auth print-access-token)"
+if [[ -z "$FAILED_EXECUTION" ]]; then
+  curl --fail --silent --show-error \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions?pageSize=100" \
+    > "$WORK_DIR/executions.json"
+  FAILED_EXECUTION="$(
+    jq -er '
+      [.executions[]?
+       | select((.failedCount // 0) > 0)
+       | {name, createTime}]
+      | sort_by(.createTime)
+      | last
+      | .name
+      | split("/")
+      | last
+    ' "$WORK_DIR/executions.json"
+  )"
+fi
+[[ "$FAILED_EXECUTION" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
 curl --fail --silent --show-error \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}" \
@@ -31,6 +50,10 @@ curl --fail --silent --show-error \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${FAILED_EXECUTION}" \
   > "$WORK_DIR/failed-execution.json"
+curl --fail --silent --show-error \
+  --header "Authorization: Bearer $ACCESS_TOKEN" \
+  "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${FAILED_EXECUTION}/tasks?pageSize=1" \
+  > "$WORK_DIR/failed-task.json"
 
 terraform -chdir=infra/deploy/gcp/staging show -json > "$WORK_DIR/terraform-state.json"
 jq -e '
@@ -129,6 +152,36 @@ report failed_execution_subnetwork "$FAILED_SUBNETWORK"
 report failed_execution_subnetwork_matches "$({ matches_resource_name "$FAILED_SUBNETWORK" lead-agent-staging-cloud-run; } && echo true || echo false)"
 report failed_execution_egress "$FAILED_EGRESS"
 report failed_execution_egress_matches "$([[ "$FAILED_EGRESS" == "PRIVATE_RANGES_ONLY" ]] && echo true || echo false)"
+report failed_execution_task_exit_code "$(jq -r '.tasks[0].lastAttemptResult.exitCode // "unavailable"' "$WORK_DIR/failed-task.json")"
+report failed_execution_task_status_code "$(jq -r '.tasks[0].lastAttemptResult.status.code // "unavailable"' "$WORK_DIR/failed-task.json")"
+
+if gcloud logging read \
+  "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${JOB_NAME}\" AND labels.\"run.googleapis.com/execution_name\"=\"${FAILED_EXECUTION}\"" \
+  --project="$PROJECT_ID" \
+  --freshness=24h \
+  --limit=200 \
+  --order=asc \
+  --format=json > "$WORK_DIR/failed-execution-logs.json"; then
+  ROOT_ERROR="$(node - "$WORK_DIR/failed-execution-logs.json" <<'NODE'
+const fs = require("node:fs");
+const entries = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const messages = entries
+  .flatMap((entry) => [entry.textPayload, entry.jsonPayload?.message])
+  .filter((value) => typeof value === "string" && value.trim().length > 0);
+const selected = messages.find((message) => /(?:error|failed|migration|exception)/i.test(message)) ?? messages[0] ?? "unavailable";
+const sanitized = selected
+  .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "postgresql://[REDACTED]")
+  .replace(/Bearer\s+[^\s"'<>]+/gi, "Bearer [REDACTED]")
+  .replace(/\s+/g, " ")
+  .trim()
+  .slice(0, 1200);
+process.stdout.write(sanitized || "unavailable");
+NODE
+  )"
+  report failed_execution_first_root_error "$ROOT_ERROR"
+else
+  report failed_execution_first_root_error unavailable
+fi
 
 PROBE_SCRIPT="$WORK_DIR/probe.mjs"
 cat > "$PROBE_SCRIPT" <<'EOF'
