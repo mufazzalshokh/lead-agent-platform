@@ -110,8 +110,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("foundation-reconcile)\n              SQL_POLICY=ALWAYS");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
-    expect(workflow).toContain("gcloud sql operations list");
-    expect(workflow).toContain('--instance="$SQL_INSTANCE"');
+    expect(workflow).toContain(
+      "https://sqladmin.googleapis.com/v1/projects/$PROJECT_ID/operations?maxResults=100",
+    );
     expect(workflow).toContain("cloud_sql_pending_operation_count=$SQL_PENDING_COUNT");
     expect(workflow).toContain("Verify foundation reconciliation plan safety");
     expect(workflow).toContain('.variables.cloud_sql_activation_policy.value == "ALWAYS"');
