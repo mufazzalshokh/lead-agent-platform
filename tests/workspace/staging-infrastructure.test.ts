@@ -158,6 +158,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("as $web");
     expect(workflow).toContain("as $bindings");
     expect(workflow).toContain("Health-only plan lifecycle variables");
+    expect(workflow).toContain('.variables.deploy_runtime.value == "true"');
+    expect(workflow).toContain('.variables.worker_instance_count.value == "0"');
     expect(workflow).toContain("Health-only plan aggregate counts");
     expect(workflow).toContain("always() && env.S22_PHASE == 'bootstrap'");
     expect(workflow).toContain("health_only_cloud_sql_policy=NEVER");

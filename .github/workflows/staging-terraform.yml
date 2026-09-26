@@ -452,13 +452,13 @@ jobs:
             exit 1
           }
           jq -e '
-            .variables.deploy_runtime.value == true
-              and .variables.bootstrap_runtime.value == true
-              and .variables.prepare_migration.value == false
+            .variables.deploy_runtime.value == "true"
+              and .variables.bootstrap_runtime.value == "true"
+              and .variables.prepare_migration.value == "false"
               and .variables.cloud_sql_activation_policy.value == "NEVER"
-              and .variables.api_max_instance_count.value == 1
-              and .variables.web_max_instance_count.value == 1
-              and .variables.worker_instance_count.value == 0
+              and .variables.api_max_instance_count.value == "1"
+              and .variables.web_max_instance_count.value == "1"
+              and .variables.worker_instance_count.value == "0"
           ' "$PLAN_JSON" > /dev/null || {
             echo "::error::Health-only plan lifecycle variables differ from the approved boundary."
             jq -c '{
