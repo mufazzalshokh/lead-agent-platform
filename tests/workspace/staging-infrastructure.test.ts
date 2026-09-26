@@ -56,6 +56,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(foundation).toContain("transaction_log_retention_days = 7");
     expect(runtime).toContain("manual_instance_count = var.worker_instance_count");
     expect(runtime).toContain('egress = "PRIVATE_RANGES_ONLY"');
+    expect(runtime).toContain('command = ["node"]');
+    expect(runtime).toContain('args    = ["dist/index.js"]');
     expect(runtime).not.toContain(":latest");
     expect(monitoring).toContain('display_name    = "Lead Agent S22 staging USD 25 target"');
     expect(monitoring).toContain('display_name    = "Lead Agent S22 staging USD 50 hard ceiling"');
@@ -184,6 +186,21 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("cloud_sql_start_enabled_database_secret_versions=0");
     expect(workflow).toContain("Verify Cloud SQL start Terraform convergence");
     expect(workflow).toContain("Upload Cloud SQL start apply evidence");
+    expect(workflow).toContain("Verify database secret version metadata");
+    expect(workflow).toContain('[[ "$ENABLED_COUNT" == "1" ]]');
+    expect(workflow).toContain("Verify migration plan safety");
+    expect(workflow).toContain(
+      'EXPECTED_ACTIONS=\'["create:google_cloud_run_v2_job.migrator[0]","create:google_sql_database.application[0]"]\'',
+    );
+    expect(workflow).toContain("Verify exact migration plan approval boundary");
+    expect(workflow).toContain("Verify migrated staging database");
+    expect(workflow).toContain("staging_database_validation");
+    expect(workflow).toContain("production_tables: 52");
+    expect(workflow).toContain("force_rls_tables: actualRlsTables.length");
+    expect(workflow).toContain("application_roles_verified: 4");
+    expect(workflow).toContain("Verify migration Terraform convergence");
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "88" ]]');
+    expect(workflow).toContain("migration_convergence_exit_code=$PLAN_EXIT_CODE");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');

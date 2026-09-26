@@ -367,7 +367,9 @@ resource "google_cloud_run_v2_job" "migrator" {
       timeout         = "900s"
 
       containers {
-        image = var.migrator_image
+        image   = var.migrator_image
+        command = ["node"]
+        args    = ["dist/index.js"]
 
         resources {
           limits = {

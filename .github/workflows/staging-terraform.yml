@@ -249,7 +249,7 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "cloud-sql-start" ]]; then
+          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" ]]; then
             echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
           fi
 
@@ -336,8 +336,34 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Verify database secret version metadata
+        if: env.S22_PHASE == 'migration'
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DATABASE_SECRETS=(
+            lead-agent-staging-migration-database-url
+            lead-agent-staging-runtime-database-url
+            lead-agent-staging-auth-database-url
+            lead-agent-staging-ingress-database-url
+            lead-agent-staging-queue-database-url
+          )
+          for secret in "${DATABASE_SECRETS[@]}"; do
+            gcloud secrets describe "$secret" --project="$PROJECT_ID" --format='value(name)' > /dev/null
+            ENABLED_COUNT="$(
+              gcloud secrets versions list "$secret" \
+                --project="$PROJECT_ID" \
+                --filter='state=ENABLED' \
+                --format='value(name)' | sed '/^$/d' | wc -l | tr -d '[:space:]'
+            )"
+            [[ "$ENABLED_COUNT" == "1" ]]
+            echo "$secret: enabled_versions=1"
+          done
 
       - name: Inspect partial foundation state and Google Cloud resources
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'plan'
@@ -452,6 +478,95 @@ jobs:
           set -euo pipefail
           terraform plan -lock-timeout=5m -out=s22.tfplan
           sha256sum s22.tfplan > s22.tfplan.sha256
+
+      - name: Verify migration plan safety
+        if: env.S22_PHASE == 'migration' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN_JSON="$(mktemp)"
+          trap 'rm -f "$PLAN_JSON"' EXIT
+          terraform show -json s22.tfplan > "$PLAN_JSON"
+
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '
+            .variables.git_commit_sha.value == "2396fdf797eb4b19252a34c8b45e93945a8f53a3"
+              and .variables.deploy_runtime.value == "true"
+              and .variables.bootstrap_runtime.value == "true"
+              and .variables.prepare_migration.value == "true"
+              and .variables.cloud_sql_activation_policy.value == "ALWAYS"
+              and .variables.cloud_sql_tier.value == "db-f1-micro"
+              and .variables.api_max_instance_count.value == "1"
+              and .variables.web_max_instance_count.value == "1"
+              and .variables.worker_instance_count.value == "0"
+          ' "$PLAN_JSON" > /dev/null
+
+          EXPECTED_ACTIONS='["create:google_cloud_run_v2_job.migrator[0]","create:google_sql_database.application[0]"]'
+          ACTUAL_ACTIONS="$(
+            jq -c '
+              [.resource_changes[]
+               | select(.mode == "managed" and .change.actions != ["no-op"])
+               | ((.change.actions | join(",")) + ":" + .address)]
+              | sort
+            ' "$PLAN_JSON"
+          )"
+          [[ "$ACTUAL_ACTIONS" == "$EXPECTED_ACTIONS" ]]
+          jq -e '
+            [.resource_changes[]
+             | select(.mode == "data" and .change.actions != ["no-op"])]
+            | all(.[];
+                .address == "data.google_project.staging"
+                  and .change.actions == ["read"])
+          ' "$PLAN_JSON" > /dev/null
+
+          jq -e '
+            [.resource_changes[]
+             | select(.address == "google_sql_database.application[0]")
+             | .change.after] as $database
+            | ($database | length) == 1
+              and $database[0].name == "lead_agent_staging"
+              and $database[0].charset == "UTF8"
+              and $database[0].collation == "en_US.UTF8"
+          ' "$PLAN_JSON" > /dev/null
+          jq -e --arg image "$TF_VAR_migrator_image" '
+            [.resource_changes[]
+             | select(.address == "google_cloud_run_v2_job.migrator[0]")
+             | .change.after] as $job
+            | ($job | length) == 1
+              and $job[0].name == "lead-agent-staging-migrator"
+              and $job[0].location == "me-central1"
+              and $job[0].deletion_protection == true
+              and $job[0].template[0].task_count == 1
+              and $job[0].template[0].parallelism == 1
+              and $job[0].template[0].template[0].service_account == "lead-agent-staging-migrator@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and $job[0].template[0].template[0].max_retries == 0
+              and $job[0].template[0].template[0].timeout == "900s"
+              and $job[0].template[0].template[0].containers[0].image == $image
+              and $job[0].template[0].template[0].containers[0].command == ["node"]
+              and $job[0].template[0].template[0].containers[0].args == ["dist/index.js"]
+              and $job[0].template[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
+          ' "$PLAN_JSON" > /dev/null
+
+          CREATE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["create"])] | length' "$PLAN_JSON")"
+          CHANGE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["update"])] | length' "$PLAN_JSON")"
+          DESTROY_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["delete"])] | length' "$PLAN_JSON")"
+          REPLACE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length' "$PLAN_JSON")"
+          [[ "$CREATE_COUNT" == "2" ]]
+          [[ "$CHANGE_COUNT" == "0" ]]
+          [[ "$DESTROY_COUNT" == "0" ]]
+          [[ "$REPLACE_COUNT" == "0" ]]
+
+          {
+            echo "migration_plan_sha256=$(awk '{print $1}' s22.tfplan.sha256)"
+            echo "migration_plan_creates=$CREATE_COUNT"
+            echo "migration_plan_changes=$CHANGE_COUNT"
+            echo "migration_plan_destroys=$DESTROY_COUNT"
+            echo "migration_plan_replacements=$REPLACE_COUNT"
+            echo "migration_plan_actions=$ACTUAL_ACTIONS"
+            echo "migration_plan_unexpected_actions=NONE"
+          } | tee s22-migration-plan-evidence.txt
 
       - name: Verify Cloud SQL start-only plan safety
         if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'plan'
@@ -1293,6 +1408,53 @@ jobs:
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
+
+      - name: Verify exact migration plan approval boundary
+        if: env.S22_PHASE == 'migration' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          APPROVED_PLAN_SHA256: ${{ env.S22_APPROVED_PLAN_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN=s22.tfplan
+          PLAN_JSON="$(mktemp)"
+          trap 'rm -f "$PLAN_JSON"' EXIT
+          RECORDED_SHA256="$(awk '{print $1}' s22.tfplan.sha256)"
+          ACTUAL_SHA256="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$RECORDED_SHA256" ]]
+          [[ "$ACTUAL_SHA256" == "$APPROVED_PLAN_SHA256" ]]
+
+          terraform show -json "$PLAN" > "$PLAN_JSON"
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '
+            .variables.git_commit_sha.value == "2396fdf797eb4b19252a34c8b45e93945a8f53a3"
+              and .variables.prepare_migration.value == "true"
+              and .variables.cloud_sql_activation_policy.value == "ALWAYS"
+          ' "$PLAN_JSON" > /dev/null
+
+          EXPECTED_ACTIONS='["create:google_cloud_run_v2_job.migrator[0]","create:google_sql_database.application[0]"]'
+          ACTUAL_ACTIONS="$(
+            jq -c '
+              [.resource_changes[]
+               | select(.mode == "managed" and .change.actions != ["no-op"])
+               | ((.change.actions | join(",")) + ":" + .address)]
+              | sort
+            ' "$PLAN_JSON"
+          )"
+          [[ "$ACTUAL_ACTIONS" == "$EXPECTED_ACTIONS" ]]
+          jq -e '[.resource_changes[] | select(.change.actions == ["create"])] | length == 2' "$PLAN_JSON" > /dev/null
+          jq -e '[.resource_changes[] | select(.change.actions == ["update"])] | length == 0' "$PLAN_JSON" > /dev/null
+          jq -e '[.resource_changes[] | select(.change.actions == ["delete"])] | length == 0' "$PLAN_JSON" > /dev/null
+          jq -e '[.resource_changes[] | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length == 0' "$PLAN_JSON" > /dev/null
+
+          {
+            echo "migration_source_plan_run=$S22_PLAN_RUN_ID"
+            echo "migration_approved_plan_sha256=$ACTUAL_SHA256"
+            echo "migration_plan_actions=$ACTUAL_ACTIONS"
+            echo "migration_plan_unexpected_actions=NONE"
+          } > s22-migration-apply-evidence.txt
 
       - name: Verify exact Cloud SQL start approval boundary
         if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'apply'
@@ -2571,6 +2733,182 @@ jobs:
           --project="${{ vars.GCP_PROJECT_ID }}"
           --region=me-central1
           --wait
+
+      - name: Verify migrated staging database
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VALIDATOR="$RUNNER_TEMP/s22-verify-staging-database.mjs"
+          cat > "$VALIDATOR" <<'EOF'
+          import process from "node:process";
+          import { Pool } from "pg";
+          import {
+            readStagingMigrationManifest,
+            stagingRolePasswordFromUrl,
+          } from "./dist/migrate.js";
+
+          const expectedRlsTables = [
+            "ai_action_evaluations", "ai_runs", "analytics_events",
+            "appointment_confirmation_evidence", "appointment_request_attendance",
+            "appointment_request_preferences", "appointment_request_transitions",
+            "appointment_requests", "appointment_revenue_attributions", "audit_events",
+            "business_policies", "channel_connections", "consent_records",
+            "contact_identities", "contacts", "conversations", "faqs",
+            "handoff_transitions", "handoffs", "idempotency_keys", "inbound_routes",
+            "lead_qualification_evaluations", "lead_qualification_evidence", "leads",
+            "legal_holds", "location_business_hours", "location_closures",
+            "location_versions", "locations", "membership_invitations",
+            "membership_location_scopes", "memberships", "messages",
+            "notification_attempts", "notifications", "organizations", "outbox_events",
+            "privacy_requests", "retention_policies", "retention_policy_rules",
+            "service_locations", "service_prices", "service_versions", "services",
+            "thread_automation_controls", "webhook_receipts", "widget_allowed_origins",
+            "widget_sessions",
+          ].sort();
+          const roleUrls = Object.freeze({
+            AUTH_DATABASE_URL: "lead_agent_auth",
+            DATABASE_URL: "lead_agent_runtime",
+            INGRESS_DATABASE_URL: "lead_agent_ingress",
+            QUEUE_DATABASE_URL: "lead_agent_queue_runtime",
+          });
+          const required = (key) => {
+            const value = process.env[key];
+            if (typeof value !== "string" || value.length === 0) throw new Error(`${key} is unavailable`);
+            return value;
+          };
+          const assert = (condition, message) => {
+            if (!condition) throw new Error(message);
+          };
+          const pools = [];
+          try {
+            const manifest = await readStagingMigrationManifest();
+            assert(manifest.entries.length === 30, "Unexpected migration count");
+            assert(manifest.entries.at(-1)?.tag === "0029_s21_thread_automation_controls", "Unexpected migration head");
+
+            const admin = new Pool({
+              application_name: "lead-agent-staging-verifier",
+              connectionString: required("MIGRATION_DATABASE_URL"),
+              max: 1,
+            });
+            pools.push(admin);
+            const database = await admin.query(
+              "select current_database() as database_name, current_setting('server_version_num')::integer as server_version_num",
+            );
+            assert(database.rows[0]?.database_name === "lead_agent_staging", "Unexpected database name");
+            assert(database.rows[0]?.server_version_num >= 170000 && database.rows[0]?.server_version_num < 180000, "Unexpected PostgreSQL major");
+
+            const migrations = await admin.query(
+              "select count(*)::integer as count from drizzle.__drizzle_migrations",
+            );
+            assert(migrations.rows[0]?.count === 30, "Applied migration count mismatch");
+            const tables = await admin.query(
+              "select count(*)::integer as count from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'",
+            );
+            assert(tables.rows[0]?.count === 52, "Production table count mismatch");
+
+            const rls = await admin.query(
+              "select relname from pg_catalog.pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relrowsecurity and relforcerowsecurity order by relname",
+            );
+            const actualRlsTables = rls.rows.map(({ relname }) => relname).sort();
+            assert(JSON.stringify(actualRlsTables) === JSON.stringify(expectedRlsTables), "FORCE RLS manifest mismatch");
+
+            const roleNames = Object.values(roleUrls).sort();
+            const roles = await admin.query(
+              "select rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls from pg_catalog.pg_roles where rolname = any($1::text[]) order by rolname",
+              [roleNames],
+            );
+            assert(roles.rows.length === roleNames.length, "Application role manifest mismatch");
+            for (const role of roles.rows) {
+              assert(role.rolcanlogin === true, `Role ${role.rolname} cannot log in`);
+              assert(role.rolsuper === false, `Role ${role.rolname} is superuser`);
+              assert(role.rolcreatedb === false, `Role ${role.rolname} can create databases`);
+              assert(role.rolcreaterole === false, `Role ${role.rolname} can create roles`);
+              assert(role.rolbypassrls === false, `Role ${role.rolname} bypasses RLS`);
+            }
+
+            for (const [key, expectedRole] of Object.entries(roleUrls)) {
+              const connectionString = required(key);
+              stagingRolePasswordFromUrl(connectionString, expectedRole);
+              const pool = new Pool({
+                application_name: `lead-agent-staging-${expectedRole}-connectivity`,
+                connectionString,
+                max: 1,
+              });
+              pools.push(pool);
+              const identity = await pool.query(
+                "select current_user as role_name, current_database() as database_name",
+              );
+              assert(identity.rows[0]?.role_name === expectedRole, `Unexpected connected role for ${key}`);
+              assert(identity.rows[0]?.database_name === "lead_agent_staging", `Unexpected connected database for ${key}`);
+            }
+
+            console.info(JSON.stringify({
+              application_roles_verified: 4,
+              database: "lead_agent_staging",
+              force_rls_tables: actualRlsTables.length,
+              migration_count: 30,
+              migration_head: "0029_s21_thread_automation_controls",
+              operation: "staging_database_validation",
+              outcome: "succeeded",
+              postgresql_major: 17,
+              production_tables: 52,
+            }));
+          } catch (error) {
+            console.error(JSON.stringify({
+              error_name: error instanceof Error ? error.name : "UnknownError",
+              operation: "staging_database_validation",
+              outcome: "failed",
+            }));
+            process.exitCode = 1;
+          } finally {
+            await Promise.all(pools.map(async (pool) => pool.end().catch(() => {})));
+          }
+          EOF
+          VALIDATOR_B64="$(base64 -w0 "$VALIDATOR")"
+          gcloud run jobs execute lead-agent-staging-migrator \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --args='--input-type=module,-e,eval(atob(process.env.S22_VALIDATOR_B64))' \
+            --update-env-vars="S22_VALIDATOR_B64=$VALIDATOR_B64" \
+            --wait
+          rm -f "$VALIDATOR"
+          unset VALIDATOR_B64
+
+      - name: Verify migration Terraform convergence
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT" == "88" ]]
+          set +e
+          terraform plan -detailed-exitcode -lock-timeout=5m
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "migration_state_count=$STATE_COUNT"
+            echo "migration_convergence_exit_code=$PLAN_EXIT_CODE"
+            echo "migration_head=0029_s21_thread_automation_controls"
+            echo "migration_count=30"
+            echo "production_table_count=52"
+            echo "force_rls_table_count=48"
+            echo "application_role_connectivity=PASS"
+          } | tee -a s22-migration-apply-evidence.txt
+
+      - name: Upload migration apply evidence
+        if: always() && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-migration-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-migration-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Record deployment provenance
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
