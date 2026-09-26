@@ -2742,6 +2742,37 @@ jobs:
           PROBE_DIR="$RUNNER_TEMP/s22-migration-diagnostics"
           mkdir -p "$PROBE_DIR"
 
+          gcloud run jobs describe lead-agent-staging-migrator \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --format=json > "$PROBE_DIR/migrator-job.json"
+          gcloud sql instances describe lead-agent-staging-postgres17 \
+            --project="$PROJECT_ID" \
+            --format=json > "$PROBE_DIR/cloud-sql.json"
+
+          if jq -e '
+            [.. | .network? // empty] | any(endswith("/networks/lead-agent-staging-vpc"))
+          ' "$PROBE_DIR/migrator-job.json" > /dev/null \
+            && jq -e '
+              [.. | .subnetwork? // empty] | any(endswith("/subnetworks/lead-agent-staging-cloud-run"))
+            ' "$PROBE_DIR/migrator-job.json" > /dev/null \
+            && jq -e '
+              [.. | .egress? // empty] | any(. == "PRIVATE_RANGES_ONLY")
+            ' "$PROBE_DIR/migrator-job.json" > /dev/null; then
+            echo "live_vpc_configuration=PASS" | tee -a s22-migration-diagnostic-evidence.txt
+          else
+            echo "live_vpc_configuration=FAIL" | tee -a s22-migration-diagnostic-evidence.txt
+          fi
+
+          if jq -e '
+            .state == "RUNNABLE"
+            and any(.ipAddresses[]?; .type == "PRIVATE" and .ipAddress == "10.125.0.3")
+          ' "$PROBE_DIR/cloud-sql.json" > /dev/null; then
+            echo "live_cloud_sql_endpoint=PASS" | tee -a s22-migration-diagnostic-evidence.txt
+          else
+            echo "live_cloud_sql_endpoint=FAIL" | tee -a s22-migration-diagnostic-evidence.txt
+          fi
+
           run_probe() {
             local name="$1"
             local script="$2"
@@ -2761,6 +2792,8 @@ jobs:
               printf '%s=FAIL\n' "$name" | tee -a s22-migration-diagnostic-evidence.txt
             fi
           }
+
+          run_probe execution_override 'process.exitCode = 0;'
 
           run_probe secret_shape '
             import process from "node:process";

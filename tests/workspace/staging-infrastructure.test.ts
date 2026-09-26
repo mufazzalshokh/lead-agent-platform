@@ -203,6 +203,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("migration_convergence_exit_code=$PLAN_EXIT_CODE");
     expect(workflow).toContain("- migration-diagnose");
     expect(workflow).toContain("Run bounded migration failure diagnostics");
+    expect(workflow).toContain("live_vpc_configuration=PASS");
+    expect(workflow).toContain("live_cloud_sql_endpoint=PASS");
+    expect(workflow).toContain("run_probe execution_override");
     expect(workflow).toContain("run_probe secret_shape");
     expect(workflow).toContain("run_probe private_tcp_connectivity");
     expect(workflow).toContain("run_probe migration_secret_shape");
