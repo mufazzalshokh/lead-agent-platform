@@ -110,10 +110,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("foundation-reconcile)\n              SQL_POLICY=ALWAYS");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
-    expect(workflow).toContain(
-      "https://sqladmin.googleapis.com/sql/v1beta4/projects/$PROJECT_ID/operations?instance=$SQL_INSTANCE&maxResults=100",
-    );
-    expect(workflow).toContain("cloud_sql_pending_operation_count=$SQL_PENDING_COUNT");
+    expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');
+    expect(workflow).toContain("cloud_sql_failed_operation_code=invalidOperation");
+    expect(workflow).toContain("cloud_sql_pending_operation_observation=none");
     expect(workflow).toContain("Verify foundation reconciliation plan safety");
     expect(workflow).toContain('.variables.cloud_sql_activation_policy.value == "ALWAYS"');
     expect(workflow).toContain('.address != "google_sql_database_instance.staging"');

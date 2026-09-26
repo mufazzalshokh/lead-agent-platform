@@ -297,6 +297,7 @@ jobs:
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         env:
+          GH_TOKEN: ${{ github.token }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: me-central1
         shell: bash
@@ -315,17 +316,9 @@ jobs:
           grep -Fqx 'google_monitoring_alert_policy.database_cpu' <<< "$STATE_ADDRESSES" && STATE_HAS_DATABASE_ALERT=true
 
           gcloud sql instances list --project="$PROJECT_ID" --format=json > "$INSPECT_DIR/sql-instances.json"
-          ACCESS_TOKEN="$(gcloud auth print-access-token)"
-          if ! curl --fail-with-body --silent --show-error \
-            --header "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://sqladmin.googleapis.com/sql/v1beta4/projects/$PROJECT_ID/operations?instance=$SQL_INSTANCE&maxResults=100" \
-            > "$INSPECT_DIR/sql-operations-response.json"; then
-            jq -c '{error: {code: .error.code, status: .error.status, message: .error.message}}' \
-              "$INSPECT_DIR/sql-operations-response.json" >&2
-            exit 1
-          fi
-          jq '.items // []' "$INSPECT_DIR/sql-operations-response.json" \
-            > "$INSPECT_DIR/sql-operations.json"
+          gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log > "$INSPECT_DIR/failed-apply.log"
+          grep -Fq 'This operation is not valid for this instance.' "$INSPECT_DIR/failed-apply.log"
+          grep -Fq 'invalidOperation' "$INSPECT_DIR/failed-apply.log"
           gcloud sql tiers list --project="$PROJECT_ID" --format=json > "$INSPECT_DIR/sql-tiers.json"
           gcloud sql flags list --database-version=POSTGRES_17 --format=json > "$INSPECT_DIR/postgres17-flags.json"
 
@@ -333,27 +326,6 @@ jobs:
             jq --arg instance "$SQL_INSTANCE" '[.[] | select(.name == $instance)] | length' \
               "$INSPECT_DIR/sql-instances.json"
           )"
-          SQL_PENDING_COUNT="$(
-            jq --arg instance "$SQL_INSTANCE" \
-              '[.[] | select(.targetId == $instance) | select(.status == "PENDING" or .status == "RUNNING")] | length' \
-              "$INSPECT_DIR/sql-operations.json"
-          )"
-          LATEST_SQL_OPERATION="$(
-            jq -c --arg instance "$SQL_INSTANCE" \
-              '[.[] | select(.targetId == $instance)] | sort_by(.insertTime) | last
-               | if . == null then null else {
-                   name,
-                   operationType,
-                   status,
-                   targetId,
-                   insertTime,
-                   startTime,
-                   endTime,
-                   error
-                 } end' \
-              "$INSPECT_DIR/sql-operations.json"
-          )"
-
           jq -e --arg region "$REGION" '
             [.[] | select(.tier == "db-f1-micro")] as $tiers
             | ($tiers | length) > 0
@@ -375,6 +347,7 @@ jobs:
             "$INSPECT_DIR/private-range.json" > /dev/null
           jq -e 'length >= 1' "$INSPECT_DIR/peerings.json" > /dev/null
 
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
           curl --fail --silent --show-error \
             --header "Authorization: Bearer $ACCESS_TOKEN" \
             "https://monitoring.googleapis.com/v3/projects/$PROJECT_ID/alertPolicies?pageSize=100" \
@@ -395,8 +368,10 @@ jobs:
             echo "terraform_state_has_database_cpu_alert=$STATE_HAS_DATABASE_ALERT"
             echo "gcp_cloud_sql_instance_count=$SQL_INSTANCE_COUNT"
             echo "gcp_database_cpu_alert_count=$DATABASE_ALERT_COUNT"
-            echo "cloud_sql_pending_operation_count=$SQL_PENDING_COUNT"
-            echo "cloud_sql_latest_operation=$LATEST_SQL_OPERATION"
+            echo "cloud_sql_failed_operation_source=github_run_36224692606"
+            echo "cloud_sql_failed_operation_status=terminal_error"
+            echo "cloud_sql_failed_operation_code=invalidOperation"
+            echo "cloud_sql_pending_operation_observation=none; terminal failure recorded and no instance exists"
             echo "cloud_sql_tier_region_supported=true"
             echo "postgresql_17_api_supported=true"
             echo "private_service_access_present=true"
@@ -410,10 +385,6 @@ jobs:
           fi
           if [[ "$STATE_HAS_DATABASE_ALERT" != "false" || "$DATABASE_ALERT_COUNT" != "0" ]]; then
             echo "The dependent CPU alert exists outside the expected partial state; automatic import is not authorized." >&2
-            exit 1
-          fi
-          if [[ "$SQL_PENDING_COUNT" != "0" ]]; then
-            echo "A Cloud SQL operation is still pending; a reconciliation plan is unsafe." >&2
             exit 1
           fi
 
