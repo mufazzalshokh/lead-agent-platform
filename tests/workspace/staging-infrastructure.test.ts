@@ -104,9 +104,25 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");
     expect(workflow).toContain("- foundation-reconcile");
     expect(workflow).toContain(
-      'if [[ "$ACTION" == "apply" && "$PHASE" == "foundation-reconcile" ]]',
+      '[[ "$REQUESTED_SHA" == "2396fdf797eb4b19252a34c8b45e93945a8f53a3" ]]',
     );
-    expect(workflow).toContain("Foundation reconciliation is plan-only");
+    expect(workflow).toContain('[[ "$PLAN_RUN_ID" == "36226804148" ]]');
+    expect(workflow).toContain(
+      '[[ "$APPROVED_PLAN_SHA256" == "ddcf63f2b087c14a4dc7c52aee46e8530f97d7fc05b8ab0c8467eb8526c285f0" ]]',
+    );
+    expect(workflow).toContain("Verify exact foundation reconciliation approval boundary");
+    expect(workflow).toContain(
+      'EXPECTED_ACTIONS=\'["create:google_monitoring_alert_policy.database_cpu","create:google_sql_database_instance.staging"]\'',
+    );
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "80" ]]');
+    expect(workflow).toContain("Record Phase A apply start");
+    expect(workflow).toContain("Verify reconciliation Phase A live state");
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "82" ]]');
+    expect(workflow).toContain("Verify reconciliation Phase A Terraform convergence");
+    expect(workflow).toContain("Create and verify Cloud SQL Phase B dormant plan");
+    expect(workflow).toContain("TF_VAR_cloud_sql_activation_policy=NEVER terraform plan");
+    expect(workflow).toContain("phase_b_only_change=activation_policy_ALWAYS_to_NEVER");
+    expect(workflow).toContain("Upload exact Cloud SQL Phase B plan");
     expect(workflow).toContain("foundation-reconcile)\n              SQL_POLICY=ALWAYS");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
