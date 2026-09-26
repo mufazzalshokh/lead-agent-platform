@@ -132,8 +132,8 @@ report failed_execution_egress_matches "$([[ "$FAILED_EGRESS" == "PRIVATE_RANGES
 
 PROBE_SCRIPT="$WORK_DIR/probe.mjs"
 cat > "$PROBE_SCRIPT" <<'EOF'
-import net from "node:net";
-import process from "node:process";
+(async () => {
+const process = globalThis.process;
 
 const mode = process.env.S22_PROBE_MODE;
 const key = process.env.S22_PROBE_ENV_NAME;
@@ -176,6 +176,7 @@ if (mode === "flags") {
 }
 
 if (mode === "network") {
+  const net = await import("node:net");
   const result = await new Promise((resolve) => {
     const socket = net.createConnection({ host: "10.125.0.3", port: 5432 });
     const finish = (code) => {
@@ -193,6 +194,7 @@ if (mode === "network") {
 }
 
 process.exit(254);
+})().catch(() => process.exit(253));
 EOF
 PROBE_SCRIPT_B64="$(base64 -w0 "$PROBE_SCRIPT")"
 
