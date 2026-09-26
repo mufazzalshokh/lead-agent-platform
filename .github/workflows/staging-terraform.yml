@@ -453,16 +453,44 @@ jobs:
               and .variables.worker_instance_count.value == 0
           ' "$PLAN_JSON" > /dev/null
 
+          EXPECTED_ADDRESSES='[
+            "google_cloud_run_v2_service.api[0]",
+            "google_cloud_run_v2_service.web[0]",
+            "google_cloud_run_v2_service_iam_member.api_public[0]",
+            "google_cloud_run_v2_service_iam_member.web_public[0]"
+          ]'
+          jq -e --argjson expected "$EXPECTED_ADDRESSES" '
+            [.resource_changes[]
+             | select(.mode == "managed" and .change.actions != ["no-op"])
+             | { address, actions: .change.actions }] as $actual
+            | ($actual | length) == 4
+              and all($actual[]; .actions == ["create"])
+              and ([$actual[].address] | sort) == ($expected | sort)
+          ' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only plan resource-action set is not the approved four-create set."
+            jq -c '[.resource_changes[] | select(.mode == "managed" and .change.actions != ["no-op"]) | { address, actions: .change.actions }]' "$PLAN_JSON"
+            exit 1
+          }
+          jq -e '
+            [.resource_changes[]
+             | select(.mode == "data" and .change.actions != ["no-op"])]
+            | all(.[];
+                .address == "data.google_project.staging"
+                  and .change.actions == ["read"])
+          ' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only plan contains an unexpected data-source action."
+            jq -c '[.resource_changes[] | select(.mode == "data" and .change.actions != ["no-op"]) | { address, actions: .change.actions }]' "$PLAN_JSON"
+            exit 1
+          }
+
           ACTUAL_ACTIONS="$(
             jq -c '
               [.resource_changes[]
-               | select(.change.actions != ["no-op"])
+               | select(.mode == "managed" and .change.actions != ["no-op"])
                | ((.change.actions | join(",")) + ":" + .address)]
               | sort
             ' "$PLAN_JSON"
           )"
-          EXPECTED_ACTIONS='["create:google_cloud_run_v2_service.api[0]","create:google_cloud_run_v2_service.web[0]","create:google_cloud_run_v2_service_iam_member.api_public[0]","create:google_cloud_run_v2_service_iam_member.web_public[0]"]'
-          [[ "$ACTUAL_ACTIONS" == "$EXPECTED_ACTIONS" ]]
 
           jq -e --arg api_image "$TF_VAR_api_image" '
             [.resource_changes[]

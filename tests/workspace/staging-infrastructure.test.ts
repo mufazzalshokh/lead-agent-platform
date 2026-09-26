@@ -152,6 +152,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("phase_b_compute_stopped_by_activation_policy=true");
     expect(workflow).toContain("Verify Cloud SQL Phase B Terraform convergence");
     expect(workflow).toContain("Verify health-only bootstrap plan safety");
+    expect(workflow).toContain('.mode == "managed" and .change.actions != ["no-op"]');
+    expect(workflow).toContain("data.google_project.staging");
     expect(workflow).toContain("health_only_cloud_sql_policy=NEVER");
     expect(workflow).toContain("Upload exact health-only bootstrap plan");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
