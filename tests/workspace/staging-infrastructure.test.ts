@@ -93,6 +93,11 @@ describe("S22 staging infrastructure boundary", () => {
     expect(bootstrap).toContain('"roles/monitoring.notificationChannelViewer"');
     expect(bootstrap).toContain('"roles/servicenetworking.networksAdmin"');
     expect(bootstrap).toContain('"roles/serviceusage.serviceUsageConsumer"');
+    expect(bootstrap).toContain(
+      'resource "google_project_iam_member" "deployer_temporary_logging_viewer"',
+    );
+    expect(bootstrap).toContain('role    = "roles/logging.viewer"');
+    expect(bootstrap).toContain("var.temporary_logging_viewer_enabled ? 1 : 0");
     expect(bootstrap).not.toContain('"roles/iam.serviceAccountUser"');
     expect(bootstrap).not.toContain('"roles/logging.configWriter"');
     expect(bootstrap).not.toContain('"roles/monitoring.admin"');
@@ -244,6 +249,19 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("application_role_connectivity");
     expect(workflow).toContain("Diagnose migrator secret and VPC wiring");
     expect(workflow).toContain("s22-migration-wiring-diagnose.sh");
+    expect(workflow).toContain("- bootstrap-log-viewer");
+    expect(workflow).toContain("- migration-error-read");
+    expect(workflow).toContain(
+      "-target='google_project_iam_member.deployer_temporary_logging_viewer[0]'",
+    );
+    expect(workflow).toContain(
+      '["create:google_project_iam_member.deployer_temporary_logging_viewer[0]"]',
+    );
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "35" ]]');
+    expect(workflow).toContain("Read sanitized migrator application error");
+    expect(workflow).toContain('payload.operation === "database_migration"');
+    expect(workflow).toContain(".template.template.serviceAccount");
+    expect(workflow).toContain(".template.template.containers[0].image == $image");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');

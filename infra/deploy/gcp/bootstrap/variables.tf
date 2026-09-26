@@ -49,3 +49,9 @@ variable "github_repository" {
     error_message = "The approved S22 WIF repository is fixed."
   }
 }
+
+variable "temporary_logging_viewer_enabled" {
+  description = "Temporarily allow the staging deployer to read sanitized S22 Cloud Run diagnostic logs."
+  type        = bool
+  default     = false
+}

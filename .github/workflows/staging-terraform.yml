@@ -16,6 +16,7 @@ on:
         type: choice
         options:
           - bootstrap-iam
+          - bootstrap-log-viewer
           - foundation
           - foundation-reconcile
           - foundation-reconcile-verify
@@ -27,6 +28,7 @@ on:
           - migrator-image-update
           - migration-diagnose
           - migration-wiring-diagnose
+          - migration-error-read
           - full
           - load
           - dormant
@@ -66,6 +68,10 @@ on:
         description: Exact owner-approved saved-plan SHA256; required only for apply
         required: false
         type: string
+      migrator_execution_id:
+        description: Exact failed Cloud Run migrator execution for sanitized diagnostic reads
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -87,6 +93,7 @@ jobs:
       S22_APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
       S22_APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
       S22_COMMIT_SHA: ${{ inputs.commit_sha }}
+      S22_MIGRATOR_EXECUTION_ID: ${{ inputs.migrator_execution_id }}
       S22_PHASE: ${{ inputs.phase }}
       S22_PLAN_RUN_ID: ${{ inputs.plan_run_id }}
       TF_IN_AUTOMATION: true
@@ -111,6 +118,7 @@ jobs:
       TF_VAR_github_repository: ${{ github.repository }}
       TF_VAR_monitoring_notification_channel_ids: ${{ vars.STAGING_MONITORING_NOTIFICATION_CHANNEL_IDS_JSON }}
       TF_VAR_state_bucket_name: ${{ vars.GCP_TERRAFORM_STATE_BUCKET }}
+      TF_VAR_temporary_logging_viewer_enabled: ${{ inputs.phase == 'bootstrap-log-viewer' }}
     steps:
       - name: Validate request boundary
         env:
@@ -129,6 +137,10 @@ jobs:
             *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
           esac
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$PHASE" == "migration-error-read" ]]; then
+            [[ "$ACTION" == "plan" ]]
+            [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          fi
           if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]; then
             echo "Apply requires the exact owner approval token." >&2
             exit 1
@@ -197,6 +209,7 @@ jobs:
 
           case "$PHASE" in
             bootstrap-iam) ;;
+            bootstrap-log-viewer) ;;
             foundation) ;;
             foundation-reconcile)
               SQL_POLICY=ALWAYS
@@ -239,6 +252,12 @@ jobs:
               SQL_POLICY=ALWAYS
               ;;
             migration-wiring-diagnose)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
+            migration-error-read)
               DEPLOY_RUNTIME=true
               BOOTSTRAP_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -314,18 +333,18 @@ jobs:
           terraform_version: 1.14.7
 
       - name: Initialize bootstrap Terraform
-        if: env.S22_PHASE == 'bootstrap-iam'
+        if: env.S22_PHASE == 'bootstrap-iam' || env.S22_PHASE == 'bootstrap-log-viewer'
         working-directory: infra/deploy/gcp/bootstrap
         shell: bash
         run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
 
       - name: Validate bootstrap Terraform
-        if: env.S22_PHASE == 'bootstrap-iam'
+        if: env.S22_PHASE == 'bootstrap-iam' || env.S22_PHASE == 'bootstrap-log-viewer'
         working-directory: infra/deploy/gcp/bootstrap
         run: terraform validate
 
       - name: Verify authoritative bootstrap state
-        if: env.S22_PHASE == 'bootstrap-iam'
+        if: env.S22_PHASE == 'bootstrap-iam' || env.S22_PHASE == 'bootstrap-log-viewer'
         working-directory: infra/deploy/gcp/bootstrap
         shell: bash
         run: |
@@ -357,19 +376,82 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Create reviewed temporary logging viewer plan
+        if: env.S22_PHASE == 'bootstrap-log-viewer' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN=s22-bootstrap-log-viewer.tfplan
+          PLAN_JSON=s22-bootstrap-log-viewer.tfplan.json
+          terraform plan \
+            -lock-timeout=5m \
+            -target='google_project_iam_member.deployer_temporary_logging_viewer[0]' \
+            -out="$PLAN"
+          sha256sum "$PLAN" > "$PLAN.sha256"
+          terraform show -json "$PLAN" > "$PLAN_JSON"
+          ACTIONS="$(
+            jq -c '
+              [.resource_changes[]
+               | select(.mode == "managed" and .change.actions != ["no-op"])
+               | ((.change.actions | join(",")) + ":" + .address)]
+              | sort
+            ' "$PLAN_JSON"
+          )"
+          [[ "$ACTIONS" == '["create:google_project_iam_member.deployer_temporary_logging_viewer[0]"]' ]]
+          jq -e '
+            [.resource_changes[] | select(.change.actions == ["create"])] | length == 1
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[] | select(.change.actions == ["delete"])] | length == 0
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])]
+            | length == 0
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.change.actions != ["no-op"])
+             | select(
+                 .type != "google_project_iam_member"
+                 or .change.after.role != "roles/logging.viewer"
+                 or .change.after.member != "serviceAccount:lead-agent-staging-deploy@lead-agent-stg-739284.iam.gserviceaccount.com"
+               )]
+            | length == 0
+          ' "$PLAN_JSON" > /dev/null
+          echo "bootstrap_logging_viewer_plan_actions=$ACTIONS"
+          echo "bootstrap_logging_viewer_plan_creates=1"
+          echo "bootstrap_logging_viewer_plan_changes=0"
+          echo "bootstrap_logging_viewer_plan_destroys=0"
+          echo "bootstrap_logging_viewer_plan_replacements=0"
+          echo "bootstrap_logging_viewer_plan_sha256=$(awk '{print $1}' "$PLAN.sha256")"
+          rm -f "$PLAN_JSON"
+
+      - name: Upload exact temporary logging viewer plan
+        if: env.S22_PHASE == 'bootstrap-log-viewer' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-bootstrap-log-viewer-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/bootstrap/s22-bootstrap-log-viewer.tfplan
+            infra/deploy/gcp/bootstrap/s22-bootstrap-log-viewer.tfplan.sha256
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Initialize staging Terraform
-        if: env.S22_PHASE != 'bootstrap-iam'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
 
       - name: Validate staging Terraform
-        if: env.S22_PHASE != 'bootstrap-iam'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer'
         working-directory: infra/deploy/gcp/staging
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -504,7 +586,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -934,7 +1016,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
@@ -1434,7 +1516,7 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Download exact owner-reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
@@ -1452,7 +1534,7 @@ jobs:
             --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
@@ -1872,7 +1954,7 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Apply exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 
@@ -1894,18 +1976,18 @@ jobs:
             --arg commit "$S22_COMMIT_SHA" \
             --arg image "$TF_VAR_migrator_image" \
             --arg timestamp "$TF_VAR_migrator_deployment_timestamp" '
-            .template.serviceAccount == "lead-agent-staging-migrator@lead-agent-stg-739284.iam.gserviceaccount.com"
-              and .template.containers[0].image == $image
-              and .template.containers[0].command == ["node"]
-              and .template.containers[0].args == ["dist/index.js"]
-              and (.template.vpcAccess.networkInterfaces[0].network | endswith("/networks/lead-agent-staging-vpc"))
-              and (.template.vpcAccess.networkInterfaces[0].subnetwork | endswith("/subnetworks/lead-agent-staging-cloud-run"))
-              and .template.vpcAccess.egress == "PRIVATE_RANGES_ONLY"
-              and any(.template.containers[0].env[]; .name == "DEPLOYMENT_GIT_SHA" and .value == $commit)
-              and any(.template.containers[0].env[]; .name == "DEPLOYMENT_TIMESTAMP" and .value == $timestamp)
-              and any(.template.containers[0].env[]; .name == "DEPLOYMENT_IMAGE_DIGEST" and .value == $image)
-              and ([.template.containers[0].env[] | select(.valueSource.secretKeyRef != null)] | length) == 5
-              and all(.template.containers[0].env[] | select(.valueSource.secretKeyRef != null); .valueSource.secretKeyRef.version == "latest")
+            .template.template.serviceAccount == "lead-agent-staging-migrator@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and .template.template.containers[0].image == $image
+              and .template.template.containers[0].command == ["node"]
+              and .template.template.containers[0].args == ["dist/index.js"]
+              and (.template.template.vpcAccess.networkInterfaces[0].network | endswith("/networks/lead-agent-staging-vpc"))
+              and (.template.template.vpcAccess.networkInterfaces[0].subnetwork | endswith("/subnetworks/lead-agent-staging-cloud-run"))
+              and .template.template.vpcAccess.egress == "PRIVATE_RANGES_ONLY"
+              and any(.template.template.containers[0].env[]; .name == "DEPLOYMENT_GIT_SHA" and .value == $commit)
+              and any(.template.template.containers[0].env[]; .name == "DEPLOYMENT_TIMESTAMP" and .value == $timestamp)
+              and any(.template.template.containers[0].env[]; .name == "DEPLOYMENT_IMAGE_DIGEST" and .value == $image)
+              and ([.template.template.containers[0].env[] | select(.valueSource.secretKeyRef != null)] | length) == 5
+              and all(.template.template.containers[0].env[] | select(.valueSource.secretKeyRef != null); .valueSource.secretKeyRef.version == "latest")
           ' "$LIVE_JOB" > /dev/null
 
           STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
@@ -2550,6 +2632,102 @@ jobs:
           --name "s22-bootstrap-iam-plan-${{ env.S22_COMMIT_SHA }}"
           --dir infra/deploy/gcp/bootstrap
 
+      - name: Download exact temporary logging viewer plan
+        if: env.S22_PHASE == 'bootstrap-log-viewer' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
+        shell: bash
+        run: >-
+          gh run download "$PLAN_RUN_ID"
+          --repo "$GITHUB_REPOSITORY"
+          --name "s22-bootstrap-log-viewer-plan-${{ env.S22_COMMIT_SHA }}"
+          --dir infra/deploy/gcp/bootstrap
+
+      - name: Verify exact temporary logging viewer approval boundary
+        if: env.S22_PHASE == 'bootstrap-log-viewer' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN=s22-bootstrap-log-viewer.tfplan
+          PLAN_JSON=s22-bootstrap-log-viewer.tfplan.json
+          RECORDED_SHA256="$(awk '{print $1}' "$PLAN.sha256")"
+          ACTUAL_SHA256="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$RECORDED_SHA256" ]]
+          [[ "$ACTUAL_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
+          terraform show -json "$PLAN" > "$PLAN_JSON"
+          ACTIONS="$(
+            jq -c '
+              [.resource_changes[]
+               | select(.mode == "managed" and .change.actions != ["no-op"])
+               | ((.change.actions | join(",")) + ":" + .address)]
+              | sort
+            ' "$PLAN_JSON"
+          )"
+          [[ "$ACTIONS" == '["create:google_project_iam_member.deployer_temporary_logging_viewer[0]"]' ]]
+          jq -e '
+            [.resource_changes[] | select(.change.actions == ["create"])] | length == 1
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[] | select(.change.actions == ["delete"])] | length == 0
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])]
+            | length == 0
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.change.actions != ["no-op"])
+             | select(
+                 .type != "google_project_iam_member"
+                 or .change.after.role != "roles/logging.viewer"
+                 or .change.after.member != "serviceAccount:lead-agent-staging-deploy@lead-agent-stg-739284.iam.gserviceaccount.com"
+               )]
+            | length == 0
+          ' "$PLAN_JSON" > /dev/null
+          rm -f "$PLAN_JSON"
+
+      - name: Apply exact temporary logging viewer plan
+        if: env.S22_PHASE == 'bootstrap-log-viewer' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/bootstrap
+        run: terraform apply -lock-timeout=5m -auto-approve s22-bootstrap-log-viewer.tfplan
+
+      - name: Verify temporary logging viewer convergence
+        if: env.S22_PHASE == 'bootstrap-log-viewer' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATE_ADDRESSES="$(terraform state list)"
+          STATE_COUNT="$(wc -l <<< "$STATE_ADDRESSES" | tr -d '[:space:]')"
+          [[ "$STATE_COUNT" == "35" ]]
+          grep -Fqx -- 'google_project_iam_member.deployer_temporary_logging_viewer[0]' <<< "$STATE_ADDRESSES"
+          set +e
+          terraform plan \
+            -target='google_project_iam_member.deployer_temporary_logging_viewer[0]' \
+            -detailed-exitcode \
+            -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "temporary_logging_viewer_role=roles/logging.viewer"
+            echo "temporary_logging_viewer_member=lead-agent-staging-deploy@lead-agent-stg-739284.iam.gserviceaccount.com"
+            echo "temporary_logging_viewer_state_count=$STATE_COUNT"
+            echo "temporary_logging_viewer_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-bootstrap-log-viewer-apply-evidence.txt
+
+      - name: Upload temporary logging viewer apply evidence
+        if: always() && env.S22_PHASE == 'bootstrap-log-viewer' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-bootstrap-log-viewer-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/bootstrap/s22-bootstrap-log-viewer-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verify exact bootstrap IAM plan approval boundary
         if: env.S22_PHASE == 'bootstrap-iam' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/bootstrap
@@ -2842,6 +3020,88 @@ jobs:
           echo "Verified alert policies: 2; budgets: 2"
           echo "Verified runtime identities: ${#RUNTIME_IDENTITIES[@]}"
           echo "Verified Cloud Run services: 0; jobs: 0"
+
+      - name: Read sanitized migrator application error
+        if: env.S22_PHASE == 'migration-error-read' && env.S22_ACTION == 'plan'
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          EXECUTION_ID: ${{ env.S22_MIGRATOR_EXECUTION_ID }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOGS="$(mktemp)"
+          trap 'rm -f "$LOGS"' EXIT
+          gcloud logging read \
+            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"lead-agent-staging-migrator\" AND labels.\"run.googleapis.com/execution_name\"=\"$EXECUTION_ID\"" \
+            --project="$PROJECT_ID" \
+            --limit=200 \
+            --order=asc \
+            --format=json > "$LOGS"
+          node - "$LOGS" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
+          const fs = require("node:fs");
+          const [logPath, executionId] = process.argv.slice(2);
+          const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
+
+          const asObject = (value) =>
+            typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+          const parseJsonObject = (value) => {
+            if (typeof value !== "string") return undefined;
+            try {
+              return asObject(JSON.parse(value));
+            } catch {
+              return undefined;
+            }
+          };
+          const payloads = entries.flatMap((entry) => {
+            const payload = asObject(entry.jsonPayload);
+            return [
+              payload,
+              parseJsonObject(entry.textPayload),
+              parseJsonObject(payload?.message),
+            ].filter(Boolean);
+          });
+          const failure = payloads.find(
+            (payload) => payload.operation === "database_migration" && payload.outcome === "failed",
+          );
+          if (!failure) throw new Error("No structured sanitized migrator failure record found");
+
+          const sanitize = (value) =>
+            String(value ?? "unavailable")
+              .replace(/postgres(?:ql)?:\/\/[^\s\"'<>]+/giu, "postgresql://[REDACTED]")
+              .replace(/Bearer\s+[^\s\"'<>]+/giu, "Bearer [REDACTED]")
+              .replace(/((?:password|token|secret|authorization)\s*[:=]\s*)[^\s,;\"'<>]+/giu, "$1[REDACTED]")
+              .replace(/[\u0000-\u001f\u007f]+/gu, " ")
+              .replace(/\s+/gu, " ")
+              .trim()
+              .slice(0, 1200);
+          const optional = (value, pattern) => {
+            if (value === null || value === undefined) return null;
+            const sanitized = sanitize(value);
+            return pattern.test(sanitized) ? sanitized : "unavailable";
+          };
+          const evidence = {
+            error_category: optional(failure.error_category, /^[a-z][a-z0-9_]{0,79}$/u),
+            error_code: optional(failure.error_code, /^[0-9A-Z_]{2,32}$/u),
+            error_message: sanitize(failure.error_message),
+            error_type: optional(failure.error_type, /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/u),
+            execution_id: executionId,
+            failure_stage: optional(failure.failure_stage, /^(?:load_migrator|apply_migrations)$/u),
+            migration_identifier: optional(failure.migration_identifier, /^[0-9]{4}_[a-z0-9_]+$/u),
+            operation: "database_migration",
+            outcome: "failed",
+          };
+          console.log(JSON.stringify(evidence));
+          NODE
+
+      - name: Upload sanitized migrator application error
+        if: always() && env.S22_PHASE == 'migration-error-read' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-migrator-root-error-${{ env.S22_MIGRATOR_EXECUTION_ID }}
+          path: s22-migrator-root-error.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run bounded migration failure diagnostics
         if: env.S22_PHASE == 'migration-diagnose' && env.S22_ACTION == 'plan'
@@ -3398,7 +3658,7 @@ jobs:
           retention-days: 7
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
