@@ -28,6 +28,27 @@ if [[ -z "$FAILED_EXECUTION" ]]; then
     --header "Authorization: Bearer $ACCESS_TOKEN" \
     "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions?pageSize=100" \
     > "$WORK_DIR/executions.json"
+  RECENT_INDEX=0
+  while IFS=$'\t' read -r execution_name create_time failed_count succeeded_count running_count; do
+    report "recent_execution_${RECENT_INDEX}" "${execution_name}|${create_time}|failed=${failed_count}|succeeded=${succeeded_count}|running=${running_count}"
+    RECENT_INDEX=$((RECENT_INDEX + 1))
+  done < <(
+    jq -r '
+      [.executions[]?
+       | {
+           create_time: (.createTime // "unavailable"),
+           failed_count: (.failedCount // 0),
+           name: (.name | split("/") | last),
+           running_count: (.runningCount // 0),
+           succeeded_count: (.succeededCount // 0)
+         }]
+      | sort_by(.create_time)
+      | reverse
+      | .[0:8][]
+      | [.name, .create_time, .failed_count, .succeeded_count, .running_count]
+      | @tsv
+    ' "$WORK_DIR/executions.json"
+  )
   FAILED_EXECUTION="$(
     jq -er '
       [.executions[]?

@@ -255,6 +255,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("S22_SKIP_ACTIVE_PROBES: true");
     expect(workflow).toContain("s22-migration-wiring-diagnose.sh");
     expect(wiringDiagnostic).toContain('if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]');
+    expect(wiringDiagnostic).toContain('report "recent_execution_${RECENT_INDEX}"');
     expect(workflow).toContain("- bootstrap-log-viewer");
     expect(workflow).toContain("- migration-error-read");
     expect(workflow).toContain(
