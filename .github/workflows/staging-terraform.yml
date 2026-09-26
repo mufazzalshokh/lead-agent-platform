@@ -249,6 +249,9 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
+          if [[ "$PHASE" == "cloud-sql-start" ]]; then
+            echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
+          fi
 
       - name: Check out exact commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -462,6 +465,7 @@ jobs:
 
           jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
           jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '.variables.git_commit_sha.value == "2396fdf797eb4b19252a34c8b45e93945a8f53a3"' "$PLAN_JSON" > /dev/null
           jq -e '
             .variables.deploy_runtime.value == "true"
               and .variables.bootstrap_runtime.value == "true"
@@ -1309,6 +1313,7 @@ jobs:
           terraform show -json "$PLAN" > "$PLAN_JSON"
           jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
           jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '.variables.git_commit_sha.value == "2396fdf797eb4b19252a34c8b45e93945a8f53a3"' "$PLAN_JSON" > /dev/null
           jq -e '
             .variables.deploy_runtime.value == "true"
               and .variables.bootstrap_runtime.value == "true"
@@ -2568,7 +2573,7 @@ jobs:
           --wait
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
