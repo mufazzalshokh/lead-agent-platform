@@ -211,21 +211,15 @@ run_encoded_probe() {
 
   local execution_name
   execution_name="$(
-    gcloud run jobs executions describe-latest \
+    gcloud run jobs executions list \
       --job="$JOB_NAME" \
       --project="$PROJECT_ID" \
       --region="$REGION" \
+      --limit=1 \
+      --sort-by='~metadata.creationTimestamp' \
       --format='value(metadata.name)'
   )"
-  if [[ -z "$execution_name" ]]; then
-    execution_name="$(
-      gcloud run jobs executions describe-latest \
-        --job="$JOB_NAME" \
-        --project="$PROJECT_ID" \
-        --region="$REGION" \
-        --format='value(name)'
-    )"
-  fi
+  [[ -n "$execution_name" ]]
   gcloud run jobs executions tasks list \
     --execution="$execution_name" \
     --project="$PROJECT_ID" \
