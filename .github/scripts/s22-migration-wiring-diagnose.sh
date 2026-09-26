@@ -31,7 +31,6 @@ curl --fail --silent --show-error \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${FAILED_EXECUTION}" \
   > "$WORK_DIR/failed-execution.json"
-unset ACCESS_TOKEN
 
 terraform -chdir=infra/deploy/gcp/staging show -json > "$WORK_DIR/terraform-state.json"
 jq -e '
@@ -220,16 +219,25 @@ run_encoded_probe() {
       --format='value(metadata.name)'
   )"
   [[ -n "$execution_name" ]]
-  gcloud run jobs executions tasks list \
-    --execution="$execution_name" \
-    --project="$PROJECT_ID" \
-    --region="$REGION" \
-    --limit=1 \
-    --succeeded \
-    --format=json > "$WORK_DIR/latest-task.json"
+  local execution_id="${execution_name##*/}"
+  curl --fail --silent --show-error \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${execution_id}/tasks?pageSize=1" \
+    > "$WORK_DIR/latest-task.json"
   jq -er '
-    [.. | objects | (.exitCode? // .exit_code? // empty)] as $codes
-    | if ($codes | length) == 1 then $codes[0] else error("expected exactly one task exit code") end
+    if (.tasks | length) != 1 then
+      error("expected exactly one Cloud Run task")
+    else
+      .tasks[0] as $task
+      | ($task.lastAttemptResult // {}) as $result
+      | if ($result | has("exitCode")) then
+          $result.exitCode
+        elif (($result.status.code // 0) == 0 and ($task.completionTime // "") != "") then
+          0
+        else
+          error("task completed without a usable container exit code")
+        end
+    end
   ' "$WORK_DIR/latest-task.json"
 }
 
@@ -273,6 +281,12 @@ for key in AUTH_DATABASE_URL DATABASE_URL INGRESS_DATABASE_URL MIGRATION_DATABAS
 done
 
 NETWORK_CODE="$(run_encoded_probe UNUSED UNUSED network)"
+DIAGNOSTIC_TASK_NETWORK="$(jq -r '.tasks[0].vpcAccess.networkInterfaces[0].network // ""' "$WORK_DIR/latest-task.json")"
+DIAGNOSTIC_TASK_SUBNETWORK="$(jq -r '.tasks[0].vpcAccess.networkInterfaces[0].subnetwork // ""' "$WORK_DIR/latest-task.json")"
+DIAGNOSTIC_TASK_EGRESS="$(jq -r '.tasks[0].vpcAccess.egress // ""' "$WORK_DIR/latest-task.json")"
+report diagnostic_execution_vpc_network_matches "$({ matches_resource_name "$DIAGNOSTIC_TASK_NETWORK" lead-agent-staging-vpc; } && echo true || echo false)"
+report diagnostic_execution_vpc_subnetwork_matches "$({ matches_resource_name "$DIAGNOSTIC_TASK_SUBNETWORK" lead-agent-staging-cloud-run; } && echo true || echo false)"
+report diagnostic_execution_vpc_egress_matches "$([[ "$DIAGNOSTIC_TASK_EGRESS" == "PRIVATE_RANGES_ONLY" ]] && echo true || echo false)"
 case "$NETWORK_CODE" in
   0) NETWORK_RESULT=CONNECTED ;;
   1) NETWORK_RESULT=TIMEOUT ;;
@@ -283,3 +297,4 @@ case "$NETWORK_CODE" in
   *) NETWORK_RESULT=OTHER_ERROR ;;
 esac
 report runtime_private_tcp_result "$NETWORK_RESULT"
+unset ACCESS_TOKEN
