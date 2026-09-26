@@ -495,47 +495,59 @@ jobs:
           jq -e --arg api_image "$TF_VAR_api_image" '
             [.resource_changes[]
              | select(.address == "google_cloud_run_v2_service.api[0]")
-             | .change.after]
-            | length == 1
-              and .[0].name == "lead-agent-staging-api"
-              and .[0].location == "me-central1"
-              and .[0].ingress == "INGRESS_TRAFFIC_ALL"
-              and .[0].deletion_protection == true
-              and .[0].template[0].service_account == "lead-agent-staging-api@lead-agent-stg-739284.iam.gserviceaccount.com"
-              and .[0].template[0].timeout == "60s"
-              and .[0].template[0].max_instance_request_concurrency == 40
-              and .[0].template[0].scaling[0].min_instance_count == 0
-              and .[0].template[0].scaling[0].max_instance_count == 1
-              and .[0].template[0].containers[0].image == $api_image
-              and .[0].template[0].containers[0].command == ["node"]
-              and .[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
-          ' "$PLAN_JSON" > /dev/null
+             | .change.after] as $api
+            | ($api | length) == 1
+              and $api[0].name == "lead-agent-staging-api"
+              and $api[0].location == "me-central1"
+              and $api[0].ingress == "INGRESS_TRAFFIC_ALL"
+              and $api[0].deletion_protection == true
+              and $api[0].template[0].service_account == "lead-agent-staging-api@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and $api[0].template[0].timeout == "60s"
+              and $api[0].template[0].max_instance_request_concurrency == 40
+              and $api[0].template[0].scaling[0].min_instance_count == 0
+              and $api[0].template[0].scaling[0].max_instance_count == 1
+              and $api[0].template[0].containers[0].image == $api_image
+              and $api[0].template[0].containers[0].command == ["node"]
+              and $api[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
+          ' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only API service shape differs from the approved boundary."
+            jq -c '[.resource_changes[] | select(.address == "google_cloud_run_v2_service.api[0]") | .change.after]' "$PLAN_JSON"
+            exit 1
+          }
           jq -e --arg web_image "$TF_VAR_web_image" '
             [.resource_changes[]
              | select(.address == "google_cloud_run_v2_service.web[0]")
-             | .change.after]
-            | length == 1
-              and .[0].name == "lead-agent-staging-web"
-              and .[0].location == "me-central1"
-              and .[0].ingress == "INGRESS_TRAFFIC_ALL"
-              and .[0].deletion_protection == true
-              and .[0].template[0].service_account == "lead-agent-staging-web@lead-agent-stg-739284.iam.gserviceaccount.com"
-              and .[0].template[0].timeout == "60s"
-              and .[0].template[0].max_instance_request_concurrency == 80
-              and .[0].template[0].scaling[0].min_instance_count == 0
-              and .[0].template[0].scaling[0].max_instance_count == 1
-              and .[0].template[0].containers[0].image == $web_image
-              and .[0].template[0].containers[0].command == ["node"]
-              and .[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
-          ' "$PLAN_JSON" > /dev/null
+             | .change.after] as $web
+            | ($web | length) == 1
+              and $web[0].name == "lead-agent-staging-web"
+              and $web[0].location == "me-central1"
+              and $web[0].ingress == "INGRESS_TRAFFIC_ALL"
+              and $web[0].deletion_protection == true
+              and $web[0].template[0].service_account == "lead-agent-staging-web@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and $web[0].template[0].timeout == "60s"
+              and $web[0].template[0].max_instance_request_concurrency == 80
+              and $web[0].template[0].scaling[0].min_instance_count == 0
+              and $web[0].template[0].scaling[0].max_instance_count == 1
+              and $web[0].template[0].containers[0].image == $web_image
+              and $web[0].template[0].containers[0].command == ["node"]
+              and $web[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
+          ' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only Web service shape differs from the approved boundary."
+            jq -c '[.resource_changes[] | select(.address == "google_cloud_run_v2_service.web[0]") | .change.after]' "$PLAN_JSON"
+            exit 1
+          }
           jq -e '
             [.resource_changes[]
              | select(.address == "google_cloud_run_v2_service_iam_member.api_public[0]"
                       or .address == "google_cloud_run_v2_service_iam_member.web_public[0]")
              | .change.after
-             | select(.role == "roles/run.invoker" and .member == "allUsers")]
-            | length == 2
-          ' "$PLAN_JSON" > /dev/null
+             | select(.role == "roles/run.invoker" and .member == "allUsers")] as $bindings
+            | ($bindings | length) == 2
+          ' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only public invoker bindings differ from the approved boundary."
+            jq -c '[.resource_changes[] | select(.address == "google_cloud_run_v2_service_iam_member.api_public[0]" or .address == "google_cloud_run_v2_service_iam_member.web_public[0]") | .change.after]' "$PLAN_JSON"
+            exit 1
+          }
 
           CREATE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["create"])] | length' "$PLAN_JSON")"
           CHANGE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["update"])] | length' "$PLAN_JSON")"

@@ -154,6 +154,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify health-only bootstrap plan safety");
     expect(workflow).toContain('.mode == "managed" and .change.actions != ["no-op"]');
     expect(workflow).toContain("data.google_project.staging");
+    expect(workflow).toContain("as $api");
+    expect(workflow).toContain("as $web");
+    expect(workflow).toContain("as $bindings");
     expect(workflow).toContain("health_only_cloud_sql_policy=NEVER");
     expect(workflow).toContain("Upload exact health-only bootstrap plan");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
