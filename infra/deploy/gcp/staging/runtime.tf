@@ -12,6 +12,15 @@ locals {
     DEPLOYMENT_TIMESTAMP      = var.deployment_timestamp
   }
 
+  migrator_git_commit_sha = var.migrator_git_commit_sha != "" ? var.migrator_git_commit_sha : var.git_commit_sha
+  migrator_deployment_timestamp = (
+    var.migrator_deployment_timestamp != "" ? var.migrator_deployment_timestamp : var.deployment_timestamp
+  )
+  migrator_provenance_env = merge(local.provenance_env, {
+    DEPLOYMENT_GIT_SHA   = local.migrator_git_commit_sha
+    DEPLOYMENT_TIMESTAMP = local.migrator_deployment_timestamp
+  })
+
   api_plain_env = merge(local.provenance_env, {
     APP_ENV                         = "production"
     AUTH0_CALLBACK_URI              = "${var.api_public_origin}/v1/staff/auth/callback"
@@ -85,6 +94,9 @@ locals {
   deployment_labels = merge(local.common_labels, {
     git-sha        = var.deploy_runtime ? substr(var.git_commit_sha, 0, 12) : "foundation"
     migration-head = replace(var.migration_head, "_", "-")
+  })
+  migrator_deployment_labels = merge(local.deployment_labels, {
+    git-sha = substr(local.migrator_git_commit_sha, 0, 12)
   })
 }
 
@@ -348,7 +360,7 @@ resource "google_cloud_run_v2_job" "migrator" {
   project             = var.project_id
   location            = var.region
   deletion_protection = true
-  labels              = local.deployment_labels
+  labels              = local.migrator_deployment_labels
 
   lifecycle {
     precondition {
@@ -379,7 +391,7 @@ resource "google_cloud_run_v2_job" "migrator" {
         }
 
         dynamic "env" {
-          for_each = merge(local.provenance_env, {
+          for_each = merge(local.migrator_provenance_env, {
             DEPLOYMENT_IMAGE_DIGEST = var.migrator_image
           })
           content {

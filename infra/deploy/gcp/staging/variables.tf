@@ -201,6 +201,28 @@ variable "migrator_image" {
   }
 }
 
+variable "migrator_git_commit_sha" {
+  description = "Optional exact source commit for a migrator-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.migrator_git_commit_sha == "" || can(regex("^[0-9a-f]{40}$", var.migrator_git_commit_sha))
+    error_message = "migrator_git_commit_sha must be empty or an exact lowercase 40-character commit SHA."
+  }
+}
+
+variable "migrator_deployment_timestamp" {
+  description = "Optional UTC deployment timestamp for a migrator-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.migrator_deployment_timestamp == "" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", var.migrator_deployment_timestamp))
+    error_message = "migrator_deployment_timestamp must be empty or a UTC RFC3339 timestamp."
+  }
+}
+
 variable "api_public_origin" {
   description = "Exact HTTPS API run.app origin captured after the bootstrap revision."
   type        = string

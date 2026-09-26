@@ -24,6 +24,7 @@ on:
           - bootstrap
           - migration
           - migration-resume
+          - migrator-image-update
           - migration-diagnose
           - migration-wiring-diagnose
           - full
@@ -225,6 +226,12 @@ jobs:
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
               ;;
+            migrator-image-update)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
             migration-diagnose)
               DEPLOY_RUNTIME=true
               BOOTSTRAP_RUNTIME=true
@@ -270,8 +277,13 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-resume" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
+          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
             echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
+            echo "TF_VAR_deployment_timestamp=2026-09-26T09:53:56Z" >> "$GITHUB_ENV"
+          fi
+          if [[ "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" ]]; then
+            echo "TF_VAR_migrator_git_commit_sha=$REQUESTED_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_migrator_deployment_timestamp=$TF_VAR_deployment_timestamp" >> "$GITHUB_ENV"
           fi
 
       - name: Check out exact commit
@@ -357,7 +369,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -588,6 +600,20 @@ jobs:
             echo "migration_plan_actions=$ACTUAL_ACTIONS"
             echo "migration_plan_unexpected_actions=NONE"
           } | tee s22-migration-plan-evidence.txt
+
+      - name: Verify migrator image-only plan safety
+        if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'plan'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/s22-migrator-image-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan \
+            "$TF_VAR_migrator_image" \
+            "$S22_COMMIT_SHA" \
+            "$TF_VAR_migrator_deployment_timestamp" \
+            | tee infra/deploy/gcp/staging/s22-migrator-image-plan-evidence.txt
+          echo "migrator_image_plan_sha256=$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)" \
+            | tee -a infra/deploy/gcp/staging/s22-migrator-image-plan-evidence.txt
 
       - name: Verify Cloud SQL start-only plan safety
         if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'plan'
@@ -1430,6 +1456,19 @@ jobs:
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
+      - name: Verify exact migrator image update approval boundary
+        if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_PLAN_SHA256="$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)"
+          [[ "$ACTUAL_PLAN_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
+          bash .github/scripts/s22-migrator-image-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan \
+            "$TF_VAR_migrator_image" \
+            "$S22_COMMIT_SHA" \
+            "$TF_VAR_migrator_deployment_timestamp"
+
       - name: Verify exact migration plan approval boundary
         if: env.S22_PHASE == 'migration' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
@@ -1836,6 +1875,65 @@ jobs:
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
+
+      - name: Verify migrator image update live state and convergence
+        if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIVE_JOB="$(mktemp)"
+          trap 'rm -f "$LIVE_JOB"' EXIT
+          gcloud run jobs describe lead-agent-staging-migrator \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --format=json > "$LIVE_JOB"
+          jq -e \
+            --arg commit "$S22_COMMIT_SHA" \
+            --arg image "$TF_VAR_migrator_image" \
+            --arg timestamp "$TF_VAR_migrator_deployment_timestamp" '
+            .template.serviceAccount == "lead-agent-staging-migrator@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and .template.containers[0].image == $image
+              and .template.containers[0].command == ["node"]
+              and .template.containers[0].args == ["dist/index.js"]
+              and (.template.vpcAccess.networkInterfaces[0].network | endswith("/networks/lead-agent-staging-vpc"))
+              and (.template.vpcAccess.networkInterfaces[0].subnetwork | endswith("/subnetworks/lead-agent-staging-cloud-run"))
+              and .template.vpcAccess.egress == "PRIVATE_RANGES_ONLY"
+              and any(.template.containers[0].env[]; .name == "DEPLOYMENT_GIT_SHA" and .value == $commit)
+              and any(.template.containers[0].env[]; .name == "DEPLOYMENT_TIMESTAMP" and .value == $timestamp)
+              and any(.template.containers[0].env[]; .name == "DEPLOYMENT_IMAGE_DIGEST" and .value == $image)
+              and ([.template.containers[0].env[] | select(.valueSource.secretKeyRef != null)] | length) == 5
+              and all(.template.containers[0].env[] | select(.valueSource.secretKeyRef != null); .valueSource.secretKeyRef.version == "latest")
+          ' "$LIVE_JOB" > /dev/null
+
+          STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT" == "88" ]]
+          set +e
+          terraform plan -detailed-exitcode -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+
+          {
+            echo "migrator_image_update_commit=$S22_COMMIT_SHA"
+            echo "migrator_image_update_digest=${TF_VAR_migrator_image##*@}"
+            echo "migrator_image_update_live_state=PASS"
+            echo "migrator_image_update_network_unchanged=PASS"
+            echo "migrator_image_update_secret_references_unchanged=PASS"
+            echo "migrator_image_update_state_count=$STATE_COUNT"
+            echo "migrator_image_update_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-migrator-image-apply-evidence.txt
+
+      - name: Upload migrator image update evidence
+        if: always() && env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-migrator-image-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-migrator-image-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify Cloud SQL start live state and empty database secrets
         if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'apply'

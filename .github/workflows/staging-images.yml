@@ -7,6 +7,14 @@ on:
         description: Exact 40-character commit on the dispatched approved branch to package
         required: true
         type: string
+      image_scope:
+        description: Build every runtime image or only the S22 migrator
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - migrator
 
 permissions:
   contents: read
@@ -90,6 +98,7 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build and push API
+        if: inputs.image_scope == 'all'
         id: api
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -105,6 +114,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=staging-api
 
       - name: Build and push Web
+        if: inputs.image_scope == 'all'
         id: web
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -120,6 +130,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=staging-web
 
       - name: Build and push worker
+        if: inputs.image_scope == 'all'
         id: worker
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -150,6 +161,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=staging-migrator
 
       - name: Record immutable image manifest
+        if: inputs.image_scope == 'all'
         env:
           API_DIGEST: ${{ steps.api.outputs.digest }}
           MIGRATOR_DIGEST: ${{ steps.migrator.outputs.digest }}
@@ -196,6 +208,38 @@ jobs:
             echo "- Web: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/web@$WEB_DIGEST\`"
             echo "- Worker: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/worker@$WORKER_DIGEST\`"
             echo "- Migrator: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/migrator@$MIGRATOR_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record immutable migrator image manifest
+        if: inputs.image_scope == 'migrator'
+        env:
+          MIGRATOR_DIGEST: ${{ steps.migrator.outputs.digest }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$MIGRATOR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          MIGRATOR_REF="me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent/migrator@$MIGRATOR_DIGEST"
+          docker pull --platform=linux/amd64 "$MIGRATOR_REF" > /dev/null
+          [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$MIGRATOR_REF")" == "linux/amd64" ]]
+
+          {
+            echo "build_run_id=$GITHUB_RUN_ID"
+            echo "source_commit=$REQUESTED_SHA"
+            echo "artifact_registry=me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent"
+            echo "architecture=linux/amd64"
+            echo "image_scope=migrator"
+            echo "migrator_digest=$MIGRATOR_DIGEST"
+            echo "migrator_reference=$MIGRATOR_REF"
+          } | tee s22-image-manifest.txt
+
+          {
+            echo "## S22 immutable migrator image manifest"
+            echo
+            echo "Commit: \`$REQUESTED_SHA\`"
+            echo "- Migrator: \`$MIGRATOR_REF\`"
+            echo "- Architecture: \`linux/amd64\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload immutable image manifest

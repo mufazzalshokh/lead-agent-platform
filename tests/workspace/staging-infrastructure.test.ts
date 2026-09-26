@@ -68,9 +68,10 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("requires reviewed-plan integrity and GitHub OIDC instead of service-account keys", async () => {
-    const [bootstrap, runtimeIam, workflow, imagesWorkflow] = await Promise.all([
+    const [bootstrap, runtimeIam, runtime, workflow, imagesWorkflow] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
+      repositoryFile("infra/deploy/gcp/staging/runtime.tf"),
       repositoryFile(".github/workflows/staging-terraform.yml"),
       repositoryFile(".github/workflows/staging-images.yml"),
     ]);
@@ -102,6 +103,11 @@ describe("S22 staging infrastructure boundary", () => {
       'member             = "serviceAccount:${var.deployer_service_account_email}"',
     );
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
+    expect(imagesWorkflow).toContain("image_scope:");
+    expect(imagesWorkflow).toContain("if: inputs.image_scope == 'migrator'");
+    expect(imagesWorkflow.match(/if: inputs\.image_scope == 'all'/gu)).toHaveLength(4);
+    expect(imagesWorkflow).toContain("Record immutable migrator image manifest");
+    expect(imagesWorkflow).toContain("image_scope=migrator");
     expect(workflow).not.toMatch(/^  push:/mu);
     expect(workflow).toContain("S22_ACTION: ${{ inputs.action }}");
     expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");
@@ -190,6 +196,14 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('[[ "$ENABLED_COUNT" == "1" ]]');
     expect(workflow).toContain("Verify migration plan safety");
     expect(workflow).toContain("- migration-resume");
+    expect(workflow).toContain("- migrator-image-update");
+    expect(workflow).toContain("Verify migrator image-only plan safety");
+    expect(workflow).toContain("s22-migrator-image-plan-check.sh");
+    expect(workflow).toContain("Verify exact migrator image update approval boundary");
+    expect(workflow).toContain("Verify migrator image update live state and convergence");
+    expect(workflow).toContain("migrator_image_update_convergence_exit_code=$PLAN_EXIT_CODE");
+    expect(runtime).toContain("migrator_provenance_env");
+    expect(runtime).toContain("migrator_deployment_labels");
     expect(workflow).toContain('"$PHASE" != "migration-resume"');
     expect(workflow).toContain("env.S22_PHASE == 'migration-resume'");
     expect(workflow.match(/env\.S22_PHASE != 'migration-resume'/gu)).toHaveLength(3);
