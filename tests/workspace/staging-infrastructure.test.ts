@@ -204,8 +204,16 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("- migration-diagnose");
     expect(workflow).toContain("Run bounded migration failure diagnostics");
     expect(workflow).toContain("live_vpc_configuration=PASS");
+    expect(workflow).toContain("live_vpc_network=PASS");
+    expect(workflow).toContain("live_vpc_subnetwork=PASS");
+    expect(workflow).toContain("live_vpc_egress=PASS");
     expect(workflow).toContain("live_cloud_sql_endpoint=PASS");
     expect(workflow).toContain("run_probe execution_override");
+    expect(workflow).toContain("run_probe secret_protocols");
+    expect(workflow).toContain("run_probe secret_roles");
+    expect(workflow).toContain("run_probe secret_password_presence");
+    expect(workflow).toContain("run_probe secret_endpoint");
+    expect(workflow).toContain("run_probe secret_sslmode");
     expect(workflow).toContain("run_probe secret_shape");
     expect(workflow).toContain("run_probe private_tcp_connectivity");
     expect(workflow).toContain("run_probe migration_secret_shape");

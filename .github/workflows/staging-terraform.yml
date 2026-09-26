@@ -2751,14 +2751,34 @@ jobs:
             --format=json > "$PROBE_DIR/cloud-sql.json"
 
           if jq -e '
-            [.. | .network? // empty] | any(endswith("/networks/lead-agent-staging-vpc"))
-          ' "$PROBE_DIR/migrator-job.json" > /dev/null \
-            && jq -e '
-              [.. | .subnetwork? // empty] | any(endswith("/subnetworks/lead-agent-staging-cloud-run"))
-            ' "$PROBE_DIR/migrator-job.json" > /dev/null \
-            && jq -e '
-              [.. | .egress? // empty] | any(. == "PRIVATE_RANGES_ONLY")
-            ' "$PROBE_DIR/migrator-job.json" > /dev/null; then
+            [.. | .network? // empty]
+            | any(. == "lead-agent-staging-vpc" or endswith("/networks/lead-agent-staging-vpc"))
+          ' "$PROBE_DIR/migrator-job.json" > /dev/null; then
+            echo "live_vpc_network=PASS" | tee -a s22-migration-diagnostic-evidence.txt
+          else
+            echo "live_vpc_network=FAIL" | tee -a s22-migration-diagnostic-evidence.txt
+          fi
+
+          if jq -e '
+            [.. | .subnetwork? // empty]
+            | any(. == "lead-agent-staging-cloud-run" or endswith("/subnetworks/lead-agent-staging-cloud-run"))
+          ' "$PROBE_DIR/migrator-job.json" > /dev/null; then
+            echo "live_vpc_subnetwork=PASS" | tee -a s22-migration-diagnostic-evidence.txt
+          else
+            echo "live_vpc_subnetwork=FAIL" | tee -a s22-migration-diagnostic-evidence.txt
+          fi
+
+          if jq -e '
+            [.. | .egress? // empty] | any(. == "PRIVATE_RANGES_ONLY")
+          ' "$PROBE_DIR/migrator-job.json" > /dev/null; then
+            echo "live_vpc_egress=PASS" | tee -a s22-migration-diagnostic-evidence.txt
+          else
+            echo "live_vpc_egress=FAIL" | tee -a s22-migration-diagnostic-evidence.txt
+          fi
+
+          if grep -q '^live_vpc_network=PASS$' s22-migration-diagnostic-evidence.txt \
+            && grep -q '^live_vpc_subnetwork=PASS$' s22-migration-diagnostic-evidence.txt \
+            && grep -q '^live_vpc_egress=PASS$' s22-migration-diagnostic-evidence.txt; then
             echo "live_vpc_configuration=PASS" | tee -a s22-migration-diagnostic-evidence.txt
           else
             echo "live_vpc_configuration=FAIL" | tee -a s22-migration-diagnostic-evidence.txt
@@ -2794,6 +2814,87 @@ jobs:
           }
 
           run_probe execution_override 'process.exitCode = 0;'
+
+          run_probe secret_protocols '
+            import process from "node:process";
+            const keys = ["AUTH_DATABASE_URL", "DATABASE_URL", "INGRESS_DATABASE_URL", "MIGRATION_DATABASE_URL", "QUEUE_DATABASE_URL"];
+            let valid = true;
+            for (const key of keys) {
+              try {
+                const parsed = new URL(process.env[key]);
+                valid &&= ["postgres:", "postgresql:"].includes(parsed.protocol);
+              } catch {
+                valid = false;
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
+          run_probe secret_roles '
+            import process from "node:process";
+            const expected = {
+              AUTH_DATABASE_URL: "lead_agent_auth",
+              DATABASE_URL: "lead_agent_runtime",
+              INGRESS_DATABASE_URL: "lead_agent_ingress",
+              MIGRATION_DATABASE_URL: "postgres",
+              QUEUE_DATABASE_URL: "lead_agent_queue_runtime",
+            };
+            let valid = true;
+            for (const [key, role] of Object.entries(expected)) {
+              try {
+                const parsed = new URL(process.env[key]);
+                valid &&= decodeURIComponent(parsed.username) === role;
+              } catch {
+                valid = false;
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
+          run_probe secret_password_presence '
+            import process from "node:process";
+            const keys = ["AUTH_DATABASE_URL", "DATABASE_URL", "INGRESS_DATABASE_URL", "MIGRATION_DATABASE_URL", "QUEUE_DATABASE_URL"];
+            let valid = true;
+            for (const key of keys) {
+              try {
+                valid &&= new URL(process.env[key]).password.length > 0;
+              } catch {
+                valid = false;
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
+          run_probe secret_endpoint '
+            import process from "node:process";
+            const keys = ["AUTH_DATABASE_URL", "DATABASE_URL", "INGRESS_DATABASE_URL", "MIGRATION_DATABASE_URL", "QUEUE_DATABASE_URL"];
+            let valid = true;
+            for (const key of keys) {
+              try {
+                const parsed = new URL(process.env[key]);
+                valid &&= parsed.hostname === "10.125.0.3";
+                valid &&= parsed.port === "5432";
+                valid &&= parsed.pathname === "/lead_agent_staging";
+              } catch {
+                valid = false;
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
+          run_probe secret_sslmode '
+            import process from "node:process";
+            const keys = ["AUTH_DATABASE_URL", "DATABASE_URL", "INGRESS_DATABASE_URL", "MIGRATION_DATABASE_URL", "QUEUE_DATABASE_URL"];
+            let valid = true;
+            for (const key of keys) {
+              try {
+                valid &&= new URL(process.env[key]).searchParams.get("sslmode") === "require";
+              } catch {
+                valid = false;
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
 
           run_probe secret_shape '
             import process from "node:process";
