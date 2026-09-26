@@ -1,6 +1,7 @@
 export {
   ConfigurationValidationError,
   createTenantDatabaseRuntimeConfig,
+  withLibpqCompatibleRequireSsl,
   type TenantDatabaseRuntimeConfig,
   type TenantDatabaseRuntimeConfigInput,
 } from "./database.js";

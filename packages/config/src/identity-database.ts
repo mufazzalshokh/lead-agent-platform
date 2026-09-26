@@ -1,6 +1,6 @@
 import { URL } from "node:url";
 
-import { ConfigurationValidationError } from "./database.js";
+import { ConfigurationValidationError, withLibpqCompatibleRequireSsl } from "./database.js";
 
 const identityDatabaseRuntimeConfigBrand: unique symbol = Symbol("IdentityDatabaseRuntimeConfig");
 
@@ -60,7 +60,7 @@ const requirePostgreSqlConnectionString = (value: unknown): string => {
   ) {
     throw new ConfigurationValidationError("connectionString");
   }
-  return value;
+  return withLibpqCompatibleRequireSsl(value);
 };
 
 export const createIdentityDatabaseRuntimeConfig = (

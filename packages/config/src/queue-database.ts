@@ -1,6 +1,6 @@
 import { URL } from "node:url";
 
-import { ConfigurationValidationError } from "./database.js";
+import { ConfigurationValidationError, withLibpqCompatibleRequireSsl } from "./database.js";
 
 const queueDatabaseRuntimeConfigBrand: unique symbol = Symbol("QueueDatabaseRuntimeConfig");
 
@@ -58,7 +58,7 @@ const requirePostgreSqlConnectionString = (value: unknown, key: string): string 
   ) {
     throw new ConfigurationValidationError(key);
   }
-  return value;
+  return withLibpqCompatibleRequireSsl(value);
 };
 
 export const createQueueDatabaseRuntimeConfig = (

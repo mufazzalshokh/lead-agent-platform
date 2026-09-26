@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  createIdentityDatabaseRuntimeConfig,
+  createQueueDatabaseRuntimeConfig,
+  createTenantDatabaseRuntimeConfig,
+  withLibpqCompatibleRequireSsl,
+} from "../../packages/config/src/index.js";
 import { runStagingMigrator, sanitizedMigrationFailure } from "../../apps/migrator/src/runtime.js";
 
 const environment = Object.freeze({
@@ -19,6 +25,24 @@ const environment = Object.freeze({
 } satisfies NodeJS.ProcessEnv);
 
 describe("S22 staging migrator diagnostics", () => {
+  it("keeps require-mode TLS encrypted with stable libpq semantics", () => {
+    const connectionString =
+      "postgresql://lead_agent_runtime:synthetic@10.125.0.3:5432/lead_agent_staging?sslmode=require";
+    const configurations = [
+      createTenantDatabaseRuntimeConfig({ connectionString }),
+      createIdentityDatabaseRuntimeConfig({ connectionString }),
+      createQueueDatabaseRuntimeConfig({ connectionString }),
+    ];
+
+    for (const configuration of configurations) {
+      const parsed = new URL(configuration.connectionString);
+      expect(parsed.searchParams.get("sslmode")).toBe("require");
+      expect(parsed.searchParams.get("uselibpqcompat")).toBe("true");
+    }
+    const verifyFull = `${connectionString.replace("require", "verify-full")}&sslrootcert=/ca.pem`;
+    expect(withLibpqCompatibleRequireSsl(verifyFull)).toBe(verifyFull);
+  });
+
   it("emits a useful sanitized failure and preserves a non-zero result", async () => {
     const writeError = vi.fn<(message: string) => void>();
     const writeInfo = vi.fn<(message: string) => void>();

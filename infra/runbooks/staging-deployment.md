@@ -99,6 +99,10 @@ random passwords in the four application DSNs for roles created by migration:
 sets those role passwords after migrations under its advisory lock; normal workloads
 never receive the administrator DSN. Runtime DSNs must require encrypted transport
 (`sslmode=require` or the library-equivalent setting) even though the address is private.
+The Node PostgreSQL configuration normalizes this to explicit libpq-compatible
+`sslmode=require` semantics so dependency upgrades cannot silently reinterpret the
+staging private-IP DSNs as `verify-full`. A future CA-backed deployment may instead
+use an explicitly reviewed `verify-full` configuration.
 
 Purpose-separated 32-byte keys are required for browser envelopes, invitation target
 encryption/lookup, customer data encryption/lookup, and Widget signing/exchange. Load
