@@ -1408,7 +1408,7 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Download exact owner-reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
@@ -1426,7 +1426,7 @@ jobs:
             --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
@@ -1833,7 +1833,7 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Apply exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 

@@ -192,6 +192,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("- migration-resume");
     expect(workflow).toContain('"$PHASE" != "migration-resume"');
     expect(workflow).toContain("env.S22_PHASE == 'migration-resume'");
+    expect(workflow.match(/env\.S22_PHASE != 'migration-resume'/gu)).toHaveLength(3);
     expect(workflow).toContain(
       'EXPECTED_ACTIONS=\'["create:google_cloud_run_v2_job.migrator[0]","create:google_sql_database.application[0]"]\'',
     );
