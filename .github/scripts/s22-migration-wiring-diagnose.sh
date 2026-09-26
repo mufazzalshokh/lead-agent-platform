@@ -227,7 +227,10 @@ run_encoded_probe() {
     --limit=1 \
     --succeeded \
     --format=json > "$WORK_DIR/latest-task.json"
-  jq -er '.[0].status.lastAttemptResult.exitCode' "$WORK_DIR/latest-task.json"
+  jq -er '
+    [.. | objects | (.exitCode? // .exit_code? // empty)] as $codes
+    | if ($codes | length) == 1 then $codes[0] else error("expected exactly one task exit code") end
+  ' "$WORK_DIR/latest-task.json"
 }
 
 decode_boolean() {
