@@ -23,6 +23,7 @@ on:
           - cloud-sql-phase-b
           - bootstrap
           - migration
+          - migration-diagnose
           - full
           - load
           - dormant
@@ -216,6 +217,12 @@ jobs:
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
               ;;
+            migration-diagnose)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
             full)
               DEPLOY_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -249,7 +256,7 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" ]]; then
+          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-diagnose" ]]; then
             echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
           fi
 
@@ -336,11 +343,11 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
-        if: env.S22_PHASE == 'migration'
+        if: env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose'
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         shell: bash
@@ -471,7 +478,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -887,7 +894,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
@@ -2723,6 +2730,151 @@ jobs:
           echo "Verified alert policies: 2; budgets: 2"
           echo "Verified runtime identities: ${#RUNTIME_IDENTITIES[@]}"
           echo "Verified Cloud Run services: 0; jobs: 0"
+
+      - name: Run bounded migration failure diagnostics
+        if: env.S22_PHASE == 'migration-diagnose' && env.S22_ACTION == 'plan'
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROBE_DIR="$RUNNER_TEMP/s22-migration-diagnostics"
+          mkdir -p "$PROBE_DIR"
+
+          run_probe() {
+            local name="$1"
+            local script="$2"
+            local script_file="$PROBE_DIR/$name.mjs"
+            printf '%s\n' "$script" > "$script_file"
+            local script_b64
+            script_b64="$(base64 -w0 "$script_file")"
+            if gcloud run jobs execute lead-agent-staging-migrator \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --task-timeout=60s \
+              --args='--input-type=module,-e,eval(atob(process.env.S22_DIAGNOSTIC_SCRIPT_B64))' \
+              --update-env-vars="S22_DIAGNOSTIC_SCRIPT_B64=$script_b64" \
+              --wait > /dev/null 2>&1; then
+              printf '%s=PASS\n' "$name" | tee -a s22-migration-diagnostic-evidence.txt
+            else
+              printf '%s=FAIL\n' "$name" | tee -a s22-migration-diagnostic-evidence.txt
+            fi
+          }
+
+          run_probe secret_shape '
+            import process from "node:process";
+            const expected = {
+              AUTH_DATABASE_URL: "lead_agent_auth",
+              DATABASE_URL: "lead_agent_runtime",
+              INGRESS_DATABASE_URL: "lead_agent_ingress",
+              MIGRATION_DATABASE_URL: "postgres",
+              QUEUE_DATABASE_URL: "lead_agent_queue_runtime",
+            };
+            let valid = true;
+            for (const [key, role] of Object.entries(expected)) {
+              try {
+                const value = process.env[key];
+                if (typeof value !== "string" || value.length === 0) throw new Error();
+                const parsed = new URL(value);
+                valid &&= ["postgres:", "postgresql:"].includes(parsed.protocol);
+                valid &&= decodeURIComponent(parsed.username) === role;
+                valid &&= parsed.password.length > 0;
+                valid &&= parsed.hostname === "10.125.0.3";
+                valid &&= parsed.port === "5432";
+                valid &&= parsed.pathname === "/lead_agent_staging";
+                valid &&= parsed.searchParams.get("sslmode") === "require";
+              } catch {
+                valid = false;
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
+          run_probe admin_connectivity '
+            import process from "node:process";
+            import { Pool } from "pg";
+            const pool = new Pool({
+              application_name: "lead-agent-staging-admin-diagnostic",
+              connectionString: process.env.MIGRATION_DATABASE_URL,
+              connectionTimeoutMillis: 15000,
+              max: 1,
+              query_timeout: 15000,
+            });
+            try {
+              const result = await pool.query("select current_database() as database_name, current_setting($$server_version_num$$)::integer as server_version_num");
+              process.exitCode = result.rows[0]?.database_name === "lead_agent_staging"
+                && result.rows[0]?.server_version_num >= 170000
+                && result.rows[0]?.server_version_num < 180000 ? 0 : 1;
+            } catch {
+              process.exitCode = 1;
+            } finally {
+              await pool.end().catch(() => {});
+            }
+          '
+
+          run_probe migration_state '
+            import process from "node:process";
+            import { Pool } from "pg";
+            const pool = new Pool({
+              application_name: "lead-agent-staging-schema-diagnostic",
+              connectionString: process.env.MIGRATION_DATABASE_URL,
+              connectionTimeoutMillis: 15000,
+              max: 1,
+              query_timeout: 15000,
+            });
+            try {
+              const migrations = await pool.query("select count(*)::integer as count from drizzle.__drizzle_migrations");
+              const tables = await pool.query("select count(*)::integer as count from information_schema.tables where table_schema = $$public$$ and table_type = $$BASE TABLE$$");
+              process.exitCode = migrations.rows[0]?.count === 30 && tables.rows[0]?.count === 52 ? 0 : 1;
+            } catch {
+              process.exitCode = 1;
+            } finally {
+              await pool.end().catch(() => {});
+            }
+          '
+
+          run_probe application_role_connectivity '
+            import process from "node:process";
+            import { Pool } from "pg";
+            const urls = {
+              AUTH_DATABASE_URL: "lead_agent_auth",
+              DATABASE_URL: "lead_agent_runtime",
+              INGRESS_DATABASE_URL: "lead_agent_ingress",
+              QUEUE_DATABASE_URL: "lead_agent_queue_runtime",
+            };
+            let valid = true;
+            for (const [key, role] of Object.entries(urls)) {
+              const pool = new Pool({
+                application_name: `lead-agent-staging-${role}-diagnostic`,
+                connectionString: process.env[key],
+                connectionTimeoutMillis: 15000,
+                max: 1,
+                query_timeout: 15000,
+              });
+              try {
+                const result = await pool.query("select current_user as role_name, current_database() as database_name");
+                valid &&= result.rows[0]?.role_name === role;
+                valid &&= result.rows[0]?.database_name === "lead_agent_staging";
+              } catch {
+                valid = false;
+              } finally {
+                await pool.end().catch(() => {});
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
+          rm -rf "$PROBE_DIR"
+
+      - name: Upload migration diagnostic evidence
+        if: always() && env.S22_PHASE == 'migration-diagnose' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-migration-diagnostic-evidence-${{ github.run_id }}
+          path: s22-migration-diagnostic-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Execute one-shot migrator
         if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'

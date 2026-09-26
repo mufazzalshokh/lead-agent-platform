@@ -201,6 +201,12 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify migration Terraform convergence");
     expect(workflow).toContain('[[ "$STATE_COUNT" == "88" ]]');
     expect(workflow).toContain("migration_convergence_exit_code=$PLAN_EXIT_CODE");
+    expect(workflow).toContain("- migration-diagnose");
+    expect(workflow).toContain("Run bounded migration failure diagnostics");
+    expect(workflow).toContain("run_probe secret_shape");
+    expect(workflow).toContain("admin_connectivity");
+    expect(workflow).toContain("migration_state");
+    expect(workflow).toContain("application_role_connectivity");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');
