@@ -315,7 +315,11 @@ jobs:
           grep -Fqx 'google_monitoring_alert_policy.database_cpu' <<< "$STATE_ADDRESSES" && STATE_HAS_DATABASE_ALERT=true
 
           gcloud sql instances list --project="$PROJECT_ID" --format=json > "$INSPECT_DIR/sql-instances.json"
-          gcloud sql operations list --project="$PROJECT_ID" --limit=100 --format=json > "$INSPECT_DIR/sql-operations.json"
+          gcloud sql operations list \
+            --instance="$SQL_INSTANCE" \
+            --project="$PROJECT_ID" \
+            --limit=100 \
+            --format=json > "$INSPECT_DIR/sql-operations.json"
           gcloud sql tiers list --project="$PROJECT_ID" --format=json > "$INSPECT_DIR/sql-tiers.json"
           gcloud sql flags list --database-version=POSTGRES_17 --format=json > "$INSPECT_DIR/postgres17-flags.json"
 
