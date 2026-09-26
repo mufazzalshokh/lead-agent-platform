@@ -102,6 +102,21 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).not.toMatch(/^  push:/mu);
     expect(workflow).toContain("S22_ACTION: ${{ inputs.action }}");
     expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");
+    expect(workflow).toContain("- foundation-reconcile");
+    expect(workflow).toContain(
+      'if [[ "$ACTION" == "apply" && "$PHASE" == "foundation-reconcile" ]]',
+    );
+    expect(workflow).toContain("Foundation reconciliation is plan-only");
+    expect(workflow).toContain("foundation-reconcile)\n              SQL_POLICY=ALWAYS");
+    expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
+    expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
+    expect(workflow).toContain("gcloud sql operations list");
+    expect(workflow).toContain("cloud_sql_pending_operation_count=$SQL_PENDING_COUNT");
+    expect(workflow).toContain("Verify foundation reconciliation plan safety");
+    expect(workflow).toContain('.variables.cloud_sql_activation_policy.value == "ALWAYS"');
+    expect(workflow).toContain('.address != "google_sql_database_instance.staging"');
+    expect(workflow).toContain('.address != "google_monitoring_alert_policy.database_cpu"');
+    expect(workflow).toContain("reconciliation_plan_replacements=$REPLACE_COUNT");
     expect(workflow).toContain("approved_plan_sha256:");
     expect(workflow).toContain("working-directory: infra/deploy/gcp/bootstrap");
     expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]');
