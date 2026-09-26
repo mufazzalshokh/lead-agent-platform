@@ -200,26 +200,31 @@ run_encoded_probe() {
   local key="$1"
   local expected_user="$2"
   local mode="$3"
-  gcloud run jobs execute "$JOB_NAME" \
-    --project="$PROJECT_ID" \
-    --region="$REGION" \
-    --task-timeout=60s \
-    --args='--input-type=module,-e,eval(atob(process.env.S22_DIAGNOSTIC_SCRIPT_B64))' \
-    --update-env-vars="S22_DIAGNOSTIC_SCRIPT_B64=$PROBE_SCRIPT_B64,S22_PROBE_ENV_NAME=$key,S22_PROBE_EXPECTED_USER=$expected_user,S22_PROBE_MODE=$mode" \
-    --wait > /dev/null 2>&1 || true
-
   local execution_name
   execution_name="$(
-    gcloud run jobs executions list \
-      --job="$JOB_NAME" \
+    gcloud run jobs execute "$JOB_NAME" \
       --project="$PROJECT_ID" \
       --region="$REGION" \
-      --limit=1 \
-      --sort-by='~metadata.creationTimestamp' \
+      --task-timeout=60s \
+      --args='--input-type=module,-e,eval(atob(process.env.S22_DIAGNOSTIC_SCRIPT_B64))' \
+      --update-env-vars="S22_DIAGNOSTIC_SCRIPT_B64=$PROBE_SCRIPT_B64,S22_PROBE_ENV_NAME=$key,S22_PROBE_EXPECTED_USER=$expected_user,S22_PROBE_MODE=$mode" \
       --format='value(metadata.name)'
   )"
   [[ -n "$execution_name" ]]
   local execution_id="${execution_name##*/}"
+  local completed=false
+  for _ in $(seq 1 45); do
+    curl --fail --silent --show-error \
+      --header "Authorization: Bearer $ACCESS_TOKEN" \
+      "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${execution_id}" \
+      > "$WORK_DIR/latest-execution.json"
+    if [[ "$(jq -r '(.completionTime // "") != ""' "$WORK_DIR/latest-execution.json")" == "true" ]]; then
+      completed=true
+      break
+    fi
+    sleep 2
+  done
+  [[ "$completed" == "true" ]]
   curl --fail --silent --show-error \
     --header "Authorization: Bearer $ACCESS_TOKEN" \
     "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${execution_id}/tasks?pageSize=1" \
