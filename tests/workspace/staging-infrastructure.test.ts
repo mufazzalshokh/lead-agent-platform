@@ -252,6 +252,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("application_role_connectivity");
     expect(workflow).toContain("Diagnose migrator secret and VPC wiring");
     expect(workflow).toContain("FAILED_EXECUTION: ${{ env.S22_MIGRATOR_EXECUTION_ID }}");
+    expect(workflow).toContain("S22_RUN_SQL_PROBE: true");
     expect(workflow).toContain("S22_SKIP_ACTIVE_PROBES: true");
     expect(workflow).toContain("s22-migration-wiring-diagnose.sh");
     expect(wiringDiagnostic).toContain('if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]');
@@ -265,6 +266,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(wiringDiagnostic).toContain("failed_task_command_matches");
     expect(wiringDiagnostic).toContain("failed_task_args_matches");
     expect(wiringDiagnostic).toContain("failed_task_diagnostic_override_present");
+    expect(wiringDiagnostic).toContain("runtime_sql_connectivity");
+    expect(wiringDiagnostic).toContain("TLS_CERT_ALTNAME_INVALID");
     expect(workflow).toContain("- bootstrap-log-viewer");
     expect(workflow).toContain("- migration-error-read");
     expect(workflow).toContain(

@@ -252,11 +252,6 @@ else
   report failed_execution_first_root_error unavailable
 fi
 
-if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]; then
-  unset ACCESS_TOKEN
-  exit 0
-fi
-
 PROBE_SCRIPT="$WORK_DIR/probe.mjs"
 cat > "$PROBE_SCRIPT" <<'EOF'
 (async () => {
@@ -317,6 +312,35 @@ if (mode === "network") {
       finish(codes[error.code] ?? 6);
     });
   });
+  process.exit(result);
+}
+
+if (mode === "sql_connectivity") {
+  const { Pool } = await import("pg");
+  const pool = new Pool({
+    application_name: "lead-agent-staging-sql-connectivity-diagnostic",
+    connectionString: process.env.MIGRATION_DATABASE_URL,
+    connectionTimeoutMillis: 15000,
+    max: 1,
+    query_timeout: 15000,
+  });
+  let result = 9;
+  try {
+    await pool.query("select 1 as connected");
+    result = 0;
+  } catch (error) {
+    const code = typeof error?.code === "string" ? error.code : "";
+    const message = error instanceof Error ? error.message : "";
+    if (code === "ERR_TLS_CERT_ALTNAME_INVALID") result = 2;
+    else if (code === "DEPTH_ZERO_SELF_SIGNED_CERT") result = 3;
+    else if (code === "SELF_SIGNED_CERT_IN_CHAIN") result = 4;
+    else if (code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") result = 5;
+    else if (code.startsWith("28")) result = 6;
+    else if (/^(?:ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT)$/u.test(code)) result = 7;
+    else if (/(?:certificate|ssl|tls)/iu.test(message)) result = 8;
+  } finally {
+    await pool.end().catch(() => {});
+  }
   process.exit(result);
 }
 
@@ -397,6 +421,27 @@ representation_name() {
     *) echo OTHER ;;
   esac
 }
+
+if [[ "${S22_RUN_SQL_PROBE:-false}" == "true" ]]; then
+  SQL_CONNECTIVITY_CODE="$(run_encoded_probe MIGRATION_DATABASE_URL postgres sql_connectivity)"
+  case "$SQL_CONNECTIVITY_CODE" in
+    0) SQL_CONNECTIVITY_RESULT=CONNECTED ;;
+    2) SQL_CONNECTIVITY_RESULT=TLS_CERT_ALTNAME_INVALID ;;
+    3) SQL_CONNECTIVITY_RESULT=TLS_SELF_SIGNED_CERT ;;
+    4) SQL_CONNECTIVITY_RESULT=TLS_SELF_SIGNED_CHAIN ;;
+    5) SQL_CONNECTIVITY_RESULT=TLS_UNVERIFIED_LEAF ;;
+    6) SQL_CONNECTIVITY_RESULT=AUTHENTICATION_FAILED ;;
+    7) SQL_CONNECTIVITY_RESULT=NETWORK_FAILED ;;
+    8) SQL_CONNECTIVITY_RESULT=OTHER_TLS_FAILURE ;;
+    *) SQL_CONNECTIVITY_RESULT=OTHER_DATABASE_FAILURE ;;
+  esac
+  report runtime_sql_connectivity "$SQL_CONNECTIVITY_RESULT"
+fi
+
+if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]; then
+  unset ACCESS_TOKEN
+  exit 0
+fi
 
 for key in AUTH_DATABASE_URL DATABASE_URL INGRESS_DATABASE_URL MIGRATION_DATABASE_URL QUEUE_DATABASE_URL; do
   LENGTH_CODE="$(run_encoded_probe "$key" "${EXPECTED_USERS[$key]}" length)"
