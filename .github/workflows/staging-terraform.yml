@@ -19,6 +19,7 @@ on:
           - foundation
           - foundation-reconcile
           - foundation-reconcile-verify
+          - cloud-sql-phase-b
           - bootstrap
           - migration
           - full
@@ -146,6 +147,15 @@ jobs:
             [[ "$PLAN_RUN_ID" == "36226804148" ]]
             [[ "$APPROVED_PLAN_SHA256" == "ddcf63f2b087c14a4dc7c52aee46e8530f97d7fc05b8ab0c8467eb8526c285f0" ]]
           fi
+          if [[ "$PHASE" == "cloud-sql-phase-b" ]]; then
+            [[ "$ACTION" == "apply" ]]
+            [[ "$APPROVAL_TOKEN" == "S22-APPLY-APPROVED" ]]
+            [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
+            [[ "$TF_VAR_region" == "me-central1" ]]
+            [[ "$REQUESTED_SHA" == "2396fdf797eb4b19252a34c8b45e93945a8f53a3" ]]
+            [[ "$PLAN_RUN_ID" == "36230182001" ]]
+            [[ "$APPROVED_PLAN_SHA256" == "2e89253d05281e38af1157e6cf3f1a09740db5572f699f36228606fbbd8a987e" ]]
+          fi
           if [[ "$ACTION" == "apply" && "$PHASE" == "bootstrap-iam" ]]; then
             [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
             [[ "$REQUESTED_SHA" == "87216fcd8d2047e292c398a459e49e40c4ff2b9a" ]]
@@ -178,6 +188,7 @@ jobs:
             foundation-reconcile-verify)
               SQL_POLICY=ALWAYS
               ;;
+            cloud-sql-phase-b) ;;
             bootstrap)
               DEPLOY_RUNTIME=true
               BOOTSTRAP_RUNTIME=true
@@ -305,7 +316,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify'
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-phase-b'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Inspect partial foundation state and Google Cloud resources
@@ -422,6 +433,117 @@ jobs:
           terraform plan -lock-timeout=5m -out=s22.tfplan
           sha256sum s22.tfplan > s22.tfplan.sha256
 
+      - name: Verify health-only bootstrap plan safety
+        if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN_JSON=s22-health-only.tfplan.json
+          terraform show -json s22.tfplan > "$PLAN_JSON"
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '
+            .variables.deploy_runtime.value == true
+              and .variables.bootstrap_runtime.value == true
+              and .variables.prepare_migration.value == false
+              and .variables.cloud_sql_activation_policy.value == "NEVER"
+              and .variables.api_max_instance_count.value == 1
+              and .variables.web_max_instance_count.value == 1
+              and .variables.worker_instance_count.value == 0
+          ' "$PLAN_JSON" > /dev/null
+
+          ACTUAL_ACTIONS="$(
+            jq -c '
+              [.resource_changes[]
+               | select(.change.actions != ["no-op"])
+               | ((.change.actions | join(",")) + ":" + .address)]
+              | sort
+            ' "$PLAN_JSON"
+          )"
+          EXPECTED_ACTIONS='["create:google_cloud_run_v2_service.api[0]","create:google_cloud_run_v2_service.web[0]","create:google_cloud_run_v2_service_iam_member.api_public[0]","create:google_cloud_run_v2_service_iam_member.web_public[0]"]'
+          [[ "$ACTUAL_ACTIONS" == "$EXPECTED_ACTIONS" ]]
+
+          jq -e --arg api_image "$TF_VAR_api_image" '
+            [.resource_changes[]
+             | select(.address == "google_cloud_run_v2_service.api[0]")
+             | .change.after]
+            | length == 1
+              and .[0].name == "lead-agent-staging-api"
+              and .[0].location == "me-central1"
+              and .[0].ingress == "INGRESS_TRAFFIC_ALL"
+              and .[0].deletion_protection == true
+              and .[0].template[0].service_account == "lead-agent-staging-api@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and .[0].template[0].timeout == "60s"
+              and .[0].template[0].max_instance_request_concurrency == 40
+              and .[0].template[0].scaling[0].min_instance_count == 0
+              and .[0].template[0].scaling[0].max_instance_count == 1
+              and .[0].template[0].containers[0].image == $api_image
+              and .[0].template[0].containers[0].command == ["node"]
+              and .[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
+          ' "$PLAN_JSON" > /dev/null
+          jq -e --arg web_image "$TF_VAR_web_image" '
+            [.resource_changes[]
+             | select(.address == "google_cloud_run_v2_service.web[0]")
+             | .change.after]
+            | length == 1
+              and .[0].name == "lead-agent-staging-web"
+              and .[0].location == "me-central1"
+              and .[0].ingress == "INGRESS_TRAFFIC_ALL"
+              and .[0].deletion_protection == true
+              and .[0].template[0].service_account == "lead-agent-staging-web@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and .[0].template[0].timeout == "60s"
+              and .[0].template[0].max_instance_request_concurrency == 80
+              and .[0].template[0].scaling[0].min_instance_count == 0
+              and .[0].template[0].scaling[0].max_instance_count == 1
+              and .[0].template[0].containers[0].image == $web_image
+              and .[0].template[0].containers[0].command == ["node"]
+              and .[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.address == "google_cloud_run_v2_service_iam_member.api_public[0]"
+                      or .address == "google_cloud_run_v2_service_iam_member.web_public[0]")
+             | .change.after
+             | select(.role == "roles/run.invoker" and .member == "allUsers")]
+            | length == 2
+          ' "$PLAN_JSON" > /dev/null
+
+          CREATE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["create"])] | length' "$PLAN_JSON")"
+          CHANGE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["update"])] | length' "$PLAN_JSON")"
+          DESTROY_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["delete"])] | length' "$PLAN_JSON")"
+          REPLACE_COUNT="$(
+            jq '[.resource_changes[]
+                 | select(.change.actions == ["delete", "create"]
+                          or .change.actions == ["create", "delete"])] | length' "$PLAN_JSON"
+          )"
+          [[ "$CREATE_COUNT" == "4" ]]
+          [[ "$CHANGE_COUNT" == "0" ]]
+          [[ "$DESTROY_COUNT" == "0" ]]
+          [[ "$REPLACE_COUNT" == "0" ]]
+
+          {
+            echo "health_only_source_commit=$S22_COMMIT_SHA"
+            echo "health_only_workflow_run_id=$GITHUB_RUN_ID"
+            echo "health_only_plan_sha256=$(awk '{print $1}' s22.tfplan.sha256)"
+            echo "health_only_plan_creates=$CREATE_COUNT"
+            echo "health_only_plan_changes=$CHANGE_COUNT"
+            echo "health_only_plan_destroys=$DESTROY_COUNT"
+            echo "health_only_plan_replacements=$REPLACE_COUNT"
+            echo "health_only_plan_actions=$ACTUAL_ACTIONS"
+            echo "health_only_api_min_instances=0"
+            echo "health_only_api_max_instances=1"
+            echo "health_only_web_min_instances=0"
+            echo "health_only_web_max_instances=1"
+            echo "health_only_scale_to_zero=true"
+            echo "health_only_vpc_egress=PRIVATE_RANGES_ONLY"
+            echo "health_only_cloud_sql_policy=NEVER"
+            echo "health_only_worker_planned=false"
+            echo "health_only_migrator_planned=false"
+            echo "health_only_secret_values_required=false"
+          } | tee s22-health-only-plan-evidence.txt
+          rm -f "$PLAN_JSON"
+
       - name: Verify foundation reconciliation plan safety
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
@@ -500,13 +622,25 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
           path: |
             infra/deploy/gcp/staging/s22.tfplan
             infra/deploy/gcp/staging/s22.tfplan.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload exact health-only bootstrap plan
+        if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-health-only-plan-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: |
+            infra/deploy/gcp/staging/s22.tfplan
+            infra/deploy/gcp/staging/s22.tfplan.sha256
+            infra/deploy/gcp/staging/s22-health-only-plan-evidence.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -890,8 +1024,105 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Download exact owner-approved Cloud SQL Phase B plan
+        if: env.S22_PHASE == 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PLAN_RUN_ID" == "36230182001" ]]
+          ARTIFACT_NAME=s22-cloud-sql-phase-b-plan-2396fdf797eb4b19252a34c8b45e93945a8f53a3-36230182001
+          gh run download "$PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" \
+            --dir infra/deploy/gcp/staging
+          echo "Downloaded exact artifact: $ARTIFACT_NAME"
+
+      - name: Verify exact Cloud SQL Phase B approval boundary
+        if: env.S22_PHASE == 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          APPROVED_PLAN_SHA256: ${{ env.S22_APPROVED_PLAN_SHA256 }}
+          PROJECT_ID: lead-agent-stg-739284
+          REGION: me-central1
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN=s22-cloud-sql-phase-b.tfplan
+          PLAN_JSON=s22-cloud-sql-phase-b.tfplan.json
+          [[ -f "$PLAN" ]]
+          [[ -f "$PLAN.sha256" ]]
+          sha256sum --check "$PLAN.sha256"
+          ACTUAL_SHA256="$(sha256sum "$PLAN" | awk '{print $1}')"
+          RECORDED_SHA256="$(awk '{print $1}' "$PLAN.sha256")"
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$REGION" == "me-central1" ]]
+          [[ "$S22_PLAN_RUN_ID" == "36230182001" ]]
+          [[ "$S22_COMMIT_SHA" == "2396fdf797eb4b19252a34c8b45e93945a8f53a3" ]]
+          [[ "$ACTUAL_SHA256" == "$RECORDED_SHA256" ]]
+          [[ "$ACTUAL_SHA256" == "$APPROVED_PLAN_SHA256" ]]
+
+          terraform show -json "$PLAN" > "$PLAN_JSON"
+          jq -e --arg project "$PROJECT_ID" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
+          jq -e --arg region "$REGION" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '.variables.cloud_sql_activation_policy.value == "NEVER"' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 1
+              and $changes[0].address == "google_sql_database_instance.staging"
+              and $changes[0].change.actions == ["update"]
+              and ($changes[0].change.replace_paths | length) == 0
+              and $changes[0].change.before.settings[0].activation_policy == "ALWAYS"
+              and $changes[0].change.after.settings[0].activation_policy == "NEVER"
+              and (($changes[0].change.before
+                    | .settings[0].activation_policy = "NEVER")
+                   == $changes[0].change.after)
+          ' "$PLAN_JSON" > /dev/null
+
+          CREATE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["create"])] | length' "$PLAN_JSON")"
+          CHANGE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["update"])] | length' "$PLAN_JSON")"
+          DESTROY_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["delete"])] | length' "$PLAN_JSON")"
+          REPLACE_COUNT="$(
+            jq '[.resource_changes[]
+                 | select(.change.actions == ["delete", "create"]
+                          or .change.actions == ["create", "delete"])] | length' "$PLAN_JSON"
+          )"
+          [[ "$CREATE_COUNT" == "0" ]]
+          [[ "$CHANGE_COUNT" == "1" ]]
+          [[ "$DESTROY_COUNT" == "0" ]]
+          [[ "$REPLACE_COUNT" == "0" ]]
+
+          STATE_ADDRESSES="$(terraform state list)"
+          STATE_COUNT="$(printf '%s\n' "$STATE_ADDRESSES" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT" == "82" ]]
+          [[ "$(grep -Fxc 'google_sql_database_instance.staging' <<< "$STATE_ADDRESSES")" == "1" ]]
+          [[ "$(grep -Fxc 'google_monitoring_alert_policy.database_cpu' <<< "$STATE_ADDRESSES")" == "1" ]]
+
+          LIVE_POLICY="$(
+            gcloud sql instances describe lead-agent-staging-postgres17 \
+              --project="$PROJECT_ID" --format='value(settings.activationPolicy)'
+          )"
+          [[ "$LIVE_POLICY" == "ALWAYS" ]]
+          {
+            echo "phase_b_artifact_name=s22-cloud-sql-phase-b-plan-2396fdf797eb4b19252a34c8b45e93945a8f53a3-36230182001"
+            echo "phase_b_source_plan_run=$S22_PLAN_RUN_ID"
+            echo "phase_b_source_commit=$S22_COMMIT_SHA"
+            echo "phase_b_approved_sha256=$ACTUAL_SHA256"
+            echo "phase_b_pre_apply_state_count=$STATE_COUNT"
+            echo "phase_b_pre_apply_activation_policy=$LIVE_POLICY"
+            echo "phase_b_plan_creates=$CREATE_COUNT"
+            echo "phase_b_plan_changes=$CHANGE_COUNT"
+            echo "phase_b_plan_destroys=$DESTROY_COUNT"
+            echo "phase_b_plan_replacements=$REPLACE_COUNT"
+            echo "phase_b_plan_action=update:google_sql_database_instance.staging"
+            echo "phase_b_only_change=activation_policy_ALWAYS_to_NEVER"
+          } | tee s22-phase-b-apply-evidence.txt
+          rm -f "$PLAN_JSON"
+
       - name: Download exact owner-reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
@@ -903,7 +1134,7 @@ jobs:
           --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
@@ -1095,9 +1326,154 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Apply exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
+
+      - name: Apply exact owner-approved Cloud SQL Phase B plan
+        if: env.S22_PHASE == 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        run: >-
+          terraform apply -lock-timeout=5m -auto-approve
+          s22-cloud-sql-phase-b.tfplan
+
+      - name: Verify Cloud SQL Phase B dormant state
+        if: env.S22_PHASE == 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PHASE_A_CREATION_COMPLETE_AT: 2026-09-26T08:19:05Z
+          PROJECT_ID: lead-agent-stg-739284
+          REGION: me-central1
+        shell: bash
+        run: |
+          set -uo pipefail
+          VERIFY_DIR="$(mktemp -d)"
+          trap 'rm -rf "$VERIFY_DIR"' EXIT
+          EVIDENCE=s22-phase-b-apply-evidence.txt
+          SQL_INSTANCE=lead-agent-staging-postgres17
+          FAILURES=0
+
+          report() {
+            local name="$1"
+            local expected="$2"
+            local observed="$3"
+            local result=FAIL
+            if [[ "$observed" == "$expected" ]]; then
+              result=PASS
+            else
+              FAILURES=$((FAILURES + 1))
+            fi
+            printf 'ASSERTION|%s|%s|expected=%s|observed=%s\n' \
+              "$name" "$result" "$expected" "$observed" | tee -a "$EVIDENCE"
+          }
+
+          if gcloud sql instances describe "$SQL_INSTANCE" \
+            --project="$PROJECT_ID" --format=json > "$VERIFY_DIR/sql.json"; then
+            DESCRIBE_OK=true
+          else
+            DESCRIBE_OK=false
+            printf '{}\n' > "$VERIFY_DIR/sql.json"
+          fi
+          report "phase_b.cloud_sql_describe" "true" "$DESCRIBE_OK"
+
+          if gcloud sql instances list --project="$PROJECT_ID" --format=json \
+            > "$VERIFY_DIR/sql-list.json"; then
+            LIST_OK=true
+          else
+            LIST_OK=false
+            printf '[]\n' > "$VERIFY_DIR/sql-list.json"
+          fi
+          report "phase_b.cloud_sql_list" "true" "$LIST_OK"
+          report "phase_b.instance_count" "1" \
+            "$(jq --arg name "$SQL_INSTANCE" '[.[]? | select(.name == $name)] | length' "$VERIFY_DIR/sql-list.json")"
+          report "phase_b.name" "$SQL_INSTANCE" "$(jq -r '.name // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.database_version" "POSTGRES_17" "$(jq -r '.databaseVersion // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.edition" "ENTERPRISE" "$(jq -r '.settings.edition // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.tier" "db-f1-micro" "$(jq -r '.settings.tier // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.region" "$REGION" "$(jq -r '.region // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.availability" "ZONAL" "$(jq -r '.settings.availabilityType // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.activation_policy" "NEVER" "$(jq -r '.settings.activationPolicy // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.disk_size_gib" "10" "$(jq -r '.settings.dataDiskSizeGb // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.disk_type" "PD_SSD" "$(jq -r '.settings.dataDiskType // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.autoresize" "true" "$(jq -r '.settings.storageAutoResize // false' "$VERIFY_DIR/sql.json")"
+          report "phase_b.autoresize_max_gib" "20" "$(jq -r '.settings.storageAutoResizeLimit // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.public_ipv4_enabled" "false" "$(jq -r '.settings.ipConfiguration.ipv4Enabled // false' "$VERIFY_DIR/sql.json")"
+          report "phase_b.private_ip_count" "1" \
+            "$(jq '[.ipAddresses[]? | select(.type == "PRIVATE" and (.ipAddress | length) > 0)] | length' "$VERIFY_DIR/sql.json")"
+          report "phase_b.private_network" "true" \
+            "$(jq -r '(.settings.ipConfiguration.privateNetwork // "") | endswith("/global/networks/lead-agent-staging-vpc")' "$VERIFY_DIR/sql.json")"
+          report "phase_b.encrypted_transport" "ENCRYPTED_ONLY" "$(jq -r '.settings.ipConfiguration.sslMode // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.backups_enabled" "true" "$(jq -r '.settings.backupConfiguration.enabled // false' "$VERIFY_DIR/sql.json")"
+          report "phase_b.backup_start_time" "01:00" "$(jq -r '.settings.backupConfiguration.startTime // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.retained_backups" "7" "$(jq -r '.settings.backupConfiguration.backupRetentionSettings.retainedBackups // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.pitr_enabled" "true" "$(jq -r '.settings.backupConfiguration.pointInTimeRecoveryEnabled // false' "$VERIFY_DIR/sql.json")"
+          report "phase_b.transaction_log_retention_days" "7" "$(jq -r '.settings.backupConfiguration.transactionLogRetentionDays // "missing"' "$VERIFY_DIR/sql.json")"
+          report "phase_b.deletion_protection" "true" \
+            "$(jq -r '(.settings.deletionProtectionEnabled // .deletionProtectionEnabled // false)' "$VERIFY_DIR/sql.json")"
+
+          STATE_ADDRESSES="$(terraform state list 2> "$VERIFY_DIR/state-error.txt")"
+          STATE_EXIT=$?
+          report "phase_b.terraform_state_exit_code" "0" "$STATE_EXIT"
+          STATE_COUNT="$(printf '%s\n' "$STATE_ADDRESSES" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          report "phase_b.terraform_state_count" "82" "$STATE_COUNT"
+          report "phase_b.terraform_state_sql_entry_count" "1" \
+            "$(grep -Fxc 'google_sql_database_instance.staging' <<< "$STATE_ADDRESSES" || true)"
+          report "phase_b.terraform_state_alert_entry_count" "1" \
+            "$(grep -Fxc 'google_monitoring_alert_policy.database_cpu' <<< "$STATE_ADDRESSES" || true)"
+
+          VERIFIED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          VERIFIED_EPOCH="$(date -u +'%s')"
+          CREATION_EPOCH="$(date -u -d "$PHASE_A_CREATION_COMPLETE_AT" +'%s')"
+          ELAPSED_SECONDS="$((VERIFIED_EPOCH - CREATION_EPOCH))"
+          ELAPSED_HOURS="$(awk -v seconds="$ELAPSED_SECONDS" 'BEGIN { printf "%.3f", seconds / 3600 }')"
+          ACCRUED_COST="$(awk -v seconds="$ELAPSED_SECONDS" 'BEGIN { printf "%.6f", (seconds / 3600) * 0.01282877 }')"
+          {
+            echo "phase_b_apply_run_id=$GITHUB_RUN_ID"
+            echo "phase_b_apply_verified_at=$VERIFIED_AT"
+            echo "phase_b_compute_stopped_by_activation_policy=true"
+            echo "phase_a_total_runnable_seconds=$ELAPSED_SECONDS"
+            echo "phase_a_total_runnable_hours=$ELAPSED_HOURS"
+            echo "phase_a_estimated_list_price_usd=$ACCRUED_COST"
+            echo "phase_b_residual_cost=storage_backup_and_pitr_only"
+            echo "promotional_credit=excluded_not_relied_upon"
+            echo "phase_b_named_assertion_failures=$FAILURES"
+          } | tee -a "$EVIDENCE"
+
+          if (( FAILURES > 0 )); then
+            echo "Phase B post-apply verification reported $FAILURES failure(s)." >&2
+            exit 1
+          fi
+
+      - name: Verify Cloud SQL Phase B Terraform convergence
+        if: env.S22_PHASE == 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          terraform plan -detailed-exitcode -lock-timeout=5m -out=s22-phase-b-convergence.tfplan
+          PLAN_EXIT_CODE=$?
+          set -e
+          echo "phase_b_convergence_exit_code=$PLAN_EXIT_CODE" | tee -a s22-phase-b-apply-evidence.txt
+          if [[ "$PLAN_EXIT_CODE" == "2" ]]; then
+            terraform show -json s22-phase-b-convergence.tfplan \
+              | jq -r '.resource_changes[]?
+                       | select(.change.actions != ["no-op"])
+                       | "unexpected_action=\(.change.actions | join(",")):\(.address)"' \
+              | tee -a s22-phase-b-apply-evidence.txt
+            exit 1
+          fi
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          rm -f s22-phase-b-convergence.tfplan
+
+      - name: Upload Cloud SQL Phase B apply evidence
+        if: env.S22_PHASE == 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-cloud-sql-phase-b-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-phase-b-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify reconciliation Phase A live state
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'apply'
@@ -1618,7 +1994,7 @@ jobs:
           --wait
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}

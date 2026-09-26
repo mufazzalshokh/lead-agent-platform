@@ -66,10 +66,11 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("requires reviewed-plan integrity and GitHub OIDC instead of service-account keys", async () => {
-    const [bootstrap, runtimeIam, workflow] = await Promise.all([
+    const [bootstrap, runtimeIam, workflow, imagesWorkflow] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
       repositoryFile(".github/workflows/staging-terraform.yml"),
+      repositoryFile(".github/workflows/staging-images.yml"),
     ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
@@ -104,6 +105,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");
     expect(workflow).toContain("- foundation-reconcile");
     expect(workflow).toContain("- foundation-reconcile-verify");
+    expect(workflow).toContain("- cloud-sql-phase-b");
     expect(workflow).toContain(
       '[[ "$REQUESTED_SHA" == "2396fdf797eb4b19252a34c8b45e93945a8f53a3" ]]',
     );
@@ -139,6 +141,19 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("phase_b_workflow_run_id=$GITHUB_RUN_ID");
     expect(workflow).toContain("phase_b_unrelated_actions=NONE");
     expect(workflow).toContain("Upload read-only Cloud SQL Phase B plan");
+    expect(workflow).toContain("Download exact owner-approved Cloud SQL Phase B plan");
+    expect(workflow).toContain('[[ "$PLAN_RUN_ID" == "36230182001" ]]');
+    expect(workflow).toContain(
+      '[[ "$APPROVED_PLAN_SHA256" == "2e89253d05281e38af1157e6cf3f1a09740db5572f699f36228606fbbd8a987e" ]]',
+    );
+    expect(workflow).toContain("Verify exact Cloud SQL Phase B approval boundary");
+    expect(workflow).toContain("Apply exact owner-approved Cloud SQL Phase B plan");
+    expect(workflow).toContain("Verify Cloud SQL Phase B dormant state");
+    expect(workflow).toContain("phase_b_compute_stopped_by_activation_policy=true");
+    expect(workflow).toContain("Verify Cloud SQL Phase B Terraform convergence");
+    expect(workflow).toContain("Verify health-only bootstrap plan safety");
+    expect(workflow).toContain("health_only_cloud_sql_policy=NEVER");
+    expect(workflow).toContain("Upload exact health-only bootstrap plan");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');
@@ -194,6 +209,11 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("TF_VAR_deployer_service_account_email");
     expect(workflow).toContain("sha256sum --check s22.tfplan.sha256");
     expect(workflow).not.toMatch(/service[_-]account[_-]key/u);
+    expect(imagesWorkflow.match(/platforms: linux\/amd64/gu)).toHaveLength(4);
+    expect(imagesWorkflow).toContain("Verify Artifact Registry foundation readiness");
+    expect(imagesWorkflow).toContain("docker pull --platform=linux/amd64");
+    expect(imagesWorkflow).toContain("architecture=linux/amd64");
+    expect(imagesWorkflow).toContain("Upload immutable image manifest");
   });
 
   it("packages non-root digest-pinned OCI targets without local secret material", async () => {

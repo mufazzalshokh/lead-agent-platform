@@ -67,6 +67,25 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Verify Artifact Registry foundation readiness
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud artifacts repositories describe lead-agent \
+            --project="$PROJECT_ID" \
+            --location=me-central1 \
+            --format=json > artifact-registry.json
+          jq -e '
+            .format == "DOCKER"
+              and (.name | endswith("/locations/me-central1/repositories/lead-agent"))
+          ' artifact-registry.json > /dev/null
+          rm -f artifact-registry.json
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -79,6 +98,7 @@ jobs:
           push: true
           build-args: GIT_SHA=${{ inputs.commit_sha }}
           tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/api:${{ inputs.commit_sha }}
+          platforms: linux/amd64
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=staging-api
@@ -93,6 +113,7 @@ jobs:
           push: true
           build-args: GIT_SHA=${{ inputs.commit_sha }}
           tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/web:${{ inputs.commit_sha }}
+          platforms: linux/amd64
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=staging-web
@@ -107,6 +128,7 @@ jobs:
           push: true
           build-args: GIT_SHA=${{ inputs.commit_sha }}
           tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/worker:${{ inputs.commit_sha }}
+          platforms: linux/amd64
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=staging-worker
@@ -121,6 +143,7 @@ jobs:
           push: true
           build-args: GIT_SHA=${{ inputs.commit_sha }}
           tags: me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/migrator:${{ inputs.commit_sha }}
+          platforms: linux/amd64
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=staging-migrator
@@ -130,6 +153,7 @@ jobs:
         env:
           API_DIGEST: ${{ steps.api.outputs.digest }}
           MIGRATOR_DIGEST: ${{ steps.migrator.outputs.digest }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REQUESTED_SHA: ${{ inputs.commit_sha }}
           WEB_DIGEST: ${{ steps.web.outputs.digest }}
           WORKER_DIGEST: ${{ steps.worker.outputs.digest }}
@@ -139,6 +163,31 @@ jobs:
           for digest in "$API_DIGEST" "$WEB_DIGEST" "$WORKER_DIGEST" "$MIGRATOR_DIGEST"; do
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           done
+
+          API_REF="me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent/api@$API_DIGEST"
+          WEB_REF="me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent/web@$WEB_DIGEST"
+          WORKER_REF="me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent/worker@$WORKER_DIGEST"
+          MIGRATOR_REF="me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent/migrator@$MIGRATOR_DIGEST"
+          for image in "$API_REF" "$WEB_REF" "$WORKER_REF" "$MIGRATOR_REF"; do
+            docker pull --platform=linux/amd64 "$image" > /dev/null
+            [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")" == "linux/amd64" ]]
+          done
+
+          {
+            echo "build_run_id=$GITHUB_RUN_ID"
+            echo "source_commit=$REQUESTED_SHA"
+            echo "artifact_registry=me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent"
+            echo "architecture=linux/amd64"
+            echo "api_digest=$API_DIGEST"
+            echo "web_digest=$WEB_DIGEST"
+            echo "worker_digest=$WORKER_DIGEST"
+            echo "migrator_digest=$MIGRATOR_DIGEST"
+            echo "api_reference=$API_REF"
+            echo "web_reference=$WEB_REF"
+            echo "worker_reference=$WORKER_REF"
+            echo "migrator_reference=$MIGRATOR_REF"
+          } | tee s22-image-manifest.txt
+
           {
             echo "## S22 immutable image manifest"
             echo
@@ -148,3 +197,11 @@ jobs:
             echo "- Worker: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/worker@$WORKER_DIGEST\`"
             echo "- Migrator: \`me-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lead-agent/migrator@$MIGRATOR_DIGEST\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable image manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-image-manifest-${{ inputs.commit_sha }}-${{ github.run_id }}
+          path: s22-image-manifest.txt
+          if-no-files-found: error
+          retention-days: 7
