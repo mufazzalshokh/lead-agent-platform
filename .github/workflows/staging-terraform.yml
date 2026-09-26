@@ -3031,17 +3031,23 @@ jobs:
         run: |
           set -euo pipefail
           LOGS="$(mktemp)"
-          trap 'rm -f "$LOGS"' EXIT
+          EXECUTION="$(mktemp)"
+          trap 'rm -f "$LOGS" "$EXECUTION"' EXIT
           gcloud beta run jobs executions logs read "$EXECUTION_ID" \
             --project="$PROJECT_ID" \
             --region=me-central1 \
             --limit=200 \
             --order=asc \
             --format=json > "$LOGS"
-          node - "$LOGS" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
+          gcloud run jobs executions describe "$EXECUTION_ID" \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --format=json > "$EXECUTION"
+          node - "$LOGS" "$EXECUTION" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
           const fs = require("node:fs");
-          const [logPath, executionId] = process.argv.slice(2);
+          const [logPath, executionPath, executionId] = process.argv.slice(2);
           const rawLogs = fs.readFileSync(logPath, "utf8");
+          const execution = JSON.parse(fs.readFileSync(executionPath, "utf8"));
           let parsedLogs;
           try {
             parsedLogs = JSON.parse(rawLogs);
@@ -3095,6 +3101,21 @@ jobs:
             const sanitized = sanitize(value);
             return pattern.test(sanitized) ? sanitized : "unavailable";
           };
+          const executionStatus = asObject(execution.status) ?? execution;
+          const conditions = Array.isArray(executionStatus.conditions) ? executionStatus.conditions : [];
+          const completedCondition = conditions.find((condition) => condition.type === "Completed")
+            ?? conditions.find((condition) => condition.state === "CONDITION_FAILED" || condition.status === "False");
+          const executionFailure = completedCondition && {
+            diagnostic_mode: "sanitized_execution_status",
+            error_code: optional(completedCondition.reason, /^[A-Z][A-Z0-9_]{1,79}$/u),
+            error_message: sanitize(completedCondition.message),
+            error_type: optional(completedCondition.type, /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/u),
+            execution_id: executionId,
+            failed_count: Number(executionStatus.failedCount ?? executionStatus.failed_count ?? 0),
+            operation: "database_migration",
+            outcome: "failed",
+            retried_count: Number(executionStatus.retriedCount ?? executionStatus.retried_count ?? 0),
+          };
           const structuredEvidence = failure && {
             diagnostic_mode: "structured_application_error",
             error_category: optional(failure.error_category, /^[a-z][a-z0-9_]{0,79}$/u),
@@ -3133,7 +3154,7 @@ jobs:
             operation: "database_migration",
             outcome: "failed",
             severity: fallback.severity,
-          } : {
+          } : executionFailure ?? {
             diagnostic_mode: "sanitized_metadata_only",
             entry_count: entries.length,
             execution_id: executionId,

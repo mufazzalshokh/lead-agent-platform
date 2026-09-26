@@ -262,13 +262,15 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Read sanitized migrator application error");
     expect(workflow).toContain('payload.operation === "database_migration"');
     expect(workflow).toContain('gcloud beta run jobs executions logs read "$EXECUTION_ID"');
+    expect(workflow).toContain('gcloud run jobs executions describe "$EXECUTION_ID"');
     expect(workflow).toContain("Array.isArray(parsedLogs?.entries)");
     expect(workflow).toContain('diagnostic_mode: "sanitized_runtime_fallback"');
+    expect(workflow).toContain('diagnostic_mode: "sanitized_execution_status"');
     expect(workflow).toContain('diagnostic_mode: "sanitized_metadata_only"');
     expect(workflow).toContain("diagnosticLogPattern");
     expect(workflow).toContain("usefulErrorPattern");
     const diagnosticScript = workflow.match(
-      /node - "\$LOGS" "\$EXECUTION_ID" <<'NODE' \| tee s22-migrator-root-error\.txt\n([\s\S]*?)\n          NODE/u,
+      /node - "\$LOGS" "\$EXECUTION" "\$EXECUTION_ID" <<'NODE' \| tee s22-migrator-root-error\.txt\n([\s\S]*?)\n          NODE/u,
     )?.[1];
     expect(diagnosticScript).toBeDefined();
     expect(() => new Script(diagnosticScript ?? "")).not.toThrow();
