@@ -3033,7 +3033,7 @@ jobs:
           LOGS="$(mktemp)"
           trap 'rm -f "$LOGS"' EXIT
           gcloud logging read \
-            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"lead-agent-staging-migrator\" AND labels.\"run.googleapis.com/execution_name\"=\"$EXECUTION_ID\"" \
+            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"lead-agent-staging-migrator\" AND labels.execution_name=\"$EXECUTION_ID\"" \
             --project="$PROJECT_ID" \
             --limit=200 \
             --order=asc \
