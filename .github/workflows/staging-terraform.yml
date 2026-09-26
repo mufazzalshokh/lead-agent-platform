@@ -3515,7 +3515,7 @@ jobs:
           FAILED_EXECUTION: ${{ env.S22_MIGRATOR_EXECUTION_ID }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: me-central1
-          S22_SKIP_ACTIVE_PROBES: ${{ env.S22_MIGRATOR_EXECUTION_ID != '' }}
+          S22_SKIP_ACTIVE_PROBES: true
         shell: bash
         run: bash .github/scripts/s22-migration-wiring-diagnose.sh
 

@@ -252,7 +252,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("application_role_connectivity");
     expect(workflow).toContain("Diagnose migrator secret and VPC wiring");
     expect(workflow).toContain("FAILED_EXECUTION: ${{ env.S22_MIGRATOR_EXECUTION_ID }}");
-    expect(workflow).toContain("S22_SKIP_ACTIVE_PROBES:");
+    expect(workflow).toContain("S22_SKIP_ACTIVE_PROBES: true");
     expect(workflow).toContain("s22-migration-wiring-diagnose.sh");
     expect(wiringDiagnostic).toContain('if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]');
     expect(workflow).toContain("- bootstrap-log-viewer");
