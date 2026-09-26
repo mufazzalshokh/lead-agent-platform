@@ -275,7 +275,10 @@ describe("S22 staging infrastructure boundary", () => {
     expect(wiringDiagnostic).toContain("runtime_admin_role_bypassrls");
     expect(wiringDiagnostic).toContain("runtime_migration_count_30");
     expect(wiringDiagnostic).toContain("runtime_production_table_count_52");
-    expect(wiringDiagnostic).toContain("runtime_required_bypassrls_roles_present");
+    expect(wiringDiagnostic).toContain("runtime_required_bypassrls_role_present");
+    expect(wiringDiagnostic).toContain("runtime_cloudsql_superuser_role_bypassrls");
+    expect(wiringDiagnostic).toContain("runtime_cloudsql_superuser_role_superuser");
+    expect(wiringDiagnostic).toContain("runtime_admin_has_cloudsql_superuser_usage");
     expect(wiringDiagnostic).toContain("packaged_manifest_head_0029");
     expect(wiringDiagnostic).toContain("TLS_CERT_ALTNAME_INVALID");
     expect(workflow).toContain("- bootstrap-log-viewer");

@@ -414,13 +414,43 @@ if (mode === "migration_state_flags") {
       "select count(*)::integer as count from information_schema.tables where table_schema = $$public$$ and table_type = $$BASE TABLE$$",
     );
     if (tables.rows[0]?.count === 52) flags |= 64;
-    const bypassRoles = await pool.query(`
+    const bypassRole = await pool.query(`
       select count(*)::integer as count
       from pg_catalog.pg_roles
-      where rolname = any($1::text[])
+      where rolname = $1::text
         and rolbypassrls
-    `, [["lead_agent_inbound_route_definer", "lead_agent_identity_definer"]]);
-    if (bypassRoles.rows[0]?.count === 2) flags |= 128;
+    `, ["lead_agent_inbound_route_definer"]);
+    if (bypassRole.rows[0]?.count === 1) flags |= 128;
+  } finally {
+    await pool.end().catch(() => {});
+  }
+  process.exit(flags);
+}
+
+if (mode === "cloudsql_superuser_flags") {
+  const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
+  const { Pool } = await import("pg");
+  const pool = new Pool({
+    application_name: "lead-agent-staging-cloudsql-role-diagnostic",
+    connectionString: withLibpqCompatibleRequireSsl(process.env.MIGRATION_DATABASE_URL),
+    connectionTimeoutMillis: 15000,
+    max: 1,
+    query_timeout: 15000,
+  });
+  let flags = 0;
+  try {
+    const result = await pool.query(`
+      select role.rolbypassrls,
+             role.rolsuper,
+             pg_catalog.pg_has_role(current_user, role.oid, $$USAGE$$) as current_user_has_usage
+      from pg_catalog.pg_roles role
+      where role.rolname = $$cloudsqlsuperuser$$
+    `);
+    const role = result.rows[0];
+    if (role !== undefined) flags |= 1;
+    if (role?.rolbypassrls === true) flags |= 2;
+    if (role?.rolsuper === true) flags |= 4;
+    if (role?.current_user_has_usage === true) flags |= 8;
   } finally {
     await pool.end().catch(() => {});
   }
@@ -551,7 +581,13 @@ if [[ "${S22_RUN_SQL_PROBE:-false}" == "true" ]]; then
   report runtime_migration_table_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 16)"
   report runtime_migration_count_30 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 32)"
   report runtime_production_table_count_52 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 64)"
-  report runtime_required_bypassrls_roles_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 128)"
+  report runtime_required_bypassrls_role_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 128)"
+
+  CLOUDSQL_SUPERUSER_FLAGS="$(run_encoded_probe MIGRATION_DATABASE_URL postgres cloudsql_superuser_flags)"
+  report runtime_cloudsql_superuser_role_present "$(decode_boolean "$CLOUDSQL_SUPERUSER_FLAGS" 1)"
+  report runtime_cloudsql_superuser_role_bypassrls "$(decode_boolean "$CLOUDSQL_SUPERUSER_FLAGS" 2)"
+  report runtime_cloudsql_superuser_role_superuser "$(decode_boolean "$CLOUDSQL_SUPERUSER_FLAGS" 4)"
+  report runtime_admin_has_cloudsql_superuser_usage "$(decode_boolean "$CLOUDSQL_SUPERUSER_FLAGS" 8)"
 
   PACKAGED_MANIFEST_FLAGS="$(run_encoded_probe UNUSED UNUSED packaged_manifest_flags)"
   report packaged_manifest_importable "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 1)"
