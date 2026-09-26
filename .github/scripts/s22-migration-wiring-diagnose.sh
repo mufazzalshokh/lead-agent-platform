@@ -31,7 +31,6 @@ curl --fail --silent --show-error \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${FAILED_EXECUTION}" \
   > "$WORK_DIR/failed-execution.json"
-unset ACCESS_TOKEN
 
 terraform -chdir=infra/deploy/gcp/staging show -json > "$WORK_DIR/terraform-state.json"
 jq -e '
@@ -119,10 +118,16 @@ FAILED_NETWORK="$(jq -r '.template.vpcAccess.networkInterfaces[0].network // ""'
 FAILED_SUBNETWORK="$(jq -r '.template.vpcAccess.networkInterfaces[0].subnetwork // ""' "$WORK_DIR/failed-execution.json")"
 FAILED_EGRESS="$(jq -r '.template.vpcAccess.egress // ""' "$WORK_DIR/failed-execution.json")"
 report failed_execution_name "$FAILED_EXECUTION"
+report failed_execution_template_present "$(jq -r 'has("template")' "$WORK_DIR/failed-execution.json")"
+report failed_execution_service_account "$FAILED_SERVICE_ACCOUNT"
 report failed_execution_service_account_matches "$([[ "$FAILED_SERVICE_ACCOUNT" == "$MIGRATOR_SERVICE_ACCOUNT" ]] && echo true || echo false)"
+report failed_execution_image "$FAILED_IMAGE"
 report failed_execution_image_matches "$([[ "$FAILED_IMAGE" == "$LIVE_IMAGE" ]] && echo true || echo false)"
+report failed_execution_network "$FAILED_NETWORK"
 report failed_execution_network_matches "$({ matches_resource_name "$FAILED_NETWORK" lead-agent-staging-vpc; } && echo true || echo false)"
+report failed_execution_subnetwork "$FAILED_SUBNETWORK"
 report failed_execution_subnetwork_matches "$({ matches_resource_name "$FAILED_SUBNETWORK" lead-agent-staging-cloud-run; } && echo true || echo false)"
+report failed_execution_egress "$FAILED_EGRESS"
 report failed_execution_egress_matches "$([[ "$FAILED_EGRESS" == "PRIVATE_RANGES_ONLY" ]] && echo true || echo false)"
 
 PROBE_SCRIPT="$WORK_DIR/probe.mjs"
@@ -220,13 +225,12 @@ run_encoded_probe() {
         --format='value(name)'
     )"
   fi
-  gcloud run jobs executions tasks list \
-    --execution="$execution_name" \
-    --project="$PROJECT_ID" \
-    --region="$REGION" \
-    --limit=1 \
-    --format=json > "$WORK_DIR/latest-task.json"
-  jq -r '[.. | objects | .exitCode? // empty][0] // 0' "$WORK_DIR/latest-task.json"
+  local execution_id="${execution_name##*/}"
+  curl --fail --silent --show-error \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${execution_id}/tasks?pageSize=1" \
+    > "$WORK_DIR/latest-task.json"
+  jq -r '.tasks[0].lastAttemptResult.exitCode // 0' "$WORK_DIR/latest-task.json"
 }
 
 decode_boolean() {
@@ -279,3 +283,4 @@ case "$NETWORK_CODE" in
   *) NETWORK_RESULT=OTHER_ERROR ;;
 esac
 report runtime_private_tcp_result "$NETWORK_RESULT"
+unset ACCESS_TOKEN
