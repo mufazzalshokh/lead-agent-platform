@@ -202,6 +202,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('[[ "$STATE_COUNT" == "88" ]]');
     expect(workflow).toContain("migration_convergence_exit_code=$PLAN_EXIT_CODE");
     expect(workflow).toContain("- migration-diagnose");
+    expect(workflow).toContain("- migration-wiring-diagnose");
     expect(workflow).toContain("Run bounded migration failure diagnostics");
     expect(workflow).toContain("live_vpc_configuration=PASS");
     expect(workflow).toContain("live_vpc_network=PASS");
@@ -221,6 +222,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("admin_connectivity");
     expect(workflow).toContain("migration_state");
     expect(workflow).toContain("application_role_connectivity");
+    expect(workflow).toContain("Diagnose migrator secret and VPC wiring");
+    expect(workflow).toContain("s22-migration-wiring-diagnose.sh");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');

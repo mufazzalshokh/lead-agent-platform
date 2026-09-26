@@ -24,6 +24,7 @@ on:
           - bootstrap
           - migration
           - migration-diagnose
+          - migration-wiring-diagnose
           - full
           - load
           - dormant
@@ -223,6 +224,12 @@ jobs:
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
               ;;
+            migration-wiring-diagnose)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
             full)
               DEPLOY_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -256,7 +263,7 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-diagnose" ]]; then
+          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
             echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
           fi
 
@@ -343,11 +350,11 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
-        if: env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose'
+        if: env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose'
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         shell: bash
@@ -478,7 +485,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -894,7 +901,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
@@ -3063,6 +3070,23 @@ jobs:
           '
 
           rm -rf "$PROBE_DIR"
+
+      - name: Diagnose migrator secret and VPC wiring
+        if: env.S22_PHASE == 'migration-wiring-diagnose' && env.S22_ACTION == 'plan'
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: bash .github/scripts/s22-migration-wiring-diagnose.sh
+
+      - name: Upload migration wiring diagnostic evidence
+        if: always() && env.S22_PHASE == 'migration-wiring-diagnose' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-migration-wiring-diagnostic-evidence-${{ github.run_id }}
+          path: s22-migration-wiring-diagnostic-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload migration diagnostic evidence
         if: always() && env.S22_PHASE == 'migration-diagnose' && env.S22_ACTION == 'plan'
