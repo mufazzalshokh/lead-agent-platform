@@ -23,6 +23,7 @@ on:
           - cloud-sql-phase-b
           - bootstrap
           - migration
+          - migration-resume
           - migration-diagnose
           - migration-wiring-diagnose
           - full
@@ -131,7 +132,7 @@ jobs:
             echo "Apply requires the exact owner approval token." >&2
             exit 1
           fi
-          if [[ "$ACTION" == "apply" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+          if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
             echo "Apply requires the exact reviewed plan run ID." >&2
             exit 1
           fi
@@ -218,6 +219,12 @@ jobs:
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
               ;;
+            migration-resume)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
             migration-diagnose)
               DEPLOY_RUNTIME=true
               BOOTSTRAP_RUNTIME=true
@@ -263,7 +270,7 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
+          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-resume" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
             echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
           fi
 
@@ -350,11 +357,11 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
-        if: env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose'
+        if: env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose'
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         shell: bash
@@ -3098,7 +3105,7 @@ jobs:
           retention-days: 7
 
       - name: Execute one-shot migrator
-        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')
         env:
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
         run: >-
@@ -3108,7 +3115,7 @@ jobs:
           --wait
 
       - name: Verify migrated staging database
-        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')
         env:
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -3117,12 +3124,13 @@ jobs:
           set -euo pipefail
           VALIDATOR="$RUNNER_TEMP/s22-verify-staging-database.mjs"
           cat > "$VALIDATOR" <<'EOF'
-          import process from "node:process";
-          import { Pool } from "pg";
-          import {
+          (async () => {
+          const process = globalThis.process;
+          const { Pool } = await import("pg");
+          const {
             readStagingMigrationManifest,
             stagingRolePasswordFromUrl,
-          } from "./dist/migrate.js";
+          } = await import("./dist/migrate.js");
 
           const expectedRlsTables = [
             "ai_action_evaluations", "ai_runs", "analytics_events",
@@ -3240,6 +3248,14 @@ jobs:
           } finally {
             await Promise.all(pools.map(async (pool) => pool.end().catch(() => {})));
           }
+          })().catch((error) => {
+            console.error(JSON.stringify({
+              error_name: error instanceof Error ? error.name : "UnknownError",
+              operation: "staging_database_validation",
+              outcome: "failed",
+            }));
+            process.exitCode = 1;
+          });
           EOF
           VALIDATOR_B64="$(base64 -w0 "$VALIDATOR")"
           gcloud run jobs execute lead-agent-staging-migrator \
@@ -3252,7 +3268,7 @@ jobs:
           unset VALIDATOR_B64
 
       - name: Verify migration Terraform convergence
-        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -3275,7 +3291,7 @@ jobs:
           } | tee -a s22-migration-apply-evidence.txt
 
       - name: Upload migration apply evidence
-        if: always() && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        if: always() && env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-migration-apply-evidence-${{ github.run_id }}

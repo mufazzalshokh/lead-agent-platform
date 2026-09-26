@@ -189,11 +189,16 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify database secret version metadata");
     expect(workflow).toContain('[[ "$ENABLED_COUNT" == "1" ]]');
     expect(workflow).toContain("Verify migration plan safety");
+    expect(workflow).toContain("- migration-resume");
+    expect(workflow).toContain('"$PHASE" != "migration-resume"');
+    expect(workflow).toContain("env.S22_PHASE == 'migration-resume'");
     expect(workflow).toContain(
       'EXPECTED_ACTIONS=\'["create:google_cloud_run_v2_job.migrator[0]","create:google_sql_database.application[0]"]\'',
     );
     expect(workflow).toContain("Verify exact migration plan approval boundary");
     expect(workflow).toContain("Verify migrated staging database");
+    expect(workflow).toContain('const { Pool } = await import("pg");');
+    expect(workflow).toContain('await import("./dist/migrate.js")');
     expect(workflow).toContain("staging_database_validation");
     expect(workflow).toContain("production_tables: 52");
     expect(workflow).toContain("force_rls_tables: actualRlsTables.length");
@@ -273,7 +278,7 @@ describe("S22 staging infrastructure boundary", () => {
       'if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]',
     );
     expect(workflow).toContain(
-      'if [[ "$ACTION" == "apply" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+      'if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
     );
     expect(workflow).toContain("google-github-actions/auth@");
     expect(workflow).toContain("TF_VAR_deployer_service_account_email");
