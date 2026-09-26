@@ -121,6 +121,21 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("if: env.S22_PHASE == 'bootstrap-iam' && env.S22_ACTION == 'apply'");
     expect(workflow).toContain("POST_APPLY_IAM_PLAN_EXIT_CODE");
     expect(workflow).toContain("terraform plan -refresh=false -detailed-exitcode -lock-timeout=5m");
+    expect(workflow).toContain(
+      '[[ "$REQUESTED_SHA" == "c4134d2980c7c31653cc6e52dd21173a58297aab" ]]',
+    );
+    expect(workflow).toContain('[[ "$PLAN_RUN_ID" == "36176635223" ]]');
+    expect(workflow).toContain(
+      '[[ "$APPROVED_PLAN_SHA256" == "43ebe6df02eb4b693fdc17dfd2dbedf191668e3a1b61ccc4c97fe94d8cf5ad7c" ]]',
+    );
+    expect(workflow).toContain('[[ "$FOUNDATION_STATE_COUNT" == "0" ]]');
+    expect(workflow).toContain('[[ "$FOUNDATION_STATE_COUNT" == "81" ]]');
+    expect(workflow).toContain("EXPECTED_TYPE_COUNTS=");
+    expect(workflow).toContain("terraform plan -detailed-exitcode -lock-timeout=5m");
+    expect(workflow).toContain("Verify actual foundation resources");
+    expect(workflow).toContain("gcloud sql instances describe lead-agent-staging-postgres17");
+    expect(workflow).toContain("gcloud run services list");
+    expect(workflow).toContain("gcloud run jobs list");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain(
       'if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]',

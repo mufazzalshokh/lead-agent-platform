@@ -135,6 +135,13 @@ jobs:
             [[ "$PLAN_RUN_ID" == "36179081896" ]]
             [[ "$APPROVED_PLAN_SHA256" == "1408052e615385b4a01651a8b64605d13746ddde10a6950f7ba4d380a18c60e0" ]]
           fi
+          if [[ "$ACTION" == "apply" && "$PHASE" == "foundation" ]]; then
+            [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
+            [[ "$TF_VAR_region" == "me-central1" ]]
+            [[ "$REQUESTED_SHA" == "c4134d2980c7c31653cc6e52dd21173a58297aab" ]]
+            [[ "$PLAN_RUN_ID" == "36176635223" ]]
+            [[ "$APPROVED_PLAN_SHA256" == "43ebe6df02eb4b693fdc17dfd2dbedf191668e3a1b61ccc4c97fe94d8cf5ad7c" ]]
+          fi
           DEPLOY_RUNTIME=false
           BOOTSTRAP_RUNTIME=false
           PREPARE_MIGRATION=false
@@ -274,6 +281,16 @@ jobs:
         working-directory: infra/deploy/gcp/staging
         run: terraform validate
 
+      - name: Verify authoritative foundation state before apply
+        if: env.S22_PHASE == 'foundation' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          FOUNDATION_STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
+          [[ "$FOUNDATION_STATE_COUNT" == "0" ]]
+          echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
+
       - name: Create reviewed plan
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
@@ -311,10 +328,106 @@ jobs:
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
+      - name: Verify exact foundation plan approval boundary
+        if: env.S22_PHASE == 'foundation' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          APPROVED_PLAN_SHA256: ${{ env.S22_APPROVED_PLAN_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN=s22.tfplan
+          PLAN_JSON=s22.tfplan.json
+          RECORDED_SHA256="$(awk '{print $1}' s22.tfplan.sha256)"
+          ACTUAL_SHA256="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$RECORDED_SHA256" ]]
+          [[ "$ACTUAL_SHA256" == "$APPROVED_PLAN_SHA256" ]]
+
+          terraform show -json "$PLAN" > "$PLAN_JSON"
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON"
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON"
+          jq -e '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 81
+              and ([$changes[] | select(.change.actions != ["create"])] | length) == 0
+          ' "$PLAN_JSON"
+
+          ACTUAL_TYPE_COUNTS="$(
+            jq -c '
+              [.resource_changes[]
+               | select(.change.actions != ["no-op"])
+               | .type]
+              | sort
+              | group_by(.)
+              | map({(.[0]): length})
+              | add
+            ' "$PLAN_JSON"
+          )"
+          EXPECTED_TYPE_COUNTS='{"google_artifact_registry_repository":1,"google_billing_budget":2,"google_compute_global_address":1,"google_compute_network":1,"google_compute_subnetwork":1,"google_monitoring_alert_policy":2,"google_project_iam_member":11,"google_secret_manager_secret":19,"google_secret_manager_secret_iam_member":33,"google_service_account":4,"google_service_account_iam_member":4,"google_service_networking_connection":1,"google_sql_database_instance":1}'
+          [[ "$ACTUAL_TYPE_COUNTS" == "$EXPECTED_TYPE_COUNTS" ]]
+
+          jq -e '
+            [.resource_changes[]
+             | select(.type == "google_sql_database_instance")
+             | .change.after]
+            | length == 1
+              and .[0].name == "lead-agent-staging-postgres17"
+              and .[0].database_version == "POSTGRES_17"
+              and .[0].deletion_protection == true
+              and .[0].settings[0].edition == "ENTERPRISE"
+              and .[0].settings[0].tier == "db-f1-micro"
+              and .[0].settings[0].availability_type == "ZONAL"
+              and .[0].settings[0].disk_type == "PD_SSD"
+              and .[0].settings[0].disk_size == 10
+              and .[0].settings[0].disk_autoresize_limit == 20
+              and .[0].settings[0].activation_policy == "NEVER"
+              and .[0].settings[0].ip_configuration[0].ipv4_enabled == false
+              and .[0].settings[0].ip_configuration[0].ssl_mode == "ENCRYPTED_ONLY"
+              and .[0].settings[0].backup_configuration[0].enabled == true
+              and .[0].settings[0].backup_configuration[0].point_in_time_recovery_enabled == true
+              and .[0].settings[0].backup_configuration[0].transaction_log_retention_days == 7
+          ' "$PLAN_JSON"
+          jq -e '
+            [.resource_changes[]
+             | select(.type == "google_sql_database_instance")
+             | .change.after_unknown.settings[0].ip_configuration[0].private_network]
+            | length == 1 and .[0] == true
+          ' "$PLAN_JSON"
+          jq -e '
+            [.resource_changes[]
+             | select(.type == "google_project_iam_member")
+             | select(.change.after.role == "roles/iam.serviceAccountUser")]
+            | length == 0
+          ' "$PLAN_JSON"
+          jq -e '
+            [.resource_changes[]
+             | select(.type == "google_service_account_iam_member")
+             | select(.change.after.role == "roles/iam.serviceAccountUser")]
+            | length == 4
+          ' "$PLAN_JSON"
+          rm -f "$PLAN_JSON"
+
       - name: Apply exact reviewed plan
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
+
+      - name: Verify foundation Terraform convergence
+        if: env.S22_PHASE == 'foundation' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          FOUNDATION_STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
+          [[ "$FOUNDATION_STATE_COUNT" == "81" ]]
+
+          set +e
+          terraform plan -detailed-exitcode -lock-timeout=5m
+          POST_APPLY_PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$POST_APPLY_PLAN_EXIT_CODE" == "0" ]]
+          echo "Post-apply foundation managed resources: $FOUNDATION_STATE_COUNT"
+          echo "Post-apply foundation plan exit code: $POST_APPLY_PLAN_EXIT_CODE"
 
       - name: Download exact owner-reviewed bootstrap IAM plan
         if: env.S22_PHASE == 'bootstrap-iam' && env.S22_ACTION == 'apply'
@@ -436,8 +549,190 @@ jobs:
           echo "Post-apply bootstrap plan exit code: $POST_APPLY_PLAN_EXIT_CODE"
 
       - name: Set up Google Cloud CLI
-        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
+        if: env.S22_ACTION == 'apply' && (env.S22_PHASE == 'foundation' || env.S22_PHASE == 'migration')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Verify actual foundation resources
+        if: env.S22_PHASE == 'foundation' && env.S22_ACTION == 'apply'
+        env:
+          BILLING_ACCOUNT_ID: ${{ vars.GCP_BILLING_ACCOUNT_ID }}
+          DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+          MONITORING_CHANNELS_JSON: ${{ vars.STAGING_MONITORING_NOTIFICATION_CHANNEL_IDS_JSON }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$(mktemp -d)"
+          trap 'rm -rf "$VERIFY_DIR"' EXIT
+
+          gcloud compute networks describe lead-agent-staging-vpc \
+            --project="$PROJECT_ID" --format=json > "$VERIFY_DIR/network.json"
+          jq -e '.name == "lead-agent-staging-vpc" and .autoCreateSubnetworks == false' \
+            "$VERIFY_DIR/network.json"
+
+          gcloud compute networks subnets describe lead-agent-staging-cloud-run \
+            --project="$PROJECT_ID" --region="$REGION" --format=json > "$VERIFY_DIR/subnet.json"
+          jq -e '
+            .name == "lead-agent-staging-cloud-run"
+            and (.region | endswith("/me-central1"))
+          ' "$VERIFY_DIR/subnet.json"
+          jq -e '.ipCidrRange == "10.22.0.0/24" and .privateIpGoogleAccess == true' \
+            "$VERIFY_DIR/subnet.json"
+
+          gcloud compute addresses describe lead-agent-staging-private-services \
+            --global --project="$PROJECT_ID" --format=json > "$VERIFY_DIR/private-range.json"
+          jq -e '.addressType == "INTERNAL" and .purpose == "VPC_PEERING"' \
+            "$VERIFY_DIR/private-range.json"
+
+          gcloud services vpc-peerings list \
+            --project="$PROJECT_ID" \
+            --network=lead-agent-staging-vpc \
+            --service=servicenetworking.googleapis.com \
+            --format=json > "$VERIFY_DIR/peerings.json"
+          jq -e 'length >= 1' "$VERIFY_DIR/peerings.json"
+
+          gcloud sql instances describe lead-agent-staging-postgres17 \
+            --project="$PROJECT_ID" --format=json > "$VERIFY_DIR/sql.json"
+          jq -e '
+            .databaseVersion == "POSTGRES_17"
+            and .settings.edition == "ENTERPRISE"
+            and .settings.tier == "db-f1-micro"
+            and .settings.availabilityType == "ZONAL"
+            and .settings.dataDiskType == "PD_SSD"
+            and (.settings.dataDiskSizeGb | tonumber) == 10
+            and (.settings.storageAutoResizeLimit | tonumber) == 20
+            and .settings.activationPolicy == "NEVER"
+            and .settings.ipConfiguration.ipv4Enabled == false
+            and .settings.ipConfiguration.sslMode == "ENCRYPTED_ONLY"
+            and .settings.backupConfiguration.enabled == true
+            and .settings.backupConfiguration.pointInTimeRecoveryEnabled == true
+            and .settings.backupConfiguration.transactionLogRetentionDays == 7
+            and ((.settings.deletionProtectionEnabled // .deletionProtectionEnabled) == true)
+            and ([.ipAddresses[] | select(.type == "PRIVATE")] | length) >= 1
+            and ([.ipAddresses[] | select(.type != "PRIVATE")] | length) == 0
+          ' "$VERIFY_DIR/sql.json"
+
+          gcloud artifacts repositories describe lead-agent \
+            --project="$PROJECT_ID" --location="$REGION" --format=json > "$VERIFY_DIR/artifact.json"
+          jq -e '.format == "DOCKER" and (.name | endswith("/repositories/lead-agent"))' \
+            "$VERIFY_DIR/artifact.json"
+          gcloud artifacts docker images list \
+            "$REGION-docker.pkg.dev/$PROJECT_ID/lead-agent" \
+            --format=json > "$VERIFY_DIR/images.json"
+          jq -e 'length == 0' "$VERIFY_DIR/images.json"
+
+          SECRETS=(
+            lead-agent-staging-auth0-client-secret
+            lead-agent-staging-auth-browser-envelope-key
+            lead-agent-staging-auth-database-url
+            lead-agent-staging-channel-credentials
+            lead-agent-staging-customer-data-encryption-key
+            lead-agent-staging-customer-data-lookup-key
+            lead-agent-staging-gemini-api-key
+            lead-agent-staging-ingress-database-url
+            lead-agent-staging-instagram-app-secret
+            lead-agent-staging-instagram-webhook-verify-token
+            lead-agent-staging-invitation-target-encryption-key
+            lead-agent-staging-invitation-target-lookup-key
+            lead-agent-staging-migration-database-url
+            lead-agent-staging-queue-database-url
+            lead-agent-staging-runtime-database-url
+            lead-agent-staging-telegram-bot-token
+            lead-agent-staging-telegram-webhook-secret
+            lead-agent-staging-widget-exchange-encryption-key
+            lead-agent-staging-widget-signing-key
+          )
+          SECRET_VERSION_COUNT=0
+          for secret in "${SECRETS[@]}"; do
+            gcloud secrets describe "$secret" --project="$PROJECT_ID" --format=json > /dev/null
+            VERSION_COUNT="$(
+              gcloud secrets versions list "$secret" \
+                --project="$PROJECT_ID" --format=json \
+                | jq 'length'
+            )"
+            SECRET_VERSION_COUNT=$((SECRET_VERSION_COUNT + VERSION_COUNT))
+          done
+          [[ "${#SECRETS[@]}" == "19" ]]
+          [[ "$SECRET_VERSION_COUNT" == "0" ]]
+
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://monitoring.googleapis.com/v3/projects/$PROJECT_ID/alertPolicies?pageSize=100" \
+            > "$VERIFY_DIR/alerts.json"
+          jq -e '
+            [.alertPolicies[]
+             | select(.displayName == "Lead Agent staging API server errors"
+                      or .displayName == "Lead Agent staging Cloud SQL CPU saturation")]
+            | length == 2
+          ' "$VERIFY_DIR/alerts.json"
+          while IFS= read -r channel; do
+            curl --fail --silent --show-error \
+              --header "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://monitoring.googleapis.com/v3/$channel" > /dev/null
+          done < <(jq -r '.[]' <<< "$MONITORING_CHANNELS_JSON")
+
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://billingbudgets.googleapis.com/v1/billingAccounts/$BILLING_ACCOUNT_ID/budgets?pageSize=100" \
+            > "$VERIFY_DIR/budgets.json"
+          jq -e '
+            [.budgets[]
+             | select(.displayName == "Lead Agent S22 staging USD 25 target"
+                      or .displayName == "Lead Agent S22 staging USD 50 hard ceiling")]
+            | length == 2
+          ' "$VERIFY_DIR/budgets.json"
+
+          PROJECT_POLICY="$VERIFY_DIR/project-policy.json"
+          gcloud projects get-iam-policy "$PROJECT_ID" --format=json > "$PROJECT_POLICY"
+          jq -e --arg member "serviceAccount:$DEPLOYER_SERVICE_ACCOUNT" '
+            [.bindings[]
+             | select(.role == "roles/iam.serviceAccountUser")
+             | .members[]?
+             | select(. == $member)]
+            | length == 0
+          ' "$PROJECT_POLICY"
+
+          RUNTIME_IDENTITIES=(
+            lead-agent-staging-api
+            lead-agent-staging-web
+            lead-agent-staging-worker
+            lead-agent-staging-migrator
+          )
+          for identity in "${RUNTIME_IDENTITIES[@]}"; do
+            email="$identity@$PROJECT_ID.iam.gserviceaccount.com"
+            gcloud iam service-accounts describe "$email" \
+              --project="$PROJECT_ID" --format=json > /dev/null
+            gcloud iam service-accounts get-iam-policy "$email" \
+              --project="$PROJECT_ID" --format=json > "$VERIFY_DIR/$identity-policy.json"
+            jq -e --arg member "serviceAccount:$DEPLOYER_SERVICE_ACCOUNT" '
+              [.bindings[]
+               | select(.role == "roles/iam.serviceAccountUser")
+               | .members[]?
+               | select(. == $member)]
+              | length == 1
+            ' "$VERIFY_DIR/$identity-policy.json"
+          done
+
+          gcloud run services list --project="$PROJECT_ID" --region="$REGION" \
+            --platform=managed --format=json > "$VERIFY_DIR/run-services.json"
+          gcloud run jobs list --project="$PROJECT_ID" --region="$REGION" \
+            --format=json > "$VERIFY_DIR/run-jobs.json"
+          jq -e 'length == 0' "$VERIFY_DIR/run-services.json"
+          jq -e 'length == 0' "$VERIFY_DIR/run-jobs.json"
+
+          SQL_STATE="$(jq -r '.state' "$VERIFY_DIR/sql.json")"
+          SQL_PRIVATE_IP="$(jq -r '[.ipAddresses[] | select(.type == "PRIVATE")][0].ipAddress' "$VERIFY_DIR/sql.json")"
+          echo "Verified VPC: lead-agent-staging-vpc"
+          echo "Verified subnet: lead-agent-staging-cloud-run"
+          echo "Verified Cloud SQL state: $SQL_STATE"
+          echo "Verified Cloud SQL private IP assigned: $([[ -n "$SQL_PRIVATE_IP" && "$SQL_PRIVATE_IP" != "null" ]] && echo true || echo false)"
+          echo "Verified Artifact Registry repositories: 1; images: 0"
+          echo "Verified Secret Manager resources: ${#SECRETS[@]}; versions: $SECRET_VERSION_COUNT"
+          echo "Verified alert policies: 2; budgets: 2"
+          echo "Verified runtime identities: ${#RUNTIME_IDENTITIES[@]}"
+          echo "Verified Cloud Run services: 0; jobs: 0"
 
       - name: Execute one-shot migrator
         if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && env.S22_PHASE == 'migration'
@@ -450,7 +745,7 @@ jobs:
           --wait
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'foundation' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
