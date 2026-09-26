@@ -31,6 +31,7 @@ curl --fail --silent --show-error \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${FAILED_EXECUTION}" \
   > "$WORK_DIR/failed-execution.json"
+unset ACCESS_TOKEN
 
 terraform -chdir=infra/deploy/gcp/staging show -json > "$WORK_DIR/terraform-state.json"
 jq -e '
@@ -225,12 +226,14 @@ run_encoded_probe() {
         --format='value(name)'
     )"
   fi
-  local execution_id="${execution_name##*/}"
-  curl --fail --silent --show-error \
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}/executions/${execution_id}/tasks?pageSize=1" \
-    > "$WORK_DIR/latest-task.json"
-  jq -r '.tasks[0].lastAttemptResult.exitCode // 0' "$WORK_DIR/latest-task.json"
+  gcloud run jobs executions tasks list \
+    --execution="$execution_name" \
+    --project="$PROJECT_ID" \
+    --region="$REGION" \
+    --limit=1 \
+    --succeeded \
+    --format=json > "$WORK_DIR/latest-task.json"
+  jq -er '.[0].status.lastAttemptResult.exitCode' "$WORK_DIR/latest-task.json"
 }
 
 decode_boolean() {
@@ -283,4 +286,3 @@ case "$NETWORK_CODE" in
   *) NETWORK_RESULT=OTHER_ERROR ;;
 esac
 report runtime_private_tcp_result "$NETWORK_RESULT"
-unset ACCESS_TOKEN
