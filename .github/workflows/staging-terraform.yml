@@ -441,8 +441,16 @@ jobs:
           set -euo pipefail
           PLAN_JSON=s22-health-only.tfplan.json
           terraform show -json s22.tfplan > "$PLAN_JSON"
-          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
-          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only plan project does not match the approved project."
+            jq -c '{ project_id: .variables.project_id.value }' "$PLAN_JSON"
+            exit 1
+          }
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only plan region does not match the approved region."
+            jq -c '{ region: .variables.region.value }' "$PLAN_JSON"
+            exit 1
+          }
           jq -e '
             .variables.deploy_runtime.value == true
               and .variables.bootstrap_runtime.value == true
@@ -451,7 +459,19 @@ jobs:
               and .variables.api_max_instance_count.value == 1
               and .variables.web_max_instance_count.value == 1
               and .variables.worker_instance_count.value == 0
-          ' "$PLAN_JSON" > /dev/null
+          ' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Health-only plan lifecycle variables differ from the approved boundary."
+            jq -c '{
+              deploy_runtime: .variables.deploy_runtime.value,
+              bootstrap_runtime: .variables.bootstrap_runtime.value,
+              prepare_migration: .variables.prepare_migration.value,
+              cloud_sql_activation_policy: .variables.cloud_sql_activation_policy.value,
+              api_max_instance_count: .variables.api_max_instance_count.value,
+              web_max_instance_count: .variables.web_max_instance_count.value,
+              worker_instance_count: .variables.worker_instance_count.value
+            }' "$PLAN_JSON"
+            exit 1
+          }
 
           EXPECTED_ADDRESSES='[
             "google_cloud_run_v2_service.api[0]",
@@ -557,10 +577,11 @@ jobs:
                  | select(.change.actions == ["delete", "create"]
                           or .change.actions == ["create", "delete"])] | length' "$PLAN_JSON"
           )"
-          [[ "$CREATE_COUNT" == "4" ]]
-          [[ "$CHANGE_COUNT" == "0" ]]
-          [[ "$DESTROY_COUNT" == "0" ]]
-          [[ "$REPLACE_COUNT" == "0" ]]
+          if [[ "$CREATE_COUNT" != "4" || "$CHANGE_COUNT" != "0" || "$DESTROY_COUNT" != "0" || "$REPLACE_COUNT" != "0" ]]; then
+            echo "::error::Health-only plan aggregate counts differ from 4 creates, 0 changes, 0 destroys, 0 replacements."
+            printf 'creates=%s changes=%s destroys=%s replacements=%s\n' "$CREATE_COUNT" "$CHANGE_COUNT" "$DESTROY_COUNT" "$REPLACE_COUNT"
+            exit 1
+          fi
 
           {
             echo "health_only_source_commit=$S22_COMMIT_SHA"
@@ -673,7 +694,7 @@ jobs:
           retention-days: 7
 
       - name: Upload exact health-only bootstrap plan
-        if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'plan'
+        if: always() && env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-health-only-plan-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
@@ -681,7 +702,7 @@ jobs:
             infra/deploy/gcp/staging/s22.tfplan
             infra/deploy/gcp/staging/s22.tfplan.sha256
             infra/deploy/gcp/staging/s22-health-only-plan-evidence.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Upload exact foundation reconciliation plan

@@ -157,6 +157,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("as $api");
     expect(workflow).toContain("as $web");
     expect(workflow).toContain("as $bindings");
+    expect(workflow).toContain("Health-only plan lifecycle variables");
+    expect(workflow).toContain("Health-only plan aggregate counts");
+    expect(workflow).toContain("always() && env.S22_PHASE == 'bootstrap'");
     expect(workflow).toContain("health_only_cloud_sql_policy=NEVER");
     expect(workflow).toContain("Upload exact health-only bootstrap plan");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
