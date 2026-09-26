@@ -2791,6 +2791,69 @@ jobs:
             process.exitCode = valid ? 0 : 1;
           '
 
+          run_probe private_tcp_connectivity '
+            import net from "node:net";
+            const connected = await new Promise((resolve) => {
+              const socket = net.createConnection({ host: "10.125.0.3", port: 5432 });
+              const finish = (result) => {
+                socket.destroy();
+                resolve(result);
+              };
+              socket.setTimeout(10000, () => finish(false));
+              socket.once("connect", () => finish(true));
+              socket.once("error", () => finish(false));
+            });
+            process.exitCode = connected ? 0 : 1;
+          '
+
+          run_probe migration_secret_shape '
+            import process from "node:process";
+            let valid = true;
+            try {
+              const value = process.env.MIGRATION_DATABASE_URL;
+              if (typeof value !== "string" || value.length === 0) throw new Error();
+              const parsed = new URL(value);
+              valid &&= ["postgres:", "postgresql:"].includes(parsed.protocol);
+              valid &&= decodeURIComponent(parsed.username) === "postgres";
+              valid &&= parsed.password.length > 0;
+              valid &&= parsed.hostname === "10.125.0.3";
+              valid &&= parsed.port === "5432";
+              valid &&= parsed.pathname === "/lead_agent_staging";
+              valid &&= parsed.searchParams.get("sslmode") === "require";
+            } catch {
+              valid = false;
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
+          run_probe application_secret_shape '
+            import process from "node:process";
+            const expected = {
+              AUTH_DATABASE_URL: "lead_agent_auth",
+              DATABASE_URL: "lead_agent_runtime",
+              INGRESS_DATABASE_URL: "lead_agent_ingress",
+              QUEUE_DATABASE_URL: "lead_agent_queue_runtime",
+            };
+            let valid = true;
+            for (const [key, role] of Object.entries(expected)) {
+              try {
+                const value = process.env[key];
+                if (typeof value !== "string" || value.length === 0) throw new Error();
+                const parsed = new URL(value);
+                valid &&= ["postgres:", "postgresql:"].includes(parsed.protocol);
+                valid &&= decodeURIComponent(parsed.username) === role;
+                valid &&= parsed.password.length > 0;
+                valid &&= parsed.hostname === "10.125.0.3";
+                valid &&= parsed.port === "5432";
+                valid &&= parsed.pathname === "/lead_agent_staging";
+                valid &&= parsed.searchParams.get("sslmode") === "require";
+              } catch {
+                valid = false;
+              }
+            }
+            process.exitCode = valid ? 0 : 1;
+          '
+
           run_probe admin_connectivity '
             import process from "node:process";
             import { Pool } from "pg";

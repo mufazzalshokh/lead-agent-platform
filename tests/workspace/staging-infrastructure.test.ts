@@ -204,6 +204,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("- migration-diagnose");
     expect(workflow).toContain("Run bounded migration failure diagnostics");
     expect(workflow).toContain("run_probe secret_shape");
+    expect(workflow).toContain("run_probe private_tcp_connectivity");
+    expect(workflow).toContain("run_probe migration_secret_shape");
+    expect(workflow).toContain("run_probe application_secret_shape");
     expect(workflow).toContain("admin_connectivity");
     expect(workflow).toContain("migration_state");
     expect(workflow).toContain("application_role_connectivity");
