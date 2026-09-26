@@ -103,6 +103,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("S22_ACTION: ${{ inputs.action }}");
     expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");
     expect(workflow).toContain("- foundation-reconcile");
+    expect(workflow).toContain("- foundation-reconcile-verify");
     expect(workflow).toContain(
       '[[ "$REQUESTED_SHA" == "2396fdf797eb4b19252a34c8b45e93945a8f53a3" ]]',
     );
@@ -124,6 +125,20 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("phase_b_only_change=activation_policy_ALWAYS_to_NEVER");
     expect(workflow).toContain("Upload exact Cloud SQL Phase B plan");
     expect(workflow).toContain("foundation-reconcile)\n              SQL_POLICY=ALWAYS");
+    expect(workflow).toContain("foundation-reconcile-verify)\n              SQL_POLICY=ALWAYS");
+    expect(workflow).toContain("Verify Phase A live state with named read-only assertions");
+    expect(workflow).toContain('PHASE_A_EXECUTION_RUN: "36228563835"');
+    expect(workflow).toContain('PHASE_A_SOURCE_PLAN_RUN: "36226804148"');
+    expect(workflow).toContain("ASSERTION|%s|%s|expected=%s|observed=%s");
+    expect(workflow).toContain("cloud_sql.activation_policy");
+    expect(workflow).toContain("monitoring.notification_channels_resolvable");
+    expect(workflow).toContain("terraform_state.no_duplicate_or_ghost_sql_entry");
+    expect(workflow).toContain("Verify Phase A Terraform convergence read-only");
+    expect(workflow).toContain('terraform plan -detailed-exitcode -lock-timeout=5m -out="$PLAN"');
+    expect(workflow).toContain("Create and verify read-only Cloud SQL Phase B dormant plan");
+    expect(workflow).toContain("phase_b_workflow_run_id=$GITHUB_RUN_ID");
+    expect(workflow).toContain("phase_b_unrelated_actions=NONE");
+    expect(workflow).toContain("Upload read-only Cloud SQL Phase B plan");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');
