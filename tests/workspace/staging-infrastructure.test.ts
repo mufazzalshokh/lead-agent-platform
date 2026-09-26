@@ -105,6 +105,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");
     expect(workflow).toContain("- foundation-reconcile");
     expect(workflow).toContain("- foundation-reconcile-verify");
+    expect(workflow).toContain("- cloud-sql-start");
     expect(workflow).toContain("- cloud-sql-phase-b");
     expect(workflow).toContain(
       '[[ "$REQUESTED_SHA" == "2396fdf797eb4b19252a34c8b45e93945a8f53a3" ]]',
@@ -175,6 +176,14 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("health.terraform_state_count");
     expect(workflow).toContain("Verify health-only runtime Terraform convergence");
     expect(workflow).toContain("Upload health-only runtime apply evidence");
+    expect(workflow).toContain("Verify Cloud SQL start-only plan safety");
+    expect(workflow).toContain("cloud_sql_start_only_change=activation_policy_NEVER_to_ALWAYS");
+    expect(workflow).toContain("Verify exact Cloud SQL start approval boundary");
+    expect(workflow).toContain("Verify Cloud SQL start live state and empty database secrets");
+    expect(workflow).toContain("cloud_sql_start_state=RUNNABLE");
+    expect(workflow).toContain("cloud_sql_start_enabled_database_secret_versions=0");
+    expect(workflow).toContain("Verify Cloud SQL start Terraform convergence");
+    expect(workflow).toContain("Upload Cloud SQL start apply evidence");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');

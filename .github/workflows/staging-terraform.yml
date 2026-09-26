@@ -19,6 +19,7 @@ on:
           - foundation
           - foundation-reconcile
           - foundation-reconcile-verify
+          - cloud-sql-start
           - cloud-sql-phase-b
           - bootstrap
           - migration
@@ -199,6 +200,11 @@ jobs:
             foundation-reconcile-verify)
               SQL_POLICY=ALWAYS
               ;;
+            cloud-sql-start)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              SQL_POLICY=ALWAYS
+              ;;
             cloud-sql-phase-b) ;;
             bootstrap)
               DEPLOY_RUNTIME=true
@@ -327,7 +333,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-phase-b' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Inspect partial foundation state and Google Cloud resources
@@ -443,6 +449,74 @@ jobs:
           set -euo pipefail
           terraform plan -lock-timeout=5m -out=s22.tfplan
           sha256sum s22.tfplan > s22.tfplan.sha256
+
+      - name: Verify Cloud SQL start-only plan safety
+        if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN_JSON=s22-cloud-sql-start.tfplan.json
+          trap 'rm -f "$PLAN_JSON"' EXIT
+          terraform show -json s22.tfplan > "$PLAN_JSON"
+
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '
+            .variables.deploy_runtime.value == "true"
+              and .variables.bootstrap_runtime.value == "true"
+              and .variables.prepare_migration.value == "false"
+              and .variables.cloud_sql_activation_policy.value == "ALWAYS"
+              and .variables.cloud_sql_tier.value == "db-f1-micro"
+              and .variables.api_max_instance_count.value == "1"
+              and .variables.web_max_instance_count.value == "1"
+              and .variables.worker_instance_count.value == "0"
+          ' "$PLAN_JSON" > /dev/null
+
+          jq -e '
+            [.resource_changes[]
+             | select(.mode == "managed" and .change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 1
+              and $changes[0].address == "google_sql_database_instance.staging"
+              and $changes[0].change.actions == ["update"]
+              and $changes[0].change.before.settings[0].activation_policy == "NEVER"
+              and $changes[0].change.after.settings[0].activation_policy == "ALWAYS"
+              and $changes[0].change.after
+                  == ($changes[0].change.before | .settings[0].activation_policy = "ALWAYS")
+          ' "$PLAN_JSON" > /dev/null || {
+            echo "::error::Cloud SQL start plan contains an action other than the approved NEVER-to-ALWAYS update."
+            jq -c '[.resource_changes[] | select(.mode == "managed" and .change.actions != ["no-op"]) | {address, actions: .change.actions}]' "$PLAN_JSON"
+            exit 1
+          }
+          jq -e '
+            [.resource_changes[]
+             | select(.mode == "data" and .change.actions != ["no-op"])]
+            | all(.[];
+                .address == "data.google_project.staging"
+                  and .change.actions == ["read"])
+          ' "$PLAN_JSON" > /dev/null
+
+          CREATE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["create"])] | length' "$PLAN_JSON")"
+          CHANGE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["update"])] | length' "$PLAN_JSON")"
+          DESTROY_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["delete"])] | length' "$PLAN_JSON")"
+          REPLACE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length' "$PLAN_JSON")"
+          [[ "$CREATE_COUNT" == "0" ]]
+          [[ "$CHANGE_COUNT" == "1" ]]
+          [[ "$DESTROY_COUNT" == "0" ]]
+          [[ "$REPLACE_COUNT" == "0" ]]
+
+          {
+            echo "cloud_sql_start_source_commit=$S22_COMMIT_SHA"
+            echo "cloud_sql_start_workflow_run_id=$GITHUB_RUN_ID"
+            echo "cloud_sql_start_plan_sha256=$(awk '{print $1}' s22.tfplan.sha256)"
+            echo "cloud_sql_start_plan_creates=$CREATE_COUNT"
+            echo "cloud_sql_start_plan_changes=$CHANGE_COUNT"
+            echo "cloud_sql_start_plan_destroys=$DESTROY_COUNT"
+            echo "cloud_sql_start_plan_replacements=$REPLACE_COUNT"
+            echo "cloud_sql_start_plan_action=update:google_sql_database_instance.staging"
+            echo "cloud_sql_start_only_change=activation_policy_NEVER_to_ALWAYS"
+            echo "cloud_sql_start_unrelated_actions=NONE"
+          } | tee s22-cloud-sql-start-plan-evidence.txt
 
       - name: Verify health-only bootstrap plan safety
         if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'plan'
@@ -1216,6 +1290,70 @@ jobs:
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
+      - name: Verify exact Cloud SQL start approval boundary
+        if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          APPROVED_PLAN_SHA256: ${{ env.S22_APPROVED_PLAN_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN=s22.tfplan
+          PLAN_JSON=s22-cloud-sql-start-approved.tfplan.json
+          trap 'rm -f "$PLAN_JSON"' EXIT
+          RECORDED_SHA256="$(awk '{print $1}' s22.tfplan.sha256)"
+          ACTUAL_SHA256="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$RECORDED_SHA256" ]]
+          [[ "$ACTUAL_SHA256" == "$APPROVED_PLAN_SHA256" ]]
+
+          terraform show -json "$PLAN" > "$PLAN_JSON"
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e '
+            .variables.deploy_runtime.value == "true"
+              and .variables.bootstrap_runtime.value == "true"
+              and .variables.prepare_migration.value == "false"
+              and .variables.cloud_sql_activation_policy.value == "ALWAYS"
+              and .variables.cloud_sql_tier.value == "db-f1-micro"
+              and .variables.api_max_instance_count.value == "1"
+              and .variables.web_max_instance_count.value == "1"
+              and .variables.worker_instance_count.value == "0"
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.mode == "managed" and .change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 1
+              and $changes[0].address == "google_sql_database_instance.staging"
+              and $changes[0].change.actions == ["update"]
+              and $changes[0].change.before.settings[0].activation_policy == "NEVER"
+              and $changes[0].change.after.settings[0].activation_policy == "ALWAYS"
+              and $changes[0].change.after
+                  == ($changes[0].change.before | .settings[0].activation_policy = "ALWAYS")
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.mode == "data" and .change.actions != ["no-op"])]
+            | all(.[];
+                .address == "data.google_project.staging"
+                  and .change.actions == ["read"])
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '[.resource_changes[] | select(.change.actions == ["create"])] | length == 0' "$PLAN_JSON" > /dev/null
+          jq -e '[.resource_changes[] | select(.change.actions == ["update"])] | length == 1' "$PLAN_JSON" > /dev/null
+          jq -e '[.resource_changes[] | select(.change.actions == ["delete"])] | length == 0' "$PLAN_JSON" > /dev/null
+          jq -e '[.resource_changes[] | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length == 0' "$PLAN_JSON" > /dev/null
+
+          {
+            echo "cloud_sql_start_source_plan_run=$S22_PLAN_RUN_ID"
+            echo "cloud_sql_start_source_commit=$S22_COMMIT_SHA"
+            echo "cloud_sql_start_approved_sha256=$ACTUAL_SHA256"
+            echo "cloud_sql_start_plan_creates=0"
+            echo "cloud_sql_start_plan_changes=1"
+            echo "cloud_sql_start_plan_destroys=0"
+            echo "cloud_sql_start_plan_replacements=0"
+            echo "cloud_sql_start_plan_action=update:google_sql_database_instance.staging"
+            echo "cloud_sql_start_only_change=activation_policy_NEVER_to_ALWAYS"
+          } > s22-cloud-sql-start-apply-evidence.txt
+
       - name: Verify exact health-only runtime approval boundary
         if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
@@ -1510,6 +1648,104 @@ jobs:
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
+
+      - name: Verify Cloud SQL start live state and empty database secrets
+        if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PROJECT_ID: lead-agent-stg-739284
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$(mktemp -d)"
+          trap 'rm -rf "$VERIFY_DIR"' EXIT
+          EVIDENCE=s22-cloud-sql-start-apply-evidence.txt
+          SQL_INSTANCE=lead-agent-staging-postgres17
+
+          for attempt in $(seq 1 60); do
+            gcloud sql instances describe "$SQL_INSTANCE" \
+              --project="$PROJECT_ID" --format=json > "$VERIFY_DIR/sql.json"
+            [[ "$(jq -r '.state // "missing"' "$VERIFY_DIR/sql.json")" == "RUNNABLE" ]] && break
+            sleep 10
+          done
+
+          jq -e '
+            .name == "lead-agent-staging-postgres17"
+              and .state == "RUNNABLE"
+              and .databaseVersion == "POSTGRES_17"
+              and .settings.edition == "ENTERPRISE"
+              and .settings.tier == "db-f1-micro"
+              and .settings.availabilityType == "ZONAL"
+              and .settings.activationPolicy == "ALWAYS"
+              and .settings.dataDiskType == "PD_SSD"
+              and (.settings.dataDiskSizeGb | tonumber) == 10
+              and .settings.storageAutoResize == true
+              and (.settings.storageAutoResizeLimit | tonumber) == 20
+              and .settings.ipConfiguration.ipv4Enabled == false
+              and .settings.ipConfiguration.sslMode == "ENCRYPTED_ONLY"
+              and (.settings.ipConfiguration.privateNetwork | endswith("/global/networks/lead-agent-staging-vpc"))
+              and ([.ipAddresses[]? | select(.type == "PRIVATE" and (.ipAddress | length) > 0)] | length) == 1
+              and ([.ipAddresses[]? | select(.type != "PRIVATE")] | length) == 0
+              and .settings.backupConfiguration.enabled == true
+              and .settings.backupConfiguration.startTime == "01:00"
+              and .settings.backupConfiguration.pointInTimeRecoveryEnabled == true
+              and .settings.backupConfiguration.transactionLogRetentionDays == 7
+              and (.settings.backupConfiguration.backupRetentionSettings.retainedBackups | tonumber) == 7
+              and ((.settings.deletionProtectionEnabled // .deletionProtectionEnabled) == true)
+          ' "$VERIFY_DIR/sql.json" > /dev/null
+
+          DATABASE_SECRETS=(
+            lead-agent-staging-migration-database-url
+            lead-agent-staging-runtime-database-url
+            lead-agent-staging-auth-database-url
+            lead-agent-staging-ingress-database-url
+            lead-agent-staging-queue-database-url
+          )
+          for secret in "${DATABASE_SECRETS[@]}"; do
+            gcloud secrets describe "$secret" --project="$PROJECT_ID" --format='value(name)' > /dev/null
+            ENABLED_COUNT="$(
+              gcloud secrets versions list "$secret" \
+                --project="$PROJECT_ID" --filter='state=ENABLED' --format='value(name)' \
+                | sed '/^$/d' | wc -l | tr -d '[:space:]'
+            )"
+            [[ "$ENABLED_COUNT" == "0" ]]
+          done
+
+          {
+            echo "cloud_sql_start_apply_run_id=$GITHUB_RUN_ID"
+            echo "cloud_sql_start_instance=$SQL_INSTANCE"
+            echo "cloud_sql_start_state=RUNNABLE"
+            echo "cloud_sql_start_activation_policy=ALWAYS"
+            echo "cloud_sql_start_database_version=POSTGRES_17"
+            echo "cloud_sql_start_tier=db-f1-micro"
+            echo "cloud_sql_start_private_ip_only=true"
+            echo "cloud_sql_start_backups_and_pitr_unchanged=true"
+            echo "cloud_sql_start_deletion_protection_unchanged=true"
+            echo "cloud_sql_start_database_secret_containers=5"
+            echo "cloud_sql_start_enabled_database_secret_versions=0"
+            echo "cloud_sql_start_unrelated_infrastructure_changes=NONE"
+          } | tee -a "$EVIDENCE"
+
+      - name: Verify Cloud SQL start Terraform convergence
+        if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set +e
+          terraform plan -lock-timeout=5m -detailed-exitcode
+          PLAN_EXIT_CODE=$?
+          set -e
+          echo "cloud_sql_start_convergence_exit_code=$PLAN_EXIT_CODE" | tee -a s22-cloud-sql-start-apply-evidence.txt
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+
+      - name: Upload Cloud SQL start apply evidence
+        if: always() && env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-cloud-sql-start-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-cloud-sql-start-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Verify health-only runtime live state
         if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply'
