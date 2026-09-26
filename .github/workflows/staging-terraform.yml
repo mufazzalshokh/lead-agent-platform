@@ -3045,7 +3045,6 @@ jobs:
 
           const asObject = (value) =>
             typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
-          if (entries.length === 0) throw new Error("No log entries found for the exact migrator execution");
           const parseJsonObject = (value) => {
             if (typeof value !== "string") return undefined;
             try {
@@ -3097,21 +3096,23 @@ jobs:
           };
           const diagnosticLogPattern = /(?:stderr|varlog%2Fsystem)$/u;
           const usefulErrorPattern = /(?:error|failed|failure|exception|cannot|denied|refused|timeout|not found|module_not_found|err_)/iu;
-          const fallback = entries
-            .filter((entry) => diagnosticLogPattern.test(String(entry.logName ?? "")))
+          const fallbackMessages = entries
             .map((entry) => {
               const jsonPayload = asObject(entry.jsonPayload);
               const protoPayload = asObject(entry.protoPayload);
               const status = asObject(protoPayload?.status);
-              const message = entry.textPayload ?? jsonPayload?.message ?? status?.message;
+              const message = entry.textPayload ?? jsonPayload?.message ?? status?.message ?? entry.message;
               return {
                 error_message: sanitize(message),
+                is_diagnostic_log: diagnosticLogPattern.test(String(entry.logName ?? "")),
                 log_name: String(entry.logName ?? "").split("/logs/").at(-1) ?? "unavailable",
                 severity: optional(entry.severity, /^(?:DEFAULT|DEBUG|INFO|NOTICE|WARNING|ERROR|CRITICAL|ALERT|EMERGENCY)$/u),
               };
-            })
-            .find(({ error_message }) => usefulErrorPattern.test(error_message));
-          const evidence = structuredEvidence ?? (fallback && {
+            });
+          const fallback = fallbackMessages.find(
+            ({ error_message, is_diagnostic_log }) => is_diagnostic_log && usefulErrorPattern.test(error_message),
+          ) ?? fallbackMessages.find(({ error_message }) => usefulErrorPattern.test(error_message));
+          const evidence = structuredEvidence ?? (fallback ? {
             diagnostic_mode: "sanitized_runtime_fallback",
             error_message: fallback.error_message,
             execution_id: executionId,
@@ -3119,8 +3120,13 @@ jobs:
             operation: "database_migration",
             outcome: "failed",
             severity: fallback.severity,
+          } : {
+            diagnostic_mode: "sanitized_metadata_only",
+            entry_count: entries.length,
+            execution_id: executionId,
+            operation: "database_migration",
+            outcome: "failed",
           });
-          if (!evidence) throw new Error("No sanitized migrator failure evidence found");
           console.log(JSON.stringify(evidence));
           NODE
 

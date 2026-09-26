@@ -262,6 +262,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('payload.operation === "database_migration"');
     expect(workflow).toContain('gcloud beta run jobs executions logs read "$EXECUTION_ID"');
     expect(workflow).toContain('diagnostic_mode: "sanitized_runtime_fallback"');
+    expect(workflow).toContain('diagnostic_mode: "sanitized_metadata_only"');
     expect(workflow).toContain("diagnosticLogPattern");
     expect(workflow).toContain("usefulErrorPattern");
     expect(workflow).toContain(".template.template.serviceAccount");
