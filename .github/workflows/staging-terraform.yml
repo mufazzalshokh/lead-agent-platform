@@ -318,7 +318,7 @@ jobs:
           ACCESS_TOKEN="$(gcloud auth print-access-token)"
           curl --fail --silent --show-error \
             --header "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://sqladmin.googleapis.com/v1/projects/$PROJECT_ID/operations?maxResults=100" \
+            "https://sqladmin.googleapis.com/v1/projects/$PROJECT_ID/operations?instance=$SQL_INSTANCE&maxResults=100" \
             > "$INSPECT_DIR/sql-operations-response.json"
           jq '.items // []' "$INSPECT_DIR/sql-operations-response.json" \
             > "$INSPECT_DIR/sql-operations.json"
