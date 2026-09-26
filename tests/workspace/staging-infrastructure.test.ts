@@ -259,6 +259,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(wiringDiagnostic).toContain("live_job_generation_observed");
     expect(wiringDiagnostic).toContain("live_job_terminal_state");
     expect(wiringDiagnostic).toContain("live_job_terminal_revision_reason");
+    expect(wiringDiagnostic).toContain("failed_task_image_matches");
+    expect(wiringDiagnostic).toContain("failed_task_network_matches");
+    expect(wiringDiagnostic).toContain("failed_task_subnetwork_matches");
     expect(workflow).toContain("- bootstrap-log-viewer");
     expect(workflow).toContain("- migration-error-read");
     expect(workflow).toContain(
