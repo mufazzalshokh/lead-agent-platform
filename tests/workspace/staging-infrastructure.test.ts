@@ -260,6 +260,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('[[ "$STATE_COUNT" == "35" ]]');
     expect(workflow).toContain("Read sanitized migrator application error");
     expect(workflow).toContain('payload.operation === "database_migration"');
+    expect(workflow).toContain('diagnostic_mode: "sanitized_runtime_fallback"');
+    expect(workflow).toContain("diagnosticLogPattern");
+    expect(workflow).toContain("usefulErrorPattern");
     expect(workflow).toContain(".template.template.serviceAccount");
     expect(workflow).toContain(".template.template.containers[0].image == $image");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
