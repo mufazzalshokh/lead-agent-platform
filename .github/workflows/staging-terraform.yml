@@ -156,6 +156,17 @@ jobs:
             [[ "$PLAN_RUN_ID" == "36230182001" ]]
             [[ "$APPROVED_PLAN_SHA256" == "2e89253d05281e38af1157e6cf3f1a09740db5572f699f36228606fbbd8a987e" ]]
           fi
+          if [[ "$ACTION" == "apply" && "$PHASE" == "bootstrap" ]]; then
+            [[ "$APPROVAL_TOKEN" == "S22-APPLY-APPROVED" ]]
+            [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
+            [[ "$TF_VAR_region" == "me-central1" ]]
+            [[ "$REQUESTED_SHA" == "2396fdf797eb4b19252a34c8b45e93945a8f53a3" ]]
+            [[ "$PLAN_RUN_ID" == "36234151332" ]]
+            [[ "$APPROVED_PLAN_SHA256" == "4a116fd0d9db69ea821b22c04a1666b1d17f402816f74dde298578ed1d99da96" ]]
+            [[ "$TF_VAR_deployment_timestamp" == "2026-09-26T09:53:56Z" ]]
+            [[ "$TF_VAR_api_image" == "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:a19da09bda3b113f00d92ef2e245e8622505b340592b72c2dbb465dc05aafdcf" ]]
+            [[ "$TF_VAR_web_image" == "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:79560082659204911e1c306ca41ce72e83b1f6a4b9975e91a84d89a477a4f93d" ]]
+          fi
           if [[ "$ACTION" == "apply" && "$PHASE" == "bootstrap-iam" ]]; then
             [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
             [[ "$REQUESTED_SHA" == "87216fcd8d2047e292c398a459e49e40c4ff2b9a" ]]
@@ -316,7 +327,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-phase-b'
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-phase-b' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Inspect partial foundation state and Google Cloud resources
@@ -1188,16 +1199,125 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
         shell: bash
-        run: >-
-          gh run download "$PLAN_RUN_ID"
-          --repo "$GITHUB_REPOSITORY"
-          --name "s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}"
-          --dir infra/deploy/gcp/staging
+        run: |
+          set -euo pipefail
+          if [[ "${{ env.S22_PHASE }}" == "bootstrap" ]]; then
+            ARTIFACT_NAME="s22-health-only-plan-${{ env.S22_COMMIT_SHA }}-$PLAN_RUN_ID"
+          else
+            ARTIFACT_NAME="s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}"
+          fi
+          gh run download "$PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" \
+            --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
+
+      - name: Verify exact health-only runtime approval boundary
+        if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          APPROVED_PLAN_SHA256: ${{ env.S22_APPROVED_PLAN_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLAN=s22.tfplan
+          PLAN_JSON=s22-health-only-approved.tfplan.json
+          trap 'rm -f "$PLAN_JSON"' EXIT
+          RECORDED_SHA256="$(awk '{print $1}' s22.tfplan.sha256)"
+          ACTUAL_SHA256="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA256" == "$RECORDED_SHA256" ]]
+          [[ "$ACTUAL_SHA256" == "$APPROVED_PLAN_SHA256" ]]
+
+          terraform show -json "$PLAN" > "$PLAN_JSON"
+          jq -e --arg project "$TF_VAR_project_id" '.variables.project_id.value == $project' "$PLAN_JSON" > /dev/null
+          jq -e --arg region "$TF_VAR_region" '.variables.region.value == $region' "$PLAN_JSON" > /dev/null
+          jq -e --arg api_image "$TF_VAR_api_image" --arg web_image "$TF_VAR_web_image" '
+            .variables.deploy_runtime.value == "true"
+              and .variables.bootstrap_runtime.value == "true"
+              and .variables.prepare_migration.value == "false"
+              and .variables.cloud_sql_activation_policy.value == "NEVER"
+              and .variables.api_max_instance_count.value == "1"
+              and .variables.web_max_instance_count.value == "1"
+              and .variables.worker_instance_count.value == "0"
+              and .variables.api_image.value == $api_image
+              and .variables.web_image.value == $web_image
+          ' "$PLAN_JSON" > /dev/null
+
+          EXPECTED_ADDRESSES='[
+            "google_cloud_run_v2_service.api[0]",
+            "google_cloud_run_v2_service.web[0]",
+            "google_cloud_run_v2_service_iam_member.api_public[0]",
+            "google_cloud_run_v2_service_iam_member.web_public[0]"
+          ]'
+          jq -e --argjson expected "$EXPECTED_ADDRESSES" '
+            [.resource_changes[]
+             | select(.mode == "managed" and .change.actions != ["no-op"])
+             | { address, actions: .change.actions }] as $actual
+            | ($actual | length) == 4
+              and all($actual[]; .actions == ["create"])
+              and ([$actual[].address] | sort) == ($expected | sort)
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.mode == "data" and .change.actions != ["no-op"])]
+            | all(.[];
+                .address == "data.google_project.staging"
+                  and .change.actions == ["read"])
+          ' "$PLAN_JSON" > /dev/null
+
+          jq -e --arg api_image "$TF_VAR_api_image" '
+            [.resource_changes[]
+             | select(.address == "google_cloud_run_v2_service.api[0]")
+             | .change.after] as $api
+            | ($api | length) == 1
+              and $api[0].template[0].containers[0].image == $api_image
+              and $api[0].template[0].containers[0].command == ["node"]
+              and ($api[0].template[0].containers[0].env | length) == 0
+              and $api[0].template[0].service_account == "lead-agent-staging-api@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and $api[0].template[0].scaling[0].min_instance_count == 0
+              and $api[0].template[0].scaling[0].max_instance_count == 1
+              and $api[0].template[0].max_instance_request_concurrency == 40
+              and $api[0].template[0].containers[0].resources[0].limits.cpu == "1"
+              and $api[0].template[0].containers[0].resources[0].limits.memory == "512Mi"
+              and $api[0].template[0].timeout == "60s"
+              and $api[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
+          ' "$PLAN_JSON" > /dev/null
+          jq -e --arg web_image "$TF_VAR_web_image" '
+            [.resource_changes[]
+             | select(.address == "google_cloud_run_v2_service.web[0]")
+             | .change.after] as $web
+            | ($web | length) == 1
+              and $web[0].template[0].containers[0].image == $web_image
+              and $web[0].template[0].containers[0].command == ["node"]
+              and ($web[0].template[0].containers[0].env | length) == 0
+              and $web[0].template[0].service_account == "lead-agent-staging-web@lead-agent-stg-739284.iam.gserviceaccount.com"
+              and $web[0].template[0].scaling[0].min_instance_count == 0
+              and $web[0].template[0].scaling[0].max_instance_count == 1
+              and $web[0].template[0].max_instance_request_concurrency == 80
+              and $web[0].template[0].containers[0].resources[0].limits.cpu == "1"
+              and $web[0].template[0].containers[0].resources[0].limits.memory == "512Mi"
+              and $web[0].template[0].timeout == "60s"
+              and $web[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
+          ' "$PLAN_JSON" > /dev/null
+          jq -e '
+            [.resource_changes[]
+             | select(.address == "google_cloud_run_v2_service_iam_member.api_public[0]"
+                      or .address == "google_cloud_run_v2_service_iam_member.web_public[0]")
+             | .change.after
+             | select(.role == "roles/run.invoker" and .member == "allUsers")]
+            | length == 2
+          ' "$PLAN_JSON" > /dev/null
+
+          {
+            echo "health_only_approved_plan_sha256=$ACTUAL_SHA256"
+            echo "health_only_approved_plan_run=$S22_PLAN_RUN_ID"
+            echo "health_only_approved_source_commit=$S22_COMMIT_SHA"
+            echo "health_only_approved_actions=4_create_0_change_0_destroy_0_replace"
+          } > s22-health-only-apply-evidence.txt
 
       - name: Verify exact foundation reconciliation approval boundary
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'apply'
@@ -1390,6 +1510,163 @@ jobs:
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
+
+      - name: Verify health-only runtime live state
+        if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          API_IMAGE: me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:a19da09bda3b113f00d92ef2e245e8622505b340592b72c2dbb465dc05aafdcf
+          PROJECT_ID: lead-agent-stg-739284
+          REGION: me-central1
+          WEB_IMAGE: me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:79560082659204911e1c306ca41ce72e83b1f6a4b9975e91a84d89a477a4f93d
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$(mktemp -d)"
+          trap 'rm -rf "$VERIFY_DIR"' EXIT
+          EVIDENCE=s22-health-only-apply-evidence.txt
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          RUN_BASE="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION"
+          SQL_URL="https://sqladmin.googleapis.com/sql/v1beta4/projects/$PROJECT_ID/instances/lead-agent-staging-postgres17"
+          FAILURES=0
+
+          report() {
+            local name="$1"
+            local expected="$2"
+            local observed="$3"
+            local result=FAIL
+            if [[ "$observed" == "$expected" ]]; then
+              result=PASS
+            else
+              FAILURES=$((FAILURES + 1))
+            fi
+            printf 'ASSERTION|%s|%s|expected=%s|observed=%s\n' \
+              "$name" "$result" "$expected" "$observed" | tee -a "$EVIDENCE"
+          }
+
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$RUN_BASE/services/lead-agent-staging-api" > "$VERIFY_DIR/api.json"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$RUN_BASE/services/lead-agent-staging-web" > "$VERIFY_DIR/web.json"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$RUN_BASE/services" > "$VERIFY_DIR/services.json"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$RUN_BASE/jobs" > "$VERIFY_DIR/jobs.json"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$RUN_BASE/workerPools" > "$VERIFY_DIR/worker-pools.json"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$SQL_URL" > "$VERIFY_DIR/sql.json"
+
+          report "health.services.count" "2" "$(jq '(.services // []) | length' "$VERIFY_DIR/services.json")"
+          report "health.jobs.count" "0" "$(jq '(.jobs // []) | length' "$VERIFY_DIR/jobs.json")"
+          report "health.worker_pools.count" "0" "$(jq '(.workerPools // []) | length' "$VERIFY_DIR/worker-pools.json")"
+
+          verify_service() {
+            local file="$1"
+            local prefix="$2"
+            local name="$3"
+            local image="$4"
+            local identity="$5"
+            local concurrency="$6"
+            local tag="$7"
+
+            report "$prefix.name" "projects/$PROJECT_ID/locations/$REGION/services/$name" "$(jq -r '.name // "missing"' "$file")"
+            report "$prefix.image" "$image" "$(jq -r '.template.containers[0].image // "missing"' "$file")"
+            report "$prefix.identity" "$identity" "$(jq -r '.template.serviceAccount // "missing"' "$file")"
+            report "$prefix.min_instances" "0" "$(jq -r '.template.scaling.minInstanceCount // 0' "$file")"
+            report "$prefix.max_instances" "1" "$(jq -r '.template.scaling.maxInstanceCount // "missing"' "$file")"
+            report "$prefix.concurrency" "$concurrency" "$(jq -r '.template.maxInstanceRequestConcurrency // "missing"' "$file")"
+            report "$prefix.cpu" "1" "$(jq -r '.template.containers[0].resources.limits.cpu // "missing"' "$file")"
+            report "$prefix.memory" "512Mi" "$(jq -r '.template.containers[0].resources.limits.memory // "missing"' "$file")"
+            report "$prefix.timeout" "60s" "$(jq -r '.template.timeout // "missing"' "$file")"
+            report "$prefix.ingress" "INGRESS_TRAFFIC_ALL" "$(jq -r '.ingress // "missing"' "$file")"
+            report "$prefix.vpc_egress" "PRIVATE_RANGES_ONLY" "$(jq -r '.template.vpcAccess.egress // "missing"' "$file")"
+            report "$prefix.vpc_network" "projects/$PROJECT_ID/global/networks/lead-agent-staging-vpc" "$(jq -r '.template.vpcAccess.networkInterfaces[0].network // "missing"' "$file")"
+            report "$prefix.vpc_subnet" "projects/$PROJECT_ID/regions/$REGION/subnetworks/lead-agent-staging-cloud-run" "$(jq -r '.template.vpcAccess.networkInterfaces[0].subnetwork // "missing"' "$file")"
+            report "$prefix.vpc_tag" "$tag" "$(jq -r '.template.vpcAccess.networkInterfaces[0].tags[0] // "missing"' "$file")"
+            report "$prefix.secret_env_count" "0" "$(jq '(.template.containers[0].env // []) | length' "$file")"
+            report "$prefix.command" "node" "$(jq -r '.template.containers[0].command[0] // "missing"' "$file")"
+            report "$prefix.uri_present" "true" "$(jq -r '(.uri // "") | startswith("https://")' "$file")"
+          }
+
+          verify_service "$VERIFY_DIR/api.json" health.api lead-agent-staging-api "$API_IMAGE" \
+            "lead-agent-staging-api@$PROJECT_ID.iam.gserviceaccount.com" 40 lead-agent-api
+          verify_service "$VERIFY_DIR/web.json" health.web lead-agent-staging-web "$WEB_IMAGE" \
+            "lead-agent-staging-web@$PROJECT_ID.iam.gserviceaccount.com" 80 lead-agent-web
+
+          for service in api web; do
+            gcloud run services get-iam-policy "lead-agent-staging-$service" \
+              --project="$PROJECT_ID" --region="$REGION" --format=json \
+              > "$VERIFY_DIR/$service-iam.json"
+            report "health.$service.public_invoker" "1" \
+              "$(jq '[.bindings[]? | select(.role == "roles/run.invoker") | .members[]? | select(. == "allUsers")] | length' "$VERIFY_DIR/$service-iam.json")"
+          done
+
+          API_URL="$(jq -r '.uri' "$VERIFY_DIR/api.json")"
+          WEB_URL="$(jq -r '.uri' "$VERIFY_DIR/web.json")"
+          API_RESPONSE="$(curl --fail --silent --show-error --retry 5 --retry-delay 2 "$API_URL/")"
+          WEB_RESPONSE="$(curl --fail --silent --show-error --retry 5 --retry-delay 2 "$WEB_URL/")"
+          report "health.api.response" "ok" "$API_RESPONSE"
+          report "health.web.response" "ok" "$WEB_RESPONSE"
+          report "health.cloud_sql.activation_policy" "NEVER" "$(jq -r '.settings.activationPolicy // "missing"' "$VERIFY_DIR/sql.json")"
+
+          SECRET_VERSION_COUNT=0
+          while IFS= read -r secret_name; do
+            count="$(gcloud secrets versions list "$secret_name" \
+              --project="$PROJECT_ID" --filter='state:ENABLED OR state:DISABLED OR state:DESTROYED' \
+              --format='value(name)' | wc -l | tr -d ' ')"
+            SECRET_VERSION_COUNT=$((SECRET_VERSION_COUNT + count))
+          done < <(gcloud secrets list --project="$PROJECT_ID" \
+            --filter='labels.environment=staging' --format='value(name)')
+          report "health.secret_versions" "0" "$SECRET_VERSION_COUNT"
+
+          STATE_COUNT="$(terraform state list | wc -l | tr -d ' ')"
+          report "health.terraform_state_count" "86" "$STATE_COUNT"
+          report "health.worker_state_count" "0" "$(terraform state list | grep -c '^google_cloud_run_v2_worker_pool.worker' || true)"
+          report "health.migrator_state_count" "0" "$(terraform state list | grep -c '^google_cloud_run_v2_job.migrator' || true)"
+
+          {
+            echo "health_only_apply_run_id=$GITHUB_RUN_ID"
+            echo "health_only_applied_plan_sha256=$S22_APPROVED_PLAN_SHA256"
+            echo "health_only_apply_creates=4"
+            echo "health_only_apply_changes=0"
+            echo "health_only_apply_destroys=0"
+            echo "health_only_apply_replacements=0"
+            echo "health_only_api_url=$API_URL"
+            echo "health_only_web_url=$WEB_URL"
+            echo "health_only_cloud_sql_policy=NEVER"
+            echo "health_only_secret_versions=$SECRET_VERSION_COUNT"
+            echo "health_only_named_assertion_failures=$FAILURES"
+          } | tee -a "$EVIDENCE"
+
+          [[ "$FAILURES" == "0" ]]
+
+      - name: Verify health-only runtime Terraform convergence
+        if: env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set +e
+          terraform plan -lock-timeout=5m -detailed-exitcode
+          PLAN_EXIT_CODE=$?
+          set -e
+          echo "health_only_convergence_exit_code=$PLAN_EXIT_CODE" | tee -a s22-health-only-apply-evidence.txt
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+
+      - name: Upload health-only runtime apply evidence
+        if: always() && env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-health-only-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-health-only-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Apply exact owner-approved Cloud SQL Phase B plan
         if: env.S22_PHASE == 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'

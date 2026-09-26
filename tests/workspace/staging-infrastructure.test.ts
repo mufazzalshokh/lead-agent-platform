@@ -164,6 +164,17 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("always() && env.S22_PHASE == 'bootstrap'");
     expect(workflow).toContain("health_only_cloud_sql_policy=NEVER");
     expect(workflow).toContain("Upload exact health-only bootstrap plan");
+    expect(workflow).toContain("s22-health-only-plan-${{ env.S22_COMMIT_SHA }}-$PLAN_RUN_ID");
+    expect(workflow).toContain('[[ "$PLAN_RUN_ID" == "36234151332" ]]');
+    expect(workflow).toContain(
+      '[[ "$APPROVED_PLAN_SHA256" == "4a116fd0d9db69ea821b22c04a1666b1d17f402816f74dde298578ed1d99da96" ]]',
+    );
+    expect(workflow).toContain("Verify exact health-only runtime approval boundary");
+    expect(workflow).toContain("Verify health-only runtime live state");
+    expect(workflow).toContain("health.secret_versions");
+    expect(workflow).toContain("health.terraform_state_count");
+    expect(workflow).toContain("Verify health-only runtime Terraform convergence");
+    expect(workflow).toContain("Upload health-only runtime apply evidence");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');
