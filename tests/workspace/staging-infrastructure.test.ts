@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { Script } from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
@@ -266,6 +267,11 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('diagnostic_mode: "sanitized_metadata_only"');
     expect(workflow).toContain("diagnosticLogPattern");
     expect(workflow).toContain("usefulErrorPattern");
+    const diagnosticScript = workflow.match(
+      /node - "\$LOGS" "\$EXECUTION_ID" <<'NODE' \| tee s22-migrator-root-error\.txt\n([\s\S]*?)\n          NODE/u,
+    )?.[1];
+    expect(diagnosticScript).toBeDefined();
+    expect(() => new Script(diagnosticScript ?? "")).not.toThrow();
     expect(workflow).toContain(".template.template.serviceAccount");
     expect(workflow).toContain(".template.template.containers[0].image == $image");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");

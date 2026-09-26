@@ -3080,11 +3080,11 @@ jobs:
 
           const sanitize = (value) =>
             String(value ?? "unavailable")
-              .replace(/postgres(?:ql)?:\/\/[^\s\"'<>]+/giu, "postgresql://[REDACTED]")
-              .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s\"'<>]+/giu, "[REDACTED_URL]")
-              .replace(/Bearer\s+[^\s\"'<>]+/giu, "Bearer [REDACTED]")
+              .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/giu, "postgresql://[REDACTED]")
+              .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/giu, "[REDACTED_URL]")
+              .replace(/Bearer\s+[^\s"'<>]+/giu, "Bearer [REDACTED]")
               .replace(/(?:[A-Za-z0-9_-]{16,}\.){2}[A-Za-z0-9_-]{16,}/gu, "[REDACTED_TOKEN]")
-              .replace(/((?:password|token|secret|authorization|api[_-]?key|database[_-]?url)\s*[:=]\s*)[^\s,;\"'<>]+/giu, "$1[REDACTED]")
+              .replace(/((?:password|token|secret|authorization|api[_-]?key|database[_-]?url)\s*[:=]\s*)[^\s,;"'<>]+/giu, "$1[REDACTED]")
               .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/gu, "[REDACTED_IP]")
               .replace(/[\u0000-\u001f\u007f]+/gu, " ")
               .replace(/\s+/gu, " ")
