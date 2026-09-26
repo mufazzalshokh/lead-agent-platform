@@ -69,13 +69,15 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("requires reviewed-plan integrity and GitHub OIDC instead of service-account keys", async () => {
-    const [bootstrap, runtimeIam, runtime, workflow, imagesWorkflow] = await Promise.all([
-      repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
-      repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
-      repositoryFile("infra/deploy/gcp/staging/runtime.tf"),
-      repositoryFile(".github/workflows/staging-terraform.yml"),
-      repositoryFile(".github/workflows/staging-images.yml"),
-    ]);
+    const [bootstrap, runtimeIam, runtime, workflow, imagesWorkflow, wiringDiagnostic] =
+      await Promise.all([
+        repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
+        repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
+        repositoryFile("infra/deploy/gcp/staging/runtime.tf"),
+        repositoryFile(".github/workflows/staging-terraform.yml"),
+        repositoryFile(".github/workflows/staging-images.yml"),
+        repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
+      ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
     expect(bootstrapVersions).toContain('prefix = "lead-agent-platform/bootstrap"');
@@ -249,7 +251,10 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("migration_state");
     expect(workflow).toContain("application_role_connectivity");
     expect(workflow).toContain("Diagnose migrator secret and VPC wiring");
+    expect(workflow).toContain("FAILED_EXECUTION: ${{ env.S22_MIGRATOR_EXECUTION_ID }}");
+    expect(workflow).toContain("S22_SKIP_ACTIVE_PROBES:");
     expect(workflow).toContain("s22-migration-wiring-diagnose.sh");
+    expect(wiringDiagnostic).toContain('if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]');
     expect(workflow).toContain("- bootstrap-log-viewer");
     expect(workflow).toContain("- migration-error-read");
     expect(workflow).toContain(

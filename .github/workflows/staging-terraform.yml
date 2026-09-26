@@ -141,6 +141,9 @@ jobs:
             [[ "$ACTION" == "plan" ]]
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
           fi
+          if [[ "$PHASE" == "migration-wiring-diagnose" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
+            [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          fi
           if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]; then
             echo "Apply requires the exact owner approval token." >&2
             exit 1
@@ -3509,8 +3512,10 @@ jobs:
       - name: Diagnose migrator secret and VPC wiring
         if: env.S22_PHASE == 'migration-wiring-diagnose' && env.S22_ACTION == 'plan'
         env:
+          FAILED_EXECUTION: ${{ env.S22_MIGRATOR_EXECUTION_ID }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: me-central1
+          S22_SKIP_ACTIVE_PROBES: ${{ env.S22_MIGRATOR_EXECUTION_ID != '' }}
         shell: bash
         run: bash .github/scripts/s22-migration-wiring-diagnose.sh
 

@@ -183,6 +183,11 @@ else
   report failed_execution_first_root_error unavailable
 fi
 
+if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]; then
+  unset ACCESS_TOKEN
+  exit 0
+fi
+
 PROBE_SCRIPT="$WORK_DIR/probe.mjs"
 cat > "$PROBE_SCRIPT" <<'EOF'
 (async () => {
