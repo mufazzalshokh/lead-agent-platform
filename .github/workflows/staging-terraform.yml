@@ -3033,18 +3033,23 @@ jobs:
           LOGS="$(mktemp)"
           trap 'rm -f "$LOGS"' EXIT
           gcloud logging read \
-            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"lead-agent-staging-migrator\" AND labels.execution_name=\"$EXECUTION_ID\"" \
+            "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"lead-agent-staging-migrator\"" \
             --project="$PROJECT_ID" \
-            --limit=200 \
-            --order=asc \
+            --limit=1000 \
+            --order=desc \
             --format=json > "$LOGS"
           node - "$LOGS" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
           const fs = require("node:fs");
           const [logPath, executionId] = process.argv.slice(2);
-          const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
+          const rawEntries = JSON.parse(fs.readFileSync(logPath, "utf8"));
 
           const asObject = (value) =>
             typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+          const entries = rawEntries.filter((entry) => {
+            const labels = asObject(entry.labels);
+            return labels?.execution_name === executionId || labels?.["run.googleapis.com/execution_name"] === executionId;
+          });
+          if (entries.length === 0) throw new Error("No log entries found for the exact migrator execution");
           const parseJsonObject = (value) => {
             if (typeof value !== "string") return undefined;
             try {
