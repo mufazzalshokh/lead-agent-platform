@@ -344,6 +344,98 @@ if (mode === "sql_connectivity") {
   process.exit(result);
 }
 
+if (mode === "normalized_sql_connectivity") {
+  const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
+  const { Pool } = await import("pg");
+  const pool = new Pool({
+    application_name: "lead-agent-staging-normalized-sql-connectivity-diagnostic",
+    connectionString: withLibpqCompatibleRequireSsl(process.env.MIGRATION_DATABASE_URL),
+    connectionTimeoutMillis: 15000,
+    max: 1,
+    query_timeout: 15000,
+  });
+  let result = 9;
+  try {
+    await pool.query("select 1 as connected");
+    result = 0;
+  } catch (error) {
+    const code = typeof error?.code === "string" ? error.code : "";
+    const message = error instanceof Error ? error.message : "";
+    if (code === "ERR_TLS_CERT_ALTNAME_INVALID") result = 2;
+    else if (code === "DEPTH_ZERO_SELF_SIGNED_CERT") result = 3;
+    else if (code === "SELF_SIGNED_CERT_IN_CHAIN") result = 4;
+    else if (code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") result = 5;
+    else if (code.startsWith("28")) result = 6;
+    else if (/^(?:ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT)$/u.test(code)) result = 7;
+    else if (/(?:certificate|ssl|tls)/iu.test(message)) result = 8;
+  } finally {
+    await pool.end().catch(() => {});
+  }
+  process.exit(result);
+}
+
+if (mode === "migration_state_flags") {
+  const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
+  const { Pool } = await import("pg");
+  const pool = new Pool({
+    application_name: "lead-agent-staging-migration-state-diagnostic",
+    connectionString: withLibpqCompatibleRequireSsl(process.env.MIGRATION_DATABASE_URL),
+    connectionTimeoutMillis: 15000,
+    max: 1,
+    query_timeout: 15000,
+  });
+  let flags = 0;
+  try {
+    const identity = await pool.query(`
+      select current_user as role_name,
+             rolcreaterole,
+             rolbypassrls,
+             rolsuper
+      from pg_catalog.pg_roles
+      where rolname = current_user
+    `);
+    const role = identity.rows[0];
+    if (role?.role_name === "postgres") flags |= 1;
+    if (role?.rolcreaterole === true) flags |= 2;
+    if (role?.rolbypassrls === true) flags |= 4;
+    if (role?.rolsuper === true) flags |= 8;
+
+    const migrationTable = await pool.query(
+      "select to_regclass($$drizzle.__drizzle_migrations$$) is not null as present",
+    );
+    if (migrationTable.rows[0]?.present === true) {
+      flags |= 16;
+      const migrations = await pool.query(
+        "select count(*)::integer as count from drizzle.__drizzle_migrations",
+      );
+      if (migrations.rows[0]?.count === 30) flags |= 32;
+    }
+    const tables = await pool.query(
+      "select count(*)::integer as count from information_schema.tables where table_schema = $$public$$ and table_type = $$BASE TABLE$$",
+    );
+    if (tables.rows[0]?.count === 52) flags |= 64;
+    const bypassRoles = await pool.query(`
+      select count(*)::integer as count
+      from pg_catalog.pg_roles
+      where rolname = any($1::text[])
+        and rolbypassrls
+    `, [["lead_agent_inbound_route_definer", "lead_agent_identity_definer"]]);
+    if (bypassRoles.rows[0]?.count === 2) flags |= 128;
+  } finally {
+    await pool.end().catch(() => {});
+  }
+  process.exit(flags);
+}
+
+if (mode === "packaged_manifest_flags") {
+  const { readStagingMigrationManifest } = await import("./dist/migrate.js");
+  const manifest = await readStagingMigrationManifest();
+  let flags = 1;
+  if (manifest.entries.length === 30) flags |= 2;
+  if (manifest.entries.at(-1)?.tag === "0029_s21_thread_automation_controls") flags |= 4;
+  process.exit(flags);
+}
+
 process.exit(254);
 })().catch(() => process.exit(253));
 EOF
@@ -436,6 +528,35 @@ if [[ "${S22_RUN_SQL_PROBE:-false}" == "true" ]]; then
     *) SQL_CONNECTIVITY_RESULT=OTHER_DATABASE_FAILURE ;;
   esac
   report runtime_sql_connectivity "$SQL_CONNECTIVITY_RESULT"
+
+  NORMALIZED_SQL_CONNECTIVITY_CODE="$(run_encoded_probe MIGRATION_DATABASE_URL postgres normalized_sql_connectivity)"
+  case "$NORMALIZED_SQL_CONNECTIVITY_CODE" in
+    0) NORMALIZED_SQL_CONNECTIVITY_RESULT=CONNECTED ;;
+    2) NORMALIZED_SQL_CONNECTIVITY_RESULT=TLS_CERT_ALTNAME_INVALID ;;
+    3) NORMALIZED_SQL_CONNECTIVITY_RESULT=TLS_SELF_SIGNED_CERT ;;
+    4) NORMALIZED_SQL_CONNECTIVITY_RESULT=TLS_SELF_SIGNED_CHAIN ;;
+    5) NORMALIZED_SQL_CONNECTIVITY_RESULT=TLS_UNVERIFIED_LEAF ;;
+    6) NORMALIZED_SQL_CONNECTIVITY_RESULT=AUTHENTICATION_FAILED ;;
+    7) NORMALIZED_SQL_CONNECTIVITY_RESULT=NETWORK_FAILED ;;
+    8) NORMALIZED_SQL_CONNECTIVITY_RESULT=OTHER_TLS_FAILURE ;;
+    *) NORMALIZED_SQL_CONNECTIVITY_RESULT=OTHER_DATABASE_FAILURE ;;
+  esac
+  report runtime_normalized_sql_connectivity "$NORMALIZED_SQL_CONNECTIVITY_RESULT"
+
+  MIGRATION_STATE_FLAGS="$(run_encoded_probe MIGRATION_DATABASE_URL postgres migration_state_flags)"
+  report runtime_admin_role_postgres "$(decode_boolean "$MIGRATION_STATE_FLAGS" 1)"
+  report runtime_admin_role_createrole "$(decode_boolean "$MIGRATION_STATE_FLAGS" 2)"
+  report runtime_admin_role_bypassrls "$(decode_boolean "$MIGRATION_STATE_FLAGS" 4)"
+  report runtime_admin_role_superuser "$(decode_boolean "$MIGRATION_STATE_FLAGS" 8)"
+  report runtime_migration_table_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 16)"
+  report runtime_migration_count_30 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 32)"
+  report runtime_production_table_count_52 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 64)"
+  report runtime_required_bypassrls_roles_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 128)"
+
+  PACKAGED_MANIFEST_FLAGS="$(run_encoded_probe UNUSED UNUSED packaged_manifest_flags)"
+  report packaged_manifest_importable "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 1)"
+  report packaged_manifest_count_30 "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 2)"
+  report packaged_manifest_head_0029 "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 4)"
 fi
 
 if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]; then

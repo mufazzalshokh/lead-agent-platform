@@ -267,6 +267,16 @@ describe("S22 staging infrastructure boundary", () => {
     expect(wiringDiagnostic).toContain("failed_task_args_matches");
     expect(wiringDiagnostic).toContain("failed_task_diagnostic_override_present");
     expect(wiringDiagnostic).toContain("runtime_sql_connectivity");
+    expect(wiringDiagnostic).toContain("runtime_normalized_sql_connectivity");
+    expect(wiringDiagnostic).toContain(
+      "withLibpqCompatibleRequireSsl(process.env.MIGRATION_DATABASE_URL)",
+    );
+    expect(wiringDiagnostic).toContain("runtime_admin_role_superuser");
+    expect(wiringDiagnostic).toContain("runtime_admin_role_bypassrls");
+    expect(wiringDiagnostic).toContain("runtime_migration_count_30");
+    expect(wiringDiagnostic).toContain("runtime_production_table_count_52");
+    expect(wiringDiagnostic).toContain("runtime_required_bypassrls_roles_present");
+    expect(wiringDiagnostic).toContain("packaged_manifest_head_0029");
     expect(wiringDiagnostic).toContain("TLS_CERT_ALTNAME_INVALID");
     expect(workflow).toContain("- bootstrap-log-viewer");
     expect(workflow).toContain("- migration-error-read");
