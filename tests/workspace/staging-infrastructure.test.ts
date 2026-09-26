@@ -261,6 +261,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Read sanitized migrator application error");
     expect(workflow).toContain('payload.operation === "database_migration"');
     expect(workflow).toContain('gcloud beta run jobs executions logs read "$EXECUTION_ID"');
+    expect(workflow).toContain("Array.isArray(parsedLogs?.entries)");
     expect(workflow).toContain('diagnostic_mode: "sanitized_runtime_fallback"');
     expect(workflow).toContain('diagnostic_mode: "sanitized_metadata_only"');
     expect(workflow).toContain("diagnosticLogPattern");

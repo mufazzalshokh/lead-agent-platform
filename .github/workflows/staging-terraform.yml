@@ -3041,7 +3041,20 @@ jobs:
           node - "$LOGS" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
           const fs = require("node:fs");
           const [logPath, executionId] = process.argv.slice(2);
-          const entries = JSON.parse(fs.readFileSync(logPath, "utf8"));
+          const rawLogs = fs.readFileSync(logPath, "utf8");
+          let parsedLogs;
+          try {
+            parsedLogs = JSON.parse(rawLogs);
+          } catch {
+            parsedLogs = [];
+          }
+          const entries = Array.isArray(parsedLogs)
+            ? parsedLogs
+            : Array.isArray(parsedLogs?.entries)
+              ? parsedLogs.entries
+              : parsedLogs && typeof parsedLogs === "object"
+                ? [parsedLogs]
+                : [];
 
           const asObject = (value) =>
             typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
