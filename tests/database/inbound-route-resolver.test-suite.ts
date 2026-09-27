@@ -143,7 +143,7 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
       expect(role.rows).toEqual([
         {
           ingress_can_assume: false,
-          rolbypassrls: true,
+          rolbypassrls: false,
           rolcanlogin: false,
           rolcreatedb: false,
           rolcreaterole: false,
@@ -319,6 +319,9 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
       ]);
 
       await withRole(harness.privilegedPool(), RUNTIME_ROLE, async (client) => {
+        await expect(client.query("select id from public.inbound_routes")).rejects.toMatchObject({
+          code: "42501",
+        });
         await expect(
           client.query("select * from app.resolve_inbound_route($1::varchar, $2::bytea)", [
             "widget_key",
@@ -375,7 +378,7 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
       }
     });
 
-    it("preserves FORCE RLS and the frozen inbound-route policy", async () => {
+    it("preserves FORCE RLS and keeps resolver and management policies role-scoped", async () => {
       const relation = await harness.privilegedPool().query<{
         relforcerowsecurity: boolean;
         relrowsecurity: boolean;
@@ -398,6 +401,21 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
           order by policyname`,
       );
       expect(policies.rows).toEqual([
+        {
+          cmd: "INSERT",
+          policyname: "inbound_routes_inbound_route_management_insert",
+          roles: [DEFINER_ROLE],
+        },
+        {
+          cmd: "UPDATE",
+          policyname: "inbound_routes_inbound_route_management_update",
+          roles: [DEFINER_ROLE],
+        },
+        {
+          cmd: "SELECT",
+          policyname: "inbound_routes_pre_tenant_resolution",
+          roles: [DEFINER_ROLE],
+        },
         {
           cmd: "ALL",
           policyname: "inbound_routes_tenant_isolation",

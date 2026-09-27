@@ -9,6 +9,25 @@ ON TABLE public.inbound_routes TO lead_agent_inbound_route_definer;
 GRANT SELECT (organization_id, id, channel_type, status)
 ON TABLE public.channel_connections TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
+CREATE POLICY channel_connections_inbound_route_management_select
+ON public.channel_connections
+FOR SELECT
+TO lead_agent_inbound_route_definer
+USING (organization_id = app.current_organization_id());
+--> statement-breakpoint
+CREATE POLICY inbound_routes_inbound_route_management_insert
+ON public.inbound_routes
+FOR INSERT
+TO lead_agent_inbound_route_definer
+WITH CHECK (organization_id = app.current_organization_id());
+--> statement-breakpoint
+CREATE POLICY inbound_routes_inbound_route_management_update
+ON public.inbound_routes
+FOR UPDATE
+TO lead_agent_inbound_route_definer
+USING (organization_id = app.current_organization_id())
+WITH CHECK (organization_id = app.current_organization_id());
+--> statement-breakpoint
 CREATE FUNCTION app.create_telegram_inbound_route(
     input_route_id uuid,
     input_channel_connection_id uuid,
