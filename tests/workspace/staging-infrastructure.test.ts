@@ -80,29 +80,35 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("uses bounded definer role entry when replacing definer-owned functions", async () => {
-    for (const [name, role, mutation] of [
+    for (const [name, role, mutation, privilegeReset] of [
       [
         "0023_s8_active_route_claim.sql",
         "lead_agent_outbox_relay_definer",
         "DROP FUNCTION app.claim_outbox_events",
+        "REVOKE ALL PRIVILEGES ON FUNCTION app.claim_outbox_events",
       ],
       [
         "0025_s6_membership_invitation_clock_skew.sql",
         "lead_agent_membership_definer",
         "CREATE OR REPLACE FUNCTION app.accept_membership_invitation",
+        "REVOKE ALL PRIVILEGES ON FUNCTION app.accept_membership_invitation",
       ],
       [
         "0027_s11_instagram_identity_routing.sql",
         "lead_agent_inbound_route_definer",
         "CREATE OR REPLACE FUNCTION app.resolve_inbound_route",
+        "REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_inbound_route",
       ],
     ] as const) {
       const sql = await repositoryFile(`packages/database/drizzle/${name}`);
+      const privilegeResetIndex = sql.indexOf(privilegeReset);
       const setGrantIndex = sql.indexOf(`GRANT ${role} TO CURRENT_USER WITH SET TRUE`);
       const setRoleIndex = sql.indexOf(`SET ROLE ${role}`);
       const mutationIndex = sql.indexOf(mutation);
       const resetRoleIndex = sql.indexOf("RESET ROLE", mutationIndex);
       const setRevokeIndex = sql.lastIndexOf(`GRANT ${role} TO CURRENT_USER WITH SET FALSE`);
+      expect(privilegeResetIndex).toBeGreaterThanOrEqual(0);
+      expect(setGrantIndex).toBeGreaterThan(privilegeResetIndex);
       expect(setGrantIndex).toBeGreaterThanOrEqual(0);
       expect(setRoleIndex).toBeGreaterThan(setGrantIndex);
       expect(mutationIndex).toBeGreaterThan(setRoleIndex);

@@ -3,6 +3,12 @@
 GRANT SELECT (created_at) ON TABLE public.membership_invitations
 	TO lead_agent_membership_definer;
 --> statement-breakpoint
+REVOKE ALL PRIVILEGES ON FUNCTION app.accept_membership_invitation(
+	uuid, bytea, bytea, character varying, character varying,
+	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
+	character varying, uuid, character varying
+) FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
+--> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 SET ROLE lead_agent_membership_definer;
@@ -240,12 +246,6 @@ BEGIN
 		v_new_identity, v_new_identity, v_membership_activated;
 END
 $function$;
---> statement-breakpoint
-REVOKE ALL PRIVILEGES ON FUNCTION app.accept_membership_invitation(
-	uuid, bytea, bytea, character varying, character varying,
-	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
-	character varying, uuid, character varying
-) FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
 	uuid, bytea, bytea, character varying, character varying,
