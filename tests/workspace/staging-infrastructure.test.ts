@@ -574,6 +574,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(wiringDiagnostic).toContain("packaged_manifest_head_0029");
     expect(wiringDiagnostic).toContain("TLS_CERT_ALTNAME_INVALID");
     expect(workflow).toContain("- bootstrap-log-viewer");
+    expect(workflow).toContain("- bootstrap-log-viewer-remove");
     expect(workflow).toContain("- migration-error-read");
     expect(workflow).toContain(
       "-target='google_project_iam_member.deployer_temporary_logging_viewer[0]'",
@@ -581,7 +582,12 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain(
       '["create:google_project_iam_member.deployer_temporary_logging_viewer[0]"]',
     );
+    expect(workflow).toContain(
+      '["delete:google_project_iam_member.deployer_temporary_logging_viewer[0]"]',
+    );
     expect(workflow).toContain('[[ "$STATE_COUNT" == "35" ]]');
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "34" ]]');
+    expect(workflow).toContain("Verify temporary logging viewer removal convergence");
     expect(workflow).toContain("Read sanitized migrator application error");
     expect(workflow).toContain('payload.operation === "database_migration"');
     expect(workflow).toContain('gcloud beta run jobs executions logs read "$EXECUTION_ID"');
