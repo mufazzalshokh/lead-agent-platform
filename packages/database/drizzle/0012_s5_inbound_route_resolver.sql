@@ -35,7 +35,7 @@ GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
-GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.resolve_inbound_route(character varying, bytea)
 	OWNER TO lead_agent_inbound_route_definer;

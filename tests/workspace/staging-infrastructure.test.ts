@@ -63,7 +63,7 @@ describe("S22 staging infrastructure boundary", () => {
         `GRANT ${role} TO CURRENT_USER WITH SET TRUE`,
         nonInheritedIndex,
       );
-      const grantIndex = ownerTransferSql.indexOf(`GRANT CREATE ON SCHEMA app TO ${role}`);
+      const grantIndex = ownerTransferSql.indexOf(`GRANT USAGE, CREATE ON SCHEMA app TO ${role}`);
       const firstOwnerIndex = ownerTransferSql.indexOf(`OWNER TO ${role}`);
       const lastOwnerIndex = ownerTransferSql.lastIndexOf(`OWNER TO ${role}`);
       const revokeIndex = ownerTransferSql.lastIndexOf(`REVOKE CREATE ON SCHEMA app FROM ${role}`);

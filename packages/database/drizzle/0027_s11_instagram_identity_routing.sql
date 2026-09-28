@@ -53,7 +53,7 @@ GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
-GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 CREATE FUNCTION app.create_instagram_inbound_route(
     input_route_id uuid,

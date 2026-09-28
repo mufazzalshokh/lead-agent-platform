@@ -29,7 +29,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       hash.update(await readFile(new URL(name, folder)));
     }
     expect(hash.digest("hex")).toBe(
-      "b9f70965c3c8d01b5193bff596ec8b348a86d533d06e7b14dd9c2d1c07c74d38",
+      "48fbed5acaea21dea5a36b445157b32edaf05c0668a80ad6131cbfb07cb06027",
     );
   });
   it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
@@ -128,7 +128,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
     );
     const grantIndex = sql.indexOf(
-      "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
+      "GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
     );
     const firstOwnerIndex = sql.indexOf("OWNER TO lead_agent_inbound_route_definer");
     const lastOwnerIndex = sql.lastIndexOf("OWNER TO lead_agent_inbound_route_definer");

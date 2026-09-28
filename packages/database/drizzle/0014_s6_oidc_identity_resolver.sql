@@ -109,7 +109,7 @@ GRANT lead_agent_identity_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
-GRANT CREATE ON SCHEMA app TO lead_agent_identity_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_identity_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.resolve_external_identity(
 	character varying,

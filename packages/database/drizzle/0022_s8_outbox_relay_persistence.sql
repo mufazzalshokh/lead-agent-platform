@@ -478,7 +478,7 @@ GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
-GRANT CREATE ON SCHEMA app TO lead_agent_outbox_relay_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_outbox_relay_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.claim_outbox_events(character varying, integer, integer)
 	OWNER TO lead_agent_outbox_relay_definer;

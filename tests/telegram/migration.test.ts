@@ -29,9 +29,9 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
   it("grants runtime execution only and denies ingress/PUBLIC", () => {
     expect(sql).toContain("FROM PUBLIC, lead_agent_ingress");
     expect(sql).toContain("TO lead_agent_runtime");
-    expect(sql.indexOf("GRANT EXECUTE ON FUNCTION app.create_telegram_inbound_route")).toBeLessThan(
-      sql.indexOf("ALTER FUNCTION app.create_telegram_inbound_route"),
-    );
+    expect(
+      sql.indexOf("GRANT EXECUTE ON FUNCTION app.create_telegram_inbound_route"),
+    ).toBeGreaterThan(sql.indexOf("ALTER FUNCTION app.create_telegram_inbound_route"));
     expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(3);
     expect(sql).not.toMatch(
       /ON TABLE public.inbound_routes TO lead_agent_runtime|GRANT\s+lead_agent_inbound_route_definer\s+TO\s+lead_agent_(?:runtime|ingress)/iu,
@@ -45,7 +45,7 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
       "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
     );
     const grantIndex = sql.indexOf(
-      "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
+      "GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
     );
     const firstOwnerIndex = sql.indexOf("OWNER TO lead_agent_inbound_route_definer");
     const lastOwnerIndex = sql.lastIndexOf("OWNER TO lead_agent_inbound_route_definer");

@@ -200,7 +200,7 @@ GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
-GRANT CREATE ON SCHEMA app TO lead_agent_membership_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_membership_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.revoke_membership_user_sessions(uuid, character varying)
 	OWNER TO lead_agent_membership_definer;
@@ -456,7 +456,7 @@ GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
-GRANT CREATE ON SCHEMA app TO lead_agent_membership_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_membership_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.accept_membership_invitation(
 	uuid, bytea, bytea, character varying, character varying,

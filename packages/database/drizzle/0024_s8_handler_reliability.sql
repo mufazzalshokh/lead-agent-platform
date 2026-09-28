@@ -808,8 +808,8 @@ GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH INHERIT FALSE;
 GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH SET TRUE;
 GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH INHERIT FALSE;
 GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH SET TRUE;
-GRANT CREATE ON SCHEMA app TO lead_agent_worker_reliability_definer;
-GRANT CREATE ON SCHEMA app TO lead_agent_async_maintenance_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_worker_reliability_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_async_maintenance_definer;
 
 ALTER FUNCTION app.acquire_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer)
   OWNER TO lead_agent_worker_reliability_definer;
