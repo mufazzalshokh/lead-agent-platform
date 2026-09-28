@@ -21,6 +21,20 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("keeps application-role provisioning compatible with non-superuser Cloud SQL", async () => {
+    const ownerTransferSpecs = [
+      ["0012_s5_inbound_route_resolver.sql", "lead_agent_inbound_route_definer"],
+      ["0014_s6_oidc_identity_resolver.sql", "lead_agent_identity_definer"],
+      ["0015_s6_session_lifecycle.sql", "lead_agent_identity_definer"],
+      ["0016_s6_membership_authorization_resolver.sql", "lead_agent_identity_definer"],
+      ["0017_s6_membership_lifecycle.sql", "lead_agent_membership_definer"],
+      ["0022_s8_outbox_relay_persistence.sql", "lead_agent_outbox_relay_definer"],
+      ["0023_s8_active_route_claim.sql", "lead_agent_outbox_relay_definer"],
+      ["0024_s8_handler_reliability.sql", "lead_agent_worker_reliability_definer"],
+      ["0024_s8_handler_reliability.sql", "lead_agent_async_maintenance_definer"],
+      ["0025_s6_membership_invitation_clock_skew.sql", "lead_agent_membership_definer"],
+      ["0026_s11_telegram_inbound_route_management.sql", "lead_agent_inbound_route_definer"],
+      ["0027_s11_instagram_identity_routing.sql", "lead_agent_inbound_route_definer"],
+    ] as const;
     const [roleMigrations, ownerTransferMigrations] = await Promise.all([
       Promise.all(
         [
@@ -33,32 +47,23 @@ describe("S22 staging infrastructure boundary", () => {
         ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
       ),
       Promise.all(
-        [
-          "0012_s5_inbound_route_resolver.sql",
-          "0026_s11_telegram_inbound_route_management.sql",
-          "0027_s11_instagram_identity_routing.sql",
-        ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
+        ownerTransferSpecs.map(async ([name, role]) => ({
+          role,
+          sql: await repositoryFile(`packages/database/drizzle/${name}`),
+        })),
       ),
     ]);
     const roleSql = roleMigrations.join("\n");
     expect(roleSql).not.toMatch(/\b(?:NO)?(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu);
     expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(6);
-    for (const ownerTransferSql of ownerTransferMigrations) {
-      const membershipGrantIndex = ownerTransferSql.indexOf(
-        "GRANT lead_agent_inbound_route_definer TO CURRENT_USER",
-      );
-      const grantIndex = ownerTransferSql.indexOf(
-        "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
-      );
-      const firstOwnerIndex = ownerTransferSql.indexOf("OWNER TO lead_agent_inbound_route_definer");
-      const lastOwnerIndex = ownerTransferSql.lastIndexOf(
-        "OWNER TO lead_agent_inbound_route_definer",
-      );
-      const revokeIndex = ownerTransferSql.indexOf(
-        "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
-      );
-      const membershipRevokeIndex = ownerTransferSql.indexOf(
-        "REVOKE lead_agent_inbound_route_definer FROM CURRENT_USER",
+    for (const { role, sql: ownerTransferSql } of ownerTransferMigrations) {
+      const membershipGrantIndex = ownerTransferSql.indexOf(`GRANT ${role} TO CURRENT_USER`);
+      const grantIndex = ownerTransferSql.indexOf(`GRANT CREATE ON SCHEMA app TO ${role}`);
+      const firstOwnerIndex = ownerTransferSql.indexOf(`OWNER TO ${role}`);
+      const lastOwnerIndex = ownerTransferSql.lastIndexOf(`OWNER TO ${role}`);
+      const revokeIndex = ownerTransferSql.lastIndexOf(`REVOKE CREATE ON SCHEMA app FROM ${role}`);
+      const membershipRevokeIndex = ownerTransferSql.lastIndexOf(
+        `REVOKE ${role} FROM CURRENT_USER`,
       );
       expect(membershipGrantIndex).toBeGreaterThanOrEqual(0);
       expect(grantIndex).toBeGreaterThan(membershipGrantIndex);

@@ -784,6 +784,11 @@ CREATE POLICY outbox_events_async_maintenance_update
   USING (true)
   WITH CHECK (true);
 
+GRANT lead_agent_worker_reliability_definer TO CURRENT_USER;
+GRANT lead_agent_async_maintenance_definer TO CURRENT_USER;
+GRANT CREATE ON SCHEMA app TO lead_agent_worker_reliability_definer;
+GRANT CREATE ON SCHEMA app TO lead_agent_async_maintenance_definer;
+
 ALTER FUNCTION app.acquire_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer)
   OWNER TO lead_agent_worker_reliability_definer;
 ALTER FUNCTION app.resume_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer)
@@ -800,6 +805,11 @@ ALTER FUNCTION app.operator_redrive_worker_dlq_job(
 ALTER FUNCTION app.operator_requeue_dead_outbox_event(
   uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
 ) OWNER TO lead_agent_async_maintenance_definer;
+
+REVOKE CREATE ON SCHEMA app FROM lead_agent_worker_reliability_definer;
+REVOKE CREATE ON SCHEMA app FROM lead_agent_async_maintenance_definer;
+REVOKE lead_agent_worker_reliability_definer FROM CURRENT_USER;
+REVOKE lead_agent_async_maintenance_definer FROM CURRENT_USER;
 
 REVOKE ALL PRIVILEGES ON TABLE app.worker_handler_executions
   FROM PUBLIC, lead_agent_queue_runtime, lead_agent_async_operator,

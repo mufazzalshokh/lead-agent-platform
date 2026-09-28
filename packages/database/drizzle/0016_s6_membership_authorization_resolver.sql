@@ -95,5 +95,13 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_membership_authorization(uuid, uui
 GRANT EXECUTE ON FUNCTION app.resolve_membership_authorization(uuid, uuid)
 	TO lead_agent_auth;
 --> statement-breakpoint
+GRANT lead_agent_identity_definer TO CURRENT_USER;
+--> statement-breakpoint
+GRANT CREATE ON SCHEMA app TO lead_agent_identity_definer;
+--> statement-breakpoint
 ALTER FUNCTION app.resolve_membership_authorization(uuid, uuid)
 	OWNER TO lead_agent_identity_definer;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_identity_definer;
+--> statement-breakpoint
+REVOKE lead_agent_identity_definer FROM CURRENT_USER;

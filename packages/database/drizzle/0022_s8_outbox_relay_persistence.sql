@@ -474,6 +474,10 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid
 	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth,
 	lead_agent_queue_runtime;
 --> statement-breakpoint
+GRANT lead_agent_outbox_relay_definer TO CURRENT_USER;
+--> statement-breakpoint
+GRANT CREATE ON SCHEMA app TO lead_agent_outbox_relay_definer;
+--> statement-breakpoint
 ALTER FUNCTION app.claim_outbox_events(character varying, integer, integer)
 	OWNER TO lead_agent_outbox_relay_definer;
 --> statement-breakpoint
@@ -488,6 +492,10 @@ ALTER FUNCTION app.mark_outbox_event_published(uuid, uuid, uuid)
 --> statement-breakpoint
 ALTER FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid, uuid, character varying)
 	OWNER TO lead_agent_outbox_relay_definer;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_outbox_relay_definer;
+--> statement-breakpoint
+REVOKE lead_agent_outbox_relay_definer FROM CURRENT_USER;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.claim_outbox_events(character varying, integer, integer)
 	TO lead_agent_queue_runtime;
