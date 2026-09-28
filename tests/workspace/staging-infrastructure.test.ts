@@ -78,10 +78,13 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("keeps queue privilege reset within objects owned by the migration actor", async () => {
-    const [queueInfrastructure, relayPersistence] = await Promise.all([
-      repositoryFile("packages/database/drizzle/0021_s8_pgboss_infrastructure.sql"),
-      repositoryFile("packages/database/drizzle/0022_s8_outbox_relay_persistence.sql"),
-    ]);
+    const [queueInfrastructure, relayPersistence, activeRoute, handlerReliability] =
+      await Promise.all([
+        repositoryFile("packages/database/drizzle/0021_s8_pgboss_infrastructure.sql"),
+        repositoryFile("packages/database/drizzle/0022_s8_outbox_relay_persistence.sql"),
+        repositoryFile("packages/database/drizzle/0023_s8_active_route_claim.sql"),
+        repositoryFile("packages/database/drizzle/0024_s8_handler_reliability.sql"),
+      ]);
     expect(queueInfrastructure).toContain(
       "REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public\n  FROM lead_agent_queue_runtime",
     );
@@ -97,6 +100,29 @@ describe("S22 staging infrastructure boundary", () => {
       "mark_outbox_event_dead_lettered",
     ]) {
       expect(relayPersistence).toContain(`GRANT EXECUTE ON FUNCTION app.${functionName}`);
+    }
+    expect(handlerReliability).not.toMatch(
+      /REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA[^;]*\bapp\b/iu,
+    );
+    for (const [sql, grant, ownerTransfer] of [
+      [
+        relayPersistence,
+        "GRANT EXECUTE ON FUNCTION app.claim_outbox_events(character varying, integer, integer)",
+        "ALTER FUNCTION app.claim_outbox_events(character varying, integer, integer)",
+      ],
+      [
+        activeRoute,
+        "GRANT EXECUTE ON FUNCTION app.claim_outbox_events(character varying, character varying[], character varying[], integer, integer)",
+        "ALTER FUNCTION app.claim_outbox_events(character varying, character varying[], character varying[], integer, integer)",
+      ],
+      [
+        handlerReliability,
+        "GRANT EXECUTE ON FUNCTION\n  app.acquire_worker_handler_execution",
+        "ALTER FUNCTION app.acquire_worker_handler_execution",
+      ],
+    ] as const) {
+      expect(sql.indexOf(grant)).toBeGreaterThanOrEqual(0);
+      expect(sql.indexOf(grant)).toBeLessThan(sql.indexOf(ownerTransfer));
     }
   });
 
