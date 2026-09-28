@@ -3572,6 +3572,7 @@ jobs:
           LOGS="$RUNNER_TEMP/s22-validator-logs.json"
           PARSED="$RUNNER_TEMP/s22-validator-parsed.jsonl"
           rm -f "$EVIDENCE" "$EXECUTION_JSON" "$LOGS" "$PARSED"
+          trap 'if [[ ! -s "$EVIDENCE" ]]; then echo '\''{"assertion":"validator_workflow_harness","expected":"structured validator evidence","failure_code":"S22V096_VALIDATOR_HARNESS","observed":"workflow_failed_before_evidence","operation":"staging_database_validation","outcome":"FAIL","summary":true}'\'' > "$EVIDENCE"; fi' EXIT
           VALIDATOR_B64="$(base64 -w0 "$VALIDATOR")"
           set +e
           EXECUTION_ID="$(gcloud run jobs execute lead-agent-staging-migrator \
@@ -3625,8 +3626,34 @@ jobs:
             node - "$LOGS" <<'NODE' > "$PARSED"
           const fs = require("node:fs");
           const [logPath] = process.argv.slice(2);
-          const raw = JSON.parse(fs.readFileSync(logPath, "utf8"));
-          const entries = Array.isArray(raw) ? raw : Array.isArray(raw?.entries) ? raw.entries : [];
+          const rawText = fs.readFileSync(logPath, "utf8");
+          const documents = [];
+          const appendDocument = (candidate) => {
+            try { documents.push(JSON.parse(candidate)); } catch { /* try the next safe shape */ }
+          };
+          appendDocument(rawText);
+          if (documents.length === 0) {
+            const arrayStart = rawText.indexOf("[");
+            const arrayEnd = rawText.lastIndexOf("]");
+            if (arrayStart >= 0 && arrayEnd > arrayStart) {
+              appendDocument(rawText.slice(arrayStart, arrayEnd + 1));
+            }
+          }
+          if (documents.length === 0) {
+            for (const line of rawText.split(/\r?\n/u)) {
+              const candidate = line.trim();
+              if (candidate.startsWith("{") || candidate.startsWith("[")) appendDocument(candidate);
+            }
+          }
+          const entries = documents.flatMap((document) =>
+            Array.isArray(document)
+              ? document
+              : Array.isArray(document?.entries)
+                ? document.entries
+                : document && typeof document === "object"
+                  ? [document]
+                  : [],
+          );
           const object = (value) =>
             typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
           const parse = (value) => {
