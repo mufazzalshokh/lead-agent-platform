@@ -587,6 +587,8 @@ describe("S22 staging infrastructure boundary", () => {
     );
     expect(workflow).toContain('[[ "$STATE_COUNT" == "35" ]]');
     expect(workflow).toContain('[[ "$STATE_COUNT" == "34" ]]');
+    expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "35" ]]');
+    expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]');
     expect(workflow).toContain("Verify temporary logging viewer removal convergence");
     expect(workflow).toContain("Read sanitized migrator application error");
     expect(workflow).toContain('payload.operation === "database_migration"');

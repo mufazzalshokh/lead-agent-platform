@@ -364,8 +364,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BOOTSTRAP_STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
-          [[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]
+          BOOTSTRAP_STATE_ADDRESSES="$(terraform state list)"
+          BOOTSTRAP_STATE_COUNT="$(wc -l <<< "$BOOTSTRAP_STATE_ADDRESSES" | tr -d '[:space:]')"
+          if [[ "$S22_PHASE" == "bootstrap-log-viewer-remove" ]]; then
+            [[ "$BOOTSTRAP_STATE_COUNT" == "35" ]]
+            grep -Fqx -- 'google_project_iam_member.deployer_temporary_logging_viewer[0]' <<< "$BOOTSTRAP_STATE_ADDRESSES"
+          else
+            [[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]
+          fi
           echo "Authoritative bootstrap state resources: $BOOTSTRAP_STATE_COUNT"
 
       - name: Create reviewed bootstrap IAM plan
