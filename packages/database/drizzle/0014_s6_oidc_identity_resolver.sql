@@ -110,7 +110,9 @@ GRANT EXECUTE ON FUNCTION app.resolve_external_identity(
 	character varying
 ) TO lead_agent_auth;
 --> statement-breakpoint
-GRANT lead_agent_identity_definer TO CURRENT_USER;
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 GRANT CREATE ON SCHEMA app TO lead_agent_identity_definer;
 --> statement-breakpoint
@@ -121,4 +123,4 @@ ALTER FUNCTION app.resolve_external_identity(
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_identity_definer;
 --> statement-breakpoint
-REVOKE lead_agent_identity_definer FROM CURRENT_USER;
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET FALSE;

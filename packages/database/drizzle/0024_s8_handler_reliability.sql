@@ -784,8 +784,10 @@ CREATE POLICY outbox_events_async_maintenance_update
   USING (true)
   WITH CHECK (true);
 
-GRANT lead_agent_worker_reliability_definer TO CURRENT_USER;
-GRANT lead_agent_async_maintenance_definer TO CURRENT_USER;
+GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH INHERIT FALSE;
+GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH SET TRUE;
+GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH INHERIT FALSE;
+GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH SET TRUE;
 GRANT CREATE ON SCHEMA app TO lead_agent_worker_reliability_definer;
 GRANT CREATE ON SCHEMA app TO lead_agent_async_maintenance_definer;
 
@@ -808,8 +810,8 @@ ALTER FUNCTION app.operator_requeue_dead_outbox_event(
 
 REVOKE CREATE ON SCHEMA app FROM lead_agent_worker_reliability_definer;
 REVOKE CREATE ON SCHEMA app FROM lead_agent_async_maintenance_definer;
-REVOKE lead_agent_worker_reliability_definer FROM CURRENT_USER;
-REVOKE lead_agent_async_maintenance_definer FROM CURRENT_USER;
+GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH SET FALSE;
+GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH SET FALSE;
 
 REVOKE ALL PRIVILEGES ON TABLE app.worker_handler_executions
   FROM PUBLIC, lead_agent_queue_runtime, lead_agent_async_operator,

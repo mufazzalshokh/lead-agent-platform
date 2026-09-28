@@ -34,9 +34,12 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
       /ON TABLE public.inbound_routes TO lead_agent_runtime|GRANT\s+lead_agent_inbound_route_definer\s+TO\s+lead_agent_(?:runtime|ingress)/iu,
     );
   });
-  it("grants ownership prerequisites only transiently for the non-superuser migrator", () => {
-    const membershipGrantIndex = sql.indexOf(
-      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER",
+  it("bounds ownership transfer privileges while preserving role administration", () => {
+    const nonInheritedIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE",
+    );
+    const setGrantIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
     );
     const grantIndex = sql.indexOf(
       "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
@@ -46,14 +49,15 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
     const revokeIndex = sql.indexOf(
       "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
     );
-    const membershipRevokeIndex = sql.indexOf(
-      "REVOKE lead_agent_inbound_route_definer FROM CURRENT_USER",
+    const setRevokeIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET FALSE",
     );
-    expect(membershipGrantIndex).toBeGreaterThanOrEqual(0);
-    expect(grantIndex).toBeGreaterThan(membershipGrantIndex);
+    expect(nonInheritedIndex).toBeGreaterThanOrEqual(0);
+    expect(setGrantIndex).toBeGreaterThan(nonInheritedIndex);
+    expect(grantIndex).toBeGreaterThan(setGrantIndex);
     expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
     expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
-    expect(membershipRevokeIndex).toBeGreaterThan(revokeIndex);
+    expect(setRevokeIndex).toBeGreaterThan(revokeIndex);
   });
   it("removes all direct route-table access from the runtime repository", async () => {
     const repository = await readFile(

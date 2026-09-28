@@ -43,7 +43,9 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_inbound_route(character varying, b
 GRANT EXECUTE ON FUNCTION app.resolve_inbound_route(character varying, bytea)
 	TO lead_agent_ingress;
 --> statement-breakpoint
-GRANT lead_agent_inbound_route_definer TO CURRENT_USER;
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
@@ -162,7 +164,7 @@ ALTER FUNCTION app.disable_instagram_inbound_route(uuid) OWNER TO lead_agent_inb
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer;
 --> statement-breakpoint
-REVOKE lead_agent_inbound_route_definer FROM CURRENT_USER;
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET FALSE;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.create_instagram_inbound_route(uuid, uuid, bytea),
     app.rotate_instagram_inbound_route(uuid, bytea, bytea),

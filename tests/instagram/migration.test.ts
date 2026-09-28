@@ -29,7 +29,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       hash.update(await readFile(new URL(name, folder)));
     }
     expect(hash.digest("hex")).toBe(
-      "30a20e804f62d579ca8617e8443c92fd3d990c144059c9a33c7a12a428681619",
+      "1daedcb539724f70f8baf9560e218ae0f35097aae2e88106ea76122d591d891e",
     );
   });
   it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
@@ -117,9 +117,12 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
     expect(sql).toContain("FROM PUBLIC, lead_agent_runtime, lead_agent_ingress");
     expect(sql).toContain("FROM PUBLIC, lead_agent_ingress");
   });
-  it("grants ownership prerequisites only transiently for the non-superuser migrator", () => {
-    const membershipGrantIndex = sql.indexOf(
-      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER",
+  it("bounds ownership transfer privileges while preserving role administration", () => {
+    const nonInheritedIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE",
+    );
+    const setGrantIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
     );
     const grantIndex = sql.indexOf(
       "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
@@ -129,14 +132,15 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
     const revokeIndex = sql.indexOf(
       "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
     );
-    const membershipRevokeIndex = sql.indexOf(
-      "REVOKE lead_agent_inbound_route_definer FROM CURRENT_USER",
+    const setRevokeIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET FALSE",
     );
-    expect(membershipGrantIndex).toBeGreaterThanOrEqual(0);
-    expect(grantIndex).toBeGreaterThan(membershipGrantIndex);
+    expect(nonInheritedIndex).toBeGreaterThanOrEqual(0);
+    expect(setGrantIndex).toBeGreaterThan(nonInheritedIndex);
+    expect(grantIndex).toBeGreaterThan(setGrantIndex);
     expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
     expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
-    expect(membershipRevokeIndex).toBeGreaterThan(revokeIndex);
+    expect(setRevokeIndex).toBeGreaterThan(revokeIndex);
   });
   it("keeps repository routing behind the narrow functions and uses only existing identity columns", async () => {
     const repository = await readFile(

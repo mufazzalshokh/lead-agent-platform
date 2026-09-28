@@ -57,19 +57,23 @@ describe("S22 staging infrastructure boundary", () => {
     expect(roleSql).not.toMatch(/\b(?:NO)?(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu);
     expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(6);
     for (const { role, sql: ownerTransferSql } of ownerTransferMigrations) {
-      const membershipGrantIndex = ownerTransferSql.indexOf(`GRANT ${role} TO CURRENT_USER`);
+      const nonInheritedIndex = ownerTransferSql.indexOf(
+        `GRANT ${role} TO CURRENT_USER WITH INHERIT FALSE`,
+      );
+      const setGrantIndex = ownerTransferSql.indexOf(`GRANT ${role} TO CURRENT_USER WITH SET TRUE`);
       const grantIndex = ownerTransferSql.indexOf(`GRANT CREATE ON SCHEMA app TO ${role}`);
       const firstOwnerIndex = ownerTransferSql.indexOf(`OWNER TO ${role}`);
       const lastOwnerIndex = ownerTransferSql.lastIndexOf(`OWNER TO ${role}`);
       const revokeIndex = ownerTransferSql.lastIndexOf(`REVOKE CREATE ON SCHEMA app FROM ${role}`);
-      const membershipRevokeIndex = ownerTransferSql.lastIndexOf(
-        `REVOKE ${role} FROM CURRENT_USER`,
+      const setRevokeIndex = ownerTransferSql.lastIndexOf(
+        `GRANT ${role} TO CURRENT_USER WITH SET FALSE`,
       );
-      expect(membershipGrantIndex).toBeGreaterThanOrEqual(0);
-      expect(grantIndex).toBeGreaterThan(membershipGrantIndex);
+      expect(nonInheritedIndex).toBeGreaterThanOrEqual(0);
+      expect(setGrantIndex).toBeGreaterThan(nonInheritedIndex);
+      expect(grantIndex).toBeGreaterThan(setGrantIndex);
       expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
       expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
-      expect(membershipRevokeIndex).toBeGreaterThan(revokeIndex);
+      expect(setRevokeIndex).toBeGreaterThan(revokeIndex);
     }
   });
 

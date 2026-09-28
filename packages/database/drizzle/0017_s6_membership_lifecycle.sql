@@ -200,7 +200,9 @@ GRANT EXECUTE ON FUNCTION app.revoke_membership_user_sessions(
 	uuid, character varying
 ) TO lead_agent_runtime;
 --> statement-breakpoint
-GRANT lead_agent_membership_definer TO CURRENT_USER;
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 GRANT CREATE ON SCHEMA app TO lead_agent_membership_definer;
 --> statement-breakpoint
@@ -209,7 +211,7 @@ ALTER FUNCTION app.revoke_membership_user_sessions(uuid, character varying)
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_membership_definer;
 --> statement-breakpoint
-REVOKE lead_agent_membership_definer FROM CURRENT_USER;
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET FALSE;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.accept_membership_invitation(
 	p_organization_id uuid,
@@ -452,7 +454,9 @@ GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
 	character varying, uuid, character varying
 ) TO lead_agent_auth;
 --> statement-breakpoint
-GRANT lead_agent_membership_definer TO CURRENT_USER;
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 GRANT CREATE ON SCHEMA app TO lead_agent_membership_definer;
 --> statement-breakpoint
@@ -464,4 +468,4 @@ ALTER FUNCTION app.accept_membership_invitation(
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_membership_definer;
 --> statement-breakpoint
-REVOKE lead_agent_membership_definer FROM CURRENT_USER;
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET FALSE;
