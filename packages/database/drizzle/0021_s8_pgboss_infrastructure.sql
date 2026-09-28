@@ -14,7 +14,20 @@ END
 $role$;
 
 ALTER ROLE lead_agent_queue_runtime
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  NOCREATEDB NOCREATEROLE NOINHERIT;
+
+DO $role_security$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname = 'lead_agent_queue_runtime'
+      AND (rolsuper OR rolreplication OR rolbypassrls)
+  ) THEN
+    RAISE EXCEPTION 'Lead Agent queue runtime must not hold restricted PostgreSQL privileges';
+  END IF;
+END
+$role_security$;
 
 ALTER ROLE lead_agent_queue_runtime SET search_path = pg_catalog;
 
@@ -37,7 +50,10 @@ REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public
 REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public
   FROM lead_agent_queue_runtime;
 
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public, app
+-- Functions in app have dedicated owners and explicit per-function grants.
+-- The migration actor can reset only the public functions that it owns here;
+-- later queue APIs remain individually granted by their defining migrations.
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public
   FROM lead_agent_queue_runtime;
 
 DO $database_grant$

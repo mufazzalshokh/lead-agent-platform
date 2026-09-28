@@ -87,6 +87,14 @@ resource "google_project_iam_member" "deployer" {
   member  = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+resource "google_project_iam_member" "deployer_temporary_logging_viewer" {
+  count = var.temporary_logging_viewer_enabled ? 1 : 0
+
+  project = var.project_id
+  role    = "roles/logging.viewer"
+  member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 resource "google_storage_bucket_iam_member" "deployer_state" {
   bucket = google_storage_bucket.terraform_state.name
   role   = "roles/storage.objectAdmin"

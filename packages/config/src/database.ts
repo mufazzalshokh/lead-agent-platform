@@ -70,7 +70,19 @@ const requirePostgreSqlConnectionString = (value: unknown): string => {
     throw new ConfigurationValidationError("connectionString");
   }
 
-  return value;
+  return withLibpqCompatibleRequireSsl(value);
+};
+
+export const withLibpqCompatibleRequireSsl = (connectionString: string): string => {
+  const parsed = new URL(connectionString);
+  if (
+    parsed.searchParams.get("sslmode") !== "require" ||
+    parsed.searchParams.has("uselibpqcompat")
+  ) {
+    return connectionString;
+  }
+  parsed.searchParams.set("uselibpqcompat", "true");
+  return parsed.toString();
 };
 
 export const createTenantDatabaseRuntimeConfig = (

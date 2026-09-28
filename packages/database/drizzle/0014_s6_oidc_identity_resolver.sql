@@ -13,10 +13,23 @@ END
 $role_provisioning$;
 --> statement-breakpoint
 ALTER ROLE lead_agent_auth
-	LOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+	LOGIN INHERIT NOCREATEDB NOCREATEROLE;
 --> statement-breakpoint
 ALTER ROLE lead_agent_identity_definer
-	NOLOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+	NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE;
+--> statement-breakpoint
+DO $role_security$
+BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM pg_catalog.pg_roles
+		WHERE rolname IN ('lead_agent_auth', 'lead_agent_identity_definer')
+			AND (rolsuper OR rolreplication OR rolbypassrls)
+	) THEN
+		RAISE EXCEPTION 'Lead Agent authentication roles must not hold restricted PostgreSQL privileges';
+	END IF;
+END
+$role_security$;
 --> statement-breakpoint
 REVOKE lead_agent_identity_definer
 	FROM lead_agent_auth, lead_agent_runtime, lead_agent_ingress;
@@ -92,12 +105,26 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_external_identity(
 	character varying
 ) FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.resolve_external_identity(
-	character varying,
-	character varying
-) TO lead_agent_auth;
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_identity_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.resolve_external_identity(
 	character varying,
 	character varying
 ) OWNER TO lead_agent_identity_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_identity_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.resolve_external_identity(
+	character varying,
+	character varying
+) TO lead_agent_auth;
+--> statement-breakpoint
+RESET ROLE;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_identity_definer;
+--> statement-breakpoint
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET FALSE;

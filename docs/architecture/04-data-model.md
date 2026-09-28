@@ -161,9 +161,12 @@ exact canonical route type and route-key hash, returns only the active
 organization/channel-connection identity, has a fixed safe `search_path`, owns
 no arbitrary SQL, and is executable only by the ingress role. Because forced
 RLS also applies before tenant context exists, the function is owned by a
-dedicated `NOLOGIN` definer role whose `BYPASSRLS` capability is usable only
-with its narrowly granted `inbound_routes` SELECT; it has no other tenant-table
-privileges. The ingress/application runtime has only function `EXECUTE`, no
+dedicated `NOLOGIN NOBYPASSRLS` definer role. Its pre-tenant capability is a
+SELECT-only RLS policy plus a narrow `inbound_routes` SELECT grant. Later
+tenant-bound channel-management functions owned by that role use separate
+organization-scoped policies and column-limited SELECT/INSERT/UPDATE grants;
+they do not broaden the pre-tenant lookup or ordinary runtime policies. The
+ingress/application runtime has only function `EXECUTE`, no
 direct table SELECT and no `BYPASSRLS`. Invalid or inactive routes return no
 tenant and the function cannot enumerate routes.
 After resolution the application opens the tenant transaction, reads the

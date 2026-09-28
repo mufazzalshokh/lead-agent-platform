@@ -9,6 +9,25 @@ ON TABLE public.inbound_routes TO lead_agent_inbound_route_definer;
 GRANT SELECT (organization_id, id, channel_type, status)
 ON TABLE public.channel_connections TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
+CREATE POLICY channel_connections_inbound_route_management_select
+ON public.channel_connections
+FOR SELECT
+TO lead_agent_inbound_route_definer
+USING (organization_id = app.current_organization_id());
+--> statement-breakpoint
+CREATE POLICY inbound_routes_inbound_route_management_insert
+ON public.inbound_routes
+FOR INSERT
+TO lead_agent_inbound_route_definer
+WITH CHECK (organization_id = app.current_organization_id());
+--> statement-breakpoint
+CREATE POLICY inbound_routes_inbound_route_management_update
+ON public.inbound_routes
+FOR UPDATE
+TO lead_agent_inbound_route_definer
+USING (organization_id = app.current_organization_id())
+WITH CHECK (organization_id = app.current_organization_id());
+--> statement-breakpoint
 CREATE FUNCTION app.create_telegram_inbound_route(
     input_route_id uuid,
     input_channel_connection_id uuid,
@@ -113,16 +132,30 @@ BEGIN
 END
 $function$;
 --> statement-breakpoint
+REVOKE ALL ON FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea),
+    app.rotate_telegram_inbound_route(uuid, bytea, bytea),
+    app.disable_telegram_inbound_route(uuid) FROM PUBLIC, lead_agent_ingress;
+--> statement-breakpoint
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
+--> statement-breakpoint
 ALTER FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea) OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.rotate_telegram_inbound_route(uuid, bytea, bytea) OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.disable_telegram_inbound_route(uuid) OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea),
-    app.rotate_telegram_inbound_route(uuid, bytea, bytea),
-    app.disable_telegram_inbound_route(uuid) FROM PUBLIC, lead_agent_ingress;
+SET ROLE lead_agent_inbound_route_definer;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea),
     app.rotate_telegram_inbound_route(uuid, bytea, bytea),
     app.disable_telegram_inbound_route(uuid) TO lead_agent_runtime;
+--> statement-breakpoint
+RESET ROLE;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer;
+--> statement-breakpoint
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET FALSE;

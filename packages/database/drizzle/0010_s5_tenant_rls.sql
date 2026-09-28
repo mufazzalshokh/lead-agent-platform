@@ -17,13 +17,30 @@ END
 $role_provisioning$;
 --> statement-breakpoint
 ALTER ROLE lead_agent_runtime
-	LOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+	LOGIN INHERIT NOCREATEDB NOCREATEROLE;
 --> statement-breakpoint
 ALTER ROLE lead_agent_ingress
-	LOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+	LOGIN INHERIT NOCREATEDB NOCREATEROLE;
 --> statement-breakpoint
 ALTER ROLE lead_agent_inbound_route_definer
-	NOLOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+	NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE;
+--> statement-breakpoint
+DO $role_security$
+BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM pg_catalog.pg_roles
+		WHERE rolname IN (
+			'lead_agent_runtime',
+			'lead_agent_ingress',
+			'lead_agent_inbound_route_definer'
+		)
+		AND (rolsuper OR rolreplication OR rolbypassrls)
+	) THEN
+		RAISE EXCEPTION 'Lead Agent application roles must not hold restricted PostgreSQL privileges';
+	END IF;
+END
+$role_security$;
 --> statement-breakpoint
 REVOKE lead_agent_inbound_route_definer FROM lead_agent_runtime, lead_agent_ingress;
 --> statement-breakpoint
@@ -157,6 +174,11 @@ CREATE POLICY inbound_routes_tenant_isolation ON public.inbound_routes
 	TO lead_agent_runtime
 	USING (organization_id = app.current_organization_id())
 	WITH CHECK (organization_id = app.current_organization_id());
+--> statement-breakpoint
+CREATE POLICY inbound_routes_pre_tenant_resolution ON public.inbound_routes
+	FOR SELECT
+	TO lead_agent_inbound_route_definer
+	USING (true);
 --> statement-breakpoint
 DO $tenant_grants$
 DECLARE

@@ -89,6 +89,9 @@ importers:
 
   apps/migrator:
     dependencies:
+      '@lead-agent/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@lead-agent/database':
         specifier: workspace:*
         version: link:../../packages/database

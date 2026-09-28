@@ -3,6 +3,10 @@
 GRANT SELECT (created_at) ON TABLE public.membership_invitations
 	TO lead_agent_membership_definer;
 --> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+SET ROLE lead_agent_membership_definer;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.accept_membership_invitation(
 	p_organization_id uuid,
 	p_token_hash bytea,
@@ -249,8 +253,8 @@ GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
 	character varying, uuid, character varying
 ) TO lead_agent_auth;
 --> statement-breakpoint
-ALTER FUNCTION app.accept_membership_invitation(
-	uuid, bytea, bytea, character varying, character varying,
-	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
-	character varying, uuid, character varying
-) OWNER TO lead_agent_membership_definer;
+RESET ROLE;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET FALSE;

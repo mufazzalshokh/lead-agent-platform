@@ -54,10 +54,13 @@ connection identifiers needed to establish tenant context. Credential material
 is then read through the tenant-scoped connection path.
 
 Forced RLS remains enabled on `inbound_routes`. The resolver function is owned
-by a dedicated `NOLOGIN` definer role with `BYPASSRLS` and SELECT only on that
-table; it has no other tenant-table privileges. Runtime/ingress receives only
-function `EXECUTE`, is `NOBYPASSRLS`, and cannot assume the definer role. This is
-a contained database capability, not a generic application bypass.
+by a dedicated `NOLOGIN NOBYPASSRLS` definer role. Its pre-tenant capability is
+a SELECT-only RLS policy plus a narrow `inbound_routes` SELECT grant. Runtime/
+ingress receives only function `EXECUTE`, is `NOBYPASSRLS`, and cannot assume
+the definer role. Tenant-bound Telegram and Instagram route-management functions
+use separate organization-scoped policies and column-limited grants for their
+already-approved SELECT/INSERT/UPDATE operations. This is a contained database
+capability, not a generic application bypass.
 
 ### Membership and location scope
 

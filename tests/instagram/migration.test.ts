@@ -29,7 +29,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       hash.update(await readFile(new URL(name, folder)));
     }
     expect(hash.digest("hex")).toBe(
-      "4528878af70ef7bec527fd18f75602b21d5bf09262e4fcbb3083be34887d6de0",
+      "48fbed5acaea21dea5a36b445157b32edaf05c0668a80ad6131cbfb07cb06027",
     );
   });
   it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
@@ -111,11 +111,39 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
     expect(sql).toContain("route_key_hash = input_expected_route_key_hash");
     expect(sql).toContain("EXCEPTION WHEN unique_violation");
     expect(sql).not.toMatch(
-      /EXECUTE\s+(?:format|pg_catalog)|GRANT.*lead_agent_inbound_route_definer TO/iu,
+      /EXECUTE\s+(?:format|pg_catalog)|GRANT\s+lead_agent_inbound_route_definer\s+TO\s+lead_agent_(?:runtime|ingress)/iu,
     );
-    expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(4);
+    expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(3);
     expect(sql).toContain("FROM PUBLIC, lead_agent_runtime, lead_agent_ingress");
     expect(sql).toContain("FROM PUBLIC, lead_agent_ingress");
+    expect(
+      sql.indexOf("GRANT EXECUTE ON FUNCTION app.create_instagram_inbound_route"),
+    ).toBeGreaterThan(sql.indexOf("ALTER FUNCTION app.create_instagram_inbound_route"));
+  });
+  it("bounds ownership transfer privileges while preserving role administration", () => {
+    const nonInheritedIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE",
+    );
+    const setGrantIndex = sql.lastIndexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
+    );
+    const grantIndex = sql.indexOf(
+      "GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
+    );
+    const firstOwnerIndex = sql.indexOf("OWNER TO lead_agent_inbound_route_definer");
+    const lastOwnerIndex = sql.lastIndexOf("OWNER TO lead_agent_inbound_route_definer");
+    const revokeIndex = sql.indexOf(
+      "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
+    );
+    const setRevokeIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET FALSE",
+    );
+    expect(nonInheritedIndex).toBeGreaterThanOrEqual(0);
+    expect(setGrantIndex).toBeGreaterThan(nonInheritedIndex);
+    expect(grantIndex).toBeGreaterThan(setGrantIndex);
+    expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
+    expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
+    expect(setRevokeIndex).toBeGreaterThan(revokeIndex);
   });
   it("keeps repository routing behind the narrow functions and uses only existing identity columns", async () => {
     const repository = await readFile(

@@ -92,8 +92,22 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_membership_authorization(uuid, uui
 	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress,
 		lead_agent_inbound_route_definer, lead_agent_auth;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.resolve_membership_authorization(uuid, uuid)
-	TO lead_agent_auth;
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_identity_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.resolve_membership_authorization(uuid, uuid)
 	OWNER TO lead_agent_identity_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_identity_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.resolve_membership_authorization(uuid, uuid)
+	TO lead_agent_auth;
+--> statement-breakpoint
+RESET ROLE;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_identity_definer;
+--> statement-breakpoint
+GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET FALSE;

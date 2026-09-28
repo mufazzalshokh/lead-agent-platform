@@ -10,7 +10,20 @@ END
 $role_provisioning$;
 --> statement-breakpoint
 ALTER ROLE lead_agent_membership_definer
-	NOLOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+	NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE;
+--> statement-breakpoint
+DO $role_security$
+BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM pg_catalog.pg_roles
+		WHERE rolname = 'lead_agent_membership_definer'
+			AND (rolsuper OR rolreplication OR rolbypassrls)
+	) THEN
+		RAISE EXCEPTION 'Lead Agent membership definer must not hold restricted PostgreSQL privileges';
+	END IF;
+END
+$role_security$;
 --> statement-breakpoint
 REVOKE lead_agent_membership_definer
 	FROM lead_agent_auth, lead_agent_identity_definer, lead_agent_ingress, lead_agent_runtime;
@@ -183,12 +196,26 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.revoke_membership_user_sessions(
 	uuid, character varying
 ) FROM PUBLIC, lead_agent_auth, lead_agent_ingress, lead_agent_runtime;
 --> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_membership_definer;
+--> statement-breakpoint
+ALTER FUNCTION app.revoke_membership_user_sessions(uuid, character varying)
+	OWNER TO lead_agent_membership_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_membership_definer;
+--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.revoke_membership_user_sessions(
 	uuid, character varying
 ) TO lead_agent_runtime;
 --> statement-breakpoint
-ALTER FUNCTION app.revoke_membership_user_sessions(uuid, character varying)
-	OWNER TO lead_agent_membership_definer;
+RESET ROLE;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_membership_definer;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET FALSE;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.accept_membership_invitation(
 	p_organization_id uuid,
@@ -425,14 +452,28 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.accept_membership_invitation(
 	character varying, uuid, character varying
 ) FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
-	uuid, bytea, bytea, character varying, character varying,
-	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
-	character varying, uuid, character varying
-) TO lead_agent_auth;
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_membership_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.accept_membership_invitation(
 	uuid, bytea, bytea, character varying, character varying,
 	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
 	character varying, uuid, character varying
 ) OWNER TO lead_agent_membership_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_membership_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
+	uuid, bytea, bytea, character varying, character varying,
+	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
+	character varying, uuid, character varying
+) TO lead_agent_auth;
+--> statement-breakpoint
+RESET ROLE;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_membership_definer;
+--> statement-breakpoint
+GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET FALSE;

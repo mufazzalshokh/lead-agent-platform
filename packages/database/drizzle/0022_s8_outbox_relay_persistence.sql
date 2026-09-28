@@ -53,7 +53,20 @@ END
 $role_provisioning$;
 --> statement-breakpoint
 ALTER ROLE lead_agent_outbox_relay_definer
-	NOLOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+	NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE;
+--> statement-breakpoint
+DO $role_security$
+BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM pg_catalog.pg_roles
+		WHERE rolname = 'lead_agent_outbox_relay_definer'
+			AND (rolsuper OR rolreplication OR rolbypassrls)
+	) THEN
+		RAISE EXCEPTION 'Lead Agent outbox relay definer must not hold restricted PostgreSQL privileges';
+	END IF;
+END
+$role_security$;
 --> statement-breakpoint
 REVOKE lead_agent_outbox_relay_definer
 	FROM lead_agent_runtime, lead_agent_ingress, lead_agent_auth,
@@ -461,6 +474,12 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid
 	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth,
 	lead_agent_queue_runtime;
 --> statement-breakpoint
+GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH INHERIT FALSE;
+--> statement-breakpoint
+GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_outbox_relay_definer;
+--> statement-breakpoint
 ALTER FUNCTION app.claim_outbox_events(character varying, integer, integer)
 	OWNER TO lead_agent_outbox_relay_definer;
 --> statement-breakpoint
@@ -476,6 +495,8 @@ ALTER FUNCTION app.mark_outbox_event_published(uuid, uuid, uuid)
 ALTER FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid, uuid, character varying)
 	OWNER TO lead_agent_outbox_relay_definer;
 --> statement-breakpoint
+SET ROLE lead_agent_outbox_relay_definer;
+--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.claim_outbox_events(character varying, integer, integer)
 	TO lead_agent_queue_runtime;
 --> statement-breakpoint
@@ -490,3 +511,9 @@ GRANT EXECUTE ON FUNCTION app.mark_outbox_event_published(uuid, uuid, uuid)
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid, uuid, character varying)
 	TO lead_agent_queue_runtime;
+--> statement-breakpoint
+RESET ROLE;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_outbox_relay_definer;
+--> statement-breakpoint
+GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH SET FALSE;

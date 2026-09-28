@@ -143,7 +143,7 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
       expect(role.rows).toEqual([
         {
           ingress_can_assume: false,
-          rolbypassrls: true,
+          rolbypassrls: false,
           rolcanlogin: false,
           rolcreatedb: false,
           rolcreaterole: false,
@@ -258,6 +258,7 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
 
     it("grants ingress only the resolver surface and denies ordinary runtime execution", async () => {
       const privileges = await harness.privilegedPool().query<{
+        definer_app_create: boolean;
         ingress_app_create: boolean;
         ingress_app_usage: boolean;
         ingress_table_grants: number;
@@ -267,13 +268,15 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
            pg_catalog.has_schema_privilege($1, 'app', 'USAGE') as ingress_app_usage,
            pg_catalog.has_schema_privilege($1, 'app', 'CREATE') as ingress_app_create,
            pg_catalog.has_function_privilege($2, $3, 'EXECUTE') as runtime_resolver_execute,
+           pg_catalog.has_schema_privilege($4, 'app', 'CREATE') as definer_app_create,
            (select count(*)::integer
               from information_schema.role_table_grants
              where grantee = $1) as ingress_table_grants`,
-        [INGRESS_ROLE, RUNTIME_ROLE, RESOLVER_SIGNATURE],
+        [INGRESS_ROLE, RUNTIME_ROLE, RESOLVER_SIGNATURE, DEFINER_ROLE],
       );
       expect(privileges.rows).toEqual([
         {
+          definer_app_create: false,
           ingress_app_create: false,
           ingress_app_usage: true,
           ingress_table_grants: 0,
@@ -319,6 +322,9 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
       ]);
 
       await withRole(harness.privilegedPool(), RUNTIME_ROLE, async (client) => {
+        await expect(client.query("select id from public.inbound_routes")).rejects.toMatchObject({
+          code: "42501",
+        });
         await expect(
           client.query("select * from app.resolve_inbound_route($1::varchar, $2::bytea)", [
             "widget_key",
@@ -375,7 +381,7 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
       }
     });
 
-    it("preserves FORCE RLS and the frozen inbound-route policy", async () => {
+    it("preserves FORCE RLS and keeps resolver and management policies role-scoped", async () => {
       const relation = await harness.privilegedPool().query<{
         relforcerowsecurity: boolean;
         relrowsecurity: boolean;
@@ -398,6 +404,21 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
           order by policyname`,
       );
       expect(policies.rows).toEqual([
+        {
+          cmd: "INSERT",
+          policyname: "inbound_routes_inbound_route_management_insert",
+          roles: [DEFINER_ROLE],
+        },
+        {
+          cmd: "UPDATE",
+          policyname: "inbound_routes_inbound_route_management_update",
+          roles: [DEFINER_ROLE],
+        },
+        {
+          cmd: "SELECT",
+          policyname: "inbound_routes_pre_tenant_resolution",
+          roles: [DEFINER_ROLE],
+        },
         {
           cmd: "ALL",
           policyname: "inbound_routes_tenant_isolation",

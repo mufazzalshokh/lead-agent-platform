@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { withLibpqCompatibleRequireSsl } from "@lead-agent/config";
 import { migrationsFolder, runMigrations } from "@lead-agent/database";
 import { Pool, type PoolClient } from "pg";
 
@@ -92,7 +93,9 @@ export const migrateStagingDatabase = async (
   if (migrationHead === undefined) throw new Error("Migration head is unavailable");
   const pool = new Pool({
     application_name: "lead-agent-staging-migrator",
-    connectionString: required(environment, "MIGRATION_DATABASE_URL"),
+    connectionString: withLibpqCompatibleRequireSsl(
+      required(environment, "MIGRATION_DATABASE_URL"),
+    ),
     max: 2,
   });
   const lock = await pool.connect();

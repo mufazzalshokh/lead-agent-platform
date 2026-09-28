@@ -29,10 +29,38 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
   it("grants runtime execution only and denies ingress/PUBLIC", () => {
     expect(sql).toContain("FROM PUBLIC, lead_agent_ingress");
     expect(sql).toContain("TO lead_agent_runtime");
+    expect(
+      sql.indexOf("GRANT EXECUTE ON FUNCTION app.create_telegram_inbound_route"),
+    ).toBeGreaterThan(sql.indexOf("ALTER FUNCTION app.create_telegram_inbound_route"));
     expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(3);
     expect(sql).not.toMatch(
-      /ON TABLE public.inbound_routes TO lead_agent_runtime|GRANT.*lead_agent_inbound_route_definer TO/iu,
+      /ON TABLE public.inbound_routes TO lead_agent_runtime|GRANT\s+lead_agent_inbound_route_definer\s+TO\s+lead_agent_(?:runtime|ingress)/iu,
     );
+  });
+  it("bounds ownership transfer privileges while preserving role administration", () => {
+    const nonInheritedIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE",
+    );
+    const setGrantIndex = sql.lastIndexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
+    );
+    const grantIndex = sql.indexOf(
+      "GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
+    );
+    const firstOwnerIndex = sql.indexOf("OWNER TO lead_agent_inbound_route_definer");
+    const lastOwnerIndex = sql.lastIndexOf("OWNER TO lead_agent_inbound_route_definer");
+    const revokeIndex = sql.indexOf(
+      "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
+    );
+    const setRevokeIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET FALSE",
+    );
+    expect(nonInheritedIndex).toBeGreaterThanOrEqual(0);
+    expect(setGrantIndex).toBeGreaterThan(nonInheritedIndex);
+    expect(grantIndex).toBeGreaterThan(setGrantIndex);
+    expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
+    expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
+    expect(setRevokeIndex).toBeGreaterThan(revokeIndex);
   });
   it("removes all direct route-table access from the runtime repository", async () => {
     const repository = await readFile(

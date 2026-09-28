@@ -26,11 +26,28 @@ END
 $roles$;
 
 ALTER ROLE lead_agent_worker_reliability_definer
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  NOCREATEDB NOCREATEROLE NOINHERIT;
 ALTER ROLE lead_agent_async_maintenance_definer
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  NOCREATEDB NOCREATEROLE NOINHERIT;
 ALTER ROLE lead_agent_async_operator
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  NOCREATEDB NOCREATEROLE NOINHERIT;
+
+DO $role_security$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname IN (
+      'lead_agent_worker_reliability_definer',
+      'lead_agent_async_maintenance_definer',
+      'lead_agent_async_operator'
+    )
+      AND (rolsuper OR rolreplication OR rolbypassrls)
+  ) THEN
+    RAISE EXCEPTION 'Lead Agent async roles must not hold restricted PostgreSQL privileges';
+  END IF;
+END
+$role_security$;
 
 ALTER ROLE lead_agent_worker_reliability_definer SET search_path = pg_catalog;
 ALTER ROLE lead_agent_async_maintenance_definer SET search_path = pg_catalog;
@@ -55,10 +72,9 @@ REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public, app, pgboss
        lead_agent_async_maintenance_definer,
        lead_agent_async_operator;
 
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public, app, pgboss
-  FROM lead_agent_worker_reliability_definer,
-       lead_agent_async_maintenance_definer,
-       lead_agent_async_operator;
+-- These roles are new and non-inheriting. Function privileges are reset on the
+-- finite functions below so the migration actor never administers functions
+-- already transferred to dedicated owners by earlier migrations.
 --> statement-breakpoint
 CREATE TABLE app.worker_handler_executions (
   handler_version varchar(16) NOT NULL,
@@ -767,6 +783,34 @@ CREATE POLICY outbox_events_async_maintenance_update
   USING (true)
   WITH CHECK (true);
 
+REVOKE ALL PRIVILEGES ON TABLE app.worker_handler_executions
+  FROM PUBLIC, lead_agent_queue_runtime, lead_agent_async_operator,
+       lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
+
+REVOKE ALL PRIVILEGES ON FUNCTION
+  app.acquire_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
+  app.resume_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
+  app.finish_worker_handler_execution(uuid, uuid, varchar, uuid, varchar, varchar),
+  app.resolve_worker_handler_reconciliation(uuid, uuid, varchar, bytea, varchar, varchar),
+  app.prepare_worker_job_retry(varchar, uuid, integer, integer),
+  app.operator_redrive_worker_dlq_job(
+    uuid, uuid, uuid, varchar, varchar, uuid, varchar, varchar, varchar, varchar, varchar, varchar, bytea
+  ),
+  app.operator_requeue_dead_outbox_event(
+    uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
+  )
+  FROM PUBLIC, lead_agent_queue_runtime, lead_agent_async_operator,
+       lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
+
+GRANT USAGE ON SCHEMA app TO lead_agent_async_operator;
+
+GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH INHERIT FALSE;
+GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH SET TRUE;
+GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH INHERIT FALSE;
+GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH SET TRUE;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_worker_reliability_definer;
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_async_maintenance_definer;
+
 ALTER FUNCTION app.acquire_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer)
   OWNER TO lead_agent_worker_reliability_definer;
 ALTER FUNCTION app.resume_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer)
@@ -777,20 +821,7 @@ ALTER FUNCTION app.resolve_worker_handler_reconciliation(uuid, uuid, varchar, by
   OWNER TO lead_agent_worker_reliability_definer;
 ALTER FUNCTION app.prepare_worker_job_retry(varchar, uuid, integer, integer)
   OWNER TO lead_agent_worker_reliability_definer;
-ALTER FUNCTION app.operator_redrive_worker_dlq_job(
-  uuid, uuid, uuid, varchar, varchar, uuid, varchar, varchar, varchar, varchar, varchar, varchar, bytea
-) OWNER TO lead_agent_async_maintenance_definer;
-ALTER FUNCTION app.operator_requeue_dead_outbox_event(
-  uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
-) OWNER TO lead_agent_async_maintenance_definer;
-
-REVOKE ALL PRIVILEGES ON TABLE app.worker_handler_executions
-  FROM PUBLIC, lead_agent_queue_runtime, lead_agent_async_operator,
-       lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
-
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA app
-  FROM PUBLIC, lead_agent_async_operator;
-
+SET ROLE lead_agent_worker_reliability_definer;
 GRANT EXECUTE ON FUNCTION
   app.acquire_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
   app.resume_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
@@ -798,8 +829,14 @@ GRANT EXECUTE ON FUNCTION
   app.resolve_worker_handler_reconciliation(uuid, uuid, varchar, bytea, varchar, varchar),
   app.prepare_worker_job_retry(varchar, uuid, integer, integer)
   TO lead_agent_queue_runtime;
-
-GRANT USAGE ON SCHEMA app TO lead_agent_async_operator;
+RESET ROLE;
+ALTER FUNCTION app.operator_redrive_worker_dlq_job(
+  uuid, uuid, uuid, varchar, varchar, uuid, varchar, varchar, varchar, varchar, varchar, varchar, bytea
+) OWNER TO lead_agent_async_maintenance_definer;
+ALTER FUNCTION app.operator_requeue_dead_outbox_event(
+  uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
+) OWNER TO lead_agent_async_maintenance_definer;
+SET ROLE lead_agent_async_maintenance_definer;
 GRANT EXECUTE ON FUNCTION
   app.operator_redrive_worker_dlq_job(
     uuid, uuid, uuid, varchar, varchar, uuid, varchar, varchar, varchar, varchar, varchar, varchar, bytea
@@ -808,3 +845,9 @@ GRANT EXECUTE ON FUNCTION
     uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
   )
   TO lead_agent_async_operator;
+RESET ROLE;
+
+REVOKE CREATE ON SCHEMA app FROM lead_agent_worker_reliability_definer;
+REVOKE CREATE ON SCHEMA app FROM lead_agent_async_maintenance_definer;
+GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH SET FALSE;
+GRANT lead_agent_async_maintenance_definer TO CURRENT_USER WITH SET FALSE;

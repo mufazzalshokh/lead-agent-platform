@@ -9212,7 +9212,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     );
     expect(roles.rows).toEqual([
       {
-        rolbypassrls: true,
+        rolbypassrls: false,
         rolcanlogin: false,
         rolcreatedb: false,
         rolcreaterole: false,
@@ -9450,7 +9450,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S21_RLS_TABLES.length + 14);
+    expect(policies.rows).toHaveLength(S21_RLS_TABLES.length + 18);
     const tenantIsolationPolicies = policies.rows.filter(({ policyname }) =>
       policyname.endsWith("_tenant_isolation"),
     );
@@ -9468,6 +9468,32 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       expect(policy?.qual).toContain(`${identityColumn} = app.current_organization_id()`);
       expect(policy?.with_check).toContain(`${identityColumn} = app.current_organization_id()`);
     }
+    expect(
+      policies.rows
+        .filter(({ roles }) => roles === `{${S5_INBOUND_ROUTE_DEFINER_ROLE}}`)
+        .map(({ cmd, policyname, tablename }) => ({ cmd, policyname, tablename })),
+    ).toEqual([
+      {
+        cmd: "SELECT",
+        policyname: "channel_connections_inbound_route_management_select",
+        tablename: "channel_connections",
+      },
+      {
+        cmd: "INSERT",
+        policyname: "inbound_routes_inbound_route_management_insert",
+        tablename: "inbound_routes",
+      },
+      {
+        cmd: "UPDATE",
+        policyname: "inbound_routes_inbound_route_management_update",
+        tablename: "inbound_routes",
+      },
+      {
+        cmd: "SELECT",
+        policyname: "inbound_routes_pre_tenant_resolution",
+        tablename: "inbound_routes",
+      },
+    ]);
     expect(
       policies.rows
         .filter(({ roles }) => roles === "{lead_agent_membership_definer}")
