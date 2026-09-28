@@ -25,6 +25,7 @@ on:
           - bootstrap
           - migration
           - migration-resume
+          - migration-validate
           - migrator-image-update
           - migration-diagnose
           - migration-wiring-diagnose
@@ -141,6 +142,9 @@ jobs:
             [[ "$ACTION" == "plan" ]]
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
           fi
+          if [[ "$PHASE" == "migration-validate" ]]; then
+            [[ "$ACTION" == "plan" ]]
+          fi
           if [[ "$PHASE" == "migration-wiring-diagnose" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
           fi
@@ -237,6 +241,12 @@ jobs:
               SQL_POLICY=ALWAYS
               ;;
             migration-resume)
+              DEPLOY_RUNTIME=true
+              BOOTSTRAP_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
+            migration-validate)
               DEPLOY_RUNTIME=true
               BOOTSTRAP_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -454,11 +464,11 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
-        if: env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose'
+        if: env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose'
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         shell: bash
@@ -589,7 +599,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -1019,7 +1029,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
@@ -3549,157 +3559,150 @@ jobs:
           --wait
 
       - name: Verify migrated staging database
-        if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')
+        if: github.event_name == 'workflow_dispatch' && ((env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')) || (env.S22_ACTION == 'plan' && env.S22_PHASE == 'migration-validate'))
         env:
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         shell: bash
         run: |
           set -euo pipefail
-          VALIDATOR="$RUNNER_TEMP/s22-verify-staging-database.mjs"
-          cat > "$VALIDATOR" <<'EOF'
-          (async () => {
-          const process = globalThis.process;
-          const { Pool } = await import("pg");
-          const {
-            readStagingMigrationManifest,
-            stagingRolePasswordFromUrl,
-          } = await import("./dist/migrate.js");
-
-          const expectedRlsTables = [
-            "ai_action_evaluations", "ai_runs", "analytics_events",
-            "appointment_confirmation_evidence", "appointment_request_attendance",
-            "appointment_request_preferences", "appointment_request_transitions",
-            "appointment_requests", "appointment_revenue_attributions", "audit_events",
-            "business_policies", "channel_connections", "consent_records",
-            "contact_identities", "contacts", "conversations", "faqs",
-            "handoff_transitions", "handoffs", "idempotency_keys", "inbound_routes",
-            "lead_qualification_evaluations", "lead_qualification_evidence", "leads",
-            "legal_holds", "location_business_hours", "location_closures",
-            "location_versions", "locations", "membership_invitations",
-            "membership_location_scopes", "memberships", "messages",
-            "notification_attempts", "notifications", "organizations", "outbox_events",
-            "privacy_requests", "retention_policies", "retention_policy_rules",
-            "service_locations", "service_prices", "service_versions", "services",
-            "thread_automation_controls", "webhook_receipts", "widget_allowed_origins",
-            "widget_sessions",
-          ].sort();
-          const roleUrls = Object.freeze({
-            AUTH_DATABASE_URL: "lead_agent_auth",
-            DATABASE_URL: "lead_agent_runtime",
-            INGRESS_DATABASE_URL: "lead_agent_ingress",
-            QUEUE_DATABASE_URL: "lead_agent_queue_runtime",
-          });
-          const required = (key) => {
-            const value = process.env[key];
-            if (typeof value !== "string" || value.length === 0) throw new Error(`${key} is unavailable`);
-            return value;
-          };
-          const assert = (condition, message) => {
-            if (!condition) throw new Error(message);
-          };
-          const pools = [];
-          try {
-            const manifest = await readStagingMigrationManifest();
-            assert(manifest.entries.length === 30, "Unexpected migration count");
-            assert(manifest.entries.at(-1)?.tag === "0029_s21_thread_automation_controls", "Unexpected migration head");
-
-            const admin = new Pool({
-              application_name: "lead-agent-staging-verifier",
-              connectionString: required("MIGRATION_DATABASE_URL"),
-              max: 1,
-            });
-            pools.push(admin);
-            const database = await admin.query(
-              "select current_database() as database_name, current_setting('server_version_num')::integer as server_version_num",
-            );
-            assert(database.rows[0]?.database_name === "lead_agent_staging", "Unexpected database name");
-            assert(database.rows[0]?.server_version_num >= 170000 && database.rows[0]?.server_version_num < 180000, "Unexpected PostgreSQL major");
-
-            const migrations = await admin.query(
-              "select count(*)::integer as count from drizzle.__drizzle_migrations",
-            );
-            assert(migrations.rows[0]?.count === 30, "Applied migration count mismatch");
-            const tables = await admin.query(
-              "select count(*)::integer as count from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'",
-            );
-            assert(tables.rows[0]?.count === 52, "Production table count mismatch");
-
-            const rls = await admin.query(
-              "select relname from pg_catalog.pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relrowsecurity and relforcerowsecurity order by relname",
-            );
-            const actualRlsTables = rls.rows.map(({ relname }) => relname).sort();
-            assert(JSON.stringify(actualRlsTables) === JSON.stringify(expectedRlsTables), "FORCE RLS manifest mismatch");
-
-            const roleNames = Object.values(roleUrls).sort();
-            const roles = await admin.query(
-              "select rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls from pg_catalog.pg_roles where rolname = any($1::text[]) order by rolname",
-              [roleNames],
-            );
-            assert(roles.rows.length === roleNames.length, "Application role manifest mismatch");
-            for (const role of roles.rows) {
-              assert(role.rolcanlogin === true, `Role ${role.rolname} cannot log in`);
-              assert(role.rolsuper === false, `Role ${role.rolname} is superuser`);
-              assert(role.rolcreatedb === false, `Role ${role.rolname} can create databases`);
-              assert(role.rolcreaterole === false, `Role ${role.rolname} can create roles`);
-              assert(role.rolbypassrls === false, `Role ${role.rolname} bypasses RLS`);
-            }
-
-            for (const [key, expectedRole] of Object.entries(roleUrls)) {
-              const connectionString = required(key);
-              stagingRolePasswordFromUrl(connectionString, expectedRole);
-              const pool = new Pool({
-                application_name: `lead-agent-staging-${expectedRole}-connectivity`,
-                connectionString,
-                max: 1,
-              });
-              pools.push(pool);
-              const identity = await pool.query(
-                "select current_user as role_name, current_database() as database_name",
-              );
-              assert(identity.rows[0]?.role_name === expectedRole, `Unexpected connected role for ${key}`);
-              assert(identity.rows[0]?.database_name === "lead_agent_staging", `Unexpected connected database for ${key}`);
-            }
-
-            console.info(JSON.stringify({
-              application_roles_verified: 4,
-              database: "lead_agent_staging",
-              force_rls_tables: actualRlsTables.length,
-              migration_count: 30,
-              migration_head: "0029_s21_thread_automation_controls",
-              operation: "staging_database_validation",
-              outcome: "succeeded",
-              postgresql_major: 17,
-              production_tables: 52,
-            }));
-          } catch (error) {
-            console.error(JSON.stringify({
-              error_name: error instanceof Error ? error.name : "UnknownError",
-              operation: "staging_database_validation",
-              outcome: "failed",
-            }));
-            process.exitCode = 1;
-          } finally {
-            await Promise.all(pools.map(async (pool) => pool.end().catch(() => {})));
-          }
-          })().catch((error) => {
-            console.error(JSON.stringify({
-              error_name: error instanceof Error ? error.name : "UnknownError",
-              operation: "staging_database_validation",
-              outcome: "failed",
-            }));
-            process.exitCode = 1;
-          });
-          EOF
+          VALIDATOR=".github/scripts/s22-staging-database-validator.mjs"
+          EVIDENCE="$GITHUB_WORKSPACE/s22-database-validator-evidence.jsonl"
+          EXECUTION_JSON="$RUNNER_TEMP/s22-validator-execution.json"
+          LOGS="$RUNNER_TEMP/s22-validator-logs.json"
+          PARSED="$RUNNER_TEMP/s22-validator-parsed.jsonl"
+          rm -f "$EVIDENCE" "$EXECUTION_JSON" "$LOGS" "$PARSED"
           VALIDATOR_B64="$(base64 -w0 "$VALIDATOR")"
-          gcloud run jobs execute lead-agent-staging-migrator \
+          set +e
+          EXECUTION_ID="$(gcloud run jobs execute lead-agent-staging-migrator \
             --project="$PROJECT_ID" \
             --region=me-central1 \
             --args='--input-type=module,-e,eval(atob(process.env.S22_VALIDATOR_B64))' \
             --update-env-vars="S22_VALIDATOR_B64=$VALIDATOR_B64" \
-            --wait
-          rm -f "$VALIDATOR"
+            --format='value(metadata.name)')"
+          LAUNCH_EXIT_CODE=$?
+          set -e
           unset VALIDATOR_B64
+          if [[ "$LAUNCH_EXIT_CODE" != "0" || ! "$EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]; then
+            echo '{"assertion":"validator_execution_launch","expected":"validator execution created","failure_code":"S22V098_VALIDATOR_LAUNCH","observed":"launch_failed","operation":"staging_database_validation","outcome":"FAIL","summary":true}' | tee "$EVIDENCE"
+            exit 1
+          fi
+
+          TERMINAL_STATE=""
+          for ATTEMPT in $(seq 1 60); do
+            gcloud run jobs executions describe "$EXECUTION_ID" \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --format=json > "$EXECUTION_JSON"
+            TERMINAL_STATE="$(jq -r '
+              (.status // .) as $status
+              | [($status.conditions // [])[]
+                  | select(.type == "Completed")
+                  | (.state // .status // "")]
+              | .[0] // ""
+            ' "$EXECUTION_JSON")"
+            if [[ "$TERMINAL_STATE" == "CONDITION_SUCCEEDED" || "$TERMINAL_STATE" == "CONDITION_FAILED" || "$TERMINAL_STATE" == "True" || "$TERMINAL_STATE" == "False" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ -z "$TERMINAL_STATE" || "$TERMINAL_STATE" == "CONDITION_PENDING" || "$TERMINAL_STATE" == "Unknown" ]]; then
+            gcloud run jobs executions cancel "$EXECUTION_ID" \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --quiet || true
+            echo '{"assertion":"validator_execution_window","expected":"terminal within 300 seconds","failure_code":"S22V099_VALIDATOR_TIMEOUT","observed":"bounded_timeout_cancelled","operation":"staging_database_validation","outcome":"FAIL","summary":true}' | tee "$EVIDENCE"
+            exit 1
+          fi
+
+          for ATTEMPT in $(seq 1 12); do
+            gcloud beta run jobs executions logs read "$EXECUTION_ID" \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --limit=300 \
+              --order=asc \
+              --format=json > "$LOGS"
+            node - "$LOGS" <<'NODE' > "$PARSED"
+          const fs = require("node:fs");
+          const [logPath] = process.argv.slice(2);
+          const raw = JSON.parse(fs.readFileSync(logPath, "utf8"));
+          const entries = Array.isArray(raw) ? raw : Array.isArray(raw?.entries) ? raw.entries : [];
+          const object = (value) =>
+            typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+          const parse = (value) => {
+            if (typeof value !== "string") return undefined;
+            try { return object(JSON.parse(value)); } catch { return undefined; }
+          };
+          const safeText = (value) => String(value)
+            .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/giu, "postgresql://[REDACTED]")
+            .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/giu, "[REDACTED_URL]")
+            .replace(/Bearer\s+[^\s"'<>]+/giu, "Bearer [REDACTED]")
+            .replace(/((?:password|token|secret|authorization|api[_-]?key|database[_-]?url)\s*[:=]\s*)[^\s,;"'<>]+/giu, "$1[REDACTED]")
+            .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/gu, "[REDACTED_IP]")
+            .slice(0, 2000);
+          const safeValue = (value, depth = 0) => {
+            if (depth > 4) return "[TRUNCATED]";
+            if (value === null || typeof value === "boolean" || typeof value === "number") return value;
+            if (typeof value === "string") return safeText(value);
+            if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeValue(item, depth + 1));
+            const record = object(value);
+            if (!record) return "unavailable";
+            return Object.fromEntries(
+              Object.entries(record)
+                .filter(([key]) => !/(?:password|token|secret|authorization|api[_-]?key|database[_-]?url)/iu.test(key))
+                .slice(0, 100)
+                .map(([key, item]) => [key, safeValue(item, depth + 1)]),
+            );
+          };
+          const payloads = entries.flatMap((entry) => {
+            const payload = object(entry.jsonPayload);
+            return [payload, parse(entry.textPayload), parse(payload?.message)].filter(Boolean);
+          });
+          const seen = new Set();
+          for (const payload of payloads) {
+            if (payload.operation !== "staging_database_validation") continue;
+            if (typeof payload.assertion !== "string" && payload.summary !== true) continue;
+            const sanitized = {
+              assertion: typeof payload.assertion === "string" ? safeText(payload.assertion) : undefined,
+              assertion_count: Number.isInteger(payload.assertion_count) ? payload.assertion_count : undefined,
+              expected: safeValue(payload.expected),
+              failed_assertions: safeValue(payload.failed_assertions),
+              failure_code: typeof payload.failure_code === "string" ? safeText(payload.failure_code) : undefined,
+              failure_count: Number.isInteger(payload.failure_count) ? payload.failure_count : undefined,
+              observed: safeValue(payload.observed),
+              operation: "staging_database_validation",
+              outcome: payload.outcome === "PASS" ? "PASS" : "FAIL",
+              summary: payload.summary === true ? true : undefined,
+            };
+            const line = JSON.stringify(sanitized);
+            if (!seen.has(line)) {
+              seen.add(line);
+              console.log(line);
+            }
+          }
+          NODE
+            if grep -q '"summary":true' "$PARSED"; then
+              break
+            fi
+            sleep 5
+          done
+
+          if ! grep -q '"summary":true' "$PARSED"; then
+            echo '{"assertion":"validator_structured_logs","expected":"structured validator summary","failure_code":"S22V097_VALIDATOR_LOGS","observed":"summary_unavailable","operation":"staging_database_validation","outcome":"FAIL","summary":true}' > "$PARSED"
+          fi
+          cat "$PARSED" | tee "$EVIDENCE"
+          if ! grep -q '"outcome":"PASS","summary":true' "$PARSED"; then
+            exit 1
+          fi
+
+      - name: Upload staging database validator evidence
+        if: always() && github.event_name == 'workflow_dispatch' && ((env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')) || (env.S22_ACTION == 'plan' && env.S22_PHASE == 'migration-validate'))
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-database-validator-evidence-${{ github.run_id }}
+          path: s22-database-validator-evidence.jsonl
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify migration Terraform convergence
         if: github.event_name == 'workflow_dispatch' && env.S22_ACTION == 'apply' && (env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume')
