@@ -1,8 +1,14 @@
+GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+SET ROLE lead_agent_outbox_relay_definer;
+--> statement-breakpoint
 REVOKE ALL PRIVILEGES ON FUNCTION app.claim_outbox_events(character varying, integer, integer)
 	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth,
 	lead_agent_queue_runtime;
 --> statement-breakpoint
 DROP FUNCTION app.claim_outbox_events(character varying, integer, integer);
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_outbox_events(
 	input_dispatcher_id character varying,

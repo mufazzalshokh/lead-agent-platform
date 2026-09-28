@@ -31,7 +31,6 @@ describe("S22 staging infrastructure boundary", () => {
       ["0023_s8_active_route_claim.sql", "lead_agent_outbox_relay_definer"],
       ["0024_s8_handler_reliability.sql", "lead_agent_worker_reliability_definer"],
       ["0024_s8_handler_reliability.sql", "lead_agent_async_maintenance_definer"],
-      ["0025_s6_membership_invitation_clock_skew.sql", "lead_agent_membership_definer"],
       ["0026_s11_telegram_inbound_route_management.sql", "lead_agent_inbound_route_definer"],
       ["0027_s11_instagram_identity_routing.sql", "lead_agent_inbound_route_definer"],
     ] as const;
@@ -60,7 +59,10 @@ describe("S22 staging infrastructure boundary", () => {
       const nonInheritedIndex = ownerTransferSql.indexOf(
         `GRANT ${role} TO CURRENT_USER WITH INHERIT FALSE`,
       );
-      const setGrantIndex = ownerTransferSql.indexOf(`GRANT ${role} TO CURRENT_USER WITH SET TRUE`);
+      const setGrantIndex = ownerTransferSql.indexOf(
+        `GRANT ${role} TO CURRENT_USER WITH SET TRUE`,
+        nonInheritedIndex,
+      );
       const grantIndex = ownerTransferSql.indexOf(`GRANT CREATE ON SCHEMA app TO ${role}`);
       const firstOwnerIndex = ownerTransferSql.indexOf(`OWNER TO ${role}`);
       const lastOwnerIndex = ownerTransferSql.lastIndexOf(`OWNER TO ${role}`);
@@ -74,6 +76,38 @@ describe("S22 staging infrastructure boundary", () => {
       expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
       expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
       expect(setRevokeIndex).toBeGreaterThan(revokeIndex);
+    }
+  });
+
+  it("uses bounded definer role entry when replacing definer-owned functions", async () => {
+    for (const [name, role, mutation] of [
+      [
+        "0023_s8_active_route_claim.sql",
+        "lead_agent_outbox_relay_definer",
+        "DROP FUNCTION app.claim_outbox_events",
+      ],
+      [
+        "0025_s6_membership_invitation_clock_skew.sql",
+        "lead_agent_membership_definer",
+        "CREATE OR REPLACE FUNCTION app.accept_membership_invitation",
+      ],
+      [
+        "0027_s11_instagram_identity_routing.sql",
+        "lead_agent_inbound_route_definer",
+        "CREATE OR REPLACE FUNCTION app.resolve_inbound_route",
+      ],
+    ] as const) {
+      const sql = await repositoryFile(`packages/database/drizzle/${name}`);
+      const setGrantIndex = sql.indexOf(`GRANT ${role} TO CURRENT_USER WITH SET TRUE`);
+      const setRoleIndex = sql.indexOf(`SET ROLE ${role}`);
+      const mutationIndex = sql.indexOf(mutation);
+      const resetRoleIndex = sql.indexOf("RESET ROLE", mutationIndex);
+      const setRevokeIndex = sql.lastIndexOf(`GRANT ${role} TO CURRENT_USER WITH SET FALSE`);
+      expect(setGrantIndex).toBeGreaterThanOrEqual(0);
+      expect(setRoleIndex).toBeGreaterThan(setGrantIndex);
+      expect(mutationIndex).toBeGreaterThan(setRoleIndex);
+      expect(resetRoleIndex).toBeGreaterThan(mutationIndex);
+      expect(setRevokeIndex).toBeGreaterThan(resetRoleIndex);
     }
   });
 

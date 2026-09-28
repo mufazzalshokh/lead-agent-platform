@@ -29,7 +29,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       hash.update(await readFile(new URL(name, folder)));
     }
     expect(hash.digest("hex")).toBe(
-      "f0b9f191122bb55451d3743915799dc776018281f011c108ffabb0129363c924",
+      "a7afaea5d59cc6a2a2598c3094893e11983222b6ad4d26717275388c739bf228",
     );
   });
   it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
@@ -113,7 +113,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
     expect(sql).not.toMatch(
       /EXECUTE\s+(?:format|pg_catalog)|GRANT\s+lead_agent_inbound_route_definer\s+TO\s+lead_agent_(?:runtime|ingress)/iu,
     );
-    expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(4);
+    expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(3);
     expect(sql).toContain("FROM PUBLIC, lead_agent_runtime, lead_agent_ingress");
     expect(sql).toContain("FROM PUBLIC, lead_agent_ingress");
     expect(
@@ -124,7 +124,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
     const nonInheritedIndex = sql.indexOf(
       "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE",
     );
-    const setGrantIndex = sql.indexOf(
+    const setGrantIndex = sql.lastIndexOf(
       "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
     );
     const grantIndex = sql.indexOf(

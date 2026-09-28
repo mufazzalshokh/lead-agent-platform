@@ -41,7 +41,7 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
     const nonInheritedIndex = sql.indexOf(
       "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE",
     );
-    const setGrantIndex = sql.indexOf(
+    const setGrantIndex = sql.lastIndexOf(
       "GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE",
     );
     const grantIndex = sql.indexOf(

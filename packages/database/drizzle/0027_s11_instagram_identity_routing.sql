@@ -12,6 +12,10 @@ ALTER TABLE "outbox_events" DROP CONSTRAINT "outbox_events_schema_version_check"
 --> statement-breakpoint
 ALTER TABLE "outbox_events" ADD CONSTRAINT "outbox_events_schema_version_check" CHECK (("outbox_events"."event_type" in ('lead.reopened', 'contact.identity_added') and "outbox_events"."schema_version" in ('1', '2')) or ("outbox_events"."event_type" not in ('lead.reopened', 'contact.identity_added') and "outbox_events"."schema_version" = '1'));
 --> statement-breakpoint
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
+--> statement-breakpoint
+SET ROLE lead_agent_inbound_route_definer;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.resolve_inbound_route(
 	input_route_type character varying,
 	input_route_key_hash bytea
@@ -43,14 +47,13 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_inbound_route(character varying, b
 GRANT EXECUTE ON FUNCTION app.resolve_inbound_route(character varying, bytea)
 	TO lead_agent_ingress;
 --> statement-breakpoint
+RESET ROLE;
+--> statement-breakpoint
 GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
---> statement-breakpoint
-ALTER FUNCTION app.resolve_inbound_route(character varying, bytea)
-	OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 CREATE FUNCTION app.create_instagram_inbound_route(
     input_route_id uuid,
