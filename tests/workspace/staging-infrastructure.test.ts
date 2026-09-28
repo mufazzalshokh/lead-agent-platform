@@ -205,6 +205,36 @@ describe("S22 staging infrastructure boundary", () => {
     }
   });
 
+  it("temporarily grants schema creation only for existing-owner function replacements", async () => {
+    for (const [name, role, replacement] of [
+      [
+        "0025_s6_membership_invitation_clock_skew.sql",
+        "lead_agent_membership_definer",
+        "CREATE OR REPLACE FUNCTION app.accept_membership_invitation",
+      ],
+      [
+        "0027_s11_instagram_identity_routing.sql",
+        "lead_agent_inbound_route_definer",
+        "CREATE OR REPLACE FUNCTION app.resolve_inbound_route",
+      ],
+    ] as const) {
+      const sql = await repositoryFile(`packages/database/drizzle/${name}`);
+      const createGrantIndex = sql.indexOf(`GRANT USAGE, CREATE ON SCHEMA app TO ${role}`);
+      const setRoleIndex = sql.indexOf(`SET ROLE ${role}`, createGrantIndex);
+      const replacementIndex = sql.indexOf(replacement, setRoleIndex);
+      const resetRoleIndex = sql.indexOf("RESET ROLE", replacementIndex);
+      const createRevokeIndex = sql.indexOf(
+        `REVOKE CREATE ON SCHEMA app FROM ${role}`,
+        resetRoleIndex,
+      );
+      expect(createGrantIndex).toBeGreaterThanOrEqual(0);
+      expect(setRoleIndex).toBeGreaterThan(createGrantIndex);
+      expect(replacementIndex).toBeGreaterThan(setRoleIndex);
+      expect(resetRoleIndex).toBeGreaterThan(replacementIndex);
+      expect(createRevokeIndex).toBeGreaterThan(resetRoleIndex);
+    }
+  });
+
   it("keeps queue privilege reset within objects owned by the migration actor", async () => {
     const [queueInfrastructure, relayPersistence, activeRoute, handlerReliability] =
       await Promise.all([
