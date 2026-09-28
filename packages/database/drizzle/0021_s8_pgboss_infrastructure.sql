@@ -50,7 +50,10 @@ REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public
 REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public
   FROM lead_agent_queue_runtime;
 
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public, app
+-- Functions in app have dedicated owners and explicit per-function grants.
+-- The migration actor can reset only the public functions that it owns here;
+-- later queue APIs remain individually granted by their defining migrations.
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public
   FROM lead_agent_queue_runtime;
 
 DO $database_grant$

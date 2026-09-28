@@ -77,6 +77,29 @@ describe("S22 staging infrastructure boundary", () => {
     }
   });
 
+  it("keeps queue privilege reset within objects owned by the migration actor", async () => {
+    const [queueInfrastructure, relayPersistence] = await Promise.all([
+      repositoryFile("packages/database/drizzle/0021_s8_pgboss_infrastructure.sql"),
+      repositoryFile("packages/database/drizzle/0022_s8_outbox_relay_persistence.sql"),
+    ]);
+    expect(queueInfrastructure).toContain(
+      "REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public\n  FROM lead_agent_queue_runtime",
+    );
+    expect(queueInfrastructure).not.toContain(
+      "REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public, app",
+    );
+    expect(relayPersistence).toContain("GRANT USAGE ON SCHEMA app TO lead_agent_queue_runtime");
+    for (const functionName of [
+      "claim_outbox_events",
+      "renew_outbox_event_lease",
+      "release_outbox_event_for_retry",
+      "mark_outbox_event_published",
+      "mark_outbox_event_dead_lettered",
+    ]) {
+      expect(relayPersistence).toContain(`GRANT EXECUTE ON FUNCTION app.${functionName}`);
+    }
+  });
+
   it("accepts only the expected database role and never exposes the password in errors", () => {
     expect(
       stagingRolePasswordFromUrl(
