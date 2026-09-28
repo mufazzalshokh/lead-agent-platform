@@ -44,6 +44,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(roleSql).not.toMatch(/\b(?:NO)?(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu);
     expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(6);
     for (const ownerTransferSql of ownerTransferMigrations) {
+      const membershipGrantIndex = ownerTransferSql.indexOf(
+        "GRANT lead_agent_inbound_route_definer TO CURRENT_USER",
+      );
       const grantIndex = ownerTransferSql.indexOf(
         "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
       );
@@ -54,9 +57,14 @@ describe("S22 staging infrastructure boundary", () => {
       const revokeIndex = ownerTransferSql.indexOf(
         "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
       );
-      expect(grantIndex).toBeGreaterThanOrEqual(0);
+      const membershipRevokeIndex = ownerTransferSql.indexOf(
+        "REVOKE lead_agent_inbound_route_definer FROM CURRENT_USER",
+      );
+      expect(membershipGrantIndex).toBeGreaterThanOrEqual(0);
+      expect(grantIndex).toBeGreaterThan(membershipGrantIndex);
       expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
       expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
+      expect(membershipRevokeIndex).toBeGreaterThan(revokeIndex);
     }
   });
 

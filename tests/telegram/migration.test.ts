@@ -31,10 +31,13 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
     expect(sql).toContain("TO lead_agent_runtime");
     expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(3);
     expect(sql).not.toMatch(
-      /ON TABLE public.inbound_routes TO lead_agent_runtime|GRANT.*lead_agent_inbound_route_definer TO/iu,
+      /ON TABLE public.inbound_routes TO lead_agent_runtime|GRANT\s+lead_agent_inbound_route_definer\s+TO\s+lead_agent_(?:runtime|ingress)/iu,
     );
   });
-  it("grants schema CREATE only transiently for non-superuser function ownership transfer", () => {
+  it("grants ownership prerequisites only transiently for the non-superuser migrator", () => {
+    const membershipGrantIndex = sql.indexOf(
+      "GRANT lead_agent_inbound_route_definer TO CURRENT_USER",
+    );
     const grantIndex = sql.indexOf(
       "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
     );
@@ -43,9 +46,14 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
     const revokeIndex = sql.indexOf(
       "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
     );
-    expect(grantIndex).toBeGreaterThanOrEqual(0);
+    const membershipRevokeIndex = sql.indexOf(
+      "REVOKE lead_agent_inbound_route_definer FROM CURRENT_USER",
+    );
+    expect(membershipGrantIndex).toBeGreaterThanOrEqual(0);
+    expect(grantIndex).toBeGreaterThan(membershipGrantIndex);
     expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
     expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
+    expect(membershipRevokeIndex).toBeGreaterThan(revokeIndex);
   });
   it("removes all direct route-table access from the runtime repository", async () => {
     const repository = await readFile(

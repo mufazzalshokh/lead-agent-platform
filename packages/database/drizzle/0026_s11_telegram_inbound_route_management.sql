@@ -132,6 +132,8 @@ BEGIN
 END
 $function$;
 --> statement-breakpoint
+GRANT lead_agent_inbound_route_definer TO CURRENT_USER;
+--> statement-breakpoint
 GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea) OWNER TO lead_agent_inbound_route_definer;
@@ -141,6 +143,8 @@ ALTER FUNCTION app.rotate_telegram_inbound_route(uuid, bytea, bytea) OWNER TO le
 ALTER FUNCTION app.disable_telegram_inbound_route(uuid) OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer;
+--> statement-breakpoint
+REVOKE lead_agent_inbound_route_definer FROM CURRENT_USER;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea),
     app.rotate_telegram_inbound_route(uuid, bytea, bytea),
