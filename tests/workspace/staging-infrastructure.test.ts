@@ -108,12 +108,100 @@ describe("S22 staging infrastructure boundary", () => {
       const resetRoleIndex = sql.indexOf("RESET ROLE", mutationIndex);
       const setRevokeIndex = sql.lastIndexOf(`GRANT ${role} TO CURRENT_USER WITH SET FALSE`);
       expect(privilegeResetIndex).toBeGreaterThanOrEqual(0);
-      expect(setGrantIndex).toBeGreaterThan(privilegeResetIndex);
       expect(setGrantIndex).toBeGreaterThanOrEqual(0);
       expect(setRoleIndex).toBeGreaterThan(setGrantIndex);
       expect(mutationIndex).toBeGreaterThan(setRoleIndex);
+      expect(privilegeResetIndex).toBeGreaterThan(setRoleIndex);
+      expect(privilegeResetIndex).toBeLessThan(resetRoleIndex);
       expect(resetRoleIndex).toBeGreaterThan(mutationIndex);
       expect(setRevokeIndex).toBeGreaterThan(resetRoleIndex);
+    }
+  });
+
+  it("records runtime function grants as the bounded definer owner", async () => {
+    for (const [name, role, ownerTransfer, runtimeGrant] of [
+      [
+        "0012_s5_inbound_route_resolver.sql",
+        "lead_agent_inbound_route_definer",
+        "ALTER FUNCTION app.resolve_inbound_route",
+        "GRANT EXECUTE ON FUNCTION app.resolve_inbound_route",
+      ],
+      [
+        "0014_s6_oidc_identity_resolver.sql",
+        "lead_agent_identity_definer",
+        "ALTER FUNCTION app.resolve_external_identity",
+        "GRANT EXECUTE ON FUNCTION app.resolve_external_identity",
+      ],
+      [
+        "0015_s6_session_lifecycle.sql",
+        "lead_agent_identity_definer",
+        "ALTER FUNCTION app.revoke_user_application_sessions",
+        "GRANT EXECUTE ON FUNCTION app.create_application_session",
+      ],
+      [
+        "0016_s6_membership_authorization_resolver.sql",
+        "lead_agent_identity_definer",
+        "ALTER FUNCTION app.resolve_membership_authorization",
+        "GRANT EXECUTE ON FUNCTION app.resolve_membership_authorization",
+      ],
+      [
+        "0017_s6_membership_lifecycle.sql",
+        "lead_agent_membership_definer",
+        "ALTER FUNCTION app.revoke_membership_user_sessions",
+        "GRANT EXECUTE ON FUNCTION app.revoke_membership_user_sessions",
+      ],
+      [
+        "0017_s6_membership_lifecycle.sql",
+        "lead_agent_membership_definer",
+        "ALTER FUNCTION app.accept_membership_invitation",
+        "GRANT EXECUTE ON FUNCTION app.accept_membership_invitation",
+      ],
+      [
+        "0022_s8_outbox_relay_persistence.sql",
+        "lead_agent_outbox_relay_definer",
+        "ALTER FUNCTION app.mark_outbox_event_dead_lettered",
+        "GRANT EXECUTE ON FUNCTION app.claim_outbox_events",
+      ],
+      [
+        "0023_s8_active_route_claim.sql",
+        "lead_agent_outbox_relay_definer",
+        "ALTER FUNCTION app.claim_outbox_events",
+        "GRANT EXECUTE ON FUNCTION app.claim_outbox_events",
+      ],
+      [
+        "0024_s8_handler_reliability.sql",
+        "lead_agent_worker_reliability_definer",
+        "ALTER FUNCTION app.prepare_worker_job_retry",
+        "GRANT EXECUTE ON FUNCTION\n  app.acquire_worker_handler_execution",
+      ],
+      [
+        "0024_s8_handler_reliability.sql",
+        "lead_agent_async_maintenance_definer",
+        "ALTER FUNCTION app.operator_requeue_dead_outbox_event",
+        "GRANT EXECUTE ON FUNCTION\n  app.operator_redrive_worker_dlq_job",
+      ],
+      [
+        "0026_s11_telegram_inbound_route_management.sql",
+        "lead_agent_inbound_route_definer",
+        "ALTER FUNCTION app.disable_telegram_inbound_route",
+        "GRANT EXECUTE ON FUNCTION app.create_telegram_inbound_route",
+      ],
+      [
+        "0027_s11_instagram_identity_routing.sql",
+        "lead_agent_inbound_route_definer",
+        "ALTER FUNCTION app.disable_instagram_inbound_route",
+        "GRANT EXECUTE ON FUNCTION app.create_instagram_inbound_route",
+      ],
+    ] as const) {
+      const sql = await repositoryFile(`packages/database/drizzle/${name}`);
+      const ownerIndex = sql.indexOf(ownerTransfer);
+      const setRoleIndex = sql.indexOf(`SET ROLE ${role}`, ownerIndex);
+      const grantIndex = sql.indexOf(runtimeGrant, setRoleIndex);
+      const resetRoleIndex = sql.indexOf("RESET ROLE", grantIndex);
+      expect(ownerIndex).toBeGreaterThanOrEqual(0);
+      expect(setRoleIndex).toBeGreaterThan(ownerIndex);
+      expect(grantIndex).toBeGreaterThan(setRoleIndex);
+      expect(resetRoleIndex).toBeGreaterThan(grantIndex);
     }
   });
 
@@ -162,7 +250,7 @@ describe("S22 staging infrastructure boundary", () => {
       ],
     ] as const) {
       expect(sql.indexOf(grant)).toBeGreaterThanOrEqual(0);
-      expect(sql.indexOf(grant)).toBeLessThan(sql.indexOf(ownerTransfer));
+      expect(sql.indexOf(grant)).toBeGreaterThan(sql.indexOf(ownerTransfer));
     }
   });
 

@@ -29,7 +29,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       hash.update(await readFile(new URL(name, folder)));
     }
     expect(hash.digest("hex")).toBe(
-      "1362fc19fbd134e44b57b0e715fc1b7f58b070f458966f1b865ca02725953ebb",
+      "b9f70965c3c8d01b5193bff596ec8b348a86d533d06e7b14dd9c2d1c07c74d38",
     );
   });
   it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
@@ -118,7 +118,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
     expect(sql).toContain("FROM PUBLIC, lead_agent_ingress");
     expect(
       sql.indexOf("GRANT EXECUTE ON FUNCTION app.create_instagram_inbound_route"),
-    ).toBeLessThan(sql.indexOf("ALTER FUNCTION app.create_instagram_inbound_route"));
+    ).toBeGreaterThan(sql.indexOf("ALTER FUNCTION app.create_instagram_inbound_route"));
   });
   it("bounds ownership transfer privileges while preserving role administration", () => {
     const nonInheritedIndex = sql.indexOf(

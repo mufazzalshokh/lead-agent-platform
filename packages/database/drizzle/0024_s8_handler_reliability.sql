@@ -802,23 +802,7 @@ REVOKE ALL PRIVILEGES ON FUNCTION
   FROM PUBLIC, lead_agent_queue_runtime, lead_agent_async_operator,
        lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
 
-GRANT EXECUTE ON FUNCTION
-  app.acquire_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
-  app.resume_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
-  app.finish_worker_handler_execution(uuid, uuid, varchar, uuid, varchar, varchar),
-  app.resolve_worker_handler_reconciliation(uuid, uuid, varchar, bytea, varchar, varchar),
-  app.prepare_worker_job_retry(varchar, uuid, integer, integer)
-  TO lead_agent_queue_runtime;
-
 GRANT USAGE ON SCHEMA app TO lead_agent_async_operator;
-GRANT EXECUTE ON FUNCTION
-  app.operator_redrive_worker_dlq_job(
-    uuid, uuid, uuid, varchar, varchar, uuid, varchar, varchar, varchar, varchar, varchar, varchar, bytea
-  ),
-  app.operator_requeue_dead_outbox_event(
-    uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
-  )
-  TO lead_agent_async_operator;
 
 GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH INHERIT FALSE;
 GRANT lead_agent_worker_reliability_definer TO CURRENT_USER WITH SET TRUE;
@@ -837,12 +821,31 @@ ALTER FUNCTION app.resolve_worker_handler_reconciliation(uuid, uuid, varchar, by
   OWNER TO lead_agent_worker_reliability_definer;
 ALTER FUNCTION app.prepare_worker_job_retry(varchar, uuid, integer, integer)
   OWNER TO lead_agent_worker_reliability_definer;
+SET ROLE lead_agent_worker_reliability_definer;
+GRANT EXECUTE ON FUNCTION
+  app.acquire_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
+  app.resume_worker_handler_execution(uuid, uuid, varchar, bytea, integer, integer),
+  app.finish_worker_handler_execution(uuid, uuid, varchar, uuid, varchar, varchar),
+  app.resolve_worker_handler_reconciliation(uuid, uuid, varchar, bytea, varchar, varchar),
+  app.prepare_worker_job_retry(varchar, uuid, integer, integer)
+  TO lead_agent_queue_runtime;
+RESET ROLE;
 ALTER FUNCTION app.operator_redrive_worker_dlq_job(
   uuid, uuid, uuid, varchar, varchar, uuid, varchar, varchar, varchar, varchar, varchar, varchar, bytea
 ) OWNER TO lead_agent_async_maintenance_definer;
 ALTER FUNCTION app.operator_requeue_dead_outbox_event(
   uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
 ) OWNER TO lead_agent_async_maintenance_definer;
+SET ROLE lead_agent_async_maintenance_definer;
+GRANT EXECUTE ON FUNCTION
+  app.operator_redrive_worker_dlq_job(
+    uuid, uuid, uuid, varchar, varchar, uuid, varchar, varchar, varchar, varchar, varchar, varchar, bytea
+  ),
+  app.operator_requeue_dead_outbox_event(
+    uuid, uuid, uuid, uuid, varchar, varchar, varchar, varchar, varchar, varchar, varchar, bytea
+  )
+  TO lead_agent_async_operator;
+RESET ROLE;
 
 REVOKE CREATE ON SCHEMA app FROM lead_agent_worker_reliability_definer;
 REVOKE CREATE ON SCHEMA app FROM lead_agent_async_maintenance_definer;

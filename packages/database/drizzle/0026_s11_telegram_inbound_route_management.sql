@@ -136,10 +136,6 @@ REVOKE ALL ON FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea),
     app.rotate_telegram_inbound_route(uuid, bytea, bytea),
     app.disable_telegram_inbound_route(uuid) FROM PUBLIC, lead_agent_ingress;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea),
-    app.rotate_telegram_inbound_route(uuid, bytea, bytea),
-    app.disable_telegram_inbound_route(uuid) TO lead_agent_runtime;
---> statement-breakpoint
 GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
@@ -151,6 +147,14 @@ ALTER FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea) OWNER TO lea
 ALTER FUNCTION app.rotate_telegram_inbound_route(uuid, bytea, bytea) OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.disable_telegram_inbound_route(uuid) OWNER TO lead_agent_inbound_route_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_inbound_route_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.create_telegram_inbound_route(uuid, uuid, bytea),
+    app.rotate_telegram_inbound_route(uuid, bytea, bytea),
+    app.disable_telegram_inbound_route(uuid) TO lead_agent_runtime;
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer;
 --> statement-breakpoint

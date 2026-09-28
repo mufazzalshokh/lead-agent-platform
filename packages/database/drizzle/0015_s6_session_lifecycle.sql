@@ -398,21 +398,6 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.revoke_application_session(bytea)
 REVOKE ALL PRIVILEGES ON FUNCTION app.revoke_user_application_sessions(uuid, character varying)
 	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.create_application_session(
-	uuid, uuid, bytea, bytea, timestamp with time zone, character varying, bytea, bytea
-) TO lead_agent_auth;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.resolve_application_session(bytea) TO lead_agent_auth;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.rotate_application_session(
-	bytea, bytea, bytea, uuid, timestamp with time zone, character varying
-) TO lead_agent_auth;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.revoke_application_session(bytea) TO lead_agent_auth;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.revoke_user_application_sessions(uuid, character varying)
-	TO lead_agent_auth;
---> statement-breakpoint
 GRANT lead_agent_identity_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_identity_definer TO CURRENT_USER WITH SET TRUE;
@@ -433,6 +418,25 @@ ALTER FUNCTION app.revoke_application_session(bytea) OWNER TO lead_agent_identit
 --> statement-breakpoint
 ALTER FUNCTION app.revoke_user_application_sessions(uuid, character varying)
 	OWNER TO lead_agent_identity_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_identity_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.create_application_session(
+	uuid, uuid, bytea, bytea, timestamp with time zone, character varying, bytea, bytea
+) TO lead_agent_auth;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.resolve_application_session(bytea) TO lead_agent_auth;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.rotate_application_session(
+	bytea, bytea, bytea, uuid, timestamp with time zone, character varying
+) TO lead_agent_auth;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.revoke_application_session(bytea) TO lead_agent_auth;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.revoke_user_application_sessions(uuid, character varying)
+	TO lead_agent_auth;
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_identity_definer;
 --> statement-breakpoint

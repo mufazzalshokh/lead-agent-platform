@@ -12,9 +12,6 @@ ALTER TABLE "outbox_events" DROP CONSTRAINT "outbox_events_schema_version_check"
 --> statement-breakpoint
 ALTER TABLE "outbox_events" ADD CONSTRAINT "outbox_events_schema_version_check" CHECK (("outbox_events"."event_type" in ('lead.reopened', 'contact.identity_added') and "outbox_events"."schema_version" in ('1', '2')) or ("outbox_events"."event_type" not in ('lead.reopened', 'contact.identity_added') and "outbox_events"."schema_version" = '1'));
 --> statement-breakpoint
-REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_inbound_route(character varying, bytea)
-	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress;
---> statement-breakpoint
 GRANT lead_agent_inbound_route_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 SET ROLE lead_agent_inbound_route_definer;
@@ -43,6 +40,9 @@ AS $function$
 		AND input_route_type IN ('widget_key', 'telegram_webhook', 'instagram_webhook')
 		AND pg_catalog.octet_length(input_route_key_hash) > 0
 $function$;
+--> statement-breakpoint
+REVOKE ALL PRIVILEGES ON FUNCTION app.resolve_inbound_route(character varying, bytea)
+	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.resolve_inbound_route(character varying, bytea)
 	TO lead_agent_ingress;
@@ -163,15 +163,19 @@ REVOKE ALL ON FUNCTION app.create_instagram_inbound_route(uuid, uuid, bytea),
     app.rotate_instagram_inbound_route(uuid, bytea, bytea),
     app.disable_instagram_inbound_route(uuid) FROM PUBLIC, lead_agent_ingress;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.create_instagram_inbound_route(uuid, uuid, bytea),
-    app.rotate_instagram_inbound_route(uuid, bytea, bytea),
-    app.disable_instagram_inbound_route(uuid) TO lead_agent_runtime;
---> statement-breakpoint
 ALTER FUNCTION app.create_instagram_inbound_route(uuid, uuid, bytea) OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.rotate_instagram_inbound_route(uuid, bytea, bytea) OWNER TO lead_agent_inbound_route_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.disable_instagram_inbound_route(uuid) OWNER TO lead_agent_inbound_route_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_inbound_route_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.create_instagram_inbound_route(uuid, uuid, bytea),
+    app.rotate_instagram_inbound_route(uuid, bytea, bytea),
+    app.disable_instagram_inbound_route(uuid) TO lead_agent_runtime;
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer;
 --> statement-breakpoint

@@ -196,10 +196,6 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.revoke_membership_user_sessions(
 	uuid, character varying
 ) FROM PUBLIC, lead_agent_auth, lead_agent_ingress, lead_agent_runtime;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.revoke_membership_user_sessions(
-	uuid, character varying
-) TO lead_agent_runtime;
---> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
@@ -208,6 +204,14 @@ GRANT CREATE ON SCHEMA app TO lead_agent_membership_definer;
 --> statement-breakpoint
 ALTER FUNCTION app.revoke_membership_user_sessions(uuid, character varying)
 	OWNER TO lead_agent_membership_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_membership_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.revoke_membership_user_sessions(
+	uuid, character varying
+) TO lead_agent_runtime;
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_membership_definer;
 --> statement-breakpoint
@@ -448,12 +452,6 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.accept_membership_invitation(
 	character varying, uuid, character varying
 ) FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
-	uuid, bytea, bytea, character varying, character varying,
-	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
-	character varying, uuid, character varying
-) TO lead_agent_auth;
---> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
@@ -465,6 +463,16 @@ ALTER FUNCTION app.accept_membership_invitation(
 	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
 	character varying, uuid, character varying
 ) OWNER TO lead_agent_membership_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_membership_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
+	uuid, bytea, bytea, character varying, character varying,
+	uuid, uuid, uuid, uuid, uuid, uuid, uuid,
+	character varying, uuid, character varying
+) TO lead_agent_auth;
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_membership_definer;
 --> statement-breakpoint

@@ -474,21 +474,6 @@ REVOKE ALL PRIVILEGES ON FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid
 	FROM PUBLIC, lead_agent_runtime, lead_agent_ingress, lead_agent_auth,
 	lead_agent_queue_runtime;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.claim_outbox_events(character varying, integer, integer)
-	TO lead_agent_queue_runtime;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.renew_outbox_event_lease(uuid, uuid, uuid, integer)
-	TO lead_agent_queue_runtime;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.release_outbox_event_for_retry(uuid, uuid, uuid, timestamp with time zone, character varying)
-	TO lead_agent_queue_runtime;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.mark_outbox_event_published(uuid, uuid, uuid)
-	TO lead_agent_queue_runtime;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid, uuid, character varying)
-	TO lead_agent_queue_runtime;
---> statement-breakpoint
 GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint
 GRANT lead_agent_outbox_relay_definer TO CURRENT_USER WITH SET TRUE;
@@ -509,6 +494,25 @@ ALTER FUNCTION app.mark_outbox_event_published(uuid, uuid, uuid)
 --> statement-breakpoint
 ALTER FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid, uuid, character varying)
 	OWNER TO lead_agent_outbox_relay_definer;
+--> statement-breakpoint
+SET ROLE lead_agent_outbox_relay_definer;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.claim_outbox_events(character varying, integer, integer)
+	TO lead_agent_queue_runtime;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.renew_outbox_event_lease(uuid, uuid, uuid, integer)
+	TO lead_agent_queue_runtime;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.release_outbox_event_for_retry(uuid, uuid, uuid, timestamp with time zone, character varying)
+	TO lead_agent_queue_runtime;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.mark_outbox_event_published(uuid, uuid, uuid)
+	TO lead_agent_queue_runtime;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.mark_outbox_event_dead_lettered(uuid, uuid, uuid, character varying)
+	TO lead_agent_queue_runtime;
+--> statement-breakpoint
+RESET ROLE;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA app FROM lead_agent_outbox_relay_definer;
 --> statement-breakpoint
