@@ -29,7 +29,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       hash.update(await readFile(new URL(name, folder)));
     }
     expect(hash.digest("hex")).toBe(
-      "ddd33463224676308f949ec9a24c79909a156b51e7635a6278235afea9626110",
+      "9b0322397e3fd0cf6c7bbbb2751a2b827413b5197b3d9388cc9e864a8be74886",
     );
   });
   it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
@@ -116,6 +116,19 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
     expect(sql.match(/OWNER TO lead_agent_inbound_route_definer/gu)).toHaveLength(4);
     expect(sql).toContain("FROM PUBLIC, lead_agent_runtime, lead_agent_ingress");
     expect(sql).toContain("FROM PUBLIC, lead_agent_ingress");
+  });
+  it("grants schema CREATE only transiently for non-superuser function ownership transfer", () => {
+    const grantIndex = sql.indexOf(
+      "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
+    );
+    const firstOwnerIndex = sql.indexOf("OWNER TO lead_agent_inbound_route_definer");
+    const lastOwnerIndex = sql.lastIndexOf("OWNER TO lead_agent_inbound_route_definer");
+    const revokeIndex = sql.indexOf(
+      "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
+    );
+    expect(grantIndex).toBeGreaterThanOrEqual(0);
+    expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
+    expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
   });
   it("keeps repository routing behind the narrow functions and uses only existing identity columns", async () => {
     const repository = await readFile(

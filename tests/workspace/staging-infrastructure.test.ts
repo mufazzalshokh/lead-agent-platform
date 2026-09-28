@@ -21,19 +21,43 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("keeps application-role provisioning compatible with non-superuser Cloud SQL", async () => {
-    const roleMigrations = await Promise.all(
-      [
-        "0010_s5_tenant_rls.sql",
-        "0014_s6_oidc_identity_resolver.sql",
-        "0017_s6_membership_lifecycle.sql",
-        "0021_s8_pgboss_infrastructure.sql",
-        "0022_s8_outbox_relay_persistence.sql",
-        "0024_s8_handler_reliability.sql",
-      ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
-    );
+    const [roleMigrations, ownerTransferMigrations] = await Promise.all([
+      Promise.all(
+        [
+          "0010_s5_tenant_rls.sql",
+          "0014_s6_oidc_identity_resolver.sql",
+          "0017_s6_membership_lifecycle.sql",
+          "0021_s8_pgboss_infrastructure.sql",
+          "0022_s8_outbox_relay_persistence.sql",
+          "0024_s8_handler_reliability.sql",
+        ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
+      ),
+      Promise.all(
+        [
+          "0012_s5_inbound_route_resolver.sql",
+          "0026_s11_telegram_inbound_route_management.sql",
+          "0027_s11_instagram_identity_routing.sql",
+        ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
+      ),
+    ]);
     const roleSql = roleMigrations.join("\n");
     expect(roleSql).not.toMatch(/\b(?:NO)?(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu);
     expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(6);
+    for (const ownerTransferSql of ownerTransferMigrations) {
+      const grantIndex = ownerTransferSql.indexOf(
+        "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
+      );
+      const firstOwnerIndex = ownerTransferSql.indexOf("OWNER TO lead_agent_inbound_route_definer");
+      const lastOwnerIndex = ownerTransferSql.lastIndexOf(
+        "OWNER TO lead_agent_inbound_route_definer",
+      );
+      const revokeIndex = ownerTransferSql.indexOf(
+        "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
+      );
+      expect(grantIndex).toBeGreaterThanOrEqual(0);
+      expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
+      expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
+    }
   });
 
   it("accepts only the expected database role and never exposes the password in errors", () => {

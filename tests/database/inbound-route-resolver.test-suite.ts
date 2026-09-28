@@ -258,6 +258,7 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
 
     it("grants ingress only the resolver surface and denies ordinary runtime execution", async () => {
       const privileges = await harness.privilegedPool().query<{
+        definer_app_create: boolean;
         ingress_app_create: boolean;
         ingress_app_usage: boolean;
         ingress_table_grants: number;
@@ -267,13 +268,15 @@ export const registerInboundRouteResolverTests = (harness: InboundRouteResolverH
            pg_catalog.has_schema_privilege($1, 'app', 'USAGE') as ingress_app_usage,
            pg_catalog.has_schema_privilege($1, 'app', 'CREATE') as ingress_app_create,
            pg_catalog.has_function_privilege($2, $3, 'EXECUTE') as runtime_resolver_execute,
+           pg_catalog.has_schema_privilege($4, 'app', 'CREATE') as definer_app_create,
            (select count(*)::integer
               from information_schema.role_table_grants
              where grantee = $1) as ingress_table_grants`,
-        [INGRESS_ROLE, RUNTIME_ROLE, RESOLVER_SIGNATURE],
+        [INGRESS_ROLE, RUNTIME_ROLE, RESOLVER_SIGNATURE, DEFINER_ROLE],
       );
       expect(privileges.rows).toEqual([
         {
+          definer_app_create: false,
           ingress_app_create: false,
           ingress_app_usage: true,
           ingress_table_grants: 0,

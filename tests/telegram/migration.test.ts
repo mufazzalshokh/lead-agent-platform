@@ -34,6 +34,19 @@ describe("S11.A migration source boundary (not a substitute for PostgreSQL proof
       /ON TABLE public.inbound_routes TO lead_agent_runtime|GRANT.*lead_agent_inbound_route_definer TO/iu,
     );
   });
+  it("grants schema CREATE only transiently for non-superuser function ownership transfer", () => {
+    const grantIndex = sql.indexOf(
+      "GRANT CREATE ON SCHEMA app TO lead_agent_inbound_route_definer",
+    );
+    const firstOwnerIndex = sql.indexOf("OWNER TO lead_agent_inbound_route_definer");
+    const lastOwnerIndex = sql.lastIndexOf("OWNER TO lead_agent_inbound_route_definer");
+    const revokeIndex = sql.indexOf(
+      "REVOKE CREATE ON SCHEMA app FROM lead_agent_inbound_route_definer",
+    );
+    expect(grantIndex).toBeGreaterThanOrEqual(0);
+    expect(firstOwnerIndex).toBeGreaterThan(grantIndex);
+    expect(revokeIndex).toBeGreaterThan(lastOwnerIndex);
+  });
   it("removes all direct route-table access from the runtime repository", async () => {
     const repository = await readFile(
       new URL("../../packages/database/src/repositories/telegram.ts", import.meta.url),
