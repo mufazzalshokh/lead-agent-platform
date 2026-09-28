@@ -3,6 +3,8 @@
 GRANT SELECT (created_at) ON TABLE public.membership_invitations
 	TO lead_agent_membership_definer;
 --> statement-breakpoint
+GRANT USAGE, CREATE ON SCHEMA app TO lead_agent_membership_definer;
+--> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH SET TRUE;
 --> statement-breakpoint
 SET ROLE lead_agent_membership_definer;
@@ -254,6 +256,8 @@ GRANT EXECUTE ON FUNCTION app.accept_membership_invitation(
 ) TO lead_agent_auth;
 --> statement-breakpoint
 RESET ROLE;
+--> statement-breakpoint
+REVOKE CREATE ON SCHEMA app FROM lead_agent_membership_definer;
 --> statement-breakpoint
 GRANT lead_agent_membership_definer TO CURRENT_USER WITH INHERIT FALSE;
 --> statement-breakpoint

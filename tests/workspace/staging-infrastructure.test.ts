@@ -205,6 +205,36 @@ describe("S22 staging infrastructure boundary", () => {
     }
   });
 
+  it("temporarily grants schema creation only for existing-owner function replacements", async () => {
+    for (const [name, role, replacement] of [
+      [
+        "0025_s6_membership_invitation_clock_skew.sql",
+        "lead_agent_membership_definer",
+        "CREATE OR REPLACE FUNCTION app.accept_membership_invitation",
+      ],
+      [
+        "0027_s11_instagram_identity_routing.sql",
+        "lead_agent_inbound_route_definer",
+        "CREATE OR REPLACE FUNCTION app.resolve_inbound_route",
+      ],
+    ] as const) {
+      const sql = await repositoryFile(`packages/database/drizzle/${name}`);
+      const createGrantIndex = sql.indexOf(`GRANT USAGE, CREATE ON SCHEMA app TO ${role}`);
+      const setRoleIndex = sql.indexOf(`SET ROLE ${role}`, createGrantIndex);
+      const replacementIndex = sql.indexOf(replacement, setRoleIndex);
+      const resetRoleIndex = sql.indexOf("RESET ROLE", replacementIndex);
+      const createRevokeIndex = sql.indexOf(
+        `REVOKE CREATE ON SCHEMA app FROM ${role}`,
+        resetRoleIndex,
+      );
+      expect(createGrantIndex).toBeGreaterThanOrEqual(0);
+      expect(setRoleIndex).toBeGreaterThan(createGrantIndex);
+      expect(replacementIndex).toBeGreaterThan(setRoleIndex);
+      expect(resetRoleIndex).toBeGreaterThan(replacementIndex);
+      expect(createRevokeIndex).toBeGreaterThan(resetRoleIndex);
+    }
+  });
+
   it("keeps queue privilege reset within objects owned by the migration actor", async () => {
     const [queueInfrastructure, relayPersistence, activeRoute, handlerReliability] =
       await Promise.all([
@@ -303,15 +333,23 @@ describe("S22 staging infrastructure boundary", () => {
   });
 
   it("requires reviewed-plan integrity and GitHub OIDC instead of service-account keys", async () => {
-    const [bootstrap, runtimeIam, runtime, workflow, imagesWorkflow, wiringDiagnostic] =
-      await Promise.all([
-        repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
-        repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
-        repositoryFile("infra/deploy/gcp/staging/runtime.tf"),
-        repositoryFile(".github/workflows/staging-terraform.yml"),
-        repositoryFile(".github/workflows/staging-images.yml"),
-        repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
-      ]);
+    const [
+      bootstrap,
+      runtimeIam,
+      runtime,
+      workflow,
+      imagesWorkflow,
+      wiringDiagnostic,
+      databaseValidator,
+    ] = await Promise.all([
+      repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
+      repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
+      repositoryFile("infra/deploy/gcp/staging/runtime.tf"),
+      repositoryFile(".github/workflows/staging-terraform.yml"),
+      repositoryFile(".github/workflows/staging-images.yml"),
+      repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
+      repositoryFile(".github/scripts/s22-staging-database-validator.mjs"),
+    ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
     expect(bootstrapVersions).toContain('prefix = "lead-agent-platform/bootstrap"');
@@ -442,6 +480,9 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('[[ "$ENABLED_COUNT" == "1" ]]');
     expect(workflow).toContain("Verify migration plan safety");
     expect(workflow).toContain("- migration-resume");
+    expect(workflow).toContain("- migration-validate");
+    expect(workflow).toContain('[[ "$PHASE" == "migration-validate" ]]');
+    expect(workflow).toContain('[[ "$ACTION" == "plan" ]]');
     expect(workflow).toContain("- migrator-image-update");
     expect(workflow).toContain("Verify migrator image-only plan safety");
     expect(workflow).toContain("s22-migrator-image-plan-check.sh");
@@ -458,12 +499,25 @@ describe("S22 staging infrastructure boundary", () => {
     );
     expect(workflow).toContain("Verify exact migration plan approval boundary");
     expect(workflow).toContain("Verify migrated staging database");
-    expect(workflow).toContain('const { Pool } = await import("pg");');
-    expect(workflow).toContain('await import("./dist/migrate.js")');
-    expect(workflow).toContain("staging_database_validation");
-    expect(workflow).toContain("production_tables: 52");
-    expect(workflow).toContain("force_rls_tables: actualRlsTables.length");
-    expect(workflow).toContain("application_roles_verified: 4");
+    expect(workflow).toContain(".github/scripts/s22-staging-database-validator.mjs");
+    expect(workflow).toContain("S22V099_VALIDATOR_TIMEOUT");
+    expect(workflow).toContain('gcloud run jobs executions cancel "$EXECUTION_ID"');
+    expect(workflow).toContain('labels.\\"run.googleapis.com/execution_name\\"');
+    expect(workflow).toContain("Upload staging database validator evidence");
+    expect(databaseValidator).toContain('const { Pool } = await import("pg");');
+    expect(databaseValidator).toContain('await import("./dist/migrate.js")');
+    expect(databaseValidator).toContain("withLibpqCompatibleRequireSsl");
+    expect(databaseValidator).toContain("staging_database_validation");
+    expect(databaseValidator).toContain('assertion: "production_table_count"');
+    expect(databaseValidator).toContain('assertion: "force_rls_manifest"');
+    expect(databaseValidator).toContain('assertion: "required_nologin_definer_roles"');
+    expect(databaseValidator).toContain('assertion: "forbidden_bypassrls_roles"');
+    expect(databaseValidator).toContain('assertion: "inbound_route_security_definer_behavior"');
+    expect(databaseValidator).toContain('assertion: "ingress_direct_table_denial"');
+    expect(databaseValidator).toContain('assertion: "cross_tenant_denial"');
+    expect(databaseValidator).not.toMatch(
+      /console\.(?:info|error)\([^)]*(?:password|token|secret|authorization|database[_-]?url)/iu,
+    );
     expect(workflow).toContain("Verify migration Terraform convergence");
     expect(workflow).toContain('[[ "$STATE_COUNT" == "88" ]]');
     expect(workflow).toContain("migration_convergence_exit_code=$PLAN_EXIT_CODE");
@@ -520,6 +574,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(wiringDiagnostic).toContain("packaged_manifest_head_0029");
     expect(wiringDiagnostic).toContain("TLS_CERT_ALTNAME_INVALID");
     expect(workflow).toContain("- bootstrap-log-viewer");
+    expect(workflow).toContain("- bootstrap-log-viewer-remove");
     expect(workflow).toContain("- migration-error-read");
     expect(workflow).toContain(
       "-target='google_project_iam_member.deployer_temporary_logging_viewer[0]'",
@@ -527,7 +582,14 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain(
       '["create:google_project_iam_member.deployer_temporary_logging_viewer[0]"]',
     );
+    expect(workflow).toContain(
+      '["delete:google_project_iam_member.deployer_temporary_logging_viewer[0]"]',
+    );
     expect(workflow).toContain('[[ "$STATE_COUNT" == "35" ]]');
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "34" ]]');
+    expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "35" ]]');
+    expect(workflow).toContain('[[ "$BOOTSTRAP_STATE_COUNT" == "34" ]]');
+    expect(workflow).toContain("Verify temporary logging viewer removal convergence");
     expect(workflow).toContain("Read sanitized migrator application error");
     expect(workflow).toContain('payload.operation === "database_migration"');
     expect(workflow).toContain('gcloud beta run jobs executions logs read "$EXECUTION_ID"');
