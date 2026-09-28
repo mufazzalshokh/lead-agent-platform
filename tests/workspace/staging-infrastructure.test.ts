@@ -132,6 +132,10 @@ describe("S22 staging infrastructure boundary", () => {
     expect(imagesWorkflow.match(/if: inputs\.image_scope == 'all'/gu)).toHaveLength(4);
     expect(imagesWorkflow).toContain("Record immutable migrator image manifest");
     expect(imagesWorkflow).toContain("image_scope=migrator");
+    expect(wiringDiagnostic).toContain('mode === "migration_failure_index"');
+    expect(wiringDiagnostic).toContain('mode === "migration_failure_statement"');
+    expect(wiringDiagnostic).toContain('mode === "migration_failure_sqlstate"');
+    expect(wiringDiagnostic).toContain('await client.query("rollback").catch(() => {})');
     expect(workflow).not.toMatch(/^  push:/mu);
     expect(workflow).toContain("S22_ACTION: ${{ inputs.action }}");
     expect(workflow).toContain("S22_PHASE: ${{ inputs.phase }}");

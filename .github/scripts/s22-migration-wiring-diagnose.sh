@@ -262,6 +262,93 @@ const key = process.env.S22_PROBE_ENV_NAME;
 const expectedUser = process.env.S22_PROBE_EXPECTED_USER;
 const value = key ? process.env[key] : undefined;
 
+const inspectMigrationFailure = async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
+  const { migrationsFolder } = await import("@lead-agent/database");
+  const { Pool } = await import("pg");
+  const journal = JSON.parse(
+    await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
+  );
+  const migrations = await Promise.all(
+    journal.entries.map(async (entry) => ({
+      folderMillis: entry.when,
+      sql: (await readFile(join(migrationsFolder, `${entry.tag}.sql`), "utf8"))
+        .split("--> statement-breakpoint"),
+    })),
+  );
+  const pool = new Pool({
+    application_name: "lead-agent-staging-migration-rollback-diagnostic",
+    connectionString: withLibpqCompatibleRequireSsl(process.env.MIGRATION_DATABASE_URL),
+    connectionTimeoutMillis: 15000,
+    max: 1,
+    query_timeout: 30000,
+  });
+  const client = await pool.connect();
+  try {
+    const migrationTable = await client.query(
+      "select to_regclass($$drizzle.__drizzle_migrations$$) is not null as present",
+    );
+    let lastApplied = -1;
+    if (migrationTable.rows[0]?.present === true) {
+      const latest = await client.query(
+        "select created_at from drizzle.__drizzle_migrations order by created_at desc limit 1",
+      );
+      lastApplied = Number(latest.rows[0]?.created_at ?? -1);
+    }
+    await client.query("begin");
+    for (const [migrationIndex, migration] of migrations.entries()) {
+      if (lastApplied >= migration.folderMillis) continue;
+      for (const [statementIndex, statement] of migration.sql.entries()) {
+        try {
+          await client.query(statement);
+        } catch (error) {
+          return {
+            errorCode: typeof error?.code === "string" ? error.code : "unavailable",
+            migrationIndex,
+            statementIndex,
+          };
+        }
+      }
+    }
+    return { errorCode: "none", migrationIndex: -1, statementIndex: -1 };
+  } finally {
+    await client.query("rollback").catch(() => {});
+    client.release();
+    await pool.end().catch(() => {});
+  }
+};
+
+if (mode === "migration_failure_index") {
+  const failure = await inspectMigrationFailure();
+  process.exit(failure.migrationIndex < 0 ? 0 : failure.migrationIndex + 1);
+}
+
+if (mode === "migration_failure_statement") {
+  const failure = await inspectMigrationFailure();
+  process.exit(failure.statementIndex < 0 ? 0 : Math.min(failure.statementIndex + 1, 252));
+}
+
+if (mode === "migration_failure_sqlstate") {
+  const failure = await inspectMigrationFailure();
+  const codes = {
+    "0A000": 2,
+    "23503": 3,
+    "23505": 4,
+    "23514": 5,
+    "25001": 6,
+    "42501": 7,
+    "42701": 8,
+    "42704": 9,
+    "42710": 10,
+    "42723": 11,
+    "42883": 12,
+    "42P01": 13,
+  };
+  process.exit(failure.errorCode === "none" ? 0 : (codes[failure.errorCode] ?? 1));
+}
+
 if (mode === "length") {
   process.exit(Math.min(Buffer.byteLength(value ?? "", "utf8"), 255));
 }
@@ -582,6 +669,47 @@ if [[ "${S22_RUN_SQL_PROBE:-false}" == "true" ]]; then
   report runtime_migration_count_30 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 32)"
   report runtime_production_table_count_52 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 64)"
   report runtime_required_bypassrls_role_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 128)"
+
+  MIGRATION_FAILURE_INDEX_CODE="$(run_encoded_probe UNUSED UNUSED migration_failure_index)"
+  if (( MIGRATION_FAILURE_INDEX_CODE >= 1 && MIGRATION_FAILURE_INDEX_CODE <= 30 )); then
+    MIGRATION_FAILURE_INDEX=$((MIGRATION_FAILURE_INDEX_CODE - 1))
+    MIGRATION_FAILURE_TAG="$(
+      jq -er --argjson index "$MIGRATION_FAILURE_INDEX" \
+        '.entries[$index].tag' packages/database/drizzle/meta/_journal.json
+    )"
+    report migration_rollback_probe_failure_tag "$MIGRATION_FAILURE_TAG"
+    MIGRATION_FAILURE_STATEMENT_CODE="$(
+      run_encoded_probe UNUSED UNUSED migration_failure_statement
+    )"
+    report migration_rollback_probe_statement_number "$MIGRATION_FAILURE_STATEMENT_CODE"
+    MIGRATION_FAILURE_SQLSTATE_CODE="$(
+      run_encoded_probe UNUSED UNUSED migration_failure_sqlstate
+    )"
+    case "$MIGRATION_FAILURE_SQLSTATE_CODE" in
+      2) MIGRATION_FAILURE_SQLSTATE=0A000 ;;
+      3) MIGRATION_FAILURE_SQLSTATE=23503 ;;
+      4) MIGRATION_FAILURE_SQLSTATE=23505 ;;
+      5) MIGRATION_FAILURE_SQLSTATE=23514 ;;
+      6) MIGRATION_FAILURE_SQLSTATE=25001 ;;
+      7) MIGRATION_FAILURE_SQLSTATE=42501 ;;
+      8) MIGRATION_FAILURE_SQLSTATE=42701 ;;
+      9) MIGRATION_FAILURE_SQLSTATE=42704 ;;
+      10) MIGRATION_FAILURE_SQLSTATE=42710 ;;
+      11) MIGRATION_FAILURE_SQLSTATE=42723 ;;
+      12) MIGRATION_FAILURE_SQLSTATE=42883 ;;
+      13) MIGRATION_FAILURE_SQLSTATE=42P01 ;;
+      *) MIGRATION_FAILURE_SQLSTATE=OTHER ;;
+    esac
+    report migration_rollback_probe_sqlstate "$MIGRATION_FAILURE_SQLSTATE"
+  elif [[ "$MIGRATION_FAILURE_INDEX_CODE" == "0" ]]; then
+    report migration_rollback_probe_failure_tag NONE
+    report migration_rollback_probe_statement_number NONE
+    report migration_rollback_probe_sqlstate NONE
+  else
+    report migration_rollback_probe_failure_tag DIAGNOSTIC_ERROR
+    report migration_rollback_probe_statement_number unavailable
+    report migration_rollback_probe_sqlstate unavailable
+  fi
 
   CLOUDSQL_SUPERUSER_FLAGS="$(run_encoded_probe MIGRATION_DATABASE_URL postgres cloudsql_superuser_flags)"
   report runtime_cloudsql_superuser_role_present "$(decode_boolean "$CLOUDSQL_SUPERUSER_FLAGS" 1)"
