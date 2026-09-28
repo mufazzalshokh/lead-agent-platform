@@ -20,6 +20,22 @@ describe("S22 staging infrastructure boundary", () => {
     expect(manifest.entries.every((entry, index) => entry.idx === index)).toBe(true);
   });
 
+  it("keeps application-role provisioning compatible with non-superuser Cloud SQL", async () => {
+    const roleMigrations = await Promise.all(
+      [
+        "0010_s5_tenant_rls.sql",
+        "0014_s6_oidc_identity_resolver.sql",
+        "0017_s6_membership_lifecycle.sql",
+        "0021_s8_pgboss_infrastructure.sql",
+        "0022_s8_outbox_relay_persistence.sql",
+        "0024_s8_handler_reliability.sql",
+      ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
+    );
+    const roleSql = roleMigrations.join("\n");
+    expect(roleSql).not.toMatch(/\b(?:NO)?(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu);
+    expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(6);
+  });
+
   it("accepts only the expected database role and never exposes the password in errors", () => {
     expect(
       stagingRolePasswordFromUrl(

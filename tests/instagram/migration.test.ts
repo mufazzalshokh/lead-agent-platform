@@ -29,7 +29,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       hash.update(await readFile(new URL(name, folder)));
     }
     expect(hash.digest("hex")).toBe(
-      "15415829ac6905b57a940d90a3e134e1bc415305153ba6cfbc1e8c6cddca3634",
+      "ddd33463224676308f949ec9a24c79909a156b51e7635a6278235afea9626110",
     );
   });
   it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {

@@ -26,11 +26,28 @@ END
 $roles$;
 
 ALTER ROLE lead_agent_worker_reliability_definer
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  NOCREATEDB NOCREATEROLE NOINHERIT;
 ALTER ROLE lead_agent_async_maintenance_definer
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  NOCREATEDB NOCREATEROLE NOINHERIT;
 ALTER ROLE lead_agent_async_operator
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+  NOCREATEDB NOCREATEROLE NOINHERIT;
+
+DO $role_security$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname IN (
+      'lead_agent_worker_reliability_definer',
+      'lead_agent_async_maintenance_definer',
+      'lead_agent_async_operator'
+    )
+      AND (rolsuper OR rolreplication OR rolbypassrls)
+  ) THEN
+    RAISE EXCEPTION 'Lead Agent async roles must not hold restricted PostgreSQL privileges';
+  END IF;
+END
+$role_security$;
 
 ALTER ROLE lead_agent_worker_reliability_definer SET search_path = pg_catalog;
 ALTER ROLE lead_agent_async_maintenance_definer SET search_path = pg_catalog;

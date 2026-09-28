@@ -10,7 +10,20 @@ END
 $role_provisioning$;
 --> statement-breakpoint
 ALTER ROLE lead_agent_membership_definer
-	NOLOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+	NOLOGIN NOINHERIT NOCREATEDB NOCREATEROLE;
+--> statement-breakpoint
+DO $role_security$
+BEGIN
+	IF EXISTS (
+		SELECT 1
+		FROM pg_catalog.pg_roles
+		WHERE rolname = 'lead_agent_membership_definer'
+			AND (rolsuper OR rolreplication OR rolbypassrls)
+	) THEN
+		RAISE EXCEPTION 'Lead Agent membership definer must not hold restricted PostgreSQL privileges';
+	END IF;
+END
+$role_security$;
 --> statement-breakpoint
 REVOKE lead_agent_membership_definer
 	FROM lead_agent_auth, lead_agent_identity_definer, lead_agent_ingress, lead_agent_runtime;
