@@ -3617,9 +3617,10 @@ jobs:
           fi
 
           for ATTEMPT in $(seq 1 12); do
-            gcloud beta run jobs executions logs read "$EXECUTION_ID" \
+            gcloud logging read \
+              "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"lead-agent-staging-migrator\" AND labels.\"run.googleapis.com/execution_name\"=\"${EXECUTION_ID}\"" \
               --project="$PROJECT_ID" \
-              --region=me-central1 \
+              --freshness=1h \
               --limit=300 \
               --order=asc \
               --format=json > "$LOGS"
