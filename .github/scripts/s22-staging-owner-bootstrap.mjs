@@ -198,4 +198,26 @@ const bootstrap = async () => {
   }
 };
 
-await bootstrap();
+bootstrap().catch((error) => {
+  const errorCode =
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[0-9A-Z_]{2,32}$/u.test(error.code)
+      ? error.code
+      : "UNAVAILABLE";
+  const errorType =
+    error instanceof Error && /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/u.test(error.name)
+      ? error.name
+      : "Error";
+  console.error(
+    JSON.stringify({
+      error_code: errorCode,
+      error_type: errorType,
+      operation: "staging_owner_workspace_bootstrap",
+      outcome: "FAIL",
+    }),
+  );
+  process.exitCode = 1;
+});

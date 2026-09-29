@@ -16,6 +16,8 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain('await import("pg")');
     expect(script).toContain("withLibpqCompatibleRequireSsl");
     expect(script).not.toMatch(/^import\s/mu);
+    expect(script).toContain("bootstrap().catch((error) =>");
+    expect(script).not.toContain("await bootstrap()");
     expect(script).toContain("begin isolation level serializable");
     expect(script).toContain("Conflicting staging tenant or identity data exists");
     expect(script).toContain("role='owner' and status='active' and location_scope='all'");
