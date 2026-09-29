@@ -327,6 +327,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(foundation).toContain("transaction_log_retention_days = 7");
     expect(runtime).toContain("manual_instance_count = var.worker_instance_count");
     expect(runtime).toContain('egress = "PRIVATE_RANGES_ONLY"');
+    expect(runtime).toContain('HOST                            = "0.0.0.0"');
     expect(runtime).toContain('command = ["node"]');
     expect(runtime).toContain('args    = ["dist/index.js"]');
     expect(runtime).not.toContain(":latest");

@@ -29,6 +29,7 @@ locals {
     AUTH_PRODUCTION_MFA_REQUIRED    = "true"
     CREDENTIAL_SECRET_RESOURCE      = google_secret_manager_secret.channel_credentials.id
     CUSTOMER_DATA_ENCRYPTION_KEY_ID = "s22-staging-v1"
+    HOST                            = "0.0.0.0"
     INSTAGRAM_APP_ID                = var.instagram_app_id
     INSTAGRAM_GRAPH_API_VERSION     = var.instagram_graph_api_version
     INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.api_public_origin}/v1/integrations/instagram/callback"
