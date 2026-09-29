@@ -6,10 +6,18 @@ import {
   formatStaffDateTime,
   formatStaffLocalDateTime,
   humanizeStaffStatus,
+  buildWidgetInstallSnippet,
+  canManageIntegrations,
   makeIdempotencyKey,
   readCsrfCookie,
+  readInstagramAuthorizationUrl,
   readOrganizationContext,
+  readStaffMembershipRole,
+  readTelegramOnboardingUrl,
+  readWidgetManagementConfiguration,
   staffActionMessage,
+  type StaffMembershipRole,
+  type WidgetManagementConfiguration,
 } from "../../lib/staff-ui";
 
 type RecordValue = Readonly<Record<string, unknown>>;
@@ -214,6 +222,18 @@ export function StaffWorkspace({
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsView | null>(null);
+  const [membershipRole, setMembershipRole] = useState<StaffMembershipRole | null>(null);
+  const [integrationNotice, setIntegrationNotice] = useState<string | null>(null);
+  const [integrationWorking, setIntegrationWorking] = useState<
+    "instagram" | "telegram" | "widget" | null
+  >(null);
+  const [telegramOnboardingUrl, setTelegramOnboardingUrl] = useState<string | null>(null);
+  const [websiteOrigin, setWebsiteOrigin] = useState("");
+  const [widgetConfiguration, setWidgetConfiguration] =
+    useState<WidgetManagementConfiguration | null>(null);
+  const [widgetStatus, setWidgetStatus] = useState<
+    "active" | "loading" | "not_configured" | "unavailable"
+  >("loading");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
 
@@ -271,7 +291,29 @@ export function StaffWorkspace({
         setLoading(false);
         return;
       }
+      const role = readStaffMembershipRole(await responseData(me));
+      if (role === null) {
+        setAuthState("denied");
+        setLoading(false);
+        return;
+      }
+      setMembershipRole(role);
       setAuthState("ready");
+      if (canManageIntegrations(role)) {
+        void request("/v1/staff/integrations/widget")
+          .then(async (widget) => {
+            if (!widget.ok) {
+              setWidgetStatus("unavailable");
+              return;
+            }
+            const body: unknown = await widget.json();
+            const configuration = readWidgetManagementConfiguration(body);
+            setWidgetConfiguration(configuration);
+            setWidgetStatus(configuration === null ? "not_configured" : "active");
+            if (configuration !== null) setWebsiteOrigin(configuration.websiteOrigin);
+          })
+          .catch(() => setWidgetStatus("unavailable"));
+      }
       void loadAnalytics().catch(() => setAnalytics(null));
       const response = await request(`/v1/staff/inbox?${query.toString()}`);
       if (!response.ok) throw new Error("inbox_unavailable");
@@ -412,6 +454,104 @@ export function StaffWorkspace({
     [loadInbox, request],
   );
 
+  const startIntegration = useCallback(
+    async (provider: "instagram" | "telegram") => {
+      const csrf = readCsrfCookie(document.cookie);
+      if (csrf === null) {
+        setIntegrationNotice("Refresh your secure session before connecting an integration.");
+        return;
+      }
+      setIntegrationWorking(provider);
+      setIntegrationNotice(null);
+      try {
+        const response = await request(`/v1/staff/integrations/${provider}/onboarding`, {
+          body: JSON.stringify({
+            display_name: provider === "telegram" ? "Telegram Business" : "Instagram Professional",
+          }),
+          headers: { "content-type": "application/json", "x-csrf-token": csrf },
+          method: "POST",
+        });
+        if (!response.ok) {
+          const failed: unknown = await response.json().catch(() => null);
+          setIntegrationNotice(
+            staffActionMessage(
+              response.status,
+              isRecord(failed) ? (stringValue(failed["code"]) ?? undefined) : undefined,
+            ),
+          );
+          return;
+        }
+        const body: unknown = await response.json();
+        if (provider === "telegram") {
+          const onboardingUrl = readTelegramOnboardingUrl(body);
+          if (onboardingUrl === null) throw new Error("invalid_telegram_onboarding");
+          setTelegramOnboardingUrl(onboardingUrl);
+          setIntegrationNotice("Your private Telegram connection link is ready.");
+          return;
+        }
+        const authorizationUrl = readInstagramAuthorizationUrl(body);
+        if (authorizationUrl === null) throw new Error("invalid_instagram_onboarding");
+        globalThis.location.assign(authorizationUrl);
+      } catch {
+        setIntegrationNotice("We could not start the secure connection. Please try again.");
+      } finally {
+        setIntegrationWorking(null);
+      }
+    },
+    [request],
+  );
+
+  const configureWidget = useCallback(async () => {
+    const csrf = readCsrfCookie(document.cookie);
+    if (csrf === null) {
+      setIntegrationNotice("Refresh your secure session before setting up Website Chat.");
+      return;
+    }
+    setIntegrationWorking("widget");
+    setIntegrationNotice(null);
+    try {
+      const response = await request("/v1/staff/integrations/widget/setup", {
+        body: JSON.stringify({ website_origin: websiteOrigin }),
+        headers: { "content-type": "application/json", "x-csrf-token": csrf },
+        method: "POST",
+      });
+      if (!response.ok) {
+        const failed: unknown = await response.json().catch(() => null);
+        setIntegrationNotice(
+          staffActionMessage(
+            response.status,
+            isRecord(failed) ? (stringValue(failed["code"]) ?? undefined) : undefined,
+          ),
+        );
+        return;
+      }
+      const body: unknown = await response.json();
+      const configured = readWidgetManagementConfiguration(body);
+      if (configured === null) throw new Error("invalid_widget_configuration");
+      setWidgetConfiguration(configured);
+      setWidgetStatus("active");
+      setWebsiteOrigin(configured.websiteOrigin);
+      setIntegrationNotice("Website Chat is configured. Copy the new installation code.");
+    } catch {
+      setIntegrationNotice("We could not configure Website Chat. Check the HTTPS website origin.");
+    } finally {
+      setIntegrationWorking(null);
+    }
+  }, [request, websiteOrigin]);
+
+  const copyWidgetSnippet = useCallback(async () => {
+    if (widgetConfiguration === null) return;
+    try {
+      const platformOrigin = apiOrigin.length > 0 ? apiOrigin : globalThis.location.origin;
+      await globalThis.navigator.clipboard.writeText(
+        buildWidgetInstallSnippet(platformOrigin, widgetConfiguration),
+      );
+      setIntegrationNotice("Installation code copied.");
+    } catch {
+      setIntegrationNotice("Copy is unavailable in this browser. Please try again.");
+    }
+  }, [apiOrigin, widgetConfiguration]);
+
   if (authState === "signed-out") {
     const returnTo =
       organizationId === null
@@ -477,6 +617,9 @@ export function StaffWorkspace({
           <a className="staff-nav-link" href="#analytics">
             Analytics
           </a>
+          <a className="staff-nav-link" href="#integrations">
+            Integrations
+          </a>
         </nav>
         <section className="staff-list" id="work" aria-busy={loading}>
           <div className="section-heading">
@@ -493,6 +636,142 @@ export function StaffWorkspace({
               Refresh
             </button>
           </div>
+          <section className="integrations-overview" id="integrations" aria-label="Integrations">
+            <div className="integrations-overview__heading">
+              <div>
+                <p className="eyebrow">Settings</p>
+                <h2>Integrations</h2>
+              </div>
+              <span>Owner-managed</span>
+            </div>
+            <p className="integrations-intro">
+              Connect the channels your customers already use. Credentials and tenant identifiers
+              stay private.
+            </p>
+            {integrationNotice !== null && (
+              <div className="notice" role="status">
+                {integrationNotice}
+              </div>
+            )}
+            <div className="integration-cards">
+              <article className="integration-card">
+                <div>
+                  <span className="integration-icon" aria-hidden="true">
+                    W
+                  </span>
+                  <div>
+                    <h3>Website Chat</h3>
+                    <p>Secure chat for an approved business website.</p>
+                  </div>
+                </div>
+                {canManageIntegrations(membershipRole) ? (
+                  <>
+                    <label className="integration-origin">
+                      Business website
+                      <input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://clinic.example"
+                        value={websiteOrigin}
+                        onChange={(event) => setWebsiteOrigin(event.target.value)}
+                      />
+                    </label>
+                    <div className="action-row">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={integrationWorking !== null || websiteOrigin.length === 0}
+                        onClick={() => void configureWidget()}
+                      >
+                        {integrationWorking === "widget"
+                          ? "Configuring…"
+                          : widgetStatus === "active"
+                            ? "Replace setup"
+                            : "Set up"}
+                      </button>
+                      {widgetConfiguration !== null && (
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => void copyWidgetSnippet()}
+                        >
+                          Copy installation code
+                        </button>
+                      )}
+                    </div>
+                    <p className="integration-detail">
+                      {widgetStatus === "active"
+                        ? `Active for ${widgetConfiguration?.websiteOrigin ?? websiteOrigin}. Replacing setup invalidates the prior installation key.`
+                        : widgetStatus === "not_configured"
+                          ? "Not connected. Enter the exact HTTPS origin of the business website."
+                          : widgetStatus === "loading"
+                            ? "Checking the current setup…"
+                            : "Current setup could not be loaded."}
+                    </p>
+                  </>
+                ) : (
+                  <p className="integration-permission">Owner or admin access is required.</p>
+                )}
+              </article>
+              <article className="integration-card">
+                <div>
+                  <span className="integration-icon" aria-hidden="true">
+                    T
+                  </span>
+                  <div>
+                    <h3>Telegram Business</h3>
+                    <p>Reply from the same business DM with staff-safe escalation.</p>
+                  </div>
+                </div>
+                {canManageIntegrations(membershipRole) ? (
+                  telegramOnboardingUrl === null ? (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={integrationWorking !== null}
+                      onClick={() => void startIntegration("telegram")}
+                    >
+                      {integrationWorking === "telegram" ? "Preparing…" : "Connect Telegram"}
+                    </button>
+                  ) : (
+                    <a
+                      className="primary-button"
+                      href={telegramOnboardingUrl}
+                      rel="noreferrer noopener"
+                      target="_blank"
+                    >
+                      Open Telegram securely
+                    </a>
+                  )
+                ) : (
+                  <p className="integration-permission">Owner or admin access is required.</p>
+                )}
+              </article>
+              <article className="integration-card">
+                <div>
+                  <span className="integration-icon" aria-hidden="true">
+                    I
+                  </span>
+                  <div>
+                    <h3>Instagram Professional</h3>
+                    <p>Authorize the business account through Instagram.</p>
+                  </div>
+                </div>
+                {canManageIntegrations(membershipRole) ? (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={integrationWorking !== null}
+                    onClick={() => void startIntegration("instagram")}
+                  >
+                    {integrationWorking === "instagram" ? "Redirecting…" : "Connect Instagram"}
+                  </button>
+                ) : (
+                  <p className="integration-permission">Owner or admin access is required.</p>
+                )}
+              </article>
+            </div>
+          </section>
           {analytics !== null && (
             <section
               className="analytics-overview"

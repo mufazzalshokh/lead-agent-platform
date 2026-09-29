@@ -77,3 +77,118 @@ export const staffActionMessage = (status: number, code?: string): string => {
 
 export const makeIdempotencyKey = (scope: string, randomValue: string): string =>
   `staff.${scope}.${randomValue}`.replace(/[^A-Za-z0-9._:-]/gu, "-").slice(0, 128);
+
+export type StaffMembershipRole = "admin" | "analyst" | "owner" | "staff";
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+export const readStaffMembershipRole = (value: unknown): StaffMembershipRole | null => {
+  if (!isRecord(value)) return null;
+  const activeOrganization = value["active_organization"];
+  if (!isRecord(activeOrganization)) return null;
+  const role = activeOrganization["role"];
+  return role === "admin" || role === "analyst" || role === "owner" || role === "staff"
+    ? role
+    : null;
+};
+
+export const canManageIntegrations = (role: StaffMembershipRole | null): boolean =>
+  role === "owner" || role === "admin";
+
+export const readTelegramOnboardingUrl = (value: unknown): string | null => {
+  if (!isRecord(value) || typeof value["onboarding_url"] !== "string") return null;
+  try {
+    const url = new URL(value["onboarding_url"]);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "t.me" ||
+      !/^\/[A-Za-z][A-Za-z0-9_]{4,31}$/u.test(url.pathname) ||
+      !/^[A-Za-z0-9_-]{43}$/u.test(url.searchParams.get("start") ?? "") ||
+      [...url.searchParams.keys()].some((name) => name !== "start") ||
+      url.hash.length > 0 ||
+      url.username.length > 0 ||
+      url.password.length > 0
+    ) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+export const readInstagramAuthorizationUrl = (value: unknown): string | null => {
+  if (!isRecord(value) || typeof value["authorization_url"] !== "string") return null;
+  try {
+    const url = new URL(value["authorization_url"]);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "www.instagram.com" ||
+      url.pathname !== "/oauth/authorize" ||
+      url.searchParams.get("state") === null ||
+      url.searchParams.get("client_id") === null ||
+      url.hash.length > 0 ||
+      url.username.length > 0 ||
+      url.password.length > 0
+    ) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+export type WidgetManagementConfiguration = Readonly<{
+  publishableKey: string;
+  websiteOrigin: string;
+}>;
+
+export const readWidgetManagementConfiguration = (
+  value: unknown,
+): WidgetManagementConfiguration | null => {
+  if (
+    !isRecord(value) ||
+    value["status"] !== "active" ||
+    typeof value["publishable_key"] !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/u.test(value["publishable_key"]) ||
+    typeof value["website_origin"] !== "string"
+  ) {
+    return null;
+  }
+  try {
+    const origin = new URL(value["website_origin"]);
+    if (
+      origin.protocol !== "https:" ||
+      origin.origin !== value["website_origin"] ||
+      origin.username.length > 0 ||
+      origin.password.length > 0
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      publishableKey: value["publishable_key"],
+      websiteOrigin: origin.origin,
+    });
+  } catch {
+    return null;
+  }
+};
+
+export const buildWidgetInstallSnippet = (
+  platformOrigin: string,
+  configuration: WidgetManagementConfiguration,
+): string => {
+  const origin = new URL(platformOrigin);
+  if (
+    origin.protocol !== "https:" ||
+    origin.origin !== platformOrigin ||
+    origin.username.length > 0 ||
+    origin.password.length > 0 ||
+    !/^[A-Za-z0-9_-]{43}$/u.test(configuration.publishableKey)
+  ) {
+    throw new TypeError("Widget installation configuration is invalid");
+  }
+  return `<script async src="${origin.origin}/embed/widget.js" data-widget-key="${configuration.publishableKey}" data-locale="uz"></script>`;
+};

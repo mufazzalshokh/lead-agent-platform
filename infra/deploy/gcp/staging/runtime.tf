@@ -23,7 +23,7 @@ locals {
 
   api_plain_env = merge(local.provenance_env, {
     APP_ENV                         = "production"
-    AUTH0_CALLBACK_URI              = "${var.api_public_origin}/v1/staff/auth/callback"
+    AUTH0_CALLBACK_URI              = "${var.web_public_origin}/v1/staff/auth/callback"
     AUTH0_CLIENT_ID                 = var.auth0_client_id
     AUTH0_ISSUER                    = var.auth0_issuer
     AUTH_PRODUCTION_MFA_REQUIRED    = "true"
@@ -32,13 +32,13 @@ locals {
     HOST                            = "0.0.0.0"
     INSTAGRAM_APP_ID                = var.instagram_app_id
     INSTAGRAM_GRAPH_API_VERSION     = var.instagram_graph_api_version
-    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.api_public_origin}/v1/integrations/instagram/callback"
+    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.web_public_origin}/v1/integrations/instagram/callback"
     STAFF_ALLOWED_ORIGINS           = var.web_public_origin
     STAFF_APPLICATION_ORIGIN        = var.web_public_origin
     TELEGRAM_BOT_USERNAME           = var.telegram_bot_username
-    TELEGRAM_WEBHOOK_URL            = "${var.api_public_origin}/v1/webhooks/telegram"
+    TELEGRAM_WEBHOOK_URL            = "${var.web_public_origin}/v1/webhooks/telegram"
     WIDGET_PLATFORM_ORIGIN          = var.web_public_origin
-    WIDGET_PUBLIC_API_ORIGIN        = var.api_public_origin
+    WIDGET_PUBLIC_API_ORIGIN        = var.web_public_origin
   })
 
   api_secret_env = {
@@ -67,9 +67,9 @@ locals {
     CUSTOMER_DATA_ENCRYPTION_KEY_ID = "s22-staging-v1"
     INSTAGRAM_APP_ID                = var.instagram_app_id
     INSTAGRAM_GRAPH_API_VERSION     = var.instagram_graph_api_version
-    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.api_public_origin}/v1/integrations/instagram/callback"
+    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.web_public_origin}/v1/integrations/instagram/callback"
     TELEGRAM_BOT_USERNAME           = var.telegram_bot_username
-    TELEGRAM_WEBHOOK_URL            = "${var.api_public_origin}/v1/webhooks/telegram"
+    TELEGRAM_WEBHOOK_URL            = "${var.web_public_origin}/v1/webhooks/telegram"
   })
 
   worker_secret_env = {
@@ -250,8 +250,9 @@ resource "google_cloud_run_v2_service" "web" {
 
       dynamic "env" {
         for_each = var.bootstrap_runtime ? {} : merge(local.provenance_env, {
-          NEXT_PUBLIC_API_ORIGIN   = var.api_public_origin
-          WIDGET_PUBLIC_API_ORIGIN = var.api_public_origin
+          API_INTERNAL_ORIGIN      = var.api_public_origin
+          NEXT_PUBLIC_API_ORIGIN   = var.web_public_origin
+          WIDGET_PUBLIC_API_ORIGIN = var.web_public_origin
         })
         content {
           name  = env.key

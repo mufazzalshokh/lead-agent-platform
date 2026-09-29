@@ -6,8 +6,14 @@ import {
   formatStaffDateTime,
   formatStaffLocalDateTime,
   humanizeStaffStatus,
+  canManageIntegrations,
+  buildWidgetInstallSnippet,
   readCsrfCookie,
+  readInstagramAuthorizationUrl,
   readOrganizationContext,
+  readStaffMembershipRole,
+  readTelegramOnboardingUrl,
+  readWidgetManagementConfiguration,
   staffActionMessage,
 } from "./staff-ui.js";
 import {
@@ -39,6 +45,57 @@ describe("S19 staff presentation policy", () => {
     expect(readOrganizationContext("not-an-organization")).toBeNull();
     expect(readCsrfCookie("other=x; __Host-lead-csrf=proof%2Dvalue")).toBe("proof-value");
     expect(readCsrfCookie("lead-csrf=wrong")).toBeNull();
+  });
+
+  it("derives integration management from the authenticated membership only", () => {
+    expect(readStaffMembershipRole({ active_organization: { role: "owner" } })).toBe("owner");
+    expect(canManageIntegrations("owner")).toBe(true);
+    expect(canManageIntegrations("admin")).toBe(true);
+    expect(canManageIntegrations("staff")).toBe(false);
+    expect(readStaffMembershipRole({ active_organization: { role: "manager" } })).toBeNull();
+  });
+
+  it("accepts only the intended provider onboarding destinations", () => {
+    const nonce = "a".repeat(43);
+    expect(
+      readTelegramOnboardingUrl({ onboarding_url: `https://t.me/lead_agent_bot?start=${nonce}` }),
+    ).toBe(`https://t.me/lead_agent_bot?start=${nonce}`);
+    expect(
+      readTelegramOnboardingUrl({ onboarding_url: `https://evil.example/?start=${nonce}` }),
+    ).toBeNull();
+    expect(
+      readInstagramAuthorizationUrl({
+        authorization_url: `https://www.instagram.com/oauth/authorize?client_id=123&state=${nonce}`,
+      }),
+    ).not.toBeNull();
+    expect(
+      readInstagramAuthorizationUrl({
+        authorization_url: `https://evil.example/oauth/authorize?client_id=123&state=${nonce}`,
+      }),
+    ).toBeNull();
+  });
+
+  it("builds a safe Widget installation snippet only from persisted public setup", () => {
+    const configuration = readWidgetManagementConfiguration({
+      publishable_key: "w".repeat(43),
+      status: "active",
+      website_origin: "https://clinic.example",
+    });
+    expect(configuration).not.toBeNull();
+    if (configuration === null) throw new TypeError("Expected Widget configuration");
+    const snippet = buildWidgetInstallSnippet("https://platform.example", configuration);
+    expect(snippet).toBe(
+      `<script async src="https://platform.example/embed/widget.js" data-widget-key="${"w".repeat(43)}" data-locale="uz"></script>`,
+    );
+    expect(snippet).not.toContain("organization");
+    expect(snippet).not.toContain("bearer");
+    expect(
+      readWidgetManagementConfiguration({
+        publishable_key: "short",
+        status: "active",
+        website_origin: "https://clinic.example",
+      }),
+    ).toBeNull();
   });
 });
 

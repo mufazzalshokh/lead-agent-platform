@@ -51,7 +51,7 @@ import {
   WidgetRateLimitError,
   WidgetTokenInvalidError,
 } from "@lead-agent/security";
-import { WidgetApplicationError } from "@lead-agent/application";
+import { WidgetApplicationError, WidgetManagementError } from "@lead-agent/application";
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from "fastify";
 import Fastify, { LogController } from "fastify";
 
@@ -66,6 +66,10 @@ import {
   type StaffConversationDependencies,
 } from "../conversations/plugin.js";
 import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
+import {
+  registerStaffWidgetManagement,
+  type StaffWidgetManagementDependencies,
+} from "../widget/management-plugin.js";
 import { registerStaffOperations, type StaffOperationsDependencies } from "../staff/plugin.js";
 import {
   AnalyticsApplicationError,
@@ -145,6 +149,7 @@ export type ApiOptions = Readonly<{
   staffInstagram?: StaffInstagramDependencies;
   instagramWebhook?: InstagramWebhookDependencies;
   widget?: WidgetDependencies;
+  staffWidgetManagement?: StaffWidgetManagementDependencies;
 }>;
 
 type SessionResolution = Readonly<{
@@ -396,6 +401,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
   } else if (error instanceof WidgetRateLimitError) {
     code = "rate_limited";
     status = 429;
+  } else if (error instanceof WidgetManagementError) {
+    code = error.code;
+    status = error.code === "permission_denied" ? 403 : 400;
   } else if (error instanceof WidgetApplicationError) {
     code = error.code === "channel_unavailable" ? "resource_not_found" : error.code;
     status =
@@ -452,6 +460,7 @@ const registerStaffAuth = async (
   staffInstagram?: StaffInstagramDependencies,
   staffOperations?: StaffOperationsDependencies,
   staffAnalytics?: StaffAnalyticsDependencies,
+  staffWidgetManagement?: StaffWidgetManagementDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -883,6 +892,14 @@ const registerStaffAuth = async (
         (await requireMutationSession(request, reply)).session,
     });
   }
+  if (staffWidgetManagement !== undefined) {
+    registerStaffWidgetManagement(api, staffWidgetManagement, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
 };
 
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
@@ -901,6 +918,8 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   }
   if (options.staffInstagram !== undefined && options.staffAuth === undefined)
     throw new TypeError("Staff Instagram routes require the staff authentication boundary");
+  if (options.staffWidgetManagement !== undefined && options.staffAuth === undefined)
+    throw new TypeError("Staff Widget routes require the staff authentication boundary");
   const api = Fastify({
     ajv: { customOptions: { removeAdditional: false, strict: false } },
     logController: new LogController({ disableRequestLogging: true }),
@@ -1028,6 +1047,7 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         options.staffInstagram,
         options.staffOperations,
         options.staffAnalytics,
+        options.staffWidgetManagement,
       ),
     );
   }

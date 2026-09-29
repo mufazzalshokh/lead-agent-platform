@@ -33,7 +33,10 @@ import { createApi, STAFF_AUTH_LOG_REDACTION_PATHS } from "./auth/plugin.js";
 import { createStaffConfigurationDependencies } from "./configuration/composition.js";
 import { createStaffOperationsDependencies } from "./staff/composition.js";
 import { createS9ConversationComposition } from "./conversations/composition.js";
-import { createWidgetDependencies } from "./widget/composition.js";
+import {
+  createStaffWidgetManagementDependencies,
+  createWidgetDependencies,
+} from "./widget/composition.js";
 import { createTelegramApiComposition } from "./telegram/composition.js";
 import { createInstagramApiComposition } from "./instagram/composition.js";
 import type { CredentialSecretStore } from "@lead-agent/application";
@@ -151,6 +154,7 @@ export const createApiFromEnvironment = (
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffOperations: createStaffOperationsDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffAnalytics: createStaffAnalyticsDependencies(tenantRuntime, metrics),
+    staffWidgetManagement: createStaffWidgetManagementDependencies(tenantRuntime),
     staffConversations: conversations.staff,
     staffTelegram: telegram.staff,
     telegramWebhook: telegram.webhook,

@@ -11,14 +11,18 @@ import {
   ChannelConnectionIdSchema,
   DOMAIN_EVENT_NAMES,
   DomainEventSchemasByVersion,
+  MembershipIdSchema,
   OrganizationIdSchema,
+  UserIdSchema,
   isSchemaValue,
   type AgentActionType,
   type ChannelConnectionId,
   type DomainAggregateType,
   type DomainEventName,
   type DomainEventPayloadByName,
+  type MembershipId,
   type OrganizationId,
+  type UserId,
 } from "../../packages/contracts/src/index.js";
 import {
   createIdentityDatabaseRuntimeConfig,
@@ -105,6 +109,7 @@ import {
   type HandoffStatus,
   type HandoffTriggerReason,
 } from "../../packages/domain/src/index.js";
+import { resolveAuthorizationContext } from "../../packages/security/src/index.js";
 import { registerTenantSessionTests } from "./tenant-session.test-suite.js";
 import { registerTenantRepositoryTests } from "./tenant-repositories.test-suite.js";
 import { registerTenantMutationTests } from "./tenant-mutations.test-suite.js";
@@ -660,6 +665,20 @@ const requireOrganizationId = (value: unknown): OrganizationId => {
 const requireChannelConnectionId = (value: unknown): ChannelConnectionId => {
   if (!isSchemaValue(ChannelConnectionIdSchema, value)) {
     throw new Error("Invalid ChannelConnectionId test fixture");
+  }
+  return value;
+};
+
+const requireMembershipId = (value: unknown): MembershipId => {
+  if (!isSchemaValue(MembershipIdSchema, value)) {
+    throw new Error("Invalid MembershipId test fixture");
+  }
+  return value;
+};
+
+const requireUserId = (value: unknown): UserId => {
+  if (!isSchemaValue(UserIdSchema, value)) {
+    throw new Error("Invalid UserId test fixture");
   }
   return value;
 };
@@ -10039,6 +10058,39 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     organizationId: requireOrganizationId(ORGANIZATION_A),
     privilegedPool: database,
     runtime: requireTenantRuntime,
+    staffActor: async () => {
+      const now = new Date("2026-09-15T10:00:00.000Z");
+      const organizationId = requireOrganizationId(ORGANIZATION_A);
+      const membershipId = requireMembershipId(MEMBERSHIP_A);
+      const userId = requireUserId(USER_A);
+      return await resolveAuthorizationContext(
+        {
+          absoluteExpiresAt: new Date(now.getTime() + 86_400_000),
+          authenticationLevel: "mfa",
+          authenticationTime: now,
+          createdAt: now,
+          idleExpiresAt: new Date(now.getTime() + 3_600_000),
+          lastSeenAt: now,
+          rotatedAt: now,
+          rotationDue: false,
+          sessionId: "s22-widget-management",
+          userId,
+        },
+        organizationId,
+        {
+          resolveCurrentMembership: () =>
+            Promise.resolve({
+              allowedLocationIds: [],
+              locationScope: "all",
+              membershipId,
+              organizationId,
+              role: "owner",
+              status: "active",
+              userId,
+            }),
+        },
+      );
+    },
     seed: async () => {
       await insertOrganization(ORGANIZATION_A, "s10-widget");
       await insertUser(USER_A);

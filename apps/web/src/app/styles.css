@@ -35,7 +35,8 @@ body {
   background: var(--canvas);
 }
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 button,
@@ -252,6 +253,92 @@ input:focus-visible {
   border: 1px solid #cddbd5;
   border-radius: 1rem;
   background: linear-gradient(145deg, #fff 0%, #eef6f2 100%);
+}
+.integrations-overview {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #cddbd5;
+  border-radius: 1rem;
+  background: white;
+}
+.integrations-overview__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.integrations-overview__heading h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.integrations-overview__heading > span {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+.integrations-intro,
+.integration-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+.integration-cards {
+  display: grid;
+  gap: 0.65rem;
+}
+.integration-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--surface-soft);
+}
+.integration-card > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.integration-card h3 {
+  margin: 0 0 0.15rem;
+  font-size: 0.86rem;
+}
+.integration-card .primary-button,
+.integration-card .secondary-button {
+  justify-self: start;
+}
+.integration-icon {
+  display: grid;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.65rem;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-weight: 850;
+}
+.integration-card .integration-detail,
+.integration-permission {
+  font-size: 0.7rem;
+}
+.integration-origin {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.integration-origin input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #cbd5d0;
+  border-radius: 0.6rem;
+  background: white;
+  color: var(--ink);
 }
 .analytics-overview__heading,
 .analytics-latency {
