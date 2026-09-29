@@ -18,6 +18,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).not.toMatch(/^import\s/mu);
     expect(script).toContain("bootstrap().catch((error) =>");
     expect(script).not.toContain("await bootstrap()");
+    expect(script).toContain("process.exitCode = failureExitCode");
     expect(script).toContain("begin isolation level serializable");
     expect(script).toContain("Conflicting staging tenant or identity data exists");
     expect(script).toContain("role='owner' and status='active' and location_scope='all'");
@@ -42,6 +43,8 @@ describe("S22 staging first-owner bootstrap", () => {
     );
     expect(workflow).toContain('[[ "$APPROVAL_TOKEN" == "S22-APPLY-APPROVED" ]]');
     expect(workflow).toContain("lead-agent-staging-migrator");
+    expect(workflow).toContain("lastAttemptResult.exitCode");
+    expect(workflow).toContain("FAILURE_STAGE=external_identity_insert");
     expect(workflow).not.toContain("service_account_key");
     expect(workflow).not.toContain('echo "$OWNER_SUBJECT"');
   });

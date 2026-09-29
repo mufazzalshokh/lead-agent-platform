@@ -6,6 +6,7 @@ const AUDIT_ID = "01a0ee39-91b0-7cb5-9bb6-bc34d73137f2";
 const OPERATOR_PRINCIPAL_ID = "01a0ee39-91b0-75da-a654-2042586c8f56";
 const ADVISORY_LOCK_ID = "721773420220030";
 const APPROVAL_REFERENCE = "S22_OWNER_WORKSPACE_BOOTSTRAP_2026-09-29";
+let failureExitCode = 70;
 
 const required = (name) => {
   const value = process.env[name];
@@ -70,14 +71,17 @@ const assertExactState = async (client, issuer, subject) => {
 };
 
 const bootstrap = async () => {
+  failureExitCode = 71;
   const { createHash } = await import("node:crypto");
   const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
   const { Pool } = await import("pg");
+  failureExitCode = 72;
   const connectionString = withLibpqCompatibleRequireSsl(required("MIGRATION_DATABASE_URL"));
   const issuer = required("STAGING_AUTH0_ISSUER");
   const subject = required("STAGING_OWNER_AUTH0_SUBJECT");
   assertInput(issuer, subject);
 
+  failureExitCode = 73;
   const pool = new Pool({
     application_name: "lead-agent-staging-owner-bootstrap",
     connectionString,
@@ -85,6 +89,7 @@ const bootstrap = async () => {
   });
   const client = await pool.connect();
   try {
+    failureExitCode = 74;
     await client.query("begin isolation level serializable");
     try {
       await client.query("select pg_advisory_xact_lock($1::bigint)", [ADVISORY_LOCK_ID]);
@@ -104,30 +109,35 @@ const bootstrap = async () => {
 
       if (empty) {
         const now = new Date();
+        failureExitCode = 75;
         await client.query(
           `insert into organizations
             (id,slug,display_name,status,default_locale,default_time_zone,created_at,updated_at,version)
            values ($1::uuid,'lead-agent-staging','Lead Agent Staging','active','uz','Asia/Tashkent',$2,$2,1)`,
           [ORGANIZATION_ID, now],
         );
+        failureExitCode = 76;
         await client.query(
           `insert into users
             (id,status,last_authenticated_at,created_at,updated_at,version)
            values ($1::uuid,'active',$2,$2,$2,1)`,
           [USER_ID, now],
         );
+        failureExitCode = 77;
         await client.query(
           `insert into external_identities
             (id,user_id,issuer,subject,status,linked_at,last_authenticated_at,created_at,updated_at,version)
            values ($1::uuid,$2::uuid,$3,$4,'active',$5,$5,$5,$5,1)`,
           [EXTERNAL_IDENTITY_ID, USER_ID, issuer, subject, now],
         );
+        failureExitCode = 78;
         await client.query(
           `insert into memberships
             (id,organization_id,user_id,role,status,location_scope,activated_at,created_at,updated_at,version)
            values ($1::uuid,$2::uuid,$3::uuid,'owner','active','all',$4,$4,$4,1)`,
           [MEMBERSHIP_ID, ORGANIZATION_ID, USER_ID, now],
         );
+        failureExitCode = 79;
         await client.query(
           `insert into platform_audit_events
             (id,operator_principal_id,action,target_organization_id,target_type,target_id,
@@ -176,12 +186,14 @@ const bootstrap = async () => {
         }
       }
 
+      failureExitCode = 80;
       await assertExactState(client, issuer, subject);
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");
       throw error;
     }
+    failureExitCode = 81;
     await assertExactState(client, issuer, subject);
     console.info(
       JSON.stringify({
@@ -219,5 +231,5 @@ bootstrap().catch((error) => {
       outcome: "FAIL",
     }),
   );
-  process.exitCode = 1;
+  process.exitCode = failureExitCode;
 });
