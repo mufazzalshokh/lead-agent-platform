@@ -229,7 +229,7 @@ variable "api_public_origin" {
   default     = ""
 
   validation {
-    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9-]+\\.run\\.app$", var.api_public_origin))
+    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.run\\.app$", var.api_public_origin))
     error_message = "Full runtime deployment requires the exact API run.app origin."
   }
 }
@@ -240,7 +240,7 @@ variable "web_public_origin" {
   default     = ""
 
   validation {
-    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9-]+\\.run\\.app$", var.web_public_origin))
+    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.run\\.app$", var.web_public_origin))
     error_message = "Full runtime deployment requires the exact Web run.app origin."
   }
 }

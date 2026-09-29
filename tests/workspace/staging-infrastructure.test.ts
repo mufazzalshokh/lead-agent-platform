@@ -310,6 +310,12 @@ describe("S22 staging infrastructure boundary", () => {
     expect(variables).toContain('default     = "me-central1"');
     expect(variables).toContain('default     = "db-f1-micro"');
     expect(variables).toContain('default     = "NEVER"');
+    expect(variables).toContain(
+      'can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.run\\\\.app$", var.api_public_origin))',
+    );
+    expect(variables).toContain(
+      'can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.run\\\\.app$", var.web_public_origin))',
+    );
     expect(variables).toMatch(/variable "worker_instance_count"[\s\S]*?default\s+= 0/u);
     expect(foundation).toContain('database_version    = "POSTGRES_17"');
     expect(foundation).toContain("tier                        = var.cloud_sql_tier");
