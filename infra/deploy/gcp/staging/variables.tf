@@ -161,11 +161,11 @@ variable "deployment_timestamp" {
 variable "migration_head" {
   description = "Migration head packaged in the exact deployment artifact."
   type        = string
-  default     = "0029_s21_thread_automation_controls"
+  default     = "0030_s22_first_tenant_bootstrap"
 
   validation {
-    condition     = var.migration_head == "0029_s21_thread_automation_controls"
-    error_message = "S22 does not authorize a migration after 0029."
+    condition     = var.migration_head == "0030_s22_first_tenant_bootstrap"
+    error_message = "S22 requires the approved first-tenant bootstrap migration head."
   }
 }
 

@@ -32,12 +32,12 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       "c71cc9181168d470d930b96e9012db840b6f1937c82d8f132518ae0fe2beea87",
     );
   });
-  it("has the approved S21 migration head, 52 business tables, and ordered history", async () => {
+  it("has the approved S22 migration head, 52 business tables, and ordered history", async () => {
     const files = (await readdir(folder)).filter((name) => name.endsWith(".sql")).sort();
     expect(files.map((name) => name.slice(0, 4))).toEqual(
-      Array.from({ length: 30 }, (_, index) => String(index).padStart(4, "0")),
+      Array.from({ length: 31 }, (_, index) => String(index).padStart(4, "0")),
     );
-    expect(files.at(-1)).toBe("0029_s21_thread_automation_controls.sql");
+    expect(files.at(-1)).toBe("0030_s22_first_tenant_bootstrap.sql");
     for (const [name, expectedTables] of [
       ["0027", 51],
       ["0028", 51],
@@ -66,7 +66,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       !Array.isArray(journal.entries)
     )
       throw new Error("Invalid journal");
-    expect(journal.entries).toHaveLength(30);
+    expect(journal.entries).toHaveLength(31);
     let previous = -1;
     const entries: readonly unknown[] = journal.entries;
     for (const [index, entry] of entries.entries()) {

@@ -261,7 +261,7 @@ describe("S8.1 PostgreSQL 17 pg-boss infrastructure", { timeout: 30_000 }, () =>
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows[0]?.count).toBe(30);
+    expect(migrations.rows[0]?.count).toBe(31);
     const version = await database().query<{ version: number }>(
       "select version from pgboss.version",
     );

@@ -2602,6 +2602,190 @@ afterAll(async () => {
   }
 }, 60_000);
 
+describe("S22 PostgreSQL 17 first-tenant staging bootstrap", { timeout: 30_000 }, () => {
+  const bootstrapFunction =
+    "app.bootstrap_first_staging_owner(character varying,character varying)";
+  const organizationId = "01a0ee39-91a9-7293-82c0-5b7046c10115";
+  const userId = "01a0ee39-91af-7bfa-945f-b87959be6f0b";
+  const externalIdentityId = "01a0ee39-91af-7d4c-baf2-9a28dc854028";
+  const membershipId = "01a0ee39-91b0-72c2-a2bb-f45d5bcc3ee4";
+  const auditId = "01a0ee39-91b0-7cb5-9bb6-bc34d73137f2";
+  const issuer = "https://staging-tenant.example.auth0.com/";
+  const subject = "google-oauth2|111259402662215308387";
+
+  it("creates only the exact audited empty-state owner and denies replay or runtime bypass", async () => {
+    const security = await database().query<{
+      auth_execute: boolean;
+      definer_bypassrls: boolean;
+      definer_login: boolean;
+      definer_superuser: boolean;
+      ingress_execute: boolean;
+      migration_user_inherits_definer: boolean;
+      migration_user_may_set_definer: boolean;
+      owner_name: string;
+      public_execute: boolean;
+      queue_execute: boolean;
+      runtime_execute: boolean;
+      search_path: string[] | null;
+      security_definer: boolean;
+    }>(
+      `select owner.rolname as owner_name,
+              owner.rolcanlogin as definer_login,
+              owner.rolsuper as definer_superuser,
+              owner.rolbypassrls as definer_bypassrls,
+              procedure.prosecdef as security_definer,
+              procedure.proconfig as search_path,
+              pg_catalog.has_function_privilege('public', procedure.oid, 'EXECUTE') as public_execute,
+              pg_catalog.has_function_privilege('lead_agent_runtime', procedure.oid, 'EXECUTE') as runtime_execute,
+              pg_catalog.has_function_privilege('lead_agent_auth', procedure.oid, 'EXECUTE') as auth_execute,
+              pg_catalog.has_function_privilege('lead_agent_ingress', procedure.oid, 'EXECUTE') as ingress_execute,
+              pg_catalog.has_function_privilege('lead_agent_queue_runtime', procedure.oid, 'EXECUTE') as queue_execute,
+              coalesce((
+                select membership.inherit_option
+                  from pg_catalog.pg_auth_members membership
+                 where membership.roleid = owner.oid
+                   and membership.member = (select oid from pg_catalog.pg_roles where rolname = current_user)
+              ), false) as migration_user_inherits_definer,
+              coalesce((
+                select membership.set_option
+                  from pg_catalog.pg_auth_members membership
+                 where membership.roleid = owner.oid
+                   and membership.member = (select oid from pg_catalog.pg_roles where rolname = current_user)
+              ), false) as migration_user_may_set_definer
+         from pg_catalog.pg_proc procedure
+         join pg_catalog.pg_roles owner on owner.oid = procedure.proowner
+        where procedure.oid = $1::regprocedure`,
+      [bootstrapFunction],
+    );
+    expect(security.rows).toEqual([
+      {
+        auth_execute: false,
+        definer_bypassrls: false,
+        definer_login: false,
+        definer_superuser: false,
+        ingress_execute: false,
+        migration_user_inherits_definer: false,
+        migration_user_may_set_definer: false,
+        owner_name: "lead_agent_first_tenant_bootstrap_definer",
+        public_execute: false,
+        queue_execute: false,
+        runtime_execute: false,
+        search_path: ["search_path=pg_catalog"],
+        security_definer: true,
+      },
+    ]);
+
+    const rls = await database().query<{
+      relforcerowsecurity: boolean;
+      relname: string;
+      relrowsecurity: boolean;
+    }>(
+      `select relname, relrowsecurity, relforcerowsecurity
+         from pg_catalog.pg_class
+        where oid = any(array['public.organizations'::regclass, 'public.memberships'::regclass])
+        order by relname`,
+    );
+    expect(rls.rows).toEqual([
+      { relforcerowsecurity: true, relname: "memberships", relrowsecurity: true },
+      { relforcerowsecurity: true, relname: "organizations", relrowsecurity: true },
+    ]);
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin");
+      await setLocalOrganization(client, organizationId);
+      await expect(
+        client.query(
+          `insert into public.organizations
+            (id, slug, display_name, status, default_locale, default_time_zone)
+           values ($1::uuid, 'runtime-first-tenant', 'Runtime tenant', 'active', 'en', 'UTC')`,
+          [organizationId],
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+
+    await expect(
+      database().query("select * from app.bootstrap_first_staging_owner($1, $2)", [
+        issuer,
+        "owner@example.com",
+      ]),
+    ).rejects.toMatchObject({ code: "22023" });
+
+    const result = await database().query<{
+      audit_event_id: string;
+      membership_id: string;
+      membership_role: string;
+      membership_status: string;
+      organization_id: string;
+      outcome: string;
+      user_id: string;
+    }>("select * from app.bootstrap_first_staging_owner($1, $2)", [issuer, subject]);
+    expect(result.rows).toEqual([
+      {
+        audit_event_id: auditId,
+        membership_id: membershipId,
+        membership_role: "owner",
+        membership_status: "active",
+        organization_id: organizationId,
+        outcome: "created",
+        user_id: userId,
+      },
+    ]);
+
+    const state = await database().query<{
+      audit_count: number;
+      identity_count: number;
+      membership_count: number;
+      organization_count: number;
+      user_count: number;
+    }>(
+      `select
+        (select count(*)::integer from public.organizations
+          where id=$1 and slug='lead-agent-staging' and display_name='Lead Agent Staging'
+            and status='active' and default_locale='uz' and default_time_zone='Asia/Tashkent')
+          as organization_count,
+        (select count(*)::integer from public.users where id=$2 and status='active'
+          and email_ciphertext is null and email_lookup_hash is null) as user_count,
+        (select count(*)::integer from public.external_identities
+          where id=$3 and user_id=$2 and issuer=$6 and subject=$7 and status='active')
+          as identity_count,
+        (select count(*)::integer from public.memberships
+          where id=$4 and organization_id=$1 and user_id=$2 and role='owner'
+            and status='active' and location_scope='all') as membership_count,
+        (select count(*)::integer from public.platform_audit_events
+          where id=$5 and target_organization_id=$1 and target_id=$4
+            and action='staging_owner_bootstrap' and result='succeeded'
+            and metadata_jsonb->>'identity_binding'='exact_issuer_subject') as audit_count`,
+      [organizationId, userId, externalIdentityId, membershipId, auditId, issuer, subject],
+    );
+    expect(state.rows).toEqual([
+      {
+        audit_count: 1,
+        identity_count: 1,
+        membership_count: 1,
+        organization_count: 1,
+        user_count: 1,
+      },
+    ]);
+
+    await expect(
+      database().query("select * from app.bootstrap_first_staging_owner($1, $2)", [
+        issuer,
+        subject,
+      ]),
+    ).rejects.toMatchObject({ code: "P0001", detail: "S22_BOOTSTRAP_NOT_EMPTY" });
+
+    await withDatabaseRole(S5_RUNTIME_ROLE, async (client) => {
+      await client.query("begin read only");
+      await setLocalOrganization(client, ORGANIZATION_B);
+      const visible = await client.query<{ count: number }>(
+        "select count(*)::integer as count from public.organizations where id=$1",
+        [organizationId],
+      );
+      expect(visible.rows).toEqual([{ count: 0 }]);
+    });
+  });
+});
+
 describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout: 30_000 }, () => {
   it("keeps persisted state and confirmation vocabularies aligned with the domain", () => {
     const conversationStatuses = [
@@ -2739,7 +2923,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(30);
+    expect(migrationCount.rows[0]?.count).toBe(31);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {

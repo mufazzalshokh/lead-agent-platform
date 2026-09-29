@@ -15,8 +15,8 @@ const repositoryFile = (path: string): Promise<string> =>
 describe("S22 staging infrastructure boundary", () => {
   it("packages the exact current migration chain for the one-shot migrator", async () => {
     const manifest = await readStagingMigrationManifest();
-    expect(manifest.entries).toHaveLength(30);
-    expect(manifest.entries.at(-1)?.tag).toBe("0029_s21_thread_automation_controls");
+    expect(manifest.entries).toHaveLength(31);
+    expect(manifest.entries.at(-1)?.tag).toBe("0030_s22_first_tenant_bootstrap");
     expect(manifest.entries.every((entry, index) => entry.idx === index)).toBe(true);
   });
 
@@ -33,6 +33,7 @@ describe("S22 staging infrastructure boundary", () => {
       ["0024_s8_handler_reliability.sql", "lead_agent_async_maintenance_definer"],
       ["0026_s11_telegram_inbound_route_management.sql", "lead_agent_inbound_route_definer"],
       ["0027_s11_instagram_identity_routing.sql", "lead_agent_inbound_route_definer"],
+      ["0030_s22_first_tenant_bootstrap.sql", "lead_agent_first_tenant_bootstrap_definer"],
     ] as const;
     const [roleMigrations, ownerTransferMigrations] = await Promise.all([
       Promise.all(
@@ -43,6 +44,7 @@ describe("S22 staging infrastructure boundary", () => {
           "0021_s8_pgboss_infrastructure.sql",
           "0022_s8_outbox_relay_persistence.sql",
           "0024_s8_handler_reliability.sql",
+          "0030_s22_first_tenant_bootstrap.sql",
         ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
       ),
       Promise.all(
@@ -54,7 +56,7 @@ describe("S22 staging infrastructure boundary", () => {
     ]);
     const roleSql = roleMigrations.join("\n");
     expect(roleSql).not.toMatch(/\b(?:NO)?(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu);
-    expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(6);
+    expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(7);
     for (const { role, sql: ownerTransferSql } of ownerTransferMigrations) {
       const nonInheritedIndex = ownerTransferSql.indexOf(
         `GRANT ${role} TO CURRENT_USER WITH INHERIT FALSE`,
@@ -652,13 +654,13 @@ describe("S22 staging infrastructure boundary", () => {
     );
     expect(wiringDiagnostic).toContain("runtime_admin_role_superuser");
     expect(wiringDiagnostic).toContain("runtime_admin_role_bypassrls");
-    expect(wiringDiagnostic).toContain("runtime_migration_count_30");
+    expect(wiringDiagnostic).toContain("runtime_migration_count_31");
     expect(wiringDiagnostic).toContain("runtime_production_table_count_52");
     expect(wiringDiagnostic).toContain("runtime_required_bypassrls_role_present");
     expect(wiringDiagnostic).toContain("runtime_cloudsql_superuser_role_bypassrls");
     expect(wiringDiagnostic).toContain("runtime_cloudsql_superuser_role_superuser");
     expect(wiringDiagnostic).toContain("runtime_admin_has_cloudsql_superuser_usage");
-    expect(wiringDiagnostic).toContain("packaged_manifest_head_0029");
+    expect(wiringDiagnostic).toContain("packaged_manifest_head_0030");
     expect(wiringDiagnostic).toContain("TLS_CERT_ALTNAME_INVALID");
     expect(workflow).toContain("- bootstrap-log-viewer");
     expect(workflow).toContain("- bootstrap-log-viewer-remove");
@@ -688,7 +690,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("diagnosticLogPattern");
     expect(workflow).toContain("usefulErrorPattern");
     const diagnosticScript = workflow.match(
-      /node - "\$LOGS" "\$EXECUTION" "\$EXECUTION_ID" <<'NODE' \| tee s22-migrator-root-error\.txt\n([\s\S]*?)\n          NODE/u,
+      /node - "\$LOGS" "\$EXECUTION" "\$TASKS" "\$EXECUTION_ID" <<'NODE' \| tee s22-migrator-root-error\.txt\n([\s\S]*?)\n          NODE/u,
     )?.[1];
     expect(diagnosticScript).toBeDefined();
     expect(() => new Script(diagnosticScript ?? "")).not.toThrow();
@@ -743,7 +745,7 @@ describe("S22 staging infrastructure boundary", () => {
       'if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]',
     );
     expect(workflow).toContain(
-      'if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+      'if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && "$PHASE" != "owner-workspace-bootstrap" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
     );
     expect(workflow).toContain("google-github-actions/auth@");
     expect(workflow).toContain("TF_VAR_deployer_service_account_email");

@@ -7,6 +7,30 @@ const repositoryFile = (path: string): Promise<string> =>
   readFile(resolve(process.cwd(), path), "utf8");
 
 describe("S22 staging first-owner bootstrap", () => {
+  it("keeps the tracked database capability one-time, fixed, and unavailable to app roles", async () => {
+    const migration = await repositoryFile(
+      "packages/database/drizzle/0030_s22_first_tenant_bootstrap.sql",
+    );
+
+    expect(migration).toContain("CREATE ROLE lead_agent_first_tenant_bootstrap_definer NOLOGIN");
+    expect(migration).toContain("SECURITY DEFINER");
+    expect(migration).toContain("SET search_path = pg_catalog");
+    expect(migration).toContain("S22_BOOTSTRAP_NOT_EMPTY");
+    expect(migration).toContain("staging_owner_bootstrap");
+    expect(migration).toContain("exact_issuer_subject");
+    expect(migration).toContain(
+      "GRANT lead_agent_first_tenant_bootstrap_definer TO CURRENT_USER WITH SET FALSE",
+    );
+    expect(migration).toMatch(
+      /FROM PUBLIC, lead_agent_runtime, lead_agent_auth, lead_agent_ingress,\s+lead_agent_queue_runtime/u,
+    );
+    expect(migration).not.toMatch(
+      /\b(?:DISABLE ROW LEVEL SECURITY|NO FORCE|BYPASSRLS|SUPERUSER)\b/u,
+    );
+    expect(migration).not.toMatch(/\bEXECUTE\s+(?:pg_catalog\.)?format\b/iu);
+    expect(migration).not.toContain("email@example");
+  });
+
   it("binds only one exact Auth0 subject to one synthetic active owner workspace", async () => {
     const script = await repositoryFile(".github/scripts/s22-staging-owner-bootstrap.mjs");
 
@@ -20,9 +44,10 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).not.toContain("await bootstrap()");
     expect(script).toContain("process.exitCode = failureExitCode");
     expect(script).toContain("begin isolation level serializable");
-    expect(script).toContain("Conflicting staging tenant or identity data exists");
-    expect(script).toContain("role='owner' and status='active' and location_scope='all'");
-    expect(script).toContain('identity_binding: "exact_issuer_subject"');
+    expect(script).toContain("app.bootstrap_first_staging_owner");
+    expect(script).toContain('row.membership_status !== "active"');
+    expect(script).toContain('row.membership_role !== "owner"');
+    expect(script).not.toMatch(/\binsert\s+into\b/iu);
     expect(script).not.toMatch(
       /\bupdate\s+(?:organizations|users|external_identities|memberships)\b/iu,
     );
@@ -44,7 +69,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain('[[ "$APPROVAL_TOKEN" == "S22-APPLY-APPROVED" ]]');
     expect(workflow).toContain("lead-agent-staging-migrator");
     expect(workflow).toContain("lastAttemptResult.exitCode");
-    expect(workflow).toContain("FAILURE_STAGE=external_identity_insert");
+    expect(workflow).toContain("FAILURE_STAGE=bootstrap_capability");
     expect(workflow).not.toContain("service_account_key");
     expect(workflow).not.toContain('echo "$OWNER_SUBJECT"');
   });

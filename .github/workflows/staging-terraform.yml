@@ -669,14 +669,9 @@ jobs:
             71) FAILURE_STAGE=dependency_load ;;
             72) FAILURE_STAGE=input_validation ;;
             73) FAILURE_STAGE=database_connect ;;
-            74) FAILURE_STAGE=inventory_or_transaction ;;
-            75) FAILURE_STAGE=organization_insert ;;
-            76) FAILURE_STAGE=user_insert ;;
-            77) FAILURE_STAGE=external_identity_insert ;;
-            78) FAILURE_STAGE=membership_insert ;;
-            79) FAILURE_STAGE=platform_audit_insert ;;
-            80) FAILURE_STAGE=pre_commit_verification ;;
-            81) FAILURE_STAGE=post_commit_verification ;;
+            74) FAILURE_STAGE=transaction_start ;;
+            75) FAILURE_STAGE=bootstrap_capability ;;
+            76) FAILURE_STAGE=success_evidence ;;
             *) FAILURE_STAGE=runtime_unclassified ;;
           esac
           {
@@ -4141,14 +4136,9 @@ jobs:
             [71, "dependency_load"],
             [72, "input_validation"],
             [73, "database_connect"],
-            [74, "inventory_or_transaction"],
-            [75, "organization_insert"],
-            [76, "user_insert"],
-            [77, "external_identity_insert"],
-            [78, "membership_insert"],
-            [79, "platform_audit_insert"],
-            [80, "pre_commit_verification"],
-            [81, "post_commit_verification"],
+            [74, "transaction_start"],
+            [75, "bootstrap_capability"],
+            [76, "success_evidence"],
           ]);
           const taskFailure = Number.isInteger(taskExitCode) && {
             diagnostic_mode: "cloud_run_task_status",
@@ -4507,7 +4497,7 @@ jobs:
             try {
               const migrations = await pool.query("select count(*)::integer as count from drizzle.__drizzle_migrations");
               const tables = await pool.query("select count(*)::integer as count from information_schema.tables where table_schema = $$public$$ and table_type = $$BASE TABLE$$");
-              process.exitCode = migrations.rows[0]?.count === 30 && tables.rows[0]?.count === 52 ? 0 : 1;
+              process.exitCode = migrations.rows[0]?.count === 31 && tables.rows[0]?.count === 52 ? 0 : 1;
             } catch {
               process.exitCode = 1;
             } finally {
@@ -4777,8 +4767,8 @@ jobs:
           {
             echo "migration_state_count=$STATE_COUNT"
             echo "migration_convergence_exit_code=$PLAN_EXIT_CODE"
-            echo "migration_head=0029_s21_thread_automation_controls"
-            echo "migration_count=30"
+            echo "migration_head=0030_s22_first_tenant_bootstrap"
+            echo "migration_count=31"
             echo "production_table_count=52"
             echo "force_rls_table_count=48"
             echo "application_role_connectivity=PASS"
@@ -4812,7 +4802,7 @@ jobs:
             echo "- Region: me-central1"
             echo "- Phase: $PHASE"
             echo "- Commit: \`$REQUESTED_SHA\`"
-            echo "- Migration head: \`0029_s21_thread_automation_controls\`"
+            echo "- Migration head: \`0030_s22_first_tenant_bootstrap\`"
             echo "- Timestamp: \`$DEPLOYED_AT\`"
             [[ -z "$API_IMAGE" ]] || echo "- API: \`$API_IMAGE\`"
             [[ -z "$WEB_IMAGE" ]] || echo "- Web: \`$WEB_IMAGE\`"
