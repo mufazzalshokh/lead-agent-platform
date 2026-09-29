@@ -37,7 +37,8 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
     and .variables.migration_head.value == "0029_s21_thread_automation_controls"
 ' "$PLAN_JSON" > /dev/null
 
-EXPECTED_ACTIONS='["create:google_cloud_run_v2_worker_pool.worker[0]","update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]"]'
+INITIAL_ACTIONS='["create:google_cloud_run_v2_worker_pool.worker[0]","update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]"]'
+RECONCILIATION_ACTIONS='["update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]","update:google_cloud_run_v2_worker_pool.worker[0]"]'
 ACTUAL_ACTIONS="$(
   jq -c '
     [.resource_changes[]
@@ -46,7 +47,23 @@ ACTUAL_ACTIONS="$(
     | sort
   ' "$PLAN_JSON"
 )"
-[[ "$ACTUAL_ACTIONS" == "$EXPECTED_ACTIONS" ]]
+
+case "$ACTUAL_ACTIONS" in
+  "$INITIAL_ACTIONS")
+    CREATE_COUNT=1
+    UPDATE_COUNT=3
+    PLAN_MODE=initial
+    ;;
+  "$RECONCILIATION_ACTIONS")
+    CREATE_COUNT=0
+    UPDATE_COUNT=4
+    PLAN_MODE=reconciliation
+    ;;
+  *)
+    echo "Unexpected full-runtime action set: $ACTUAL_ACTIONS" >&2
+    exit 1
+    ;;
+esac
 
 jq -e '
   [.resource_changes[]
@@ -118,14 +135,13 @@ jq -e --arg image "$TF_VAR_migrator_image" '
     and $migrator[0].template[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
 ' "$PLAN_JSON" > /dev/null
 
-jq -e '[.resource_changes[] | select(.change.actions == ["create"])] | length == 1' "$PLAN_JSON" > /dev/null
-jq -e '[.resource_changes[] | select(.change.actions == ["update"])] | length == 3' "$PLAN_JSON" > /dev/null
 jq -e '[.resource_changes[] | select(.change.actions == ["delete"])] | length == 0' "$PLAN_JSON" > /dev/null
 jq -e '[.resource_changes[] | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length == 0' "$PLAN_JSON" > /dev/null
 
 printf '%s\n' \
-  "full_runtime_plan_creates=1" \
-  "full_runtime_plan_changes=3" \
+  "full_runtime_plan_mode=$PLAN_MODE" \
+  "full_runtime_plan_creates=$CREATE_COUNT" \
+  "full_runtime_plan_changes=$UPDATE_COUNT" \
   "full_runtime_plan_destroys=0" \
   "full_runtime_plan_replacements=0" \
   "full_runtime_plan_actions=$ACTUAL_ACTIONS" \

@@ -506,9 +506,14 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify full runtime plan safety");
     expect(workflow).toContain("Verify exact full runtime approval boundary");
     expect(workflow).toContain("s22-full-runtime-plan-check.sh");
-    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_creates=1");
+    expect(fullRuntimePlanCheck).toContain("PLAN_MODE=initial");
+    expect(fullRuntimePlanCheck).toContain("PLAN_MODE=reconciliation");
+    expect(fullRuntimePlanCheck).toContain(
+      'RECONCILIATION_ACTIONS=\'["update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]","update:google_cloud_run_v2_worker_pool.worker[0]"]\'',
+    );
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_creates=$CREATE_COUNT");
     expect(fullRuntimePlanCheck).toContain('terraform -chdir="$PLAN_DIRECTORY" show -json');
-    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_changes=3");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_changes=$UPDATE_COUNT");
     expect(fullRuntimePlanCheck).toContain("full_runtime_plan_destroys=0");
     expect(fullRuntimePlanCheck).toContain("full_runtime_plan_replacements=0");
     expect(fullRuntimePlanCheck).toContain("full_runtime_public_iam_changes=NONE");
