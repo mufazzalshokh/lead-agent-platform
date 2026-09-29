@@ -4038,22 +4038,32 @@ jobs:
           set -euo pipefail
           LOGS="$(mktemp)"
           EXECUTION="$(mktemp)"
-          trap 'rm -f "$LOGS" "$EXECUTION"' EXIT
-          gcloud beta run jobs executions logs read "$EXECUTION_ID" \
+          TASKS="$(mktemp)"
+          trap 'rm -f "$LOGS" "$EXECUTION" "$TASKS"' EXIT
+          gcloud run jobs executions tasks list \
+            --execution="$EXECUTION_ID" \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --limit=1 \
+            --format=json > "$TASKS"
+          if ! gcloud beta run jobs executions logs read "$EXECUTION_ID" \
             --project="$PROJECT_ID" \
             --region=me-central1 \
             --limit=200 \
             --order=asc \
-            --format=json > "$LOGS"
+            --format=json > "$LOGS"; then
+            printf '[]\n' > "$LOGS"
+          fi
           gcloud run jobs executions describe "$EXECUTION_ID" \
             --project="$PROJECT_ID" \
             --region=me-central1 \
             --format=json > "$EXECUTION"
-          node - "$LOGS" "$EXECUTION" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
+          node - "$LOGS" "$EXECUTION" "$TASKS" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
           const fs = require("node:fs");
-          const [logPath, executionPath, executionId] = process.argv.slice(2);
+          const [logPath, executionPath, tasksPath, executionId] = process.argv.slice(2);
           const rawLogs = fs.readFileSync(logPath, "utf8");
           const execution = JSON.parse(fs.readFileSync(executionPath, "utf8"));
+          const tasks = JSON.parse(fs.readFileSync(tasksPath, "utf8"));
           let parsedLogs;
           try {
             parsedLogs = JSON.parse(rawLogs);
@@ -4122,6 +4132,32 @@ jobs:
             outcome: "failed",
             retried_count: Number(executionStatus.retriedCount ?? executionStatus.retried_count ?? 0),
           };
+          const task = Array.isArray(tasks) ? tasks[0] : undefined;
+          const taskExitCode = task?.lastAttemptResult?.exitCode
+            ?? task?.status?.lastAttemptResult?.exitCode
+            ?? task?.status?.exitCode;
+          const ownerBootstrapStages = new Map([
+            [70, "bootstrap_entry"],
+            [71, "dependency_load"],
+            [72, "input_validation"],
+            [73, "database_connect"],
+            [74, "inventory_or_transaction"],
+            [75, "organization_insert"],
+            [76, "user_insert"],
+            [77, "external_identity_insert"],
+            [78, "membership_insert"],
+            [79, "platform_audit_insert"],
+            [80, "pre_commit_verification"],
+            [81, "post_commit_verification"],
+          ]);
+          const taskFailure = Number.isInteger(taskExitCode) && {
+            diagnostic_mode: "cloud_run_task_status",
+            execution_id: executionId,
+            failure_stage: ownerBootstrapStages.get(taskExitCode) ?? "runtime_unclassified",
+            operation: "cloud_run_job_execution",
+            outcome: taskExitCode === 0 ? "succeeded" : "failed",
+            task_exit_code: taskExitCode,
+          };
           const structuredEvidence = failure && {
             diagnostic_mode: "structured_application_error",
             error_category: optional(failure.error_category, /^[a-z][a-z0-9_]{0,79}$/u),
@@ -4160,7 +4196,7 @@ jobs:
             operation: "database_migration",
             outcome: "failed",
             severity: fallback.severity,
-          } : executionFailure ?? {
+          } : taskFailure ?? executionFailure ?? {
             diagnostic_mode: "sanitized_metadata_only",
             entry_count: entries.length,
             execution_id: executionId,
