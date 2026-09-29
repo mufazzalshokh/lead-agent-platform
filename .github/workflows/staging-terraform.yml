@@ -790,7 +790,7 @@ jobs:
               and $changes[0].address == $resource
               and $changes[0].change.actions == ["delete"]
               and $changes[0].change.before.project == "lead-agent-stg-739284"
-              and $changes[0].change.before.secret_id == "lead-agent-staging-instagram-webhook-verify-token"
+              and $changes[0].change.before.secret_id == "projects/lead-agent-stg-739284/secrets/lead-agent-staging-instagram-webhook-verify-token"
               and $changes[0].change.before.role == "roles/secretmanager.secretAccessor"
               and $changes[0].change.before.member == $member
           ' s22-instagram-verify-access-remove.tfplan.json > /dev/null
