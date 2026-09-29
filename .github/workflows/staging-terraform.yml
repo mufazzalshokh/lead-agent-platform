@@ -832,28 +832,48 @@ jobs:
               --region=me-central1 \
               --format='value(status.latestReadyRevisionName)'
           )"
-          [[ "$API_REVISION" =~ ^lead-agent-staging-api-[a-z0-9-]+$ ]]
+          if [[ ! "$API_REVISION" =~ ^lead-agent-staging-api-[a-z0-9-]+$ ]]; then
+            echo "::error title=Instagram verifier preflight::S22I101_INVALID_API_REVISION" >&2
+            exit 1
+          fi
           LIVE_IMAGE="$(
             gcloud run revisions describe "$API_REVISION" \
               --project="$PROJECT_ID" \
               --region=me-central1 \
               --format='value(spec.containers[0].image)'
           )"
-          [[ "$LIVE_IMAGE" == "$API_IMAGE" ]]
-          VERIFY_TOKEN="$(
-            gcloud secrets versions access latest \
-              --secret=lead-agent-staging-instagram-webhook-verify-token \
-              --project="$PROJECT_ID"
-          )"
-          [[ -n "$VERIFY_TOKEN" && ${#VERIFY_TOKEN} -le 256 ]]
+          if [[ "$LIVE_IMAGE" != "$API_IMAGE" ]]; then
+            echo "::error title=Instagram verifier preflight::S22I102_API_IMAGE_MISMATCH" >&2
+            exit 1
+          fi
+          VERIFY_TOKEN=""
+          for ATTEMPT in 1 2 3; do
+            if VERIFY_TOKEN="$(
+              gcloud secrets versions access latest \
+                --secret=lead-agent-staging-instagram-webhook-verify-token \
+                --project="$PROJECT_ID" \
+                2>/dev/null
+            )"; then
+              break
+            fi
+            if [[ "$ATTEMPT" == "3" ]]; then
+              echo "::error title=Instagram verifier preflight::S22I103_SECRET_ACCESS_FAILED" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          if [[ -z "$VERIFY_TOKEN" || ${#VERIFY_TOKEN} -gt 256 ]]; then
+            echo "::error title=Instagram verifier preflight::S22I104_INVALID_SECRET_VALUE" >&2
+            exit 1
+          fi
           echo "::add-mask::$VERIFY_TOKEN"
+          trap 'unset VERIFY_TOKEN' EXIT
           S22_API_ORIGIN="$API_ORIGIN" \
           S22_API_REVISION="$API_REVISION" \
           S22_API_IMAGE="$LIVE_IMAGE" \
-          INSTAGRAM_WEBHOOK_VERIFY_TOKEN="$VERIFY_TOKEN" \
+            INSTAGRAM_WEBHOOK_VERIFY_TOKEN="$VERIFY_TOKEN" \
             node .github/scripts/s22-instagram-webhook-verify.mjs \
             | tee s22-instagram-webhook-verification-evidence.json
-          unset VERIFY_TOKEN
 
       - name: Upload sanitized Instagram webhook verification evidence
         if: env.S22_PHASE == 'instagram-verify' && env.S22_ACTION == 'plan'

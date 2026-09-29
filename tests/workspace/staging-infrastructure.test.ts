@@ -517,6 +517,10 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify Instagram webhook challenge without exposing its token");
     expect(workflow).toContain("::add-mask::$VERIFY_TOKEN");
     expect(workflow).toContain("gcloud secrets versions access latest");
+    expect(workflow).toContain("S22I101_INVALID_API_REVISION");
+    expect(workflow).toContain("S22I102_API_IMAGE_MISMATCH");
+    expect(workflow).toContain("S22I103_SECRET_ACCESS_FAILED");
+    expect(workflow).toContain("S22I104_INVALID_SECRET_VALUE");
     expect(workflow).toContain("instagram_verify_access_removal_scope=single_secret_only");
     expect(instagramWebhookVerifier).toContain('correct_token_challenge: "PASS"');
     expect(instagramWebhookVerifier).toContain("secret_value_exposed: false");
