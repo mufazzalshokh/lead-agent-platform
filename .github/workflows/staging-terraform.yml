@@ -843,7 +843,7 @@ jobs:
               --format='value(spec.containers[0].image)'
           )"
           if [[ "$LIVE_IMAGE" != "$API_IMAGE" ]]; then
-            echo "::error title=Instagram verifier preflight::S22I102_API_IMAGE_MISMATCH" >&2
+            echo "::error title=Instagram verifier preflight::S22I102_API_IMAGE_MISMATCH live=$LIVE_IMAGE expected=$API_IMAGE" >&2
             exit 1
           fi
           VERIFY_TOKEN=""
