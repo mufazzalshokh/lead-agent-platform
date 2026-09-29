@@ -857,6 +857,14 @@ jobs:
             echo "migration_plan_unexpected_actions=NONE"
           } | tee s22-migration-plan-evidence.txt
 
+      - name: Verify full runtime plan safety
+        if: env.S22_PHASE == 'full' && env.S22_ACTION == 'plan'
+        shell: bash
+        run: >-
+          bash .github/scripts/s22-full-runtime-plan-check.sh
+          infra/deploy/gcp/staging/s22.tfplan
+          | tee infra/deploy/gcp/staging/s22-full-runtime-plan-evidence.txt
+
       - name: Verify migrator image-only plan safety
         if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'plan'
         shell: bash
@@ -1190,13 +1198,14 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
           path: |
             infra/deploy/gcp/staging/s22.tfplan
             infra/deploy/gcp/staging/s22.tfplan.sha256
+            infra/deploy/gcp/staging/s22-full-runtime-plan-evidence.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -1711,6 +1720,16 @@ jobs:
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
+
+      - name: Verify exact full runtime approval boundary
+        if: env.S22_PHASE == 'full' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_PLAN_SHA256="$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)"
+          [[ "$ACTUAL_PLAN_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
+          bash .github/scripts/s22-full-runtime-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan
 
       - name: Verify exact migrator image update approval boundary
         if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'apply'

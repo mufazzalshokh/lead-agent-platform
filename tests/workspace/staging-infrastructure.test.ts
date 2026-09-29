@@ -341,6 +341,7 @@ describe("S22 staging infrastructure boundary", () => {
       imagesWorkflow,
       wiringDiagnostic,
       databaseValidator,
+      fullRuntimePlanCheck,
     ] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
@@ -349,6 +350,7 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile(".github/workflows/staging-images.yml"),
       repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
       repositoryFile(".github/scripts/s22-staging-database-validator.mjs"),
+      repositoryFile(".github/scripts/s22-full-runtime-plan-check.sh"),
     ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
@@ -486,6 +488,16 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("runtime_nonsecret_configuration_ready=true");
     expect(workflow).toContain("secret_payloads_read=false");
     expect(workflow).toContain("Upload full runtime configuration metadata");
+    expect(workflow).toContain("env.S22_PHASE != 'runtime-preflight'");
+    expect(workflow).toContain("Verify full runtime plan safety");
+    expect(workflow).toContain("Verify exact full runtime approval boundary");
+    expect(workflow).toContain("s22-full-runtime-plan-check.sh");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_creates=1");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_changes=3");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_destroys=0");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_replacements=0");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_public_iam_changes=NONE");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_migrator_execution=DISABLED");
     expect(workflow).toContain("Verify migration plan safety");
     expect(workflow).toContain("- migration-resume");
     expect(workflow).toContain("- migration-validate");
