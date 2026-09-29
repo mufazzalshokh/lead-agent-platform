@@ -351,6 +351,7 @@ describe("S22 staging infrastructure boundary", () => {
       fullRuntimePlanCheck,
       runtimeDiagnostic,
       instagramWebhookVerifier,
+      telegramWebhookVerifier,
     ] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
@@ -362,6 +363,7 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile(".github/scripts/s22-full-runtime-plan-check.sh"),
       repositoryFile(".github/scripts/s22-runtime-diagnose.mjs"),
       repositoryFile(".github/scripts/s22-instagram-webhook-verify.mjs"),
+      repositoryFile(".github/scripts/s22-telegram-webhook-verify.mjs"),
     ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
@@ -402,6 +404,12 @@ describe("S22 staging infrastructure boundary", () => {
       'secret_id = google_secret_manager_secret.runtime["instagram-webhook-verify-token"].secret_id',
     );
     expect(runtimeIam).toContain("count = var.temporary_instagram_verifier_access_enabled ? 1 : 0");
+    expect(runtimeIam).toContain(
+      'resource "google_secret_manager_secret_iam_member" "deployer_temporary_telegram_verify_access"',
+    );
+    expect(runtimeIam).toContain('"telegram-bot-token"');
+    expect(runtimeIam).toContain('"telegram-webhook-secret"');
+    expect(runtimeIam).toContain("var.temporary_telegram_verifier_access_enabled ? toset([");
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(imagesWorkflow).toContain("image_scope:");
     expect(imagesWorkflow).toContain("if: inputs.image_scope == 'migrator'");
@@ -526,6 +534,21 @@ describe("S22 staging infrastructure boundary", () => {
     expect(instagramWebhookVerifier).toContain("secret_value_exposed: false");
     expect(instagramWebhookVerifier).toContain('wrong_token_rejected: "PASS"');
     expect(instagramWebhookVerifier).not.toContain("console.log(verifyToken");
+    expect(workflow).toContain("- telegram-verify-access");
+    expect(workflow).toContain("- telegram-verify");
+    expect(workflow).toContain("- telegram-verify-access-remove");
+    expect(workflow).toContain("Verify Telegram webhook without exposing credentials");
+    expect(workflow).toContain('echo "::add-mask::$BOT_TOKEN"');
+    expect(workflow).toContain('echo "::add-mask::$WEBHOOK_SECRET"');
+    expect(workflow).toContain("telegram_verify_access_scope=two_telegram_secrets_only");
+    expect(workflow).toContain("telegram_verify_access_removal_scope=two_telegram_secrets_only");
+    expect(telegramWebhookVerifier).toContain('webhook_configured: "PASS"');
+    expect(telegramWebhookVerifier).toContain('bot_business_capable: "PASS"');
+    expect(telegramWebhookVerifier).toContain('wrong_secret_rejected: "PASS"');
+    expect(telegramWebhookVerifier).toContain('correct_secret_probe: "PASS"');
+    expect(telegramWebhookVerifier).toContain("secret_value_exposed: false");
+    expect(telegramWebhookVerifier).not.toContain("console.log(botToken");
+    expect(telegramWebhookVerifier).not.toContain("console.log(webhookSecret");
     expect(workflow).toContain("env.S22_PHASE != 'runtime-preflight'");
     expect(workflow).toContain("Verify full runtime plan safety");
     expect(workflow).toContain("Verify exact full runtime approval boundary");

@@ -214,3 +214,15 @@ resource "google_secret_manager_secret_iam_member" "deployer_temporary_instagram
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.deployer_service_account_email}"
 }
+
+resource "google_secret_manager_secret_iam_member" "deployer_temporary_telegram_verify_access" {
+  for_each = var.temporary_telegram_verifier_access_enabled ? toset([
+    "telegram-bot-token",
+    "telegram-webhook-secret",
+  ]) : toset([])
+
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.runtime[each.value].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.deployer_service_account_email}"
+}

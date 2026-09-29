@@ -64,6 +64,12 @@ variable "temporary_instagram_verifier_access_enabled" {
   default     = false
 }
 
+variable "temporary_telegram_verifier_access_enabled" {
+  description = "Temporarily allow the staging deployer to read only the Telegram bot token and webhook secret for one sanitized live webhook verification."
+  type        = bool
+  default     = false
+}
+
 variable "cloud_sql_tier" {
   description = "Cost-bounded Cloud SQL tier. Shared-core is the dormant/functional default; dedicated-core is temporary for capacity drills."
   type        = string
