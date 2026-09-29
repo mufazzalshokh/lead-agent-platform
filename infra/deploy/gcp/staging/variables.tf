@@ -58,6 +58,12 @@ variable "prepare_migration" {
   }
 }
 
+variable "temporary_instagram_verifier_access_enabled" {
+  description = "Temporarily allow the staging deployer to read only the Instagram webhook verification token for one sanitized HTTP challenge."
+  type        = bool
+  default     = false
+}
+
 variable "cloud_sql_tier" {
   description = "Cost-bounded Cloud SQL tier. Shared-core is the dormant/functional default; dedicated-core is temporary for capacity drills."
   type        = string

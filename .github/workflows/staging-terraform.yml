@@ -33,6 +33,9 @@ on:
           - migration-error-read
           - runtime-preflight
           - runtime-diagnose
+          - instagram-verify-access
+          - instagram-verify
+          - instagram-verify-access-remove
           - full
           - load
           - dormant
@@ -123,6 +126,7 @@ jobs:
       TF_VAR_monitoring_notification_channel_ids: ${{ vars.STAGING_MONITORING_NOTIFICATION_CHANNEL_IDS_JSON }}
       TF_VAR_state_bucket_name: ${{ vars.GCP_TERRAFORM_STATE_BUCKET }}
       TF_VAR_temporary_logging_viewer_enabled: ${{ inputs.phase == 'bootstrap-log-viewer' }}
+      TF_VAR_temporary_instagram_verifier_access_enabled: ${{ inputs.phase == 'instagram-verify-access' }}
     steps:
       - name: Validate request boundary
         env:
@@ -153,6 +157,10 @@ jobs:
           fi
           if [[ "$PHASE" == "runtime-diagnose" ]]; then
             [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "instagram-verify" ]]; then
+            [[ "$ACTION" == "plan" ]]
+            [[ "$TF_VAR_api_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/api@sha256:[0-9a-f]{64}$ ]]
           fi
           if [[ "$PHASE" == "migration-wiring-diagnose" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
@@ -290,6 +298,15 @@ jobs:
               SQL_POLICY=ALWAYS
               ;;
             runtime-diagnose)
+              SQL_POLICY=ALWAYS
+              ;;
+            instagram-verify-access)
+              SQL_POLICY=ALWAYS
+              ;;
+            instagram-verify)
+              SQL_POLICY=ALWAYS
+              ;;
+            instagram-verify-access-remove)
               SQL_POLICY=ALWAYS
               ;;
             full)
@@ -549,7 +566,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -712,6 +729,141 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Create reviewed Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          ! terraform state list | grep -Fqx "$RESOURCE"
+          terraform plan -lock-timeout=5m -target="$RESOURCE" -out=s22-instagram-verify-access.tfplan
+          sha256sum s22-instagram-verify-access.tfplan > s22-instagram-verify-access.tfplan.sha256
+          terraform show -json s22-instagram-verify-access.tfplan > s22-instagram-verify-access.tfplan.json
+          jq -e --arg resource "$RESOURCE" --arg member "serviceAccount:$TF_VAR_deployer_service_account_email" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 1
+              and $changes[0].address == $resource
+              and $changes[0].change.actions == ["create"]
+              and $changes[0].change.after.project == "lead-agent-stg-739284"
+              and $changes[0].change.after.secret_id == "lead-agent-staging-instagram-webhook-verify-token"
+              and $changes[0].change.after.role == "roles/secretmanager.secretAccessor"
+              and $changes[0].change.after.member == $member
+          ' s22-instagram-verify-access.tfplan.json > /dev/null
+          {
+            echo "instagram_verify_access_plan_action=create:$RESOURCE"
+            echo "instagram_verify_access_plan_sha256=$(awk '{print $1}' s22-instagram-verify-access.tfplan.sha256)"
+            echo "instagram_verify_access_plan_creates=1"
+            echo "instagram_verify_access_plan_changes=0"
+            echo "instagram_verify_access_plan_destroys=0"
+            echo "instagram_verify_access_plan_replacements=0"
+            echo "instagram_verify_access_scope=single_secret_only"
+          } | tee s22-instagram-verify-access-plan-evidence.txt
+          rm -f s22-instagram-verify-access.tfplan.json
+
+      - name: Upload exact Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/staging/s22-instagram-verify-access.tfplan
+            infra/deploy/gcp/staging/s22-instagram-verify-access.tfplan.sha256
+            infra/deploy/gcp/staging/s22-instagram-verify-access-plan-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Create reviewed Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          terraform state list | grep -Fqx "$RESOURCE"
+          terraform plan -lock-timeout=5m -target="$RESOURCE" -out=s22-instagram-verify-access-remove.tfplan
+          sha256sum s22-instagram-verify-access-remove.tfplan > s22-instagram-verify-access-remove.tfplan.sha256
+          terraform show -json s22-instagram-verify-access-remove.tfplan > s22-instagram-verify-access-remove.tfplan.json
+          jq -e --arg resource "$RESOURCE" --arg member "serviceAccount:$TF_VAR_deployer_service_account_email" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 1
+              and $changes[0].address == $resource
+              and $changes[0].change.actions == ["delete"]
+              and $changes[0].change.before.project == "lead-agent-stg-739284"
+              and $changes[0].change.before.secret_id == "lead-agent-staging-instagram-webhook-verify-token"
+              and $changes[0].change.before.role == "roles/secretmanager.secretAccessor"
+              and $changes[0].change.before.member == $member
+          ' s22-instagram-verify-access-remove.tfplan.json > /dev/null
+          {
+            echo "instagram_verify_access_removal_plan_action=delete:$RESOURCE"
+            echo "instagram_verify_access_removal_plan_sha256=$(awk '{print $1}' s22-instagram-verify-access-remove.tfplan.sha256)"
+            echo "instagram_verify_access_removal_plan_creates=0"
+            echo "instagram_verify_access_removal_plan_changes=0"
+            echo "instagram_verify_access_removal_plan_destroys=1"
+            echo "instagram_verify_access_removal_plan_replacements=0"
+            echo "instagram_verify_access_removal_scope=single_secret_only"
+          } | tee s22-instagram-verify-access-remove-plan-evidence.txt
+          rm -f s22-instagram-verify-access-remove.tfplan.json
+
+      - name: Upload exact Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-remove-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/staging/s22-instagram-verify-access-remove.tfplan
+            infra/deploy/gcp/staging/s22-instagram-verify-access-remove.tfplan.sha256
+            infra/deploy/gcp/staging/s22-instagram-verify-access-remove-plan-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Verify Instagram webhook challenge without exposing its token
+        if: env.S22_PHASE == 'instagram-verify' && env.S22_ACTION == 'plan'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_REVISION="$(
+            gcloud run services describe lead-agent-staging-api \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --format='value(status.latestReadyRevisionName)'
+          )"
+          [[ "$API_REVISION" =~ ^lead-agent-staging-api-[a-z0-9-]+$ ]]
+          LIVE_IMAGE="$(
+            gcloud run revisions describe "$API_REVISION" \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --format='value(spec.containers[0].image)'
+          )"
+          [[ "$LIVE_IMAGE" == "$API_IMAGE" ]]
+          VERIFY_TOKEN="$(
+            gcloud secrets versions access latest \
+              --secret=lead-agent-staging-instagram-webhook-verify-token \
+              --project="$PROJECT_ID"
+          )"
+          [[ -n "$VERIFY_TOKEN" && ${#VERIFY_TOKEN} -le 256 ]]
+          echo "::add-mask::$VERIFY_TOKEN"
+          S22_API_ORIGIN="$API_ORIGIN" \
+          S22_API_REVISION="$API_REVISION" \
+          S22_API_IMAGE="$LIVE_IMAGE" \
+          INSTAGRAM_WEBHOOK_VERIFY_TOKEN="$VERIFY_TOKEN" \
+            node .github/scripts/s22-instagram-webhook-verify.mjs \
+            | tee s22-instagram-webhook-verification-evidence.json
+          unset VERIFY_TOKEN
+
+      - name: Upload sanitized Instagram webhook verification evidence
+        if: env.S22_PHASE == 'instagram-verify' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-webhook-verification-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-instagram-webhook-verification-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Inspect partial foundation state and Google Cloud resources
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
@@ -818,7 +970,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -1256,7 +1408,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_ACTION == 'plan'
+        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
@@ -1756,8 +1908,122 @@ jobs:
           } | tee s22-phase-b-apply-evidence.txt
           rm -f "$PLAN_JSON"
 
+      - name: Download exact Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$S22_PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "s22-instagram-verify-access-plan-$S22_COMMIT_SHA" \
+            --dir infra/deploy/gcp/staging
+
+      - name: Verify and apply exact Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          PLAN=s22-instagram-verify-access.tfplan
+          RECORDED_SHA="$(awk '{print $1}' "$PLAN.sha256")"
+          ACTUAL_SHA="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA" == "$RECORDED_SHA" ]]
+          [[ "$ACTUAL_SHA" == "$S22_APPROVED_PLAN_SHA256" ]]
+          terraform show -json "$PLAN" > s22-instagram-verify-access.apply.json
+          jq -e --arg resource "$RESOURCE" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])]
+            | length == 1 and .[0].address == $resource and .[0].change.actions == ["create"]
+          ' s22-instagram-verify-access.apply.json > /dev/null
+          rm -f s22-instagram-verify-access.apply.json
+          STATE_COUNT_BEFORE="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          terraform apply -lock-timeout=5m -auto-approve "$PLAN"
+          terraform state list | grep -Fqx "$RESOURCE"
+          STATE_COUNT_AFTER="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT_AFTER" == "$((STATE_COUNT_BEFORE + 1))" ]]
+          set +e
+          terraform plan -target="$RESOURCE" -detailed-exitcode -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "instagram_verify_access_applied=true"
+            echo "instagram_verify_access_plan_sha256=$ACTUAL_SHA"
+            echo "instagram_verify_access_state_count_before=$STATE_COUNT_BEFORE"
+            echo "instagram_verify_access_state_count_after=$STATE_COUNT_AFTER"
+            echo "instagram_verify_access_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-instagram-verify-access-apply-evidence.txt
+
+      - name: Upload Instagram verifier access apply evidence
+        if: always() && env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-apply-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-instagram-verify-access-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download exact Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$S22_PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "s22-instagram-verify-access-remove-plan-$S22_COMMIT_SHA" \
+            --dir infra/deploy/gcp/staging
+
+      - name: Verify and apply exact Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          PLAN=s22-instagram-verify-access-remove.tfplan
+          RECORDED_SHA="$(awk '{print $1}' "$PLAN.sha256")"
+          ACTUAL_SHA="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA" == "$RECORDED_SHA" ]]
+          [[ "$ACTUAL_SHA" == "$S22_APPROVED_PLAN_SHA256" ]]
+          terraform show -json "$PLAN" > s22-instagram-verify-access-remove.apply.json
+          jq -e --arg resource "$RESOURCE" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])]
+            | length == 1 and .[0].address == $resource and .[0].change.actions == ["delete"]
+          ' s22-instagram-verify-access-remove.apply.json > /dev/null
+          rm -f s22-instagram-verify-access-remove.apply.json
+          STATE_COUNT_BEFORE="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          terraform apply -lock-timeout=5m -auto-approve "$PLAN"
+          ! terraform state list | grep -Fqx "$RESOURCE"
+          STATE_COUNT_AFTER="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT_AFTER" == "$((STATE_COUNT_BEFORE - 1))" ]]
+          set +e
+          terraform plan -target="$RESOURCE" -detailed-exitcode -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "instagram_verify_access_removed=true"
+            echo "instagram_verify_access_removal_plan_sha256=$ACTUAL_SHA"
+            echo "instagram_verify_access_removal_state_count_before=$STATE_COUNT_BEFORE"
+            echo "instagram_verify_access_removal_state_count_after=$STATE_COUNT_AFTER"
+            echo "instagram_verify_access_removal_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-instagram-verify-access-remove-apply-evidence.txt
+
+      - name: Upload Instagram verifier access removal evidence
+        if: always() && env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-remove-apply-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-instagram-verify-access-remove-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Download exact owner-reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
@@ -1775,7 +2041,7 @@ jobs:
             --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
@@ -2205,7 +2471,7 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Apply exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 
@@ -4098,7 +4364,7 @@ jobs:
           retention-days: 7
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}

@@ -350,6 +350,7 @@ describe("S22 staging infrastructure boundary", () => {
       databaseValidator,
       fullRuntimePlanCheck,
       runtimeDiagnostic,
+      instagramWebhookVerifier,
     ] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
@@ -360,6 +361,7 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile(".github/scripts/s22-staging-database-validator.mjs"),
       repositoryFile(".github/scripts/s22-full-runtime-plan-check.sh"),
       repositoryFile(".github/scripts/s22-runtime-diagnose.mjs"),
+      repositoryFile(".github/scripts/s22-instagram-webhook-verify.mjs"),
     ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
@@ -393,6 +395,13 @@ describe("S22 staging infrastructure boundary", () => {
     expect(runtimeIam).toContain(
       'member             = "serviceAccount:${var.deployer_service_account_email}"',
     );
+    expect(runtimeIam).toContain(
+      'resource "google_secret_manager_secret_iam_member" "deployer_temporary_instagram_verify_access"',
+    );
+    expect(runtimeIam).toContain(
+      'secret_id = google_secret_manager_secret.runtime["instagram-webhook-verify-token"].secret_id',
+    );
+    expect(runtimeIam).toContain("count = var.temporary_instagram_verifier_access_enabled ? 1 : 0");
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(imagesWorkflow).toContain("image_scope:");
     expect(imagesWorkflow).toContain("if: inputs.image_scope == 'migrator'");
@@ -502,6 +511,17 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Upload sanitized runtime diagnostic evidence");
     expect(runtimeDiagnostic).toContain("secret_payloads_read: false");
     expect(runtimeDiagnostic).toContain("DENIED_OR_UNAVAILABLE");
+    expect(workflow).toContain("- instagram-verify-access");
+    expect(workflow).toContain("- instagram-verify");
+    expect(workflow).toContain("- instagram-verify-access-remove");
+    expect(workflow).toContain("Verify Instagram webhook challenge without exposing its token");
+    expect(workflow).toContain("::add-mask::$VERIFY_TOKEN");
+    expect(workflow).toContain("gcloud secrets versions access latest");
+    expect(workflow).toContain("instagram_verify_access_removal_scope=single_secret_only");
+    expect(instagramWebhookVerifier).toContain('correct_token_challenge: "PASS"');
+    expect(instagramWebhookVerifier).toContain("secret_value_exposed: false");
+    expect(instagramWebhookVerifier).toContain('wrong_token_rejected: "PASS"');
+    expect(instagramWebhookVerifier).not.toContain("console.log(verifyToken");
     expect(workflow).toContain("env.S22_PHASE != 'runtime-preflight'");
     expect(workflow).toContain("Verify full runtime plan safety");
     expect(workflow).toContain("Verify exact full runtime approval boundary");
