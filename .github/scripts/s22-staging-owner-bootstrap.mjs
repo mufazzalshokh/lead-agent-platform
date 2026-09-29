@@ -1,9 +1,3 @@
-import { createHash } from "node:crypto";
-
-import pg from "pg";
-
-const { Pool } = pg;
-
 const ORGANIZATION_ID = "01a0ee39-91a9-7293-82c0-5b7046c10115";
 const USER_ID = "01a0ee39-91af-7bfa-945f-b87959be6f0b";
 const EXTERNAL_IDENTITY_ID = "01a0ee39-91af-7d4c-baf2-9a28dc854028";
@@ -76,7 +70,10 @@ const assertExactState = async (client, issuer, subject) => {
 };
 
 const bootstrap = async () => {
-  const connectionString = required("MIGRATION_DATABASE_URL");
+  const { createHash } = await import("node:crypto");
+  const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
+  const { Pool } = await import("pg");
+  const connectionString = withLibpqCompatibleRequireSsl(required("MIGRATION_DATABASE_URL"));
   const issuer = required("STAGING_AUTH0_ISSUER");
   const subject = required("STAGING_OWNER_AUTH0_SUBJECT");
   assertInput(issuer, subject);

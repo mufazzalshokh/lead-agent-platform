@@ -13,6 +13,9 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain("STAGING_AUTH0_ISSUER");
     expect(script).toContain("STAGING_OWNER_AUTH0_SUBJECT");
     expect(script).toContain("^google-oauth2\\|[0-9]{1,128}$");
+    expect(script).toContain('await import("pg")');
+    expect(script).toContain("withLibpqCompatibleRequireSsl");
+    expect(script).not.toMatch(/^import\s/mu);
     expect(script).toContain("begin isolation level serializable");
     expect(script).toContain("Conflicting staging tenant or identity data exists");
     expect(script).toContain("role='owner' and status='active' and location_scope='all'");
@@ -26,13 +29,18 @@ describe("S22 staging first-owner bootstrap", () => {
   });
 
   it("keeps the workflow keyless, branch-bound, and free of subject output", async () => {
-    const workflow = await repositoryFile(".github/workflows/staging-owner-workspace.yml");
+    const workflow = await repositoryFile(".github/workflows/staging-terraform.yml");
 
     expect(workflow).toContain("google-github-actions/auth@");
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(workflow).toContain("secrets.STAGING_OWNER_AUTH0_SUBJECT");
+    expect(workflow).toContain("owner-workspace-bootstrap");
+    expect(workflow).toContain(
+      "env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'",
+    );
+    expect(workflow).toContain('[[ "$APPROVAL_TOKEN" == "S22-APPLY-APPROVED" ]]');
     expect(workflow).toContain("lead-agent-staging-migrator");
     expect(workflow).not.toContain("service_account_key");
-    expect(workflow).not.toContain("111259402662215308387");
+    expect(workflow).not.toContain('echo "$OWNER_SUBJECT"');
   });
 });

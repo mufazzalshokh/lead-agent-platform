@@ -39,6 +39,7 @@ on:
           - telegram-verify-access
           - telegram-verify
           - telegram-verify-access-remove
+          - owner-workspace-bootstrap
           - full
           - load
           - dormant
@@ -156,6 +157,14 @@ jobs:
           if [[ "$PHASE" == "migration-validate" ]]; then
             [[ "$ACTION" == "plan" ]]
           fi
+          if [[ "$PHASE" == "owner-workspace-bootstrap" ]]; then
+            [[ "$ACTION" == "apply" ]]
+            [[ "$APPROVAL_TOKEN" == "S22-APPLY-APPROVED" ]]
+            [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
+            [[ "$TF_VAR_region" == "me-central1" ]]
+            [[ -z "$PLAN_RUN_ID" ]]
+            [[ -z "$APPROVED_PLAN_SHA256" ]]
+          fi
           if [[ "$PHASE" == "runtime-preflight" ]]; then
             [[ "$ACTION" == "plan" ]]
           fi
@@ -177,7 +186,7 @@ jobs:
             echo "Apply requires the exact owner approval token." >&2
             exit 1
           fi
-          if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+          if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && "$PHASE" != "owner-workspace-bootstrap" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
             echo "Apply requires the exact reviewed plan run ID." >&2
             exit 1
           fi
@@ -572,18 +581,18 @@ jobs:
           retention-days: 7
 
       - name: Initialize staging Terraform
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
 
       - name: Validate staging Terraform
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap'
         working-directory: infra/deploy/gcp/staging
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -611,6 +620,43 @@ jobs:
             [[ "$ENABLED_COUNT" == "1" ]]
             echo "$secret: enabled_versions=1"
           done
+
+      - name: Execute bounded first-owner workspace bootstrap
+        if: env.S22_PHASE == 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
+        env:
+          AUTH0_ISSUER: ${{ vars.STAGING_AUTH0_ISSUER }}
+          OWNER_SUBJECT: ${{ secrets.STAGING_OWNER_AUTH0_SUBJECT }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$AUTH0_ISSUER" =~ ^https://[^/[:space:]]+/$ ]]
+          [[ "$OWNER_SUBJECT" =~ ^google-oauth2\|[0-9]{1,128}$ ]]
+          BOOTSTRAP_B64="$(base64 -w0 .github/scripts/s22-staging-owner-bootstrap.mjs)"
+          gcloud run jobs execute lead-agent-staging-migrator \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --args='--input-type=module,-e,eval(atob(process.env.S22_OWNER_BOOTSTRAP_B64))' \
+            --update-env-vars="S22_OWNER_BOOTSTRAP_B64=$BOOTSTRAP_B64,STAGING_AUTH0_ISSUER=$AUTH0_ISSUER,STAGING_OWNER_AUTH0_SUBJECT=$OWNER_SUBJECT" \
+            --wait
+          unset BOOTSTRAP_B64 OWNER_SUBJECT
+          {
+            echo "organization_id=01a0ee39-91a9-7293-82c0-5b7046c10115"
+            echo "organization_slug=lead-agent-staging"
+            echo "membership_status=active"
+            echo "membership_role=owner"
+            echo "identity_binding=exact_issuer_subject"
+          } | tee s22-staging-owner-workspace-evidence.txt
+
+      - name: Upload non-secret owner-workspace evidence
+        if: always() && env.S22_PHASE == 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-staging-owner-workspace-${{ github.run_id }}
+          path: s22-staging-owner-workspace-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify full runtime configuration metadata
         if: env.S22_PHASE == 'runtime-preflight'
@@ -2328,7 +2374,7 @@ jobs:
           retention-days: 1
 
       - name: Download exact owner-reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
@@ -2346,7 +2392,7 @@ jobs:
             --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
 
@@ -2776,7 +2822,7 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Apply exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 
@@ -4669,7 +4715,7 @@ jobs:
           retention-days: 7
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
