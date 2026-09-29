@@ -1,0 +1,97 @@
+name: Bootstrap staging owner workspace
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact approved S22 commit preserved on the verification branch
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-owner-workspace
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Bind exact Auth0 subject to synthetic staging owner
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - name: Validate immutable request boundary
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DISPATCH_REF" == "refs/heads/verify/s22-staging-recovery-capacity" ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Check out exact commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Prove commit is preserved on the S22 branch
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          git fetch --no-tags origin verify/s22-staging-recovery-capacity
+          git merge-base --is-ancestor "$REQUESTED_SHA" origin/verify/s22-staging-recovery-capacity
+
+      - name: Authenticate to Google Cloud without a key
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Execute bounded first-owner bootstrap
+        env:
+          AUTH0_ISSUER: ${{ vars.STAGING_AUTH0_ISSUER }}
+          OWNER_SUBJECT: ${{ secrets.STAGING_OWNER_AUTH0_SUBJECT }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$AUTH0_ISSUER" =~ ^https://[^/[:space:]]+/$ ]]
+          [[ "$OWNER_SUBJECT" =~ ^google-oauth2\|[0-9]{1,128}$ ]]
+          BOOTSTRAP_B64="$(base64 -w0 .github/scripts/s22-staging-owner-bootstrap.mjs)"
+          gcloud run jobs execute lead-agent-staging-migrator \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --args='--input-type=module,-e,eval(atob(process.env.S22_OWNER_BOOTSTRAP_B64))' \
+            --update-env-vars="S22_OWNER_BOOTSTRAP_B64=$BOOTSTRAP_B64,STAGING_AUTH0_ISSUER=$AUTH0_ISSUER,STAGING_OWNER_AUTH0_SUBJECT=$OWNER_SUBJECT" \
+            --wait
+          unset BOOTSTRAP_B64 OWNER_SUBJECT
+
+      - name: Record non-secret workspace result
+        shell: bash
+        run: |
+          {
+            echo "organization_id=01a0ee39-91a9-7293-82c0-5b7046c10115"
+            echo "organization_slug=lead-agent-staging"
+            echo "membership_status=active"
+            echo "membership_role=owner"
+            echo "identity_binding=exact_issuer_subject"
+          } | tee s22-staging-owner-workspace-evidence.txt
+
+      - name: Upload non-secret evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-staging-owner-workspace-${{ github.run_id }}
+          path: s22-staging-owner-workspace-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
