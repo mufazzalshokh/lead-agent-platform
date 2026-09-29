@@ -31,6 +31,7 @@ on:
           - migration-diagnose
           - migration-wiring-diagnose
           - migration-error-read
+          - runtime-preflight
           - full
           - load
           - dormant
@@ -144,6 +145,9 @@ jobs:
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
           fi
           if [[ "$PHASE" == "migration-validate" ]]; then
+            [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "runtime-preflight" ]]; then
             [[ "$ACTION" == "plan" ]]
           fi
           if [[ "$PHASE" == "migration-wiring-diagnose" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
@@ -276,6 +280,9 @@ jobs:
               DEPLOY_RUNTIME=true
               BOOTSTRAP_RUNTIME=true
               PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
+            runtime-preflight)
               SQL_POLICY=ALWAYS
               ;;
             full)
@@ -535,7 +542,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -563,6 +570,89 @@ jobs:
             [[ "$ENABLED_COUNT" == "1" ]]
             echo "$secret: enabled_versions=1"
           done
+
+      - name: Verify full runtime configuration metadata
+        if: env.S22_PHASE == 'runtime-preflight'
+        env:
+          API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+          AUTH0_CLIENT_ID: ${{ vars.STAGING_AUTH0_CLIENT_ID }}
+          AUTH0_ISSUER: ${{ vars.STAGING_AUTH0_ISSUER }}
+          INSTAGRAM_APP_ID: ${{ vars.STAGING_INSTAGRAM_APP_ID }}
+          INSTAGRAM_GRAPH_API_VERSION: ${{ vars.STAGING_INSTAGRAM_GRAPH_API_VERSION }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          TELEGRAM_BOT_USERNAME: ${{ vars.STAGING_TELEGRAM_BOT_USERNAME }}
+          WEB_ORIGIN: ${{ vars.STAGING_WEB_ORIGIN }}
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=s22-runtime-preflight-evidence.txt
+          REQUIRED_SECRETS=(
+            lead-agent-staging-auth0-client-secret
+            lead-agent-staging-auth-browser-envelope-key
+            lead-agent-staging-auth-database-url
+            lead-agent-staging-customer-data-encryption-key
+            lead-agent-staging-customer-data-lookup-key
+            lead-agent-staging-gemini-api-key
+            lead-agent-staging-ingress-database-url
+            lead-agent-staging-instagram-app-secret
+            lead-agent-staging-instagram-webhook-verify-token
+            lead-agent-staging-invitation-target-encryption-key
+            lead-agent-staging-invitation-target-lookup-key
+            lead-agent-staging-migration-database-url
+            lead-agent-staging-queue-database-url
+            lead-agent-staging-runtime-database-url
+            lead-agent-staging-telegram-bot-token
+            lead-agent-staging-telegram-webhook-secret
+            lead-agent-staging-widget-exchange-encryption-key
+            lead-agent-staging-widget-signing-key
+          )
+          : > "$EVIDENCE"
+          for secret in "${REQUIRED_SECRETS[@]}"; do
+            gcloud secrets describe "$secret" --project="$PROJECT_ID" --format='value(name)' > /dev/null
+            ENABLED_COUNT="$(
+              gcloud secrets versions list "$secret" \
+                --project="$PROJECT_ID" \
+                --filter='state=ENABLED' \
+                --format='value(name)' | sed '/^$/d' | wc -l | tr -d '[:space:]'
+            )"
+            [[ "$ENABLED_COUNT" =~ ^[1-9][0-9]*$ ]]
+            echo "$secret: enabled_versions=$ENABLED_COUNT" | tee -a "$EVIDENCE"
+          done
+          CHANNEL_SECRET=lead-agent-staging-channel-credentials
+          gcloud secrets describe "$CHANNEL_SECRET" --project="$PROJECT_ID" --format='value(name)' > /dev/null
+          CHANNEL_ENABLED_COUNT="$(
+            gcloud secrets versions list "$CHANNEL_SECRET" \
+              --project="$PROJECT_ID" \
+              --filter='state=ENABLED' \
+              --format='value(name)' | sed '/^$/d' | wc -l | tr -d '[:space:]'
+          )"
+          [[ "$CHANNEL_ENABLED_COUNT" == "0" ]]
+          echo "$CHANNEL_SECRET: enabled_versions=0 (application-managed)" | tee -a "$EVIDENCE"
+
+          [[ "$API_ORIGIN" == "https://lead-agent-staging-api-uj7pjzpksq-ww.a.run.app" ]]
+          [[ "$WEB_ORIGIN" == "https://lead-agent-staging-web-uj7pjzpksq-ww.a.run.app" ]]
+          [[ "$AUTH0_ISSUER" =~ ^https://[^/?#]+/$ ]]
+          [[ -n "$AUTH0_CLIENT_ID" && ${#AUTH0_CLIENT_ID} -le 512 && ! "$AUTH0_CLIENT_ID" =~ [[:space:]] ]]
+          [[ "$TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z][A-Za-z0-9_]{4,31}$ ]]
+          [[ "$INSTAGRAM_APP_ID" =~ ^[1-9][0-9]{3,31}$ ]]
+          [[ "$INSTAGRAM_GRAPH_API_VERSION" == "v24.0" ]]
+          {
+            echo "required_runtime_secrets=${#REQUIRED_SECRETS[@]}"
+            echo "required_runtime_secrets_ready=true"
+            echo "application_managed_channel_secret_empty=true"
+            echo "runtime_nonsecret_configuration_ready=true"
+            echo "secret_payloads_read=false"
+          } | tee -a "$EVIDENCE"
+
+      - name: Upload full runtime configuration metadata
+        if: env.S22_PHASE == 'runtime-preflight'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-runtime-preflight-${{ env.S22_COMMIT_SHA }}
+          path: infra/deploy/gcp/staging/s22-runtime-preflight-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Inspect partial foundation state and Google Cloud resources
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'plan'
@@ -670,7 +760,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |

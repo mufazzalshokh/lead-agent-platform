@@ -478,6 +478,14 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Upload Cloud SQL start apply evidence");
     expect(workflow).toContain("Verify database secret version metadata");
     expect(workflow).toContain('[[ "$ENABLED_COUNT" == "1" ]]');
+    expect(workflow).toContain("- runtime-preflight");
+    expect(workflow).toContain('[[ "$PHASE" == "runtime-preflight" ]]');
+    expect(workflow).toContain("Verify full runtime configuration metadata");
+    expect(workflow).toContain("required_runtime_secrets_ready=true");
+    expect(workflow).toContain("application_managed_channel_secret_empty=true");
+    expect(workflow).toContain("runtime_nonsecret_configuration_ready=true");
+    expect(workflow).toContain("secret_payloads_read=false");
+    expect(workflow).toContain("Upload full runtime configuration metadata");
     expect(workflow).toContain("Verify migration plan safety");
     expect(workflow).toContain("- migration-resume");
     expect(workflow).toContain("- migration-validate");
