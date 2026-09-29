@@ -348,6 +348,7 @@ describe("S22 staging infrastructure boundary", () => {
       wiringDiagnostic,
       databaseValidator,
       fullRuntimePlanCheck,
+      runtimeDiagnostic,
     ] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
@@ -357,6 +358,7 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
       repositoryFile(".github/scripts/s22-staging-database-validator.mjs"),
       repositoryFile(".github/scripts/s22-full-runtime-plan-check.sh"),
+      repositoryFile(".github/scripts/s22-runtime-diagnose.mjs"),
     ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
@@ -494,6 +496,11 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("runtime_nonsecret_configuration_ready=true");
     expect(workflow).toContain("secret_payloads_read=false");
     expect(workflow).toContain("Upload full runtime configuration metadata");
+    expect(workflow).toContain("- runtime-diagnose");
+    expect(workflow).toContain("Diagnose failed API revision read-only");
+    expect(workflow).toContain("Upload sanitized runtime diagnostic evidence");
+    expect(runtimeDiagnostic).toContain("secret_payloads_read: false");
+    expect(runtimeDiagnostic).toContain("DENIED_OR_UNAVAILABLE");
     expect(workflow).toContain("env.S22_PHASE != 'runtime-preflight'");
     expect(workflow).toContain("Verify full runtime plan safety");
     expect(workflow).toContain("Verify exact full runtime approval boundary");

@@ -32,6 +32,7 @@ on:
           - migration-wiring-diagnose
           - migration-error-read
           - runtime-preflight
+          - runtime-diagnose
           - full
           - load
           - dormant
@@ -148,6 +149,9 @@ jobs:
             [[ "$ACTION" == "plan" ]]
           fi
           if [[ "$PHASE" == "runtime-preflight" ]]; then
+            [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "runtime-diagnose" ]]; then
             [[ "$ACTION" == "plan" ]]
           fi
           if [[ "$PHASE" == "migration-wiring-diagnose" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
@@ -283,6 +287,9 @@ jobs:
               SQL_POLICY=ALWAYS
               ;;
             runtime-preflight)
+              SQL_POLICY=ALWAYS
+              ;;
+            runtime-diagnose)
               SQL_POLICY=ALWAYS
               ;;
             full)
@@ -542,7 +549,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -654,6 +661,57 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Diagnose failed API revision read-only
+        if: env.S22_PHASE == 'runtime-diagnose' && env.S22_ACTION == 'plan'
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIAGNOSTIC_DIRECTORY="$(mktemp -d)"
+          trap 'rm -rf "$DIAGNOSTIC_DIRECTORY"' EXIT
+          REVISION_NAME="$(
+            gcloud run revisions list \
+              --project="$PROJECT_ID" \
+              --region="$REGION" \
+              --service=lead-agent-staging-api \
+              --sort-by='~metadata.creationTimestamp' \
+              --limit=1 \
+              --format='value(metadata.name)'
+          )"
+          [[ "$REVISION_NAME" =~ ^lead-agent-staging-api-[a-z0-9-]+$ ]]
+          gcloud run revisions describe "$REVISION_NAME" \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --format=json > "$DIAGNOSTIC_DIRECTORY/revision.json"
+
+          set +e
+          gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND resource.labels.revision_name=\"$REVISION_NAME\" AND severity>=ERROR" \
+            --project="$PROJECT_ID" \
+            --freshness=6h \
+            --limit=100 \
+            --format=json > "$DIAGNOSTIC_DIRECTORY/logs.json" \
+            2> "$DIAGNOSTIC_DIRECTORY/logging-error.txt"
+          LOGGING_EXIT_CODE=$?
+          set -e
+
+          node .github/scripts/s22-runtime-diagnose.mjs \
+            "$DIAGNOSTIC_DIRECTORY/revision.json" \
+            "$DIAGNOSTIC_DIRECTORY/logs.json" \
+            "$LOGGING_EXIT_CODE" \
+            | tee s22-runtime-diagnostic-evidence.json
+
+      - name: Upload sanitized runtime diagnostic evidence
+        if: always() && env.S22_PHASE == 'runtime-diagnose' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-runtime-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-runtime-diagnostic-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Inspect partial foundation state and Google Cloud resources
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
@@ -760,7 +818,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -1198,7 +1256,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_ACTION == 'plan'
+        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
