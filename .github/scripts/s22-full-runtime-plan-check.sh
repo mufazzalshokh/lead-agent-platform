@@ -3,10 +3,12 @@
 set -euo pipefail
 
 PLAN_PATH="${1:?usage: s22-full-runtime-plan-check.sh <saved-plan>}"
+PLAN_DIRECTORY="$(cd "$(dirname "$PLAN_PATH")" && pwd)"
+PLAN_FILENAME="$(basename "$PLAN_PATH")"
 PLAN_JSON="$(mktemp)"
 trap 'rm -f "$PLAN_JSON"' EXIT
 
-terraform show -json "$PLAN_PATH" > "$PLAN_JSON"
+terraform -chdir="$PLAN_DIRECTORY" show -json "$PLAN_FILENAME" > "$PLAN_JSON"
 
 jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
   --arg commit "$TF_VAR_git_commit_sha" --arg timestamp "$TF_VAR_deployment_timestamp" \

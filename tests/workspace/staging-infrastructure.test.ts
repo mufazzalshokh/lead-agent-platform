@@ -499,6 +499,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify exact full runtime approval boundary");
     expect(workflow).toContain("s22-full-runtime-plan-check.sh");
     expect(fullRuntimePlanCheck).toContain("full_runtime_plan_creates=1");
+    expect(fullRuntimePlanCheck).toContain('terraform -chdir="$PLAN_DIRECTORY" show -json');
     expect(fullRuntimePlanCheck).toContain("full_runtime_plan_changes=3");
     expect(fullRuntimePlanCheck).toContain("full_runtime_plan_destroys=0");
     expect(fullRuntimePlanCheck).toContain("full_runtime_plan_replacements=0");
