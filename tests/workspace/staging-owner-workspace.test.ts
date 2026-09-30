@@ -51,9 +51,10 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain("audit_event_id: AUDIT_ID");
     expect(script).toContain('mode !== "apply" && mode !== "verify"');
     expect(script).toContain("begin isolation level serializable read only");
-    expect(script).toContain("exact_identity_count");
-    expect(script).toContain("exact_membership_count");
-    expect(script).toContain("exact_audit_count");
+    expect(script).not.toContain("from public.organizations");
+    expect(script).not.toContain("from public.external_identities");
+    expect(script).not.toContain("from public.memberships");
+    expect(script).not.toContain("from public.platform_audit_events");
     expect(script).toContain('row.membership_status !== "active"');
     expect(script).toContain('row.membership_role !== "owner"');
     expect(script).not.toMatch(/\binsert\s+into\b/iu);
@@ -84,6 +85,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("audit_proof=$BOOTSTRAP_PROOF");
     expect(workflow).toContain("replay_protection=$BOOTSTRAP_PROOF");
     expect(workflow).toContain("database_state_proof=$VERIFY_PROOF");
+    expect(workflow).toContain("bootstrap_source_execution_proof=PASS");
     expect(workflow).toContain("S22_OWNER_BOOTSTRAP_MODE=verify");
     expect(workflow).toContain("run.googleapis.com/v2/projects/${PROJECT_ID}");
     expect(workflow).toContain("Array.isArray(tasks?.tasks)");

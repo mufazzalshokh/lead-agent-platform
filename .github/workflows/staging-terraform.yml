@@ -191,6 +191,7 @@ jobs:
             [[ "$ACTION" == "plan" ]]
             [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
             [[ "$TF_VAR_region" == "me-central1" ]]
+            [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
             [[ -z "$PLAN_RUN_ID" ]]
             [[ -z "$APPROVED_PLAN_SHA256" ]]
           fi
@@ -757,12 +758,33 @@ jobs:
           AUTH0_ISSUER: ${{ vars.STAGING_AUTH0_ISSUER }}
           OWNER_SUBJECT: ${{ secrets.STAGING_OWNER_AUTH0_SUBJECT }}
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SOURCE_EXECUTION_ID: ${{ env.S22_MIGRATOR_EXECUTION_ID }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
           [[ "$AUTH0_ISSUER" =~ ^https://[^/[:space:]]+/$ ]]
           [[ "$OWNER_SUBJECT" =~ ^google-oauth2\|[0-9]{1,128}$ ]]
+          [[ "$SOURCE_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          SOURCE_TASKS="$(mktemp)"
+          trap 'rm -f "$SOURCE_TASKS"' EXIT
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/me-central1/jobs/lead-agent-staging-migrator/executions/${SOURCE_EXECUTION_ID}/tasks?pageSize=1" \
+            > "$SOURCE_TASKS"
+          unset ACCESS_TOKEN
+          jq -e '
+            (.tasks | length) == 1
+              and (.tasks[0].completionTime // "") != ""
+              and (
+                .tasks[0].lastAttemptResult.exitCode == 0
+                or (
+                  (.tasks[0].lastAttemptResult | has("exitCode") | not)
+                  and (.tasks[0].lastAttemptResult.status.code // 0) == 0
+                )
+              )
+          ' "$SOURCE_TASKS" > /dev/null
           VERIFY_B64="$(base64 -w0 .github/scripts/s22-staging-owner-bootstrap.mjs)"
           set +e
           gcloud run jobs execute lead-agent-staging-migrator \
@@ -801,6 +823,8 @@ jobs:
             echo "audit_proof=$VERIFY_PROOF"
             echo "replay_protection=$VERIFY_PROOF"
             echo "database_state_proof=$VERIFY_PROOF"
+            echo "bootstrap_source_execution_proof=PASS"
+            echo "bootstrap_source_execution_id=$SOURCE_EXECUTION_ID"
             echo "integration_cards=Website Chat|Telegram Business|Instagram Professional"
             echo "execution_id=$EXECUTION_ID"
           } | tee s22-staging-owner-workspace-evidence.txt
@@ -4244,7 +4268,15 @@ jobs:
               : undefined;
           const taskExitCode = task?.lastAttemptResult?.exitCode
             ?? task?.status?.lastAttemptResult?.exitCode
-            ?? task?.status?.exitCode;
+            ?? task?.status?.exitCode
+            ?? (
+              (task?.lastAttemptResult?.status?.code
+                ?? task?.status?.lastAttemptResult?.status?.code) === 0
+                && typeof task?.completionTime === "string"
+                && task.completionTime.length > 0
+                ? 0
+                : undefined
+            );
           const ownerBootstrapStages = new Map([
             [70, "bootstrap_entry"],
             [71, "dependency_load"],
