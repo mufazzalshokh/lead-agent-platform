@@ -55,6 +55,11 @@ export const formatStaffLocalDateTime = (value: string): string => {
 export const readOrganizationContext = (value: unknown): string | null =>
   typeof value === "string" && ORGANIZATION_ID_PATTERN.test(value) ? value : null;
 
+export type StaffAuthRecovery = "denied" | "reauthenticate";
+
+export const readStaffAuthRecovery = (value: unknown): StaffAuthRecovery | null =>
+  value === "denied" || value === "reauthenticate" ? value : null;
+
 export const readCsrfCookie = (cookieHeader: string): string | null => {
   for (const entry of cookieHeader.split(";")) {
     const [rawName, ...rawValue] = entry.trim().split("=");

@@ -11,6 +11,7 @@ import {
   readCsrfCookie,
   readInstagramAuthorizationUrl,
   readOrganizationContext,
+  readStaffAuthRecovery,
   readStaffMembershipRole,
   readTelegramOnboardingUrl,
   readWidgetManagementConfiguration,
@@ -45,6 +46,10 @@ describe("S19 staff presentation policy", () => {
     expect(readOrganizationContext("not-an-organization")).toBeNull();
     expect(readCsrfCookie("other=x; __Host-lead-csrf=proof%2Dvalue")).toBe("proof-value");
     expect(readCsrfCookie("lead-csrf=wrong")).toBeNull();
+    expect(readStaffAuthRecovery("reauthenticate")).toBe("reauthenticate");
+    expect(readStaffAuthRecovery("denied")).toBe("denied");
+    expect(readStaffAuthRecovery(["reauthenticate"])).toBeNull();
+    expect(readStaffAuthRecovery("ready")).toBeNull();
   });
 
   it("derives integration management from the authenticated membership only", () => {

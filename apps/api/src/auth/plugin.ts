@@ -111,6 +111,8 @@ type AuthCallbackStage =
   | "transaction_cookie_missing"
   | "transaction_envelope_invalid_or_expired";
 
+type AuthCallbackRecovery = "denied" | "reauthenticate";
+
 export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.authorization",
   "req.headers.cookie",
@@ -279,6 +281,38 @@ const authCallbackFailureCode = (stage: AuthCallbackStage, error: unknown): stri
     return "session_issuance_rejected";
   }
   return stage;
+};
+
+const authCallbackRecovery = (error: unknown): AuthCallbackRecovery | null => {
+  if (
+    error instanceof BrowserAuthenticationTokenInvalidError ||
+    error instanceof OidcCredentialInvalidError ||
+    error instanceof SessionAuthenticationRequiredError
+  ) {
+    return "reauthenticate";
+  }
+  if (
+    error instanceof ExternalIdentityDeniedError ||
+    error instanceof ExternalIdentityUnmappedError
+  ) {
+    return "denied";
+  }
+  return null;
+};
+
+const isStaleBrowserSession = (error: unknown): boolean =>
+  error instanceof BrowserAuthenticationTokenInvalidError ||
+  error instanceof SessionAuthenticationRequiredError;
+
+const staffAuthRecoveryPath = (returnPath: string, recovery: AuthCallbackRecovery): string => {
+  const target = new URL(returnPath, "https://lead-agent.invalid");
+  if (target.pathname !== "/staff") {
+    target.pathname = "/staff";
+    target.search = "";
+    target.hash = "";
+  }
+  target.searchParams.set("auth", recovery);
+  return target.pathname + target.search + target.hash;
 };
 
 const createUuidV7 = (now: Date): string => {
@@ -507,25 +541,30 @@ const registerStaffAuth = async (
     reply: FastifyReply,
     rotateWhenDue = true,
   ): Promise<SessionResolution> => {
-    rejectDuplicateSecurityCookies(request);
-    const now = clock();
-    const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
-    if (sealed === undefined) throw new SessionAuthenticationRequiredError();
-    const credential = dependencies.envelopeProtector.openSession(sealed, now);
-    const session = await dependencies.sessions.resolveSession(credential.sessionToken);
-    if (rotateWhenDue && session.rotationDue) {
-      const issued = await dependencies.sessions.rotateSession(credential.sessionToken);
-      setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
-      return Object.freeze({
-        credential: Object.freeze({
-          csrfSecret: issued.csrfSecret,
-          expiresAt: issued.session.absoluteExpiresAt,
-          sessionToken: issued.sessionToken,
-        }),
-        session: issued.session,
-      });
+    try {
+      rejectDuplicateSecurityCookies(request);
+      const now = clock();
+      const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
+      if (sealed === undefined) throw new SessionAuthenticationRequiredError();
+      const credential = dependencies.envelopeProtector.openSession(sealed, now);
+      const session = await dependencies.sessions.resolveSession(credential.sessionToken);
+      if (rotateWhenDue && session.rotationDue) {
+        const issued = await dependencies.sessions.rotateSession(credential.sessionToken);
+        setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
+        return Object.freeze({
+          credential: Object.freeze({
+            csrfSecret: issued.csrfSecret,
+            expiresAt: issued.session.absoluteExpiresAt,
+            sessionToken: issued.sessionToken,
+          }),
+          session: issued.session,
+        });
+      }
+      return Object.freeze({ credential, session });
+    } catch (error) {
+      if (isStaleBrowserSession(error)) clearSecurityCookies(reply);
+      throw error;
     }
-    return Object.freeze({ credential, session });
   };
 
   const requireMutationSession = async (
@@ -656,6 +695,7 @@ const registerStaffAuth = async (
 
   api.get(STAFF_AUTH_PREFIX + "/callback", async (request, reply) => {
     let stage: AuthCallbackStage = "transaction_cookie_missing";
+    let returnPath = "/staff";
     try {
       rejectDuplicateSecurityCookies(request);
       const now = clock();
@@ -665,6 +705,7 @@ const registerStaffAuth = async (
 
       stage = "transaction_envelope_invalid_or_expired";
       const transaction = dependencies.envelopeProtector.openTransaction(sealed, now);
+      returnPath = transaction.returnPath;
       const query = request.query as Readonly<Record<string, unknown>>;
       if (typeof query["error"] === "string") {
         stage = "provider_authorization_error";
@@ -774,6 +815,12 @@ const registerStaffAuth = async (
         },
         "staff authentication callback rejected",
       );
+      const recovery = authCallbackRecovery(error);
+      if (recovery !== null) {
+        clearSecurityCookies(reply);
+        await reply.redirect(staffAuthRecoveryPath(returnPath, recovery), 303);
+        return;
+      }
       throw error;
     }
   });

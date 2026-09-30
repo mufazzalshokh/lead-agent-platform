@@ -12,6 +12,7 @@ import {
   readCsrfCookie,
   readInstagramAuthorizationUrl,
   readOrganizationContext,
+  type StaffAuthRecovery,
   readStaffMembershipRole,
   readTelegramOnboardingUrl,
   readWidgetManagementConfiguration,
@@ -196,8 +197,13 @@ const actionIdentity = (
 
 export function StaffWorkspace({
   apiOrigin,
+  initialAuthRecovery,
   initialOrganization,
-}: Readonly<{ apiOrigin: string; initialOrganization: string | null }>) {
+}: Readonly<{
+  apiOrigin: string;
+  initialAuthRecovery: StaffAuthRecovery | null;
+  initialOrganization: string | null;
+}>) {
   const [organizationId] = useState(() => {
     const fromUrl = readOrganizationContext(initialOrganization);
     if (fromUrl !== null) {
@@ -209,14 +215,18 @@ export function StaffWorkspace({
     );
   });
   const [authState, setAuthState] = useState<"checking" | "ready" | "signed-out" | "denied">(
-    "checking",
+    initialAuthRecovery === "reauthenticate"
+      ? "signed-out"
+      : initialAuthRecovery === "denied"
+        ? "denied"
+        : "checking",
   );
   const [items, setItems] = useState<readonly WorkItem[]>([]);
   const [summaries, setSummaries] = useState<Readonly<Record<string, string>>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<WorkItem | null>(null);
   const [detail, setDetail] = useState<DetailState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialAuthRecovery === null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
@@ -349,6 +359,7 @@ export function StaffWorkspace({
   );
 
   useEffect(() => {
+    if (initialAuthRecovery !== null) return;
     const handle = globalThis.setTimeout(() => {
       void loadInbox().catch(() => {
         setError("We could not load active work. Please try again.");
@@ -356,7 +367,7 @@ export function StaffWorkspace({
       });
     }, 0);
     return () => globalThis.clearTimeout(handle);
-  }, [loadInbox]);
+  }, [initialAuthRecovery, loadInbox]);
 
   const loadDetail = useCallback(
     async (item: WorkItem) => {
@@ -565,7 +576,11 @@ export function StaffWorkspace({
           </span>
           <p className="eyebrow">Lead Agent</p>
           <h1>Your customer work, in one place.</h1>
-          <p>Sign in to manage conversations, handoffs, and appointment requests.</p>
+          <p>
+            {initialAuthRecovery === "reauthenticate"
+              ? "Your previous session ended. Sign in again to continue."
+              : "Sign in to manage conversations, handoffs, and appointment requests."}
+          </p>
           <a
             className="primary-button"
             href={`${apiOrigin}/v1/staff/auth/login?return_to=${encodeURIComponent(returnTo)}`}
