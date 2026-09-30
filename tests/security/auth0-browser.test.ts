@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 
 const ISSUER = "https://tenant.auth0.example/";
 const CLIENT_ID = "staff-client";
-const CALLBACK = "https://api.example.test/v1/staff/auth/callback";
+const CALLBACK = "https://staff.example.test/v1/staff/auth/callback";
 
 const configuration = createStaffWebAuthConfig({
   browserEnvelopeKey: Buffer.alloc(32, 1).toString("base64url"),

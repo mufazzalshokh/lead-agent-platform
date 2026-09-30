@@ -352,6 +352,8 @@ describe("S22 staging infrastructure boundary", () => {
       wiringDiagnostic,
       databaseValidator,
       fullRuntimePlanCheck,
+      apiImagePlanCheck,
+      apiImageLiveVerify,
       migratorImagePlanCheck,
       migratorImageLiveVerify,
       runtimeDiagnostic,
@@ -366,6 +368,8 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
       repositoryFile(".github/scripts/s22-staging-database-validator.mjs"),
       repositoryFile(".github/scripts/s22-full-runtime-plan-check.sh"),
+      repositoryFile(".github/scripts/s22-api-image-plan-check.sh"),
+      repositoryFile(".github/scripts/s22-api-image-live-verify.sh"),
       repositoryFile(".github/scripts/s22-migrator-image-plan-check.sh"),
       repositoryFile(".github/scripts/s22-migrator-image-live-verify.sh"),
       repositoryFile(".github/scripts/s22-runtime-diagnose.mjs"),
@@ -419,8 +423,17 @@ describe("S22 staging infrastructure boundary", () => {
     expect(runtimeIam).toContain("var.temporary_telegram_verifier_access_enabled ? toset([");
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(imagesWorkflow).toContain("image_scope:");
+    expect(imagesWorkflow).toContain("if: inputs.image_scope == 'api'");
     expect(imagesWorkflow).toContain("if: inputs.image_scope == 'migrator'");
-    expect(imagesWorkflow.match(/if: inputs\.image_scope == 'all'/gu)).toHaveLength(4);
+    expect(imagesWorkflow.match(/if: inputs\.image_scope == 'all'/gu)).toHaveLength(5);
+    expect(imagesWorkflow).toContain(
+      "if: inputs.image_scope == 'all' || inputs.image_scope == 'api'",
+    );
+    expect(imagesWorkflow).toContain(
+      "if: inputs.image_scope == 'all' || inputs.image_scope == 'migrator'",
+    );
+    expect(imagesWorkflow).toContain("Record immutable API image manifest");
+    expect(imagesWorkflow).toContain("image_scope=api");
     expect(imagesWorkflow).toContain("Record immutable migrator image manifest");
     expect(imagesWorkflow).toContain("image_scope=migrator");
     expect(wiringDiagnostic).toContain('mode === "migration_failure_index"');
@@ -581,6 +594,12 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("- migrator-image-verify");
     expect(workflow).toContain("Verify migrator image-only plan safety");
     expect(workflow).toContain("s22-migrator-image-plan-check.sh");
+    expect(workflow).toContain("- api-image-update");
+    expect(workflow).toContain("Verify API image-only plan safety");
+    expect(workflow).toContain("Verify exact API image update approval boundary");
+    expect(workflow).toContain("Verify API image update live state and convergence");
+    expect(workflow).toContain("s22-api-image-plan-check.sh");
+    expect(workflow).toContain("s22-api-image-live-verify.sh");
     expect(workflow).toContain("runtime_git_commit_sha:");
     expect(workflow).toContain("migrator_git_commit_sha:");
     expect(workflow).toContain("runtime_deployment_timestamp:");
@@ -598,7 +617,12 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain(
       '[[ "$TF_VAR_worker_image" =~ ^me-central1-docker\\.pkg\\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]',
     );
-    for (const phase of ["migration-resume", "migrator-image-update", "migrator-image-verify"]) {
+    for (const phase of [
+      "api-image-update",
+      "migration-resume",
+      "migrator-image-update",
+      "migrator-image-verify",
+    ]) {
       const profile = workflow.match(new RegExp(`${phase}\\)([\\s\\S]*?)\\n\\s*;;`, "u"))?.[1];
       expect(profile).toContain("DEPLOY_RUNTIME=true");
       expect(profile).toContain("PREPARE_MIGRATION=true");
@@ -614,6 +638,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(migratorImageLiveVerify).toContain("'89'");
     expect(migratorImageLiveVerify).toContain("https://run.googleapis.com/v2/projects/");
     expect(runtime).toContain("migrator_provenance_env");
+    expect(runtime).toContain("api_provenance_env");
+    expect(runtime).toContain("api_deployment_labels");
     expect(runtime).toContain("migrator_deployment_labels");
     expect(runtime).toContain("runtime_migration_head");
     expect(runtime).toContain("DEPLOYMENT_MIGRATION_HEAD = var.migration_head");
@@ -623,6 +649,13 @@ describe("S22 staging infrastructure boundary", () => {
     );
     expect(migratorImagePlanCheck).toContain('.variables.bootstrap_runtime.value == "false"');
     expect(migratorImagePlanCheck).toContain('.variables.worker_instance_count.value == "1"');
+    expect(apiImagePlanCheck).toContain(
+      '[[ "$ACTUAL_ACTIONS" == \'["update:google_cloud_run_v2_service.api[0]"]\' ]]',
+    );
+    expect(apiImagePlanCheck).toContain('.variables.bootstrap_runtime.value == "false"');
+    expect(apiImagePlanCheck).toContain('.variables.worker_instance_count.value == "1"');
+    expect(apiImageLiveVerify).toContain("terraform_convergence_exit_code");
+    expect(apiImageLiveVerify).toContain("api_image_live_verification=PASS");
     expect(workflow).toContain('"$PHASE" != "migration-resume"');
     expect(workflow).toContain("env.S22_PHASE == 'migration-resume'");
     expect(workflow.match(/env\.S22_PHASE != 'migration-resume'/gu)).toHaveLength(3);

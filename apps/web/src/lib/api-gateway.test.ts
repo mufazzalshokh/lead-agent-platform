@@ -37,8 +37,17 @@ describe("S22 same-origin API gateway", () => {
   });
 
   it("preserves redirects and security cookies without following them", async () => {
-    const fetchImpl = vi.fn<typeof fetch>((_input, init) => {
+    const fetchImpl = vi.fn<typeof fetch>((input, init) => {
+      const inputUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      expect(inputUrl).toBe(
+        "https://api.example.test/v1/staff/auth/callback?code=a%2Bb%2Fc&state=s%2B1%2F2",
+      );
       expect(init?.redirect).toBe("manual");
+      expect(init?.method).toBe("GET");
+      expect(new Headers(init?.headers).get("cookie")).toBe(
+        "__Host-lead-auth-transaction=sealed-transaction",
+      );
       const headers = new Headers({ location: "/staff", "cache-control": "no-store" });
       headers.append(
         "set-cookie",
@@ -48,7 +57,10 @@ describe("S22 same-origin API gateway", () => {
       return Promise.resolve(new Response(null, { headers, status: 303 }));
     });
     const response = await proxyApiRequest(
-      new Request("https://web.example.test/v1/staff/auth/callback?code=x&state=y"),
+      new Request(
+        "https://web.example.test/v1/staff/auth/callback?code=a%2Bb%2Fc&state=s%2B1%2F2",
+        { headers: { cookie: "__Host-lead-auth-transaction=sealed-transaction" } },
+      ),
       { fetchImpl, upstreamOrigin: "https://api.example.test" },
     );
     expect(response.status).toBe(303);

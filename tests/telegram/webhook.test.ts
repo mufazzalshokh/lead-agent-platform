@@ -114,7 +114,7 @@ describe("Telegram staff management authorization boundary", () => {
     const sessionToken = "t".repeat(43);
     const config = createStaffWebAuthConfig({
       browserEnvelopeKey: Buffer.alloc(32, 21).toString("base64url"),
-      callbackUri: "https://api.example.test/v1/staff/auth/callback",
+      callbackUri: "https://staff.example.test/v1/staff/auth/callback",
       clientId: "staff-test-client",
       clientSecret: "synthetic-test-only",
       environment: "production",

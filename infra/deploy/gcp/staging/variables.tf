@@ -180,6 +180,28 @@ variable "runtime_migration_head" {
   }
 }
 
+variable "api_git_commit_sha" {
+  description = "Optional exact source commit for an API-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.api_git_commit_sha == "" || can(regex("^[0-9a-f]{40}$", var.api_git_commit_sha))
+    error_message = "api_git_commit_sha must be empty or an exact lowercase 40-character commit SHA."
+  }
+}
+
+variable "api_deployment_timestamp" {
+  description = "Optional UTC deployment timestamp for an API-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.api_deployment_timestamp == "" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", var.api_deployment_timestamp))
+    error_message = "api_deployment_timestamp must be empty or a UTC RFC3339 timestamp."
+  }
+}
+
 variable "api_image" {
   description = "Immutable API image reference by sha256 digest."
   type        = string

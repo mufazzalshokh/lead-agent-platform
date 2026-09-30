@@ -27,6 +27,7 @@ on:
           - migration
           - migration-resume
           - migration-validate
+          - api-image-update
           - migrator-image-update
           - migrator-image-verify
           - migration-diagnose
@@ -71,6 +72,10 @@ on:
         type: string
       migrator_git_commit_sha:
         description: Exact source commit used to build the immutable migrator image
+        required: false
+        type: string
+      migrator_deployment_timestamp:
+        description: Exact deployment timestamp currently on the migrator for isolated API updates
         required: false
         type: string
       runtime_git_commit_sha:
@@ -123,6 +128,7 @@ jobs:
       S22_APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
       S22_COMMIT_SHA: ${{ inputs.commit_sha }}
       S22_MIGRATOR_GIT_COMMIT_SHA: ${{ inputs.migrator_git_commit_sha }}
+      S22_MIGRATOR_DEPLOYMENT_TIMESTAMP: ${{ inputs.migrator_deployment_timestamp }}
       S22_MIGRATOR_EXECUTION_ID: ${{ inputs.migrator_execution_id }}
       S22_PHASE: ${{ inputs.phase }}
       S22_PLAN_RUN_ID: ${{ inputs.plan_run_id }}
@@ -200,6 +206,18 @@ jobs:
           fi
           if [[ "$PHASE" == "runtime-diagnose" ]]; then
             [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "api-image-update" ]]; then
+            [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$TF_VAR_deployment_timestamp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$TF_VAR_runtime_migration_head" =~ ^[0-9]{4}_[a-z0-9_]+$ ]]
+            [[ "$TF_VAR_api_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/api@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_web_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/web@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_worker_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_migrator_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:[0-9a-f]{64}$ ]]
           fi
           if [[ "$PHASE" == "instagram-verify" ]]; then
             [[ "$ACTION" == "plan" ]]
@@ -329,6 +347,12 @@ jobs:
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
               ;;
+            api-image-update)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
             migrator-image-update)
               DEPLOY_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -416,7 +440,15 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" ]]; then
+          if [[ "$PHASE" == "api-image-update" ]]; then
+            API_DEPLOYMENT_TIMESTAMP="$TF_VAR_deployment_timestamp"
+            echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_git_commit_sha=$S22_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_deployment_timestamp=$API_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+            echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_migrator_deployment_timestamp=$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+          elif [[ "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" ]]; then
             echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
           elif [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
@@ -643,7 +675,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migrator-image-verify' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || env.S22_PHASE == 'owner-workspace-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'api-image-update' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migrator-image-verify' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || env.S22_PHASE == 'owner-workspace-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -1511,6 +1543,28 @@ jobs:
           echo "migrator_image_plan_sha256=$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)" \
             | tee -a infra/deploy/gcp/staging/s22-migrator-image-plan-evidence.txt
 
+      - name: Verify API image-only plan safety
+        if: env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'plan'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/s22-api-image-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan \
+            "$TF_VAR_api_image" \
+            "$S22_COMMIT_SHA" \
+            "$TF_VAR_api_deployment_timestamp" \
+            "$S22_RUNTIME_GIT_COMMIT_SHA" \
+            "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_runtime_migration_head" \
+            "$TF_VAR_web_image" \
+            "$TF_VAR_worker_image" \
+            "$TF_VAR_migrator_image" \
+            "$S22_MIGRATOR_GIT_COMMIT_SHA" \
+            "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" \
+            | tee infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
+          echo "api_image_plan_sha256=$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)" \
+            | tee -a infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
+
       - name: Verify Cloud SQL start-only plan safety
         if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
@@ -1838,6 +1892,7 @@ jobs:
             infra/deploy/gcp/staging/s22.tfplan
             infra/deploy/gcp/staging/s22.tfplan.sha256
             infra/deploy/gcp/staging/s22-full-runtime-plan-evidence.txt
+            infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -2612,6 +2667,27 @@ jobs:
             "$TF_VAR_web_image" \
             "$TF_VAR_worker_image"
 
+      - name: Verify exact API image update approval boundary
+        if: env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_PLAN_SHA256="$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)"
+          [[ "$ACTUAL_PLAN_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
+          bash .github/scripts/s22-api-image-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan \
+            "$TF_VAR_api_image" \
+            "$S22_COMMIT_SHA" \
+            "$TF_VAR_api_deployment_timestamp" \
+            "$S22_RUNTIME_GIT_COMMIT_SHA" \
+            "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_runtime_migration_head" \
+            "$TF_VAR_web_image" \
+            "$TF_VAR_worker_image" \
+            "$TF_VAR_migrator_image" \
+            "$S22_MIGRATOR_GIT_COMMIT_SHA" \
+            "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP"
+
       - name: Verify exact migration plan approval boundary
         if: env.S22_PHASE == 'migration' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
@@ -3029,6 +3105,26 @@ jobs:
         run: |
           bash ../../../../.github/scripts/s22-migrator-image-live-verify.sh
           cp s22-migrator-image-live-evidence.txt s22-migrator-image-apply-evidence.txt
+
+      - name: Verify API image update live state and convergence
+        if: env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: |
+          bash ../../../../.github/scripts/s22-api-image-live-verify.sh
+          cp s22-api-image-live-evidence.txt s22-api-image-apply-evidence.txt
+
+      - name: Upload API image update evidence
+        if: always() && env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-api-image-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-api-image-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify applied migrator image read-only
         if: env.S22_PHASE == 'migrator-image-verify' && env.S22_ACTION == 'plan'

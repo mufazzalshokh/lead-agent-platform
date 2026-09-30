@@ -14,6 +14,16 @@ locals {
     DEPLOYMENT_TIMESTAMP      = var.deployment_timestamp
   }
 
+  api_git_commit_sha = var.api_git_commit_sha != "" ? var.api_git_commit_sha : var.git_commit_sha
+  api_deployment_timestamp = (
+    var.api_deployment_timestamp != "" ? var.api_deployment_timestamp : var.deployment_timestamp
+  )
+  api_provenance_env = merge(local.provenance_env, {
+    DEPLOYMENT_GIT_SHA      = local.api_git_commit_sha
+    DEPLOYMENT_IMAGE_DIGEST = var.api_image
+    DEPLOYMENT_TIMESTAMP    = local.api_deployment_timestamp
+  })
+
   migrator_git_commit_sha = var.migrator_git_commit_sha != "" ? var.migrator_git_commit_sha : var.git_commit_sha
   migrator_deployment_timestamp = (
     var.migrator_deployment_timestamp != "" ? var.migrator_deployment_timestamp : var.deployment_timestamp
@@ -24,7 +34,7 @@ locals {
     DEPLOYMENT_TIMESTAMP      = local.migrator_deployment_timestamp
   })
 
-  api_plain_env = merge(local.provenance_env, {
+  api_plain_env = merge(local.api_provenance_env, {
     APP_ENV                         = "production"
     AUTH0_CALLBACK_URI              = "${var.web_public_origin}/v1/staff/auth/callback"
     AUTH0_CLIENT_ID                 = var.auth0_client_id
@@ -99,6 +109,9 @@ locals {
     git-sha        = var.deploy_runtime ? substr(var.git_commit_sha, 0, 12) : "foundation"
     migration-head = replace(local.runtime_migration_head, "_", "-")
   })
+  api_deployment_labels = merge(local.deployment_labels, {
+    git-sha = var.deploy_runtime ? substr(local.api_git_commit_sha, 0, 12) : "foundation"
+  })
   migrator_deployment_labels = merge(local.deployment_labels, {
     git-sha        = substr(local.migrator_git_commit_sha, 0, 12)
     migration-head = replace(var.migration_head, "_", "-")
@@ -113,7 +126,7 @@ resource "google_cloud_run_v2_service" "api" {
   location            = var.region
   deletion_protection = true
   ingress             = "INGRESS_TRAFFIC_ALL"
-  labels              = local.deployment_labels
+  labels              = local.api_deployment_labels
 
   template {
     service_account                  = google_service_account.api.email
