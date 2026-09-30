@@ -49,6 +49,11 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain('replayDetail !== "S22_BOOTSTRAP_NOT_EMPTY"');
     expect(script).toContain('replay_protection: "S22_BOOTSTRAP_NOT_EMPTY"');
     expect(script).toContain("audit_event_id: AUDIT_ID");
+    expect(script).toContain('mode !== "apply" && mode !== "verify"');
+    expect(script).toContain("begin isolation level serializable read only");
+    expect(script).toContain("exact_identity_count");
+    expect(script).toContain("exact_membership_count");
+    expect(script).toContain("exact_audit_count");
     expect(script).toContain('row.membership_status !== "active"');
     expect(script).toContain('row.membership_role !== "owner"');
     expect(script).not.toMatch(/\binsert\s+into\b/iu);
@@ -67,6 +72,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(workflow).toContain("secrets.STAGING_OWNER_AUTH0_SUBJECT");
     expect(workflow).toContain("owner-workspace-bootstrap");
+    expect(workflow).toContain("owner-workspace-verify");
     expect(workflow).toContain(
       "env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'",
     );
@@ -77,6 +83,8 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("FAILURE_STAGE=replay_protection");
     expect(workflow).toContain("audit_proof=$BOOTSTRAP_PROOF");
     expect(workflow).toContain("replay_protection=$BOOTSTRAP_PROOF");
+    expect(workflow).toContain("database_state_proof=$VERIFY_PROOF");
+    expect(workflow).toContain("S22_OWNER_BOOTSTRAP_MODE=verify");
     expect(workflow).toContain(
       "integration_cards=Website Chat|Telegram Business|Instagram Professional",
     );
