@@ -833,7 +833,8 @@ jobs:
           [[ "$OWNER_SUBJECT" =~ ^google-oauth2\|[0-9]{1,128}$ ]]
           [[ "$SOURCE_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
           SOURCE_TASKS="$(mktemp)"
-          trap 'rm -f "$SOURCE_TASKS"' EXIT
+          CURRENT_TASKS="$(mktemp)"
+          trap 'rm -f "$SOURCE_TASKS" "$CURRENT_TASKS"' EXIT
           ACCESS_TOKEN="$(gcloud auth print-access-token)"
           curl --fail --silent --show-error \
             --header "Authorization: Bearer $ACCESS_TOKEN" \
@@ -873,13 +874,18 @@ jobs:
           )"
           EXECUTION_ID="${EXECUTION_ID##*/}"
           [[ "$EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/me-central1/jobs/lead-agent-staging-migrator/executions/${EXECUTION_ID}/tasks?pageSize=1" \
+            > "$CURRENT_TASKS"
+          unset ACCESS_TOKEN
           TASK_EXIT_CODE="$(
-            gcloud run jobs executions tasks list \
-              --project="$PROJECT_ID" \
-              --region=me-central1 \
-              --execution="$EXECUTION_ID" \
-              --limit=1 \
-              --format='value(lastAttemptResult.exitCode)'
+            jq -r '
+              .tasks[0].lastAttemptResult.exitCode
+                // .tasks[0].status.lastAttemptResult.exitCode
+                // empty
+            ' "$CURRENT_TASKS"
           )"
           if [[ -z "$TASK_EXIT_CODE" && "$VERIFY_STATUS" == "0" ]]; then
             TASK_EXIT_CODE=0
