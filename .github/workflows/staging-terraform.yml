@@ -1050,7 +1050,7 @@ jobs:
           RAW_TIMELINE="$(mktemp)"
           trap 'rm -f "$RAW_LOGS" "$RAW_TIMELINE"' EXIT
           gcloud logging read \
-            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND jsonPayload.requestId=\"$REQUEST_ID\" AND jsonPayload.authCallbackFailure:*" \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND jsonPayload.authCallbackFailure:*" \
             --project="$PROJECT_ID" \
             --freshness=2h \
             --limit=10 \
@@ -1087,8 +1087,8 @@ jobs:
                   timestamp
                 }
             ] as $entries
-            | ($entries | length) >= 1
-              and all($entries[]; .request_id == $request_id and (.auth_callback_failure | allowed))
+            | any($entries[]; .request_id == $request_id)
+              and all($entries[]; .auth_callback_failure | allowed)
           ' "$RAW_LOGS" > /dev/null
           jq -n \
             --slurpfile failures "$RAW_LOGS" \
