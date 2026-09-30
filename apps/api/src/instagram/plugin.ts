@@ -136,8 +136,9 @@ export const registerInstagramPublicRoutes = (
       },
     },
     async (request, reply) => {
-      await dependencies.useCases.completeOnboarding(request.query);
-      return await reply.redirect("/staff#integrations", 303);
+      const completed = await dependencies.useCases.completeOnboarding(request.query);
+      const organization = encodeURIComponent(completed.organizationId);
+      return await reply.redirect(`/staff?organization=${organization}#integrations`, 303);
     },
   );
 };

@@ -1,11 +1,12 @@
 import { Script } from "node:vm";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   formatStaffDateTime,
   formatStaffLocalDateTime,
   humanizeStaffStatus,
+  initiateIntegrationConnection,
   canManageIntegrations,
   buildWidgetInstallSnippet,
   readCsrfCookie,
@@ -80,6 +81,100 @@ describe("S19 staff presentation policy", () => {
         authorization_url: `https://evil.example/oauth/authorize?client_id=123&state=${nonce}`,
       }),
     ).toBeNull();
+  });
+
+  it("opens the tenant-bound Telegram onboarding result from the initiating click", async () => {
+    const nonce = "a".repeat(43);
+    const replace = vi.fn(),
+      close = vi.fn(),
+      assign = vi.fn(),
+      popup = { closed: false, close, location: { replace }, opener: {} },
+      open = vi.fn(() => popup),
+      request = vi.fn(async (_path: string, _init: RequestInit) =>
+        Response.json(
+          { onboarding_url: `https://t.me/lead_agent_bot?start=${nonce}` },
+          { status: 201 },
+        ),
+      );
+
+    const result = await initiateIntegrationConnection({
+      csrfToken: "csrf-proof",
+      navigation: { assign, open },
+      provider: "telegram",
+      request,
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      "/v1/staff/integrations/telegram/onboarding",
+      expect.objectContaining({
+        body: JSON.stringify({ display_name: "Telegram Business" }),
+        headers: { "content-type": "application/json", "x-csrf-token": "csrf-proof" },
+        method: "POST",
+      }),
+    );
+    expect(open).toHaveBeenCalledOnce();
+    expect(popup.opener).toBeNull();
+    expect(replace).toHaveBeenCalledWith(`https://t.me/lead_agent_bot?start=${nonce}`);
+    expect(assign).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, provider: "telegram" });
+    expect(JSON.stringify(result)).not.toContain(nonce);
+  });
+
+  it("falls back to same-tab Instagram OAuth navigation when a popup is blocked", async () => {
+    const nonce = "b".repeat(43),
+      authorizationUrl = `https://www.instagram.com/oauth/authorize?client_id=123&state=${nonce}`,
+      assign = vi.fn(),
+      request = vi.fn(async (_path: string, _init: RequestInit) =>
+        Response.json({ authorization_url: authorizationUrl }, { status: 201 }),
+      );
+
+    const result = await initiateIntegrationConnection({
+      csrfToken: "csrf-proof",
+      navigation: { assign, open: () => null },
+      provider: "instagram",
+      request,
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      "/v1/staff/integrations/instagram/onboarding",
+      expect.objectContaining({
+        body: JSON.stringify({ display_name: "Instagram Professional" }),
+        headers: { "content-type": "application/json", "x-csrf-token": "csrf-proof" },
+        method: "POST",
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith(authorizationUrl);
+    expect(result).toEqual({ ok: true, provider: "instagram" });
+    expect(JSON.stringify(result)).not.toContain(nonce);
+  });
+
+  it("closes the pending destination and returns only safe failure metadata", async () => {
+    const close = vi.fn(),
+      replace = vi.fn(),
+      popup = { closed: false, close, location: { replace }, opener: {} },
+      request = vi.fn(async (_path: string, _init: RequestInit) =>
+        Response.json(
+          { app_secret: "must-not-enter-client-state", code: "permission_denied" },
+          { status: 403 },
+        ),
+      );
+
+    const result = await initiateIntegrationConnection({
+      csrfToken: "csrf-proof",
+      navigation: { assign: vi.fn(), open: () => popup },
+      provider: "instagram",
+      request,
+    });
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(replace).not.toHaveBeenCalled();
+    expect(result).toEqual({ code: "permission_denied", ok: false, status: 403 });
+    expect(JSON.stringify(result)).not.toContain("must-not-enter-client-state");
+    if (result.ok) throw new TypeError("Expected integration initiation to fail");
+    expect(staffActionMessage(result.status, result.code)).toBe(
+      "You do not have access to this workspace action.",
+    );
   });
 
   it("accepts only finite secret-free integration status projections", () => {

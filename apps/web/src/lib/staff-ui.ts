@@ -181,6 +181,103 @@ export const readInstagramAuthorizationUrl = (value: unknown): string | null => 
   }
 };
 
+type ExternalProviderWindow = {
+  readonly closed: boolean;
+  close(): void;
+  location: Readonly<{ replace(url: string): void }>;
+  opener: unknown;
+};
+
+export type IntegrationNavigation = Readonly<{
+  assign(url: string): void;
+  open(): ExternalProviderWindow | null;
+}>;
+
+export type IntegrationInitiationResult =
+  | Readonly<{ ok: true; provider: "instagram" | "telegram" }>
+  | Readonly<{ code?: string; ok: false; status: number }>;
+
+const readProblemCode = (value: unknown): string | undefined => {
+  if (!isRecord(value)) return undefined;
+  const code = value["code"];
+  return typeof code === "string" && /^[a-z][a-z0-9_]{0,63}$/u.test(code) ? code : undefined;
+};
+
+const prepareExternalProviderNavigation = (navigation: IntegrationNavigation) => {
+  let providerWindow: ExternalProviderWindow | null = null;
+  try {
+    providerWindow = navigation.open();
+    if (providerWindow !== null) providerWindow.opener = null;
+  } catch {
+    providerWindow = null;
+  }
+  return Object.freeze({
+    cancel: (): void => {
+      if (providerWindow === null || providerWindow.closed) return;
+      try {
+        providerWindow.close();
+      } catch {
+        // The fallback navigation remains safe even when the browser revokes the popup handle.
+      }
+    },
+    navigate: (url: string): void => {
+      if (providerWindow !== null && !providerWindow.closed) {
+        try {
+          providerWindow.location.replace(url);
+          return;
+        } catch {
+          // Fall back to same-tab navigation when the browser revokes the popup handle.
+        }
+      }
+      navigation.assign(url);
+    },
+  });
+};
+
+export const initiateIntegrationConnection = async (
+  input: Readonly<{
+    csrfToken: string;
+    navigation: IntegrationNavigation;
+    provider: "instagram" | "telegram";
+    request(path: string, init: RequestInit): Promise<Response>;
+  }>,
+): Promise<IntegrationInitiationResult> => {
+  // Opening the blank destination before the first await preserves the user's click gesture.
+  const pendingNavigation = prepareExternalProviderNavigation(input.navigation);
+  try {
+    const response = await input.request(`/v1/staff/integrations/${input.provider}/onboarding`, {
+      body: JSON.stringify({
+        display_name:
+          input.provider === "telegram" ? "Telegram Business" : "Instagram Professional",
+      }),
+      headers: { "content-type": "application/json", "x-csrf-token": input.csrfToken },
+      method: "POST",
+    });
+    if (!response.ok) {
+      pendingNavigation.cancel();
+      const failure: unknown = await response.json().catch(() => null);
+      const code = readProblemCode(failure);
+      return code === undefined
+        ? Object.freeze({ ok: false, status: response.status })
+        : Object.freeze({ code, ok: false, status: response.status });
+    }
+    const body: unknown = await response.json();
+    const destination =
+      input.provider === "telegram"
+        ? readTelegramOnboardingUrl(body)
+        : readInstagramAuthorizationUrl(body);
+    if (destination === null) {
+      pendingNavigation.cancel();
+      return Object.freeze({ code: "invalid_provider_response", ok: false, status: 502 });
+    }
+    pendingNavigation.navigate(destination);
+    return Object.freeze({ ok: true, provider: input.provider });
+  } catch {
+    pendingNavigation.cancel();
+    return Object.freeze({ code: "dependency_unavailable", ok: false, status: 503 });
+  }
+};
+
 export type WidgetManagementConfiguration = Readonly<{
   publishableKey: string;
   websiteOrigin: string;

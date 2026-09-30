@@ -8,15 +8,14 @@ import {
   humanizeStaffStatus,
   buildWidgetInstallSnippet,
   canManageIntegrations,
+  initiateIntegrationConnection,
   makeIdempotencyKey,
   readCsrfCookie,
-  readInstagramAuthorizationUrl,
   readInstagramIntegrationStatus,
   readOrganizationContext,
   type StaffAuthRecovery,
   readStaffMembershipRole,
   readTelegramIntegrationStatus,
-  readTelegramOnboardingUrl,
   readWidgetManagementConfiguration,
   staffActionMessage,
   type IntegrationConnectionStatus,
@@ -241,7 +240,6 @@ export function StaffWorkspace({
   const [integrationWorking, setIntegrationWorking] = useState<
     "instagram" | "telegram" | "widget" | null
   >(null);
-  const [telegramOnboardingUrl, setTelegramOnboardingUrl] = useState<string | null>(null);
   const [telegramStatus, setTelegramStatus] = useState<TelegramIntegrationStatus | null>(null);
   const [instagramStatus, setInstagramStatus] = useState<IntegrationConnectionStatus | null>(null);
   const [integrationStatusState, setIntegrationStatusState] = useState<
@@ -516,35 +514,29 @@ export function StaffWorkspace({
       setIntegrationWorking(provider);
       setIntegrationNotice(null);
       try {
-        const response = await request(`/v1/staff/integrations/${provider}/onboarding`, {
-          body: JSON.stringify({
-            display_name: provider === "telegram" ? "Telegram Business" : "Instagram Professional",
-          }),
-          headers: { "content-type": "application/json", "x-csrf-token": csrf },
-          method: "POST",
+        const result = await initiateIntegrationConnection({
+          csrfToken: csrf,
+          navigation: {
+            assign: (url) => globalThis.location.assign(url),
+            open: () => globalThis.open("about:blank", "_blank"),
+          },
+          provider,
+          request,
         });
-        if (!response.ok) {
-          const failed: unknown = await response.json().catch(() => null);
+        if (!result.ok) {
           setIntegrationNotice(
-            staffActionMessage(
-              response.status,
-              isRecord(failed) ? (stringValue(failed["code"]) ?? undefined) : undefined,
-            ),
+            result.code === "invalid_provider_response"
+              ? "The provider returned an invalid connection link. Please try again later."
+              : staffActionMessage(result.status, result.code),
           );
           return;
         }
-        const body: unknown = await response.json();
         if (provider === "telegram") {
-          const onboardingUrl = readTelegramOnboardingUrl(body);
-          if (onboardingUrl === null) throw new Error("invalid_telegram_onboarding");
-          setTelegramOnboardingUrl(onboardingUrl);
           setTelegramStatus({ nextStep: "open_bot", status: "connection_pending" });
-          setIntegrationNotice("Your private Telegram connection link is ready.");
+          setIntegrationNotice("Telegram opened securely. Press Start to bind this workspace.");
           return;
         }
-        const authorizationUrl = readInstagramAuthorizationUrl(body);
-        if (authorizationUrl === null) throw new Error("invalid_instagram_onboarding");
-        globalThis.location.assign(authorizationUrl);
+        setIntegrationNotice("Instagram authorization opened securely.");
       } catch {
         setIntegrationNotice("We could not start the secure connection. Please try again.");
       } finally {
@@ -790,7 +782,13 @@ export function StaffWorkspace({
                       <strong>Connected.</strong> Telegram Business can receive and reply in the
                       same customer DM.
                     </p>
-                  ) : telegramOnboardingUrl === null ? (
+                  ) : telegramStatus?.status === "connection_pending" &&
+                    telegramStatus.nextStep === "connect_business" ? (
+                    <p className="integration-detail">
+                      <strong>Bot linked.</strong> Finish the connection in Telegram Business
+                      settings using the instructions below.
+                    </p>
+                  ) : (
                     <button
                       className="primary-button"
                       type="button"
@@ -803,15 +801,6 @@ export function StaffWorkspace({
                           ? "Reconnect Telegram"
                           : "Connect Telegram"}
                     </button>
-                  ) : (
-                    <a
-                      className="primary-button"
-                      href={telegramOnboardingUrl}
-                      rel="noreferrer noopener"
-                      target="_blank"
-                    >
-                      Open Telegram securely
-                    </a>
                   )
                 ) : (
                   <p className="integration-permission">Owner or admin access is required.</p>

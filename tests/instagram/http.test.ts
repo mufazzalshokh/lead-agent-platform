@@ -31,7 +31,9 @@ const fixture = () => {
   const processMessage = vi.fn<InstagramBusinessUseCases["processMessage"]>(() =>
     Promise.resolve({ status: "accepted" }),
   );
-  const completeOnboarding = vi.fn(() => Promise.resolve());
+  const completeOnboarding = vi.fn<InstagramBusinessUseCases["completeOnboarding"]>(() =>
+    Promise.resolve({ organizationId: IDS.organization }),
+  );
   const api = createApi({
     instagramWebhook: {
       appSecret: instagramConfig.appSecret,
@@ -167,7 +169,9 @@ describe("Instagram raw HTTP webhook/callback security", { timeout: 30000 }, () 
         `/v1/integrations/instagram/callback?code=synthetic-code&state=${NONCE}`,
       );
       expect(callback.statusCode).toBe(303);
-      expect(callback.headers.location).toBe("/staff#integrations");
+      expect(callback.headers.location).toBe(
+        `/staff?organization=${IDS.organization}#integrations`,
+      );
       expect(callback.body).not.toContain(NONCE);
       expect(
         (await test.api.inject(`/v1/integrations/instagram/callback?code=code&state=bad`))

@@ -4,6 +4,7 @@ import {
   ChannelConnectionIdSchema,
   isSchemaValue,
   type ChannelConnectionId,
+  type OrganizationId,
 } from "@lead-agent/contracts";
 import {
   hasPermission,
@@ -63,7 +64,9 @@ export type InstagramBusinessUseCases = Readonly<{
   beginOnboarding(
     input: Readonly<{ authorization: AuthorizationContext; displayName: string }>,
   ): Promise<Readonly<{ authorizationUrl: string }>>;
-  completeOnboarding(input: Readonly<{ code: string; state: string }>): Promise<void>;
+  completeOnboarding(
+    input: Readonly<{ code: string; state: string }>,
+  ): Promise<Readonly<{ organizationId: OrganizationId }>>;
   getStatus(
     input: Readonly<{ authorization: AuthorizationContext }>,
   ): Promise<InstagramManagementStatus>;
@@ -195,6 +198,7 @@ export const createInstagramBusinessUseCases = (
         if (error instanceof InstagramApplicationError) throw error;
         throw new InstagramApplicationError("business_rule_failed");
       }
+      return Object.freeze({ organizationId: context.organizationId });
     },
     getStatus: async ({ authorization }) => {
       requireStaff(authorization);
