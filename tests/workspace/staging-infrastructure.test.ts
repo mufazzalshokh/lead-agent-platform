@@ -535,10 +535,17 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("secret_payloads_read=false");
     expect(workflow).toContain("Upload full runtime configuration metadata");
     expect(workflow).toContain("- runtime-diagnose");
+    expect(workflow).toContain("- auth-callback-diagnose");
     expect(workflow).toContain("Diagnose failed API revision read-only");
     expect(workflow).toContain("Upload sanitized runtime diagnostic evidence");
     expect(runtimeDiagnostic).toContain("secret_payloads_read: false");
     expect(runtimeDiagnostic).toContain("DENIED_OR_UNAVAILABLE");
+    expect(workflow).toContain("Read request-scoped sanitized auth callback failure");
+    expect(workflow).toContain("S22_AUTH_CALLBACK_REQUEST_ID");
+    expect(workflow).toContain("jsonPayload.authCallbackFailure:*");
+    expect(workflow).toContain("s22-auth-callback-diagnostic-evidence.json");
+    expect(workflow).not.toContain("jsonPayload.authorizationCode");
+    expect(workflow).not.toContain("jsonPayload.codeVerifier");
     expect(workflow).toContain("- instagram-verify-access");
     expect(workflow).toContain("- instagram-verify");
     expect(workflow).toContain("- instagram-verify-access-remove");

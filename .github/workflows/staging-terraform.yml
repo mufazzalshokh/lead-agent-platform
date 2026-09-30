@@ -36,6 +36,7 @@ on:
           - migration-error-read
           - runtime-preflight
           - runtime-diagnose
+          - auth-callback-diagnose
           - instagram-verify-access
           - instagram-verify
           - instagram-verify-access-remove
@@ -115,6 +116,10 @@ on:
         description: Exact failed Cloud Run migrator execution for sanitized diagnostic reads
         required: false
         type: string
+      auth_callback_request_id:
+        description: Public request ID for request-scoped sanitized callback diagnostics
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -133,6 +138,7 @@ jobs:
     timeout-minutes: 45
     env:
       S22_ACTION: ${{ inputs.action }}
+      S22_AUTH_CALLBACK_REQUEST_ID: ${{ inputs.auth_callback_request_id }}
       S22_API_GIT_COMMIT_SHA: ${{ inputs.api_git_commit_sha }}
       S22_APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
       S22_APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
@@ -217,6 +223,10 @@ jobs:
           fi
           if [[ "$PHASE" == "runtime-diagnose" ]]; then
             [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "auth-callback-diagnose" ]]; then
+            [[ "$ACTION" == "plan" ]]
+            [[ "$S22_AUTH_CALLBACK_REQUEST_ID" =~ ^request:req-[A-Za-z0-9_-]{1,64}$ ]]
           fi
           if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
             [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -411,6 +421,7 @@ jobs:
             runtime-diagnose)
               SQL_POLICY=ALWAYS
               ;;
+            auth-callback-diagnose) ;;
             instagram-verify-access)
               SQL_POLICY=ALWAYS
               ;;
@@ -697,7 +708,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'api-image-update' || env.S22_PHASE == 'api-image-verify' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migrator-image-verify' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || env.S22_PHASE == 'owner-workspace-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'api-image-update' || env.S22_PHASE == 'api-image-verify' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migrator-image-verify' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'auth-callback-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || env.S22_PHASE == 'owner-workspace-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -1026,6 +1037,72 @@ jobs:
           path: s22-runtime-diagnostic-evidence.json
           if-no-files-found: error
           retention-days: 7
+
+      - name: Read request-scoped sanitized auth callback failure
+        if: env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan'
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_ID="${S22_AUTH_CALLBACK_REQUEST_ID#request:}"
+          RAW_LOGS="$(mktemp)"
+          trap 'rm -f "$RAW_LOGS"' EXIT
+          gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND jsonPayload.requestId=\"$REQUEST_ID\" AND jsonPayload.authCallbackFailure:*" \
+            --project="$PROJECT_ID" \
+            --freshness=2h \
+            --limit=10 \
+            --format=json > "$RAW_LOGS"
+          jq -e --arg request_id "$S22_AUTH_CALLBACK_REQUEST_ID" '
+            def allowed:
+              . == "transaction_cookie_missing"
+              or . == "transaction_envelope_invalid_or_expired"
+              or . == "provider_authorization_error"
+              or . == "state_mismatch"
+              or . == "authorization_code_missing"
+              or . == "state_replay"
+              or . == "token_exchange_or_oidc_response_validation"
+              or . == "oidc_provider_unavailable"
+              or . == "mfa_required"
+              or . == "id_token_validation"
+              or . == "external_identity_resolution"
+              or . == "external_identity_unmapped"
+              or . == "external_identity_denied"
+              or . == "session_issuance"
+              or . == "session_issuance_rejected";
+            [
+              .[]
+              | {
+                  auth_callback_failure: .jsonPayload.authCallbackFailure,
+                  request_id: ("request:" + .jsonPayload.requestId),
+                  revision: .resource.labels.revision_name,
+                  timestamp
+                }
+            ] as $entries
+            | ($entries | length) >= 1
+              and all($entries[]; .request_id == $request_id and (.auth_callback_failure | allowed))
+          ' "$RAW_LOGS" > /dev/null
+          jq '
+            [
+              .[]
+              | {
+                  auth_callback_failure: .jsonPayload.authCallbackFailure,
+                  request_id: ("request:" + .jsonPayload.requestId),
+                  revision: .resource.labels.revision_name,
+                  timestamp
+                }
+            ]
+          ' "$RAW_LOGS" > s22-auth-callback-diagnostic-evidence.json
+
+      - name: Upload sanitized auth callback diagnostic evidence
+        if: always() && env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-auth-callback-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-auth-callback-diagnostic-evidence.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Create reviewed Instagram verifier access plan
         if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'plan'
@@ -1440,7 +1517,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'auth-callback-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -1907,7 +1984,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
+        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'auth-callback-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
