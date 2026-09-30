@@ -579,12 +579,16 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify migrator image-only plan safety");
     expect(workflow).toContain("s22-migrator-image-plan-check.sh");
     expect(workflow).toContain("runtime_git_commit_sha:");
+    expect(workflow).toContain("migrator_git_commit_sha:");
     expect(workflow).toContain("runtime_deployment_timestamp:");
     expect(workflow).toContain("runtime_migration_head:");
     expect(workflow).toContain(
       "TF_VAR_runtime_migration_head: ${{ inputs.runtime_migration_head }}",
     );
     expect(workflow).toContain('echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA"');
+    expect(workflow).toContain(
+      'echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA"',
+    );
     expect(workflow).toContain(
       'echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP"',
     );
