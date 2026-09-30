@@ -272,11 +272,11 @@ const bootstrap = async () => {
       }
     }
 
-    failureExitCode = 76;
-    await assertStoredWorkspace(client, issuer, subject);
-
     failureExitCode = 79;
     await assertAuthRoleResolution(Pool, authConnectionString, issuer, subject);
+
+    failureExitCode = 76;
+    await assertStoredWorkspace(client, issuer, subject);
 
     failureExitCode = 77;
     await assertReplayFailsClosed(client, issuer, subject);
