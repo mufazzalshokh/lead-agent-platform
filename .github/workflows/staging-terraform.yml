@@ -4471,6 +4471,11 @@ jobs:
           const failure = payloads.find(
             (payload) => payload.operation === "database_migration" && payload.outcome === "failed",
           );
+          const identityVerification = payloads.find(
+            (payload) =>
+              payload.operation === "staging_owner_workspace_identity_verify"
+              && (payload.outcome === "PASS" || payload.outcome === "FAIL"),
+          );
 
           const sanitize = (value) =>
             String(value ?? "unavailable")
@@ -4527,7 +4532,9 @@ jobs:
             [73, "database_connect"],
             [74, "transaction_start"],
             [75, "bootstrap_capability"],
-            [76, "success_evidence"],
+            [76, "stored_identity_validation"],
+            [77, "replay_protection"],
+            [78, "success_evidence"],
           ]);
           const taskFailure = Number.isInteger(taskExitCode) && {
             diagnostic_mode: "cloud_run_task_status",
@@ -4549,6 +4556,23 @@ jobs:
             operation: "database_migration",
             outcome: "failed",
           };
+          const identityChecks = asObject(identityVerification?.checks);
+          const identityEvidence = identityVerification && identityChecks && {
+            checks: {
+              active_owner_membership: identityChecks.active_owner_membership === true,
+              bootstrap_audit: identityChecks.bootstrap_audit === true,
+              exact_identity: identityChecks.exact_identity === true,
+              identity_row_count: Number.isInteger(identityChecks.identity_row_count)
+                ? identityChecks.identity_row_count
+                : -1,
+              issuer_match: identityChecks.issuer_match === true,
+              subject_match: identityChecks.subject_match === true,
+            },
+            diagnostic_mode: "staging_owner_identity_validation",
+            execution_id: executionId,
+            operation: "staging_owner_workspace_identity_verify",
+            outcome: identityVerification.outcome,
+          };
           const diagnosticLogPattern = /(?:stderr|varlog%2Fsystem)$/u;
           const usefulErrorPattern = /(?:error|failed|failure|exception|cannot|denied|refused|timeout|not found|module_not_found|err_)/iu;
           const fallbackMessages = entries
@@ -4567,7 +4591,7 @@ jobs:
           const fallback = fallbackMessages.find(
             ({ error_message, is_diagnostic_log }) => is_diagnostic_log && usefulErrorPattern.test(error_message),
           ) ?? fallbackMessages.find(({ error_message }) => usefulErrorPattern.test(error_message));
-          const evidence = structuredEvidence ?? (fallback ? {
+          const evidence = structuredEvidence ?? identityEvidence ?? (fallback ? {
             diagnostic_mode: "sanitized_runtime_fallback",
             error_message: fallback.error_message,
             execution_id: executionId,
