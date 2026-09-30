@@ -80,7 +80,6 @@ const assertReplayFailsClosed = async (client, issuer, subject) => {
 const assertStoredWorkspace = async (client, issuer, subject) => {
   await client.query("begin isolation level serializable read only");
   try {
-    await client.query("select set_config('app.organization_id', $1, true)", [ORGANIZATION_ID]);
     const result = await client.query(
       `select
          (select count(*)::integer from public.external_identities) as identity_count,
@@ -93,25 +92,16 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
              and subject = $2::character varying
              and status = 'active') as exact_identity_count,
          (select count(*)::integer
-            from public.memberships
-           where id = $4::uuid
-             and organization_id = $5::uuid
-             and user_id = $3::uuid
-             and status = 'active'
-             and role = 'owner'
-             and location_scope = 'all') as active_owner_membership_count,
-         (select count(*)::integer
             from public.platform_audit_events
-           where id = $6::uuid
+           where id = $4::uuid
              and target_organization_id = $5::uuid
-             and target_id = $4::uuid
+             and target_id = $6::uuid
              and action = 'staging_owner_bootstrap'
              and result = 'succeeded') as bootstrap_audit_count`,
-      [issuer, subject, USER_ID, MEMBERSHIP_ID, ORGANIZATION_ID, AUDIT_ID],
+      [issuer, subject, USER_ID, AUDIT_ID, ORGANIZATION_ID, MEMBERSHIP_ID],
     );
     const row = result.rows[0];
     const checks = {
-      active_owner_membership: row?.active_owner_membership_count === 1,
       bootstrap_audit: row?.bootstrap_audit_count === 1,
       exact_identity: row?.exact_identity_count === 1,
       identity_row_count: row?.identity_count ?? -1,
@@ -127,7 +117,6 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
           checks.issuer_match &&
           checks.subject_match &&
           checks.exact_identity &&
-          checks.active_owner_membership &&
           checks.bootstrap_audit
             ? "PASS"
             : "FAIL",
@@ -138,7 +127,6 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
       !checks.issuer_match ||
       !checks.subject_match ||
       !checks.exact_identity ||
-      !checks.active_owner_membership ||
       !checks.bootstrap_audit
     ) {
       const mismatchCode =
@@ -152,9 +140,7 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
                 ? "S22_SUBJECT_MISMATCH"
                 : !checks.exact_identity
                   ? "S22_IDENTITY_SHAPE"
-                  : !checks.active_owner_membership
-                    ? "S22_OWNER_MEMBERSHIP"
-                    : "S22_BOOTSTRAP_AUDIT";
+                  : "S22_BOOTSTRAP_AUDIT";
       const mismatch = new Error(
         "The stored first-owner workspace does not match the configured identity",
       );
@@ -170,9 +156,7 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
                 ? 83
                 : mismatchCode === "S22_IDENTITY_SHAPE"
                   ? 84
-                  : mismatchCode === "S22_OWNER_MEMBERSHIP"
-                    ? 85
-                    : 86;
+                  : 86;
       throw mismatch;
     }
   } finally {
@@ -216,6 +200,30 @@ const assertAuthRoleResolution = async (Pool, connectionString, issuer, subject)
       const error = new Error("The authentication role returned an invalid identity result");
       error.code = "S22_AUTH_IDENTITY_INVALID";
       error.exitCode = 89;
+      throw error;
+    }
+
+    const membership = await pool.query(
+      `select resolution_state, membership_id::text as membership_id,
+              organization_id::text as organization_id, user_id::text as user_id,
+              status, role, location_scope
+         from app.resolve_membership_authorization($1::uuid, $2::uuid)`,
+      [USER_ID, ORGANIZATION_ID],
+    );
+    const membershipRow = membership.rows[0];
+    if (
+      membership.rowCount !== 1 ||
+      membershipRow?.resolution_state !== "authorized" ||
+      membershipRow.membership_id !== MEMBERSHIP_ID ||
+      membershipRow.organization_id !== ORGANIZATION_ID ||
+      membershipRow.user_id !== USER_ID ||
+      membershipRow.status !== "active" ||
+      membershipRow.role !== "owner" ||
+      membershipRow.location_scope !== "all"
+    ) {
+      const error = new Error("The authentication role cannot resolve the active owner membership");
+      error.code = "S22_OWNER_MEMBERSHIP";
+      error.exitCode = 85;
       throw error;
     }
     console.info(

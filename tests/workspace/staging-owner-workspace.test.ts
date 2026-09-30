@@ -53,7 +53,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain('mode !== "apply" && mode !== "verify"');
     expect(script).toContain("begin isolation level serializable read only");
     expect(script).toContain("from public.external_identities");
-    expect(script).toContain("from public.memberships");
+    expect(script).not.toContain("from public.memberships");
     expect(script).toContain("from public.platform_audit_events");
     expect(script).toContain("staging_owner_workspace_identity_verify");
     expect(script).toContain("issuer_match");
@@ -63,7 +63,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain('mismatchCode === "S22_ISSUER_SUBJECT_MISMATCH"');
     expect(script).toContain("staging_owner_auth_role_identity_verify");
     expect(script).toContain("app.resolve_external_identity");
-    expect(script).toContain("select set_config('app.organization_id', $1, true)");
+    expect(script).toContain("app.resolve_membership_authorization");
     expect(script).not.toContain("row.issuer");
     expect(script).not.toContain("row.subject");
     expect(script).toContain('row.membership_status !== "active"');

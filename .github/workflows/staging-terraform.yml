@@ -4614,7 +4614,6 @@ jobs:
           const identityChecks = asObject(identityVerification?.checks);
           const identityEvidence = identityVerification && identityChecks && {
             checks: {
-              active_owner_membership: identityChecks.active_owner_membership === true,
               bootstrap_audit: identityChecks.bootstrap_audit === true,
               exact_identity: identityChecks.exact_identity === true,
               identity_row_count: Number.isInteger(identityChecks.identity_row_count)
