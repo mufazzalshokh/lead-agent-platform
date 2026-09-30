@@ -45,6 +45,10 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain("process.exitCode = failureExitCode");
     expect(script).toContain("begin isolation level serializable");
     expect(script).toContain("app.bootstrap_first_staging_owner");
+    expect(script).toContain('replayCode !== "P0001"');
+    expect(script).toContain('replayDetail !== "S22_BOOTSTRAP_NOT_EMPTY"');
+    expect(script).toContain('replay_protection: "S22_BOOTSTRAP_NOT_EMPTY"');
+    expect(script).toContain("audit_event_id: AUDIT_ID");
     expect(script).toContain('row.membership_status !== "active"');
     expect(script).toContain('row.membership_role !== "owner"');
     expect(script).not.toMatch(/\binsert\s+into\b/iu);
@@ -70,6 +74,12 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("lead-agent-staging-migrator");
     expect(workflow).toContain("lastAttemptResult.exitCode");
     expect(workflow).toContain("FAILURE_STAGE=bootstrap_capability");
+    expect(workflow).toContain("FAILURE_STAGE=replay_protection");
+    expect(workflow).toContain("audit_proof=$BOOTSTRAP_PROOF");
+    expect(workflow).toContain("replay_protection=$BOOTSTRAP_PROOF");
+    expect(workflow).toContain(
+      "integration_cards=Website Chat|Telegram Business|Instagram Professional",
+    );
     expect(workflow).not.toContain("service_account_key");
     expect(workflow).not.toContain('echo "$OWNER_SUBJECT"');
   });

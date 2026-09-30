@@ -713,15 +713,26 @@ jobs:
             73) FAILURE_STAGE=database_connect ;;
             74) FAILURE_STAGE=transaction_start ;;
             75) FAILURE_STAGE=bootstrap_capability ;;
-            76) FAILURE_STAGE=success_evidence ;;
+            76) FAILURE_STAGE=replay_protection ;;
+            77) FAILURE_STAGE=success_evidence ;;
             *) FAILURE_STAGE=runtime_unclassified ;;
           esac
+          if [[ "$BOOTSTRAP_STATUS" == "0" && "$TASK_EXIT_CODE" == "0" ]]; then
+            BOOTSTRAP_PROOF=PASS
+          else
+            BOOTSTRAP_PROOF=NOT_VERIFIED
+          fi
           {
             echo "organization_id=01a0ee39-91a9-7293-82c0-5b7046c10115"
             echo "organization_slug=lead-agent-staging"
+            echo "organization_display_name=Lead Agent Staging"
             echo "membership_status=active"
             echo "membership_role=owner"
             echo "identity_binding=exact_issuer_subject"
+            echo "audit_event_id=01a0ee39-91b0-7cb5-9bb6-bc34d73137f2"
+            echo "audit_proof=$BOOTSTRAP_PROOF"
+            echo "replay_protection=$BOOTSTRAP_PROOF"
+            echo "integration_cards=Website Chat|Telegram Business|Instagram Professional"
             echo "execution_id=$EXECUTION_ID"
             echo "task_exit_code=${TASK_EXIT_CODE:-unavailable}"
             echo "failure_stage=$FAILURE_STAGE"

@@ -77,12 +77,46 @@ const bootstrap = async () => {
       await client.query("rollback");
       throw error;
     }
+
     failureExitCode = 76;
+    await client.query("begin isolation level serializable");
+    let replayError;
+    try {
+      await client.query(
+        "select * from app.bootstrap_first_staging_owner($1::character varying, $2::character varying)",
+        [issuer, subject],
+      );
+    } catch (error) {
+      replayError = error;
+    } finally {
+      await client.query("rollback");
+    }
+    const replayCode =
+      typeof replayError === "object" &&
+      replayError !== null &&
+      "code" in replayError &&
+      typeof replayError.code === "string"
+        ? replayError.code
+        : "";
+    const replayDetail =
+      typeof replayError === "object" &&
+      replayError !== null &&
+      "detail" in replayError &&
+      typeof replayError.detail === "string"
+        ? replayError.detail
+        : "";
+    if (replayCode !== "P0001" || replayDetail !== "S22_BOOTSTRAP_NOT_EMPTY") {
+      throw new Error("The first-tenant bootstrap replay did not fail closed");
+    }
+
+    failureExitCode = 77;
     console.info(
       JSON.stringify({
+        audit_event_id: AUDIT_ID,
         organization_id: ORGANIZATION_ID,
         operation: "staging_owner_workspace_bootstrap",
         outcome: "PASS",
+        replay_protection: "S22_BOOTSTRAP_NOT_EMPTY",
         role: "owner",
         tenant_isolation: "exact_issuer_subject_and_membership",
       }),
