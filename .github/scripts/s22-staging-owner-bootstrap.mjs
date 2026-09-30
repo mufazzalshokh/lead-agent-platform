@@ -140,7 +140,25 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
       !checks.active_owner_membership ||
       !checks.bootstrap_audit
     ) {
-      throw new Error("The stored first-owner workspace does not match the configured identity");
+      const mismatchCode =
+        checks.identity_row_count !== 1
+          ? "S22_IDENTITY_COUNT"
+          : !checks.issuer_match && !checks.subject_match
+            ? "S22_ISSUER_SUBJECT_MISMATCH"
+            : !checks.issuer_match
+              ? "S22_ISSUER_MISMATCH"
+              : !checks.subject_match
+                ? "S22_SUBJECT_MISMATCH"
+                : !checks.exact_identity
+                  ? "S22_IDENTITY_SHAPE"
+                  : !checks.active_owner_membership
+                    ? "S22_OWNER_MEMBERSHIP"
+                    : "S22_BOOTSTRAP_AUDIT";
+      const mismatch = new Error(
+        "The stored first-owner workspace does not match the configured identity",
+      );
+      mismatch.code = mismatchCode;
+      throw mismatch;
     }
   } finally {
     await client.query("rollback");
