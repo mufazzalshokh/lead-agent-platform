@@ -26,6 +26,9 @@ export type InstagramConnection = Readonly<{
   stateHash: Uint8Array | null;
   status: "pending" | "active" | "disabled" | "revoked";
 }>;
+export type InstagramManagementStatus = Readonly<{
+  status: "connected" | "connection_pending" | "needs_attention" | "not_connected";
+}>;
 export interface InstagramPersistenceStore {
   beginOnboarding(
     input: Readonly<{
@@ -37,6 +40,10 @@ export interface InstagramPersistenceStore {
     }>,
   ): Promise<ChannelConnectionId>;
   loadConnection(context: TrustedInboundRoute): Promise<InstagramConnection | null>;
+  loadManagementStatus(
+    organizationId: AuthorizationContext["organizationId"],
+    now: Date,
+  ): Promise<InstagramManagementStatus>;
   activate(
     input: Readonly<{
       accountId: string;

@@ -166,8 +166,8 @@ describe("Instagram raw HTTP webhook/callback security", { timeout: 30000 }, () 
       const callback = await test.api.inject(
         `/v1/integrations/instagram/callback?code=synthetic-code&state=${NONCE}`,
       );
-      expect(callback.statusCode).toBe(200);
-      expect(callback.json()).toEqual({ status: "connected" });
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe("/staff#integrations");
       expect(callback.body).not.toContain(NONCE);
       expect(
         (await test.api.inject(`/v1/integrations/instagram/callback?code=code&state=bad`))
@@ -187,12 +187,43 @@ describe("Instagram staff integration management", () => {
       }),
     );
     const disconnect = vi.fn(() => Promise.resolve());
+    const getStatus = vi.fn(() => Promise.resolve({ status: "connected" as const }));
     const api = createApi({
       staffAuth: auth.staffAuth,
-      staffInstagram: { useCases: { beginOnboarding, disconnect } },
+      staffInstagram: { useCases: { beginOnboarding, disconnect, getStatus } },
     });
-    return { api, beginOnboarding, disconnect, ...auth };
+    return { api, beginOnboarding, disconnect, getStatus, ...auth };
   };
+  it("returns only the authenticated tenant connection status", async () => {
+    const test = fixture();
+    const readHeaders = { ...test.headers };
+    delete readHeaders["x-csrf-token"];
+    try {
+      const result = await test.api.inject({
+        method: "GET",
+        url: "/v1/staff/integrations/instagram/status",
+        headers: readHeaders,
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual({ status: "connected" });
+      expect(test.getStatus).toHaveBeenCalledOnce();
+      expect(
+        (
+          await test.api.inject({
+            method: "GET",
+            url: "/v1/staff/integrations/instagram/status",
+            headers: {
+              ...readHeaders,
+              "x-organization-context": IDS.otherOrganization,
+            },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(test.getStatus).toHaveBeenCalledOnce();
+    } finally {
+      await test.api.close();
+    }
+  });
   it("returns only the authorized OAuth URL and supports staff disconnect", async () => {
     const test = fixture();
     try {

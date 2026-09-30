@@ -24,12 +24,16 @@ export type TelegramWebhookDependencies = Readonly<{
 }>;
 
 export type StaffTelegramDependencies = Readonly<{
-  useCases: Pick<TelegramBusinessUseCases, "beginOnboarding">;
+  useCases: Pick<TelegramBusinessUseCases, "beginOnboarding" | "getStatus">;
 }>;
 
 export type StaffTelegramSecurityBoundary = Readonly<{
   authorizationResolver: CurrentMembershipAuthorizationResolver;
   resolveMutationSession(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<AuthenticatedApplicationSession>;
+  resolveReadSession(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<AuthenticatedApplicationSession>;
@@ -86,20 +90,62 @@ export const registerStaffTelegramManagement = (
   security: StaffTelegramSecurityBoundary,
 ): void => {
   const contexts = new WeakMap<FastifyRequest, AuthorizationContext>();
+  const authorize = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    mutation: boolean,
+  ): Promise<void> => {
+    const session = mutation
+      ? await security.resolveMutationSession(request, reply)
+      : await security.resolveReadSession(request, reply);
+    const authorization = await resolveAuthorizationContext(
+      session,
+      requireOrganization(request),
+      security.authorizationResolver,
+    );
+    if (!hasPermission(authorization.role, "integrations.manage")) {
+      throw new AuthorizationDeniedError();
+    }
+    contexts.set(request, authorization);
+  };
+  api.get(
+    "/v1/staff/integrations/telegram/status",
+    {
+      preValidation: async (request, reply) => await authorize(request, reply, false),
+      schema: {
+        response: {
+          200: {
+            additionalProperties: false,
+            properties: {
+              next_step: {
+                anyOf: [
+                  { enum: ["connect_business", "open_bot"], type: "string" },
+                  { type: "null" },
+                ],
+              },
+              status: {
+                enum: ["connected", "connection_pending", "needs_attention", "not_connected"],
+                type: "string",
+              },
+            },
+            required: ["next_step", "status"],
+            type: "object",
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const authorization = contexts.get(request);
+      if (authorization === undefined) throw new AuthorizationDeniedError();
+      const result = await dependencies.useCases.getStatus({ authorization });
+      return reply.code(200).send({ next_step: result.nextStep, status: result.status });
+    },
+  );
   api.post<{ Body: { display_name: string } }>(
     "/v1/staff/integrations/telegram/onboarding",
     {
       preValidation: async (request, reply) => {
-        const session = await security.resolveMutationSession(request, reply);
-        const authorization = await resolveAuthorizationContext(
-          session,
-          requireOrganization(request),
-          security.authorizationResolver,
-        );
-        if (!hasPermission(authorization.role, "integrations.manage")) {
-          throw new AuthorizationDeniedError();
-        }
-        contexts.set(request, authorization);
+        await authorize(request, reply, true);
       },
       schema: {
         body: {

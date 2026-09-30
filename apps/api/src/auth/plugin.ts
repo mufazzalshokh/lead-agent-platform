@@ -987,6 +987,7 @@ const registerStaffAuth = async (
       authorizationResolver: dependencies.authorizationResolver,
       resolveMutationSession: async (request, reply) =>
         (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
   if (staffInstagram !== undefined) {
@@ -994,6 +995,7 @@ const registerStaffAuth = async (
       authorizationResolver: dependencies.authorizationResolver,
       resolveMutationSession: async (request, reply) =>
         (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
   if (staffWidgetManagement !== undefined) {

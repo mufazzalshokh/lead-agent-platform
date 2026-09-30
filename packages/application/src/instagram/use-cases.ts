@@ -26,6 +26,7 @@ import {
   InstagramApplicationError,
   InstagramProviderError,
   type InstagramConnection,
+  type InstagramManagementStatus,
   type InstagramInboundMessage,
   type InstagramOAuthClient,
   type InstagramPersistenceStore,
@@ -63,6 +64,9 @@ export type InstagramBusinessUseCases = Readonly<{
     input: Readonly<{ authorization: AuthorizationContext; displayName: string }>,
   ): Promise<Readonly<{ authorizationUrl: string }>>;
   completeOnboarding(input: Readonly<{ code: string; state: string }>): Promise<void>;
+  getStatus(
+    input: Readonly<{ authorization: AuthorizationContext }>,
+  ): Promise<InstagramManagementStatus>;
   disconnect(
     input: Readonly<{
       authorization: AuthorizationContext;
@@ -191,6 +195,13 @@ export const createInstagramBusinessUseCases = (
         if (error instanceof InstagramApplicationError) throw error;
         throw new InstagramApplicationError("business_rule_failed");
       }
+    },
+    getStatus: async ({ authorization }) => {
+      requireStaff(authorization);
+      return await dependencies.persistence.loadManagementStatus(
+        authorization.organizationId,
+        clock(),
+      );
     },
     disconnect: async ({ authorization, channelConnectionId }) => {
       const context = contextFor(authorization, channelConnectionId);

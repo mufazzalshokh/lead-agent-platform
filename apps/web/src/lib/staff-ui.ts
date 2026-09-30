@@ -101,6 +101,42 @@ export const readStaffMembershipRole = (value: unknown): StaffMembershipRole | n
 export const canManageIntegrations = (role: StaffMembershipRole | null): boolean =>
   role === "owner" || role === "admin";
 
+export type IntegrationConnectionStatus =
+  "connected" | "connection_pending" | "needs_attention" | "not_connected";
+
+export type TelegramIntegrationStatus = Readonly<{
+  nextStep: "connect_business" | "open_bot" | null;
+  status: IntegrationConnectionStatus;
+}>;
+
+const readIntegrationStatus = (value: unknown): IntegrationConnectionStatus | null =>
+  value === "connected" ||
+  value === "connection_pending" ||
+  value === "needs_attention" ||
+  value === "not_connected"
+    ? value
+    : null;
+
+export const readInstagramIntegrationStatus = (
+  value: unknown,
+): IntegrationConnectionStatus | null => {
+  if (!isRecord(value)) return null;
+  return readIntegrationStatus(value["status"]);
+};
+
+export const readTelegramIntegrationStatus = (value: unknown): TelegramIntegrationStatus | null => {
+  if (!isRecord(value)) return null;
+  const status = readIntegrationStatus(value["status"]);
+  const nextStep = value["next_step"];
+  if (
+    status === null ||
+    !(nextStep === null || nextStep === "connect_business" || nextStep === "open_bot")
+  ) {
+    return null;
+  }
+  return Object.freeze({ nextStep, status });
+};
+
 export const readTelegramOnboardingUrl = (value: unknown): string | null => {
   if (!isRecord(value) || typeof value["onboarding_url"] !== "string") return null;
   try {

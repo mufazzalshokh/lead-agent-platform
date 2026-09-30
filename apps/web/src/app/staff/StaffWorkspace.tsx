@@ -11,13 +11,17 @@ import {
   makeIdempotencyKey,
   readCsrfCookie,
   readInstagramAuthorizationUrl,
+  readInstagramIntegrationStatus,
   readOrganizationContext,
   type StaffAuthRecovery,
   readStaffMembershipRole,
+  readTelegramIntegrationStatus,
   readTelegramOnboardingUrl,
   readWidgetManagementConfiguration,
   staffActionMessage,
+  type IntegrationConnectionStatus,
   type StaffMembershipRole,
+  type TelegramIntegrationStatus,
   type WidgetManagementConfiguration,
 } from "../../lib/staff-ui";
 
@@ -238,6 +242,11 @@ export function StaffWorkspace({
     "instagram" | "telegram" | "widget" | null
   >(null);
   const [telegramOnboardingUrl, setTelegramOnboardingUrl] = useState<string | null>(null);
+  const [telegramStatus, setTelegramStatus] = useState<TelegramIntegrationStatus | null>(null);
+  const [instagramStatus, setInstagramStatus] = useState<IntegrationConnectionStatus | null>(null);
+  const [integrationStatusState, setIntegrationStatusState] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
   const [websiteOrigin, setWebsiteOrigin] = useState("");
   const [widgetConfiguration, setWidgetConfiguration] =
     useState<WidgetManagementConfiguration | null>(null);
@@ -279,6 +288,26 @@ export function StaffWorkspace({
     setAnalytics(parseAnalytics(await responseData(response)));
   }, [request]);
 
+  const loadIntegrationStatuses = useCallback(async () => {
+    const [telegram, instagram] = await Promise.all([
+      request("/v1/staff/integrations/telegram/status"),
+      request("/v1/staff/integrations/instagram/status"),
+    ]);
+    if (!telegram.ok || !instagram.ok) {
+      setTelegramStatus(null);
+      setInstagramStatus(null);
+      setIntegrationStatusState("unavailable");
+      return;
+    }
+    const telegramValue = readTelegramIntegrationStatus(await telegram.json());
+    const instagramValue = readInstagramIntegrationStatus(await instagram.json());
+    setTelegramStatus(telegramValue);
+    setInstagramStatus(instagramValue);
+    setIntegrationStatusState(
+      telegramValue === null || instagramValue === null ? "unavailable" : "ready",
+    );
+  }, [request]);
+
   const loadInbox = useCallback(
     async (cursor?: string, append = false) => {
       if (organizationId === null) {
@@ -310,6 +339,11 @@ export function StaffWorkspace({
       setMembershipRole(role);
       setAuthState("ready");
       if (canManageIntegrations(role)) {
+        void loadIntegrationStatuses().catch(() => {
+          setTelegramStatus(null);
+          setInstagramStatus(null);
+          setIntegrationStatusState("unavailable");
+        });
         void request("/v1/staff/integrations/widget")
           .then(async (widget) => {
             if (!widget.ok) {
@@ -355,7 +389,7 @@ export function StaffWorkspace({
       setNextCursor(stringValue(body["meta"]["next_cursor"]));
       setLoading(false);
     },
-    [loadAnalytics, organizationId, request],
+    [loadAnalytics, loadIntegrationStatuses, organizationId, request],
   );
 
   useEffect(() => {
@@ -368,6 +402,13 @@ export function StaffWorkspace({
     }, 0);
     return () => globalThis.clearTimeout(handle);
   }, [initialAuthRecovery, loadInbox]);
+
+  useEffect(() => {
+    if (authState !== "ready" || !canManageIntegrations(membershipRole)) return;
+    const refresh = () => void loadIntegrationStatuses().catch(() => undefined);
+    globalThis.addEventListener("focus", refresh);
+    return () => globalThis.removeEventListener("focus", refresh);
+  }, [authState, loadIntegrationStatuses, membershipRole]);
 
   const loadDetail = useCallback(
     async (item: WorkItem) => {
@@ -497,6 +538,7 @@ export function StaffWorkspace({
           const onboardingUrl = readTelegramOnboardingUrl(body);
           if (onboardingUrl === null) throw new Error("invalid_telegram_onboarding");
           setTelegramOnboardingUrl(onboardingUrl);
+          setTelegramStatus({ nextStep: "open_bot", status: "connection_pending" });
           setIntegrationNotice("Your private Telegram connection link is ready.");
           return;
         }
@@ -739,14 +781,27 @@ export function StaffWorkspace({
                   </div>
                 </div>
                 {canManageIntegrations(membershipRole) ? (
-                  telegramOnboardingUrl === null ? (
+                  integrationStatusState !== "ready" ? (
+                    <button className="primary-button" type="button" disabled>
+                      {integrationStatusState === "loading" ? "Checking…" : "Status unavailable"}
+                    </button>
+                  ) : telegramStatus?.status === "connected" ? (
+                    <p className="integration-detail">
+                      <strong>Connected.</strong> Telegram Business can receive and reply in the
+                      same customer DM.
+                    </p>
+                  ) : telegramOnboardingUrl === null ? (
                     <button
                       className="primary-button"
                       type="button"
                       disabled={integrationWorking !== null}
                       onClick={() => void startIntegration("telegram")}
                     >
-                      {integrationWorking === "telegram" ? "Preparing…" : "Connect Telegram"}
+                      {integrationWorking === "telegram"
+                        ? "Preparing…"
+                        : telegramStatus?.status === "needs_attention"
+                          ? "Reconnect Telegram"
+                          : "Connect Telegram"}
                     </button>
                   ) : (
                     <a
@@ -761,6 +816,18 @@ export function StaffWorkspace({
                 ) : (
                   <p className="integration-permission">Owner or admin access is required.</p>
                 )}
+                {telegramStatus?.status === "connection_pending" && (
+                  <p className="integration-detail">
+                    {telegramStatus.nextStep === "connect_business"
+                      ? "Bot identity verified. In Telegram, open Settings → Telegram Business → Chatbots, connect @lead_agent_staging_bot, and allow it to reply to messages."
+                      : "Press Start in the bot chat. Then connect @lead_agent_staging_bot under Telegram Business → Chatbots and allow it to reply."}
+                  </p>
+                )}
+                {telegramStatus?.status === "needs_attention" && (
+                  <p className="integration-detail">
+                    The connection needs attention. Start a new secure connection.
+                  </p>
+                )}
               </article>
               <article className="integration-card">
                 <div>
@@ -773,16 +840,42 @@ export function StaffWorkspace({
                   </div>
                 </div>
                 {canManageIntegrations(membershipRole) ? (
-                  <button
-                    className="primary-button"
-                    type="button"
-                    disabled={integrationWorking !== null}
-                    onClick={() => void startIntegration("instagram")}
-                  >
-                    {integrationWorking === "instagram" ? "Redirecting…" : "Connect Instagram"}
-                  </button>
+                  integrationStatusState !== "ready" ? (
+                    <button className="primary-button" type="button" disabled>
+                      {integrationStatusState === "loading" ? "Checking…" : "Status unavailable"}
+                    </button>
+                  ) : instagramStatus === "connected" ? (
+                    <p className="integration-detail">
+                      <strong>Connected.</strong> Instagram Professional messaging is active.
+                    </p>
+                  ) : (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={integrationWorking !== null}
+                      onClick={() => void startIntegration("instagram")}
+                    >
+                      {integrationWorking === "instagram"
+                        ? "Redirecting…"
+                        : instagramStatus === "needs_attention"
+                          ? "Reconnect Instagram"
+                          : instagramStatus === "connection_pending"
+                            ? "Continue Instagram connection"
+                            : "Connect Instagram"}
+                    </button>
+                  )
                 ) : (
                   <p className="integration-permission">Owner or admin access is required.</p>
+                )}
+                {instagramStatus === "connection_pending" && (
+                  <p className="integration-detail">
+                    Instagram authorization is waiting to finish.
+                  </p>
+                )}
+                {instagramStatus === "needs_attention" && (
+                  <p className="integration-detail">
+                    The connection needs attention. Reconnect securely.
+                  </p>
                 )}
               </article>
             </div>

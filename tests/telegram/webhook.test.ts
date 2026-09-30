@@ -179,9 +179,15 @@ describe("Telegram staff management authorization boundary", () => {
         onboardingUrl: `https://t.me/SyntheticBusinessBot?start=${NONCE}`,
       }),
     );
+    const getStatus = vi.fn(() =>
+      Promise.resolve({
+        nextStep: "connect_business" as const,
+        status: "connection_pending" as const,
+      }),
+    );
     const api = createApi({
       staffAuth,
-      staffTelegram: { useCases: { beginOnboarding } },
+      staffTelegram: { useCases: { beginOnboarding, getStatus } },
     });
     const headers: Record<string, string> = {
       cookie: `__Host-lead-session=${sealedSession}; __Host-lead-csrf=${csrf}`,
@@ -190,8 +196,38 @@ describe("Telegram staff management authorization boundary", () => {
       "x-csrf-token": csrf,
       "x-organization-context": IDS.organization,
     };
-    return { api, beginOnboarding, headers, resolveSession };
+    return { api, beginOnboarding, getStatus, headers, resolveSession };
   };
+  it("returns only the authenticated tenant connection step", async () => {
+    const { api, getStatus, headers } = fixture();
+    const readHeaders = { ...headers };
+    delete readHeaders["x-csrf-token"];
+    try {
+      const result = await api.inject({
+        method: "GET",
+        url: "/v1/staff/integrations/telegram/status",
+        headers: readHeaders,
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual({
+        next_step: "connect_business",
+        status: "connection_pending",
+      });
+      expect(getStatus).toHaveBeenCalledOnce();
+      expect(
+        (
+          await api.inject({
+            method: "GET",
+            url: "/v1/staff/integrations/telegram/status",
+            headers: { ...readHeaders, "x-organization-context": IDS.otherOrganization },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(getStatus).toHaveBeenCalledOnce();
+    } finally {
+      await api.close();
+    }
+  });
   it.each(["owner", "staff"] as const)("requires integration permission for %s", async (role) => {
     const { api, beginOnboarding, headers, resolveSession } = fixture(role);
     try {
@@ -204,6 +240,12 @@ describe("Telegram staff management authorization boundary", () => {
       expect(resolveSession).toHaveBeenCalledOnce();
       expect(result.statusCode).toBe(role === "owner" ? 201 : 403);
       expect(beginOnboarding.mock.calls).toHaveLength(role === "owner" ? 1 : 0);
+      const status = await api.inject({
+        method: "GET",
+        url: "/v1/staff/integrations/telegram/status",
+        headers,
+      });
+      expect(status.statusCode).toBe(role === "owner" ? 200 : 403);
       const forged = await api.inject({
         method: "POST",
         url: "/v1/staff/integrations/telegram/onboarding",
@@ -255,9 +297,10 @@ describe("Telegram staff management authorization boundary", () => {
         ).statusCode,
       ).toBe(401);
       expect(beginOnboarding).not.toHaveBeenCalled();
-      expect(() => createApi({ staffTelegram: { useCases: { beginOnboarding } } })).toThrow(
-        "Staff Telegram routes require the staff authentication boundary",
-      );
+      const getStatus = () => Promise.resolve({ nextStep: null, status: "not_connected" as const });
+      expect(() =>
+        createApi({ staffTelegram: { useCases: { beginOnboarding, getStatus } } }),
+      ).toThrow("Staff Telegram routes require the staff authentication boundary");
     } finally {
       await api.close();
     }

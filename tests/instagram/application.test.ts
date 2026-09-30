@@ -113,6 +113,15 @@ const fixture = (
     replaceCredential,
     loadConnection: (input) =>
       Promise.resolve(input.organizationId === IDS.organization ? connection : null),
+    loadManagementStatus: () =>
+      Promise.resolve({
+        status:
+          connection.status === "active"
+            ? "connected"
+            : connection.status === "pending"
+              ? "connection_pending"
+              : "needs_attention",
+      }),
   };
   const exchangeCode = vi.fn<InstagramOAuthClient["exchangeCode"]>(() => {
     operations.push("provider.exchange");
@@ -210,6 +219,14 @@ const message = {
   content: { type: "text" as const, text: "Salom" },
 };
 describe("Instagram application trust and short-transaction choreography", () => {
+  it("reports only the finite tenant-scoped connection state", async () => {
+    const test = fixture();
+    await expect(
+      test.useCases.getStatus({ authorization: await authorization() }),
+    ).resolves.toEqual({
+      status: "connection_pending",
+    });
+  });
   it("binds ten-minute SHA-256 state to a server-authorized tenant and returns only the official URL", async () => {
     const test = fixture();
     const result = await test.useCases.beginOnboarding({

@@ -421,7 +421,13 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
       authorization: await authorization(),
       displayName: "Instagram Professional",
     });
+    await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+      status: "connection_pending",
+    });
     await useCases.completeOnboarding({ code: "synthetic-code", state: NONCE });
+    await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+      status: "connected",
+    });
     const activeChannelValue = (
       await pool.query<{ id: unknown }>(
         `select id::text as id from channel_connections

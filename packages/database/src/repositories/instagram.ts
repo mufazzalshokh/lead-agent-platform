@@ -3,6 +3,7 @@ import {
   InstagramApplicationError,
   isCredentialSecretReference,
   type InstagramConnection,
+  type InstagramManagementStatus,
   type InstagramPersistenceStore,
   type TrustedInboundRoute,
 } from "@lead-agent/application";
@@ -167,6 +168,33 @@ const mappedConnection = (row: ConnectionRow | null): InstagramConnection | null
   });
 };
 
+const managementStatus = (rows: readonly ConnectionRow[], now: Date): InstagramManagementStatus => {
+  const connections = rows.map((row) => mappedConnection(row));
+  if (
+    connections.some(
+      (connection) =>
+        connection?.status === "active" &&
+        connection.accountId !== null &&
+        connection.credentialReference !== null &&
+        connection.expiresAt !== null &&
+        Date.parse(connection.expiresAt) > now.getTime(),
+    )
+  ) {
+    return Object.freeze({ status: "connected" });
+  }
+  if (
+    connections.some(
+      (connection) =>
+        connection?.status === "pending" &&
+        connection.onboardingExpiresAt !== null &&
+        Date.parse(connection.onboardingExpiresAt) > now.getTime(),
+    )
+  ) {
+    return Object.freeze({ status: "connection_pending" });
+  }
+  return Object.freeze({ status: rows.length === 0 ? "not_connected" : "needs_attention" });
+};
+
 export const createInstagramPersistenceStore = (
   runtime: TenantDatabaseRuntime,
   options: Readonly<{ identifierFactory?: SecurityIdentifierFactory }> = {},
@@ -180,6 +208,20 @@ export const createInstagramPersistenceStore = (
     );
   return Object.freeze<InstagramPersistenceStore>({
     loadConnection,
+    loadManagementStatus: async (organizationId, now) =>
+      runtime.withTenantTransaction(organizationId, async (session) => {
+        const result = await executeTenantQuery<ConnectionRow>(
+          session,
+          (trustedOrganizationId) => ({
+            text: `select cc.status, cc.configuration_jsonb, cc.credential_secret_ref, cc.credential_version, cc.provider_account_id_hash
+                   from channel_connections cc
+                  where cc.organization_id=$1 and cc.channel_type='instagram'
+                  order by cc.updated_at desc, cc.id desc`,
+            values: [trustedOrganizationId],
+          }),
+        );
+        return managementStatus(result.rows, now);
+      }),
     beginOnboarding: async (input) =>
       runtime.withTenantTransaction(input.actor.organizationId, async (session) => {
         const channel = identifiers.issueResourceId(input.now);

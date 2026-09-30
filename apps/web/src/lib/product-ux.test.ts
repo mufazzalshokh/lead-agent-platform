@@ -10,10 +10,12 @@ import {
   buildWidgetInstallSnippet,
   readCsrfCookie,
   readInstagramAuthorizationUrl,
+  readInstagramIntegrationStatus,
   readOrganizationContext,
   readStaffAuthRecovery,
   readStaffMembershipRole,
   readTelegramOnboardingUrl,
+  readTelegramIntegrationStatus,
   readWidgetManagementConfiguration,
   staffActionMessage,
 } from "./staff-ui.js";
@@ -77,6 +79,20 @@ describe("S19 staff presentation policy", () => {
       readInstagramAuthorizationUrl({
         authorization_url: `https://evil.example/oauth/authorize?client_id=123&state=${nonce}`,
       }),
+    ).toBeNull();
+  });
+
+  it("accepts only finite secret-free integration status projections", () => {
+    expect(readInstagramIntegrationStatus({ status: "connected" })).toBe("connected");
+    expect(readInstagramIntegrationStatus({ status: "active", token: "secret" })).toBeNull();
+    expect(
+      readTelegramIntegrationStatus({
+        next_step: "connect_business",
+        status: "connection_pending",
+      }),
+    ).toEqual({ nextStep: "connect_business", status: "connection_pending" });
+    expect(
+      readTelegramIntegrationStatus({ next_step: "unknown", status: "connection_pending" }),
     ).toBeNull();
   });
 
