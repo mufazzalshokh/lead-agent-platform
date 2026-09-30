@@ -77,6 +77,76 @@ const assertReplayFailsClosed = async (client, issuer, subject) => {
   }
 };
 
+const assertStoredWorkspace = async (client, issuer, subject) => {
+  await client.query("begin isolation level serializable read only");
+  try {
+    const result = await client.query(
+      `select
+         (select count(*)::integer from public.external_identities) as identity_count,
+         (select count(*)::integer from public.external_identities where issuer = $1::character varying) as issuer_match_count,
+         (select count(*)::integer from public.external_identities where subject = $2::character varying) as subject_match_count,
+         (select count(*)::integer
+            from public.external_identities
+           where user_id = $3::uuid
+             and issuer = $1::character varying
+             and subject = $2::character varying
+             and status = 'active') as exact_identity_count,
+         (select count(*)::integer
+            from public.memberships
+           where id = $4::uuid
+             and organization_id = $5::uuid
+             and user_id = $3::uuid
+             and status = 'active'
+             and role = 'owner'
+             and location_scope = 'all') as active_owner_membership_count,
+         (select count(*)::integer
+            from public.platform_audit_events
+           where id = $6::uuid
+             and target_organization_id = $5::uuid
+             and target_id = $4::uuid
+             and action = 'staging_owner_bootstrap'
+             and result = 'succeeded') as bootstrap_audit_count`,
+      [issuer, subject, USER_ID, MEMBERSHIP_ID, ORGANIZATION_ID, AUDIT_ID],
+    );
+    const row = result.rows[0];
+    const checks = {
+      active_owner_membership: row?.active_owner_membership_count === 1,
+      bootstrap_audit: row?.bootstrap_audit_count === 1,
+      exact_identity: row?.exact_identity_count === 1,
+      identity_row_count: row?.identity_count ?? -1,
+      issuer_match: row?.issuer_match_count === 1,
+      subject_match: row?.subject_match_count === 1,
+    };
+    console.info(
+      JSON.stringify({
+        checks,
+        operation: "staging_owner_workspace_identity_verify",
+        outcome:
+          checks.identity_row_count === 1 &&
+          checks.issuer_match &&
+          checks.subject_match &&
+          checks.exact_identity &&
+          checks.active_owner_membership &&
+          checks.bootstrap_audit
+            ? "PASS"
+            : "FAIL",
+      }),
+    );
+    if (
+      checks.identity_row_count !== 1 ||
+      !checks.issuer_match ||
+      !checks.subject_match ||
+      !checks.exact_identity ||
+      !checks.active_owner_membership ||
+      !checks.bootstrap_audit
+    ) {
+      throw new Error("The stored first-owner workspace does not match the configured identity");
+    }
+  } finally {
+    await client.query("rollback");
+  }
+};
+
 const bootstrap = async () => {
   failureExitCode = 71;
   const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
@@ -117,9 +187,12 @@ const bootstrap = async () => {
     }
 
     failureExitCode = 76;
-    await assertReplayFailsClosed(client, issuer, subject);
+    await assertStoredWorkspace(client, issuer, subject);
 
     failureExitCode = 77;
+    await assertReplayFailsClosed(client, issuer, subject);
+
+    failureExitCode = 78;
     console.info(
       JSON.stringify({
         audit_event_id: AUDIT_ID,

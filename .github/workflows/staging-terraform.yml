@@ -790,8 +790,9 @@ jobs:
             73) FAILURE_STAGE=database_connect ;;
             74) FAILURE_STAGE=transaction_start ;;
             75) FAILURE_STAGE=bootstrap_capability ;;
-            76) FAILURE_STAGE=replay_protection ;;
-            77) FAILURE_STAGE=success_evidence ;;
+            76) FAILURE_STAGE=stored_identity_validation ;;
+            77) FAILURE_STAGE=replay_protection ;;
+            78) FAILURE_STAGE=success_evidence ;;
             *) FAILURE_STAGE=runtime_unclassified ;;
           esac
           if [[ "$BOOTSTRAP_STATUS" == "0" && "$TASK_EXIT_CODE" == "0" ]]; then

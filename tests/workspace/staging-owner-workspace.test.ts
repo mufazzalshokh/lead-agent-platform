@@ -51,10 +51,14 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain("audit_event_id: AUDIT_ID");
     expect(script).toContain('mode !== "apply" && mode !== "verify"');
     expect(script).toContain("begin isolation level serializable read only");
-    expect(script).not.toContain("from public.organizations");
-    expect(script).not.toContain("from public.external_identities");
-    expect(script).not.toContain("from public.memberships");
-    expect(script).not.toContain("from public.platform_audit_events");
+    expect(script).toContain("from public.external_identities");
+    expect(script).toContain("from public.memberships");
+    expect(script).toContain("from public.platform_audit_events");
+    expect(script).toContain("staging_owner_workspace_identity_verify");
+    expect(script).toContain("issuer_match");
+    expect(script).toContain("subject_match");
+    expect(script).not.toContain("row.issuer");
+    expect(script).not.toContain("row.subject");
     expect(script).toContain('row.membership_status !== "active"');
     expect(script).toContain('row.membership_role !== "owner"');
     expect(script).not.toMatch(/\binsert\s+into\b/iu);
@@ -81,6 +85,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("lead-agent-staging-migrator");
     expect(workflow).toContain("lastAttemptResult.exitCode");
     expect(workflow).toContain("FAILURE_STAGE=bootstrap_capability");
+    expect(workflow).toContain("FAILURE_STAGE=stored_identity_validation");
     expect(workflow).toContain("FAILURE_STAGE=replay_protection");
     expect(workflow).toContain("audit_proof=$BOOTSTRAP_PROOF");
     expect(workflow).toContain("replay_protection=$BOOTSTRAP_PROOF");
