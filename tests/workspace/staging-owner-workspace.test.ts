@@ -42,7 +42,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).not.toMatch(/^import\s/mu);
     expect(script).toContain("bootstrap().catch((error) =>");
     expect(script).not.toContain("await bootstrap()");
-    expect(script).toContain("process.exitCode = failureExitCode");
+    expect(script).toContain("process.exitCode = classifiedExitCode");
     expect(script).toContain("begin isolation level serializable");
     expect(script).toContain("app.bootstrap_first_staging_owner");
     expect(script).toContain('replayCode !== "P0001"');
@@ -57,6 +57,9 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain("staging_owner_workspace_identity_verify");
     expect(script).toContain("issuer_match");
     expect(script).toContain("subject_match");
+    expect(script).toContain('mismatchCode === "S22_ISSUER_MISMATCH"');
+    expect(script).toContain('mismatchCode === "S22_SUBJECT_MISMATCH"');
+    expect(script).toContain('mismatchCode === "S22_ISSUER_SUBJECT_MISMATCH"');
     expect(script).not.toContain("row.issuer");
     expect(script).not.toContain("row.subject");
     expect(script).toContain('row.membership_status !== "active"');
@@ -86,6 +89,9 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("lastAttemptResult.exitCode");
     expect(workflow).toContain("FAILURE_STAGE=bootstrap_capability");
     expect(workflow).toContain("FAILURE_STAGE=stored_identity_validation");
+    expect(workflow).toContain("FAILURE_STAGE=issuer_mismatch");
+    expect(workflow).toContain("FAILURE_STAGE=subject_mismatch");
+    expect(workflow).toContain("FAILURE_STAGE=issuer_and_subject_mismatch");
     expect(workflow).toContain("FAILURE_STAGE=replay_protection");
     expect(workflow).toContain("audit_proof=$BOOTSTRAP_PROOF");
     expect(workflow).toContain("replay_protection=$BOOTSTRAP_PROOF");

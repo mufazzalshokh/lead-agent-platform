@@ -158,6 +158,20 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
         "The stored first-owner workspace does not match the configured identity",
       );
       mismatch.code = mismatchCode;
+      mismatch.exitCode =
+        mismatchCode === "S22_IDENTITY_COUNT"
+          ? 80
+          : mismatchCode === "S22_ISSUER_MISMATCH"
+            ? 81
+            : mismatchCode === "S22_SUBJECT_MISMATCH"
+              ? 82
+              : mismatchCode === "S22_ISSUER_SUBJECT_MISMATCH"
+                ? 83
+                : mismatchCode === "S22_IDENTITY_SHAPE"
+                  ? 84
+                  : mismatchCode === "S22_OWNER_MEMBERSHIP"
+                    ? 85
+                    : 86;
       throw mismatch;
     }
   } finally {
@@ -250,5 +264,14 @@ bootstrap().catch((error) => {
       outcome: "FAIL",
     }),
   );
-  process.exitCode = failureExitCode;
+  const classifiedExitCode =
+    typeof error === "object" &&
+    error !== null &&
+    "exitCode" in error &&
+    Number.isInteger(error.exitCode) &&
+    error.exitCode >= 80 &&
+    error.exitCode <= 86
+      ? error.exitCode
+      : failureExitCode;
+  process.exitCode = classifiedExitCode;
 });
