@@ -4145,12 +4145,12 @@ jobs:
           EXECUTION="$(mktemp)"
           TASKS="$(mktemp)"
           trap 'rm -f "$LOGS" "$EXECUTION" "$TASKS"' EXIT
-          gcloud run jobs executions tasks list \
-            --execution="$EXECUTION_ID" \
-            --project="$PROJECT_ID" \
-            --region=me-central1 \
-            --limit=1 \
-            --format=json > "$TASKS"
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/me-central1/jobs/lead-agent-staging-migrator/executions/${EXECUTION_ID}/tasks?pageSize=1" \
+            > "$TASKS"
+          unset ACCESS_TOKEN
           if ! gcloud beta run jobs executions logs read "$EXECUTION_ID" \
             --project="$PROJECT_ID" \
             --region=me-central1 \
@@ -4237,7 +4237,11 @@ jobs:
             outcome: "failed",
             retried_count: Number(executionStatus.retriedCount ?? executionStatus.retried_count ?? 0),
           };
-          const task = Array.isArray(tasks) ? tasks[0] : undefined;
+          const task = Array.isArray(tasks)
+            ? tasks[0]
+            : Array.isArray(tasks?.tasks)
+              ? tasks.tasks[0]
+              : undefined;
           const taskExitCode = task?.lastAttemptResult?.exitCode
             ?? task?.status?.lastAttemptResult?.exitCode
             ?? task?.status?.exitCode;

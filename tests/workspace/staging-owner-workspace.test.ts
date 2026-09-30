@@ -85,6 +85,8 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("replay_protection=$BOOTSTRAP_PROOF");
     expect(workflow).toContain("database_state_proof=$VERIFY_PROOF");
     expect(workflow).toContain("S22_OWNER_BOOTSTRAP_MODE=verify");
+    expect(workflow).toContain("run.googleapis.com/v2/projects/${PROJECT_ID}");
+    expect(workflow).toContain("Array.isArray(tasks?.tasks)");
     expect(workflow).toContain(
       "integration_cards=Website Chat|Telegram Business|Instagram Professional",
     );
