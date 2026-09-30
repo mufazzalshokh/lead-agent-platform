@@ -611,6 +611,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("s22-migrator-image-live-verify.sh");
     expect(migratorImageLiveVerify).toContain("terraform_convergence_exit_code");
     expect(migratorImageLiveVerify).toContain("migrator_image_live_verification=PASS");
+    expect(migratorImageLiveVerify).toContain("'89'");
+    expect(migratorImageLiveVerify).toContain("https://run.googleapis.com/v2/projects/");
     expect(runtime).toContain("migrator_provenance_env");
     expect(runtime).toContain("migrator_deployment_labels");
     expect(runtime).toContain("runtime_migration_head");

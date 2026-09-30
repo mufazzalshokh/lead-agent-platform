@@ -40,10 +40,12 @@ matches_resource_name() {
   fi
 }
 
-gcloud run jobs describe lead-agent-staging-migrator \
-  --project="$PROJECT_ID" \
-  --region="$REGION" \
-  --format=json > "$LIVE_JOB"
+ACCESS_TOKEN="$(gcloud auth print-access-token)"
+curl --fail --silent --show-error \
+  --header "Authorization: Bearer $ACCESS_TOKEN" \
+  "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/lead-agent-staging-migrator" \
+  > "$LIVE_JOB"
+unset ACCESS_TOKEN
 
 SERVICE_ACCOUNT="$(jq -r '.template.template.serviceAccount // ""' "$LIVE_JOB")"
 IMAGE="$(jq -r '.template.template.containers[0].image // ""' "$LIVE_JOB")"
@@ -72,7 +74,7 @@ report_check secret_reference_count "$SECRET_COUNT" '5' "$(matches "$SECRET_COUN
 report_check secret_reference_versions "$SECRET_VERSIONS" '["latest","latest","latest","latest","latest"]' "$(matches "$SECRET_VERSIONS" '["latest","latest","latest","latest","latest"]')"
 
 STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
-report_check terraform_state_count "$STATE_COUNT" '88' "$(matches "$STATE_COUNT" '88')"
+report_check terraform_state_count "$STATE_COUNT" '89' "$(matches "$STATE_COUNT" '89')"
 
 set +e
 terraform plan -detailed-exitcode -lock-timeout=5m > /dev/null
