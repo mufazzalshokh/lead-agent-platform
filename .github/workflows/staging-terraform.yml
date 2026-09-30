@@ -2926,7 +2926,7 @@ jobs:
           REGION: me-central1
         shell: bash
         run: |
-          bash ../../../.github/scripts/s22-migrator-image-live-verify.sh
+          bash ../../../../.github/scripts/s22-migrator-image-live-verify.sh
           cp s22-migrator-image-live-evidence.txt s22-migrator-image-apply-evidence.txt
 
       - name: Verify applied migrator image read-only
@@ -2936,7 +2936,7 @@ jobs:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           REGION: me-central1
         shell: bash
-        run: bash ../../../.github/scripts/s22-migrator-image-live-verify.sh
+        run: bash ../../../../.github/scripts/s22-migrator-image-live-verify.sh
 
       - name: Upload read-only migrator image evidence
         if: always() && env.S22_PHASE == 'migrator-image-verify' && env.S22_ACTION == 'plan'
