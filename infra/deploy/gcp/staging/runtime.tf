@@ -5,10 +5,12 @@ locals {
     "require('http').createServer((_,response)=>{response.writeHead(200,{'content-type':'text/plain'});response.end('ok')}).listen(process.env.PORT||8080,'0.0.0.0')",
   ]
 
+  runtime_migration_head = var.runtime_migration_head != "" ? var.runtime_migration_head : var.migration_head
+
   provenance_env = {
     DEPLOYMENT_ENVIRONMENT    = var.environment
     DEPLOYMENT_GIT_SHA        = var.git_commit_sha
-    DEPLOYMENT_MIGRATION_HEAD = var.migration_head
+    DEPLOYMENT_MIGRATION_HEAD = local.runtime_migration_head
     DEPLOYMENT_TIMESTAMP      = var.deployment_timestamp
   }
 
@@ -17,8 +19,9 @@ locals {
     var.migrator_deployment_timestamp != "" ? var.migrator_deployment_timestamp : var.deployment_timestamp
   )
   migrator_provenance_env = merge(local.provenance_env, {
-    DEPLOYMENT_GIT_SHA   = local.migrator_git_commit_sha
-    DEPLOYMENT_TIMESTAMP = local.migrator_deployment_timestamp
+    DEPLOYMENT_GIT_SHA        = local.migrator_git_commit_sha
+    DEPLOYMENT_MIGRATION_HEAD = var.migration_head
+    DEPLOYMENT_TIMESTAMP      = local.migrator_deployment_timestamp
   })
 
   api_plain_env = merge(local.provenance_env, {
@@ -94,10 +97,11 @@ locals {
 
   deployment_labels = merge(local.common_labels, {
     git-sha        = var.deploy_runtime ? substr(var.git_commit_sha, 0, 12) : "foundation"
-    migration-head = replace(var.migration_head, "_", "-")
+    migration-head = replace(local.runtime_migration_head, "_", "-")
   })
   migrator_deployment_labels = merge(local.deployment_labels, {
-    git-sha = substr(local.migrator_git_commit_sha, 0, 12)
+    git-sha        = substr(local.migrator_git_commit_sha, 0, 12)
+    migration-head = replace(var.migration_head, "_", "-")
   })
 }
 

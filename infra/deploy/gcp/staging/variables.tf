@@ -169,6 +169,17 @@ variable "migration_head" {
   }
 }
 
+variable "runtime_migration_head" {
+  description = "Optional migration head preserved on already-deployed API, Web, and Worker resources during an isolated migrator update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.runtime_migration_head == "" || can(regex("^[0-9]{4}_[a-z0-9_]+$", var.runtime_migration_head))
+    error_message = "runtime_migration_head must be empty or a normalized migration identifier."
+  }
+}
+
 variable "api_image" {
   description = "Immutable API image reference by sha256 digest."
   type        = string

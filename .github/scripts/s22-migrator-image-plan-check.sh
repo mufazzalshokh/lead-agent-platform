@@ -6,6 +6,12 @@ PLAN_PATH="${1:?saved Terraform plan path is required}"
 EXPECTED_IMAGE="${2:?expected migrator image is required}"
 EXPECTED_COMMIT="${3:?expected migrator commit is required}"
 EXPECTED_TIMESTAMP="${4:?expected migrator deployment timestamp is required}"
+EXPECTED_RUNTIME_COMMIT="${5:?expected preserved runtime commit is required}"
+EXPECTED_RUNTIME_TIMESTAMP="${6:?expected preserved runtime deployment timestamp is required}"
+EXPECTED_RUNTIME_MIGRATION_HEAD="${7:?expected preserved runtime migration head is required}"
+EXPECTED_API_IMAGE="${8:?expected preserved API image is required}"
+EXPECTED_WEB_IMAGE="${9:?expected preserved Web image is required}"
+EXPECTED_WORKER_IMAGE="${10:?expected preserved Worker image is required}"
 PLAN_DIR="$(dirname "$PLAN_PATH")"
 PLAN_NAME="$(basename "$PLAN_PATH")"
 PLAN_JSON="$(mktemp)"
@@ -16,22 +22,33 @@ terraform -chdir="$PLAN_DIR" show -json "$PLAN_NAME" > "$PLAN_JSON"
 jq -e \
   --arg commit "$EXPECTED_COMMIT" \
   --arg image "$EXPECTED_IMAGE" \
-  --arg timestamp "$EXPECTED_TIMESTAMP" '
+  --arg timestamp "$EXPECTED_TIMESTAMP" \
+  --arg runtime_commit "$EXPECTED_RUNTIME_COMMIT" \
+  --arg runtime_timestamp "$EXPECTED_RUNTIME_TIMESTAMP" \
+  --arg runtime_migration_head "$EXPECTED_RUNTIME_MIGRATION_HEAD" \
+  --arg api_image "$EXPECTED_API_IMAGE" \
+  --arg web_image "$EXPECTED_WEB_IMAGE" \
+  --arg worker_image "$EXPECTED_WORKER_IMAGE" '
   .variables.project_id.value == "lead-agent-stg-739284"
     and .variables.region.value == "me-central1"
-    and .variables.git_commit_sha.value == "2396fdf797eb4b19252a34c8b45e93945a8f53a3"
-    and .variables.deployment_timestamp.value == "2026-09-26T09:53:56Z"
+    and .variables.git_commit_sha.value == $runtime_commit
+    and .variables.deployment_timestamp.value == $runtime_timestamp
+    and .variables.migration_head.value == "0030_s22_first_tenant_bootstrap"
+    and .variables.runtime_migration_head.value == $runtime_migration_head
+    and .variables.api_image.value == $api_image
+    and .variables.web_image.value == $web_image
+    and .variables.worker_image.value == $worker_image
     and .variables.migrator_git_commit_sha.value == $commit
     and .variables.migrator_deployment_timestamp.value == $timestamp
     and .variables.migrator_image.value == $image
     and .variables.deploy_runtime.value == "true"
-    and .variables.bootstrap_runtime.value == "true"
+    and .variables.bootstrap_runtime.value == "false"
     and .variables.prepare_migration.value == "true"
     and .variables.cloud_sql_activation_policy.value == "ALWAYS"
     and .variables.cloud_sql_tier.value == "db-f1-micro"
     and .variables.api_max_instance_count.value == "1"
     and .variables.web_max_instance_count.value == "1"
-    and .variables.worker_instance_count.value == "0"
+    and .variables.worker_instance_count.value == "1"
 ' "$PLAN_JSON" > /dev/null
 
 ACTUAL_ACTIONS="$(
@@ -90,6 +107,7 @@ jq -e \
     and $changes[0].after.template[0].template[0].containers[0].image == $image
     and ($changes[0].after.labels["git-sha"] == ($commit[0:12]))
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_GIT_SHA" and .value == $commit)
+    and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_MIGRATION_HEAD" and .value == "0030_s22_first_tenant_bootstrap")
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_TIMESTAMP" and .value == $timestamp)
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_IMAGE_DIGEST" and .value == $image)
     and ([ $changes[0].before.template[0].template[0].containers[0].env[]

@@ -319,6 +319,7 @@ describe("S22 staging infrastructure boundary", () => {
       'can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.run\\\\.app$", var.web_public_origin))',
     );
     expect(variables).toMatch(/variable "worker_instance_count"[\s\S]*?default\s+= 0/u);
+    expect(variables).toMatch(/variable "runtime_migration_head"[\s\S]*?default\s+= ""/u);
     expect(foundation).toContain('database_version    = "POSTGRES_17"');
     expect(foundation).toContain("tier                        = var.cloud_sql_tier");
     expect(foundation).toContain("activation_policy           = var.cloud_sql_activation_policy");
@@ -351,6 +352,7 @@ describe("S22 staging infrastructure boundary", () => {
       wiringDiagnostic,
       databaseValidator,
       fullRuntimePlanCheck,
+      migratorImagePlanCheck,
       runtimeDiagnostic,
       instagramWebhookVerifier,
       telegramWebhookVerifier,
@@ -363,6 +365,7 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
       repositoryFile(".github/scripts/s22-staging-database-validator.mjs"),
       repositoryFile(".github/scripts/s22-full-runtime-plan-check.sh"),
+      repositoryFile(".github/scripts/s22-migrator-image-plan-check.sh"),
       repositoryFile(".github/scripts/s22-runtime-diagnose.mjs"),
       repositoryFile(".github/scripts/s22-instagram-webhook-verify.mjs"),
       repositoryFile(".github/scripts/s22-telegram-webhook-verify.mjs"),
@@ -575,11 +578,39 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("- migrator-image-update");
     expect(workflow).toContain("Verify migrator image-only plan safety");
     expect(workflow).toContain("s22-migrator-image-plan-check.sh");
+    expect(workflow).toContain("runtime_git_commit_sha:");
+    expect(workflow).toContain("runtime_deployment_timestamp:");
+    expect(workflow).toContain("runtime_migration_head:");
+    expect(workflow).toContain(
+      "TF_VAR_runtime_migration_head: ${{ inputs.runtime_migration_head }}",
+    );
+    expect(workflow).toContain('echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA"');
+    expect(workflow).toContain(
+      'echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP"',
+    );
+    expect(workflow).toContain(
+      '[[ "$TF_VAR_worker_image" =~ ^me-central1-docker\\.pkg\\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]',
+    );
+    for (const phase of ["migration-resume", "migrator-image-update"]) {
+      const profile = workflow.match(new RegExp(`${phase}\\)([\\s\\S]*?)\\n\\s*;;`, "u"))?.[1];
+      expect(profile).toContain("DEPLOY_RUNTIME=true");
+      expect(profile).toContain("PREPARE_MIGRATION=true");
+      expect(profile).toContain("WORKER_COUNT=1");
+      expect(profile).not.toContain("BOOTSTRAP_RUNTIME=true");
+    }
     expect(workflow).toContain("Verify exact migrator image update approval boundary");
     expect(workflow).toContain("Verify migrator image update live state and convergence");
     expect(workflow).toContain("migrator_image_update_convergence_exit_code=$PLAN_EXIT_CODE");
     expect(runtime).toContain("migrator_provenance_env");
     expect(runtime).toContain("migrator_deployment_labels");
+    expect(runtime).toContain("runtime_migration_head");
+    expect(runtime).toContain("DEPLOYMENT_MIGRATION_HEAD = var.migration_head");
+    expect(migratorImagePlanCheck).toContain('ACTUAL_ACTIONS="$(\n  jq -c');
+    expect(migratorImagePlanCheck).toContain(
+      '[[ "$ACTUAL_ACTIONS" == \'["update:google_cloud_run_v2_job.migrator[0]"]\' ]]',
+    );
+    expect(migratorImagePlanCheck).toContain('.variables.bootstrap_runtime.value == "false"');
+    expect(migratorImagePlanCheck).toContain('.variables.worker_instance_count.value == "1"');
     expect(workflow).toContain('"$PHASE" != "migration-resume"');
     expect(workflow).toContain("env.S22_PHASE == 'migration-resume'");
     expect(workflow.match(/env\.S22_PHASE != 'migration-resume'/gu)).toHaveLength(3);
