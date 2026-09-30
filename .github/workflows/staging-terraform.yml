@@ -58,6 +58,14 @@ on:
         description: Immutable API image reference by digest
         required: false
         type: string
+      api_git_commit_sha:
+        description: Exact source commit used to build the immutable API image
+        required: false
+        type: string
+      api_migration_head:
+        description: Exact migration head packaged in the immutable API image
+        required: false
+        type: string
       web_image:
         description: Immutable Web image reference by digest
         required: false
@@ -124,6 +132,7 @@ jobs:
     timeout-minutes: 45
     env:
       S22_ACTION: ${{ inputs.action }}
+      S22_API_GIT_COMMIT_SHA: ${{ inputs.api_git_commit_sha }}
       S22_APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
       S22_APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
       S22_COMMIT_SHA: ${{ inputs.commit_sha }}
@@ -141,6 +150,7 @@ jobs:
       TF_VAR_git_commit_sha: ${{ inputs.commit_sha }}
       TF_VAR_deployment_timestamp: ${{ inputs.deployment_timestamp }}
       TF_VAR_api_image: ${{ inputs.api_image }}
+      TF_VAR_api_migration_head: ${{ inputs.api_migration_head }}
       TF_VAR_web_image: ${{ inputs.web_image }}
       TF_VAR_worker_image: ${{ inputs.worker_image }}
       TF_VAR_migrator_image: ${{ inputs.migrator_image }}
@@ -208,6 +218,8 @@ jobs:
             [[ "$ACTION" == "plan" ]]
           fi
           if [[ "$PHASE" == "api-image-update" ]]; then
+            [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$TF_VAR_api_migration_head" == "0030_s22_first_tenant_bootstrap" ]]
             [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
             [[ "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
             [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -444,7 +456,7 @@ jobs:
             API_DEPLOYMENT_TIMESTAMP="$TF_VAR_deployment_timestamp"
             echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
-            echo "TF_VAR_api_git_commit_sha=$S22_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_git_commit_sha=$S22_API_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_api_deployment_timestamp=$API_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
             echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_migrator_deployment_timestamp=$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
@@ -1551,8 +1563,9 @@ jobs:
           bash .github/scripts/s22-api-image-plan-check.sh \
             infra/deploy/gcp/staging/s22.tfplan \
             "$TF_VAR_api_image" \
-            "$S22_COMMIT_SHA" \
+            "$S22_API_GIT_COMMIT_SHA" \
             "$TF_VAR_api_deployment_timestamp" \
+            "$TF_VAR_api_migration_head" \
             "$S22_RUNTIME_GIT_COMMIT_SHA" \
             "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
             "$TF_VAR_runtime_migration_head" \
@@ -2677,8 +2690,9 @@ jobs:
           bash .github/scripts/s22-api-image-plan-check.sh \
             infra/deploy/gcp/staging/s22.tfplan \
             "$TF_VAR_api_image" \
-            "$S22_COMMIT_SHA" \
+            "$S22_API_GIT_COMMIT_SHA" \
             "$TF_VAR_api_deployment_timestamp" \
+            "$TF_VAR_api_migration_head" \
             "$S22_RUNTIME_GIT_COMMIT_SHA" \
             "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
             "$TF_VAR_runtime_migration_head" \

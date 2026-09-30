@@ -18,10 +18,12 @@ locals {
   api_deployment_timestamp = (
     var.api_deployment_timestamp != "" ? var.api_deployment_timestamp : var.deployment_timestamp
   )
+  api_migration_head = var.api_migration_head != "" ? var.api_migration_head : local.runtime_migration_head
   api_provenance_env = merge(local.provenance_env, {
-    DEPLOYMENT_GIT_SHA      = local.api_git_commit_sha
-    DEPLOYMENT_IMAGE_DIGEST = var.api_image
-    DEPLOYMENT_TIMESTAMP    = local.api_deployment_timestamp
+    DEPLOYMENT_GIT_SHA        = local.api_git_commit_sha
+    DEPLOYMENT_IMAGE_DIGEST   = var.api_image
+    DEPLOYMENT_MIGRATION_HEAD = local.api_migration_head
+    DEPLOYMENT_TIMESTAMP      = local.api_deployment_timestamp
   })
 
   migrator_git_commit_sha = var.migrator_git_commit_sha != "" ? var.migrator_git_commit_sha : var.git_commit_sha
@@ -110,7 +112,8 @@ locals {
     migration-head = replace(local.runtime_migration_head, "_", "-")
   })
   api_deployment_labels = merge(local.deployment_labels, {
-    git-sha = var.deploy_runtime ? substr(local.api_git_commit_sha, 0, 12) : "foundation"
+    git-sha        = var.deploy_runtime ? substr(local.api_git_commit_sha, 0, 12) : "foundation"
+    migration-head = replace(local.api_migration_head, "_", "-")
   })
   migrator_deployment_labels = merge(local.deployment_labels, {
     git-sha        = substr(local.migrator_git_commit_sha, 0, 12)

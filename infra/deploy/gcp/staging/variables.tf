@@ -202,6 +202,17 @@ variable "api_deployment_timestamp" {
   }
 }
 
+variable "api_migration_head" {
+  description = "Optional migration head packaged in an API-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.api_migration_head == "" || can(regex("^[0-9]{4}_[a-z0-9_]+$", var.api_migration_head))
+    error_message = "api_migration_head must be empty or a normalized migration identifier."
+  }
+}
+
 variable "api_image" {
   description = "Immutable API image reference by sha256 digest."
   type        = string

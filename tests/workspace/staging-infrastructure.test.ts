@@ -601,6 +601,8 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("s22-api-image-plan-check.sh");
     expect(workflow).toContain("s22-api-image-live-verify.sh");
     expect(workflow).toContain("runtime_git_commit_sha:");
+    expect(workflow).toContain("api_git_commit_sha:");
+    expect(workflow).toContain("api_migration_head:");
     expect(workflow).toContain("migrator_git_commit_sha:");
     expect(workflow).toContain("runtime_deployment_timestamp:");
     expect(workflow).toContain("runtime_migration_head:");
@@ -640,6 +642,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(runtime).toContain("migrator_provenance_env");
     expect(runtime).toContain("api_provenance_env");
     expect(runtime).toContain("api_deployment_labels");
+    expect(runtime).toContain("api_migration_head");
     expect(runtime).toContain("migrator_deployment_labels");
     expect(runtime).toContain("runtime_migration_head");
     expect(runtime).toContain("DEPLOYMENT_MIGRATION_HEAD = var.migration_head");
