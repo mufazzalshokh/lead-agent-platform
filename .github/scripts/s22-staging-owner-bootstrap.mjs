@@ -80,6 +80,7 @@ const assertReplayFailsClosed = async (client, issuer, subject) => {
 const assertStoredWorkspace = async (client, issuer, subject) => {
   await client.query("begin isolation level serializable read only");
   try {
+    await client.query("select set_config('app.organization_id', $1, true)", [ORGANIZATION_ID]);
     const result = await client.query(
       `select
          (select count(*)::integer from public.external_identities) as identity_count,
@@ -179,12 +180,65 @@ const assertStoredWorkspace = async (client, issuer, subject) => {
   }
 };
 
+const assertAuthRoleResolution = async (Pool, connectionString, issuer, subject) => {
+  const pool = new Pool({
+    application_name: "lead-agent-staging-owner-auth-verify",
+    connectionString,
+    connectionTimeoutMillis: 15_000,
+    max: 1,
+    query_timeout: 15_000,
+  });
+  try {
+    const connection = await pool.query(
+      "select current_user as role_name, current_database() as database_name",
+    );
+    const roleName = connection.rows[0]?.role_name;
+    const databaseName = connection.rows[0]?.database_name;
+    if (roleName !== "lead_agent_auth" || databaseName !== "lead_agent_staging") {
+      const error = new Error("The authentication database connection shape is invalid");
+      error.code = "S22_AUTH_CONNECTION_SHAPE";
+      error.exitCode = 87;
+      throw error;
+    }
+
+    const resolution = await pool.query(
+      "select resolution_state, user_id::text as user_id from app.resolve_external_identity($1::character varying, $2::character varying)",
+      [issuer, subject],
+    );
+    if (resolution.rowCount !== 1) {
+      const error = new Error("The authentication role cannot resolve the configured identity");
+      error.code = "S22_AUTH_IDENTITY_UNMAPPED";
+      error.exitCode = 88;
+      throw error;
+    }
+    const row = resolution.rows[0];
+    if (row?.resolution_state !== "authenticated" || row.user_id !== USER_ID) {
+      const error = new Error("The authentication role returned an invalid identity result");
+      error.code = "S22_AUTH_IDENTITY_INVALID";
+      error.exitCode = 89;
+      throw error;
+    }
+    console.info(
+      JSON.stringify({
+        database: "lead_agent_staging",
+        operation: "staging_owner_auth_role_identity_verify",
+        outcome: "PASS",
+        resolution_state: "authenticated",
+        role: "lead_agent_auth",
+      }),
+    );
+  } finally {
+    await pool.end().catch(() => {});
+  }
+};
+
 const bootstrap = async () => {
   failureExitCode = 71;
   const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
   const { Pool } = await import("pg");
   failureExitCode = 72;
   const connectionString = withLibpqCompatibleRequireSsl(required("MIGRATION_DATABASE_URL"));
+  const authConnectionString = withLibpqCompatibleRequireSsl(required("AUTH_DATABASE_URL"));
   const issuer = required("STAGING_AUTH0_ISSUER");
   const subject = required("STAGING_OWNER_AUTH0_SUBJECT");
   const mode = process.env.S22_OWNER_BOOTSTRAP_MODE ?? "apply";
@@ -220,6 +274,9 @@ const bootstrap = async () => {
 
     failureExitCode = 76;
     await assertStoredWorkspace(client, issuer, subject);
+
+    failureExitCode = 79;
+    await assertAuthRoleResolution(Pool, authConnectionString, issuer, subject);
 
     failureExitCode = 77;
     await assertReplayFailsClosed(client, issuer, subject);
@@ -270,7 +327,7 @@ bootstrap().catch((error) => {
     "exitCode" in error &&
     Number.isInteger(error.exitCode) &&
     error.exitCode >= 80 &&
-    error.exitCode <= 86
+    error.exitCode <= 89
       ? error.exitCode
       : failureExitCode;
   process.exitCode = classifiedExitCode;

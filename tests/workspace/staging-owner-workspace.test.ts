@@ -36,6 +36,7 @@ describe("S22 staging first-owner bootstrap", () => {
 
     expect(script).toContain("STAGING_AUTH0_ISSUER");
     expect(script).toContain("STAGING_OWNER_AUTH0_SUBJECT");
+    expect(script).toContain("AUTH_DATABASE_URL");
     expect(script).toContain("^google-oauth2\\|[0-9]{1,128}$");
     expect(script).toContain('await import("pg")');
     expect(script).toContain("withLibpqCompatibleRequireSsl");
@@ -60,6 +61,9 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(script).toContain('mismatchCode === "S22_ISSUER_MISMATCH"');
     expect(script).toContain('mismatchCode === "S22_SUBJECT_MISMATCH"');
     expect(script).toContain('mismatchCode === "S22_ISSUER_SUBJECT_MISMATCH"');
+    expect(script).toContain("staging_owner_auth_role_identity_verify");
+    expect(script).toContain("app.resolve_external_identity");
+    expect(script).toContain("select set_config('app.organization_id', $1, true)");
     expect(script).not.toContain("row.issuer");
     expect(script).not.toContain("row.subject");
     expect(script).toContain('row.membership_status !== "active"');
@@ -92,6 +96,7 @@ describe("S22 staging first-owner bootstrap", () => {
     expect(workflow).toContain("FAILURE_STAGE=issuer_mismatch");
     expect(workflow).toContain("FAILURE_STAGE=subject_mismatch");
     expect(workflow).toContain("FAILURE_STAGE=issuer_and_subject_mismatch");
+    expect(workflow).toContain("FAILURE_STAGE=auth_identity_unmapped");
     expect(workflow).toContain("FAILURE_STAGE=replay_protection");
     expect(workflow).toContain("audit_proof=$BOOTSTRAP_PROOF");
     expect(workflow).toContain("replay_protection=$BOOTSTRAP_PROOF");

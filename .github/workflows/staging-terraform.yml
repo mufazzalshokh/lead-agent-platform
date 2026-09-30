@@ -901,6 +901,7 @@ jobs:
             76) FAILURE_STAGE=stored_identity_validation ;;
             77) FAILURE_STAGE=replay_protection ;;
             78) FAILURE_STAGE=success_evidence ;;
+            79) FAILURE_STAGE=auth_role_identity_validation ;;
             80) FAILURE_STAGE=identity_row_count ;;
             81) FAILURE_STAGE=issuer_mismatch ;;
             82) FAILURE_STAGE=subject_mismatch ;;
@@ -908,6 +909,9 @@ jobs:
             84) FAILURE_STAGE=identity_shape ;;
             85) FAILURE_STAGE=owner_membership ;;
             86) FAILURE_STAGE=bootstrap_audit ;;
+            87) FAILURE_STAGE=auth_connection_shape ;;
+            88) FAILURE_STAGE=auth_identity_unmapped ;;
+            89) FAILURE_STAGE=auth_identity_invalid ;;
             *) FAILURE_STAGE=runtime_unclassified ;;
           esac
           if [[ "$VERIFY_STATUS" == "0" && "$TASK_EXIT_CODE" == "0" ]]; then
@@ -4575,6 +4579,7 @@ jobs:
             [76, "stored_identity_validation"],
             [77, "replay_protection"],
             [78, "success_evidence"],
+            [79, "auth_role_identity_validation"],
             [80, "identity_row_count"],
             [81, "issuer_mismatch"],
             [82, "subject_mismatch"],
@@ -4582,6 +4587,9 @@ jobs:
             [84, "identity_shape"],
             [85, "owner_membership"],
             [86, "bootstrap_audit"],
+            [87, "auth_connection_shape"],
+            [88, "auth_identity_unmapped"],
+            [89, "auth_identity_invalid"],
           ]);
           const taskFailure = Number.isInteger(taskExitCode) && {
             diagnostic_mode: "cloud_run_task_status",
