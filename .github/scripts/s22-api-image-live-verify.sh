@@ -8,11 +8,13 @@ set -euo pipefail
 : "${TF_VAR_api_deployment_timestamp:?TF_VAR_api_deployment_timestamp is required}"
 : "${TF_VAR_api_image:?TF_VAR_api_image is required}"
 : "${TF_VAR_api_migration_head:?TF_VAR_api_migration_head is required}"
+: "${TF_VAR_web_image:?TF_VAR_web_image is required}"
 
 EVIDENCE="s22-api-image-live-evidence.txt"
 LIVE_SERVICE="$(mktemp)"
+LIVE_WEB_SERVICE="$(mktemp)"
 FAILURES=0
-trap 'rm -f "$LIVE_SERVICE"' EXIT
+trap 'rm -f "$LIVE_SERVICE" "$LIVE_WEB_SERVICE"' EXIT
 
 report_check() {
   local name="$1"
@@ -38,6 +40,10 @@ curl --fail --silent --show-error \
   --header "Authorization: Bearer $ACCESS_TOKEN" \
   "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/services/lead-agent-staging-api" \
   > "$LIVE_SERVICE"
+curl --fail --silent --show-error \
+  --header "Authorization: Bearer $ACCESS_TOKEN" \
+  "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/services/lead-agent-staging-web" \
+  > "$LIVE_WEB_SERVICE"
 unset ACCESS_TOKEN
 
 SERVICE_ACCOUNT="$(jq -r '.template.serviceAccount // ""' "$LIVE_SERVICE")"
@@ -50,9 +56,13 @@ DEPLOYMENT_TIMESTAMP="$(jq -r '[.template.containers[0].env[]? | select(.name ==
 IMAGE_DIGEST="$(jq -r '[.template.containers[0].env[]? | select(.name == "DEPLOYMENT_IMAGE_DIGEST")][0].value // ""' "$LIVE_SERVICE")"
 MIGRATION_HEAD="$(jq -r '[.template.containers[0].env[]? | select(.name == "DEPLOYMENT_MIGRATION_HEAD")][0].value // ""' "$LIVE_SERVICE")"
 SECRET_COUNT="$(jq -r '[.template.containers[0].env[]? | select(.valueSource.secretKeyRef != null)] | length' "$LIVE_SERVICE")"
-READY="$(jq -r '[.conditions[]? | select(.type == "Ready")][0].state // ""' "$LIVE_SERVICE")"
+READY="$(jq -r '.terminalCondition.state // ([.conditions[]? | select(.type == "Ready")][0].state) // ""' "$LIVE_SERVICE")"
 REVISION="$(jq -r '.latestReadyRevision // ""' "$LIVE_SERVICE")"
 REVISION_SHORT="${REVISION##*/}"
+WEB_IMAGE="$(jq -r '.template.containers[0].image // ""' "$LIVE_WEB_SERVICE")"
+WEB_READY="$(jq -r '.terminalCondition.state // ([.conditions[]? | select(.type == "Ready")][0].state) // ""' "$LIVE_WEB_SERVICE")"
+WEB_REVISION="$(jq -r '.latestReadyRevision // ""' "$LIVE_WEB_SERVICE")"
+WEB_REVISION_SHORT="${WEB_REVISION##*/}"
 
 report_check service_account "$SERVICE_ACCOUNT" "lead-agent-staging-api@${PROJECT_ID}.iam.gserviceaccount.com" "$(matches "$SERVICE_ACCOUNT" "lead-agent-staging-api@${PROJECT_ID}.iam.gserviceaccount.com")"
 report_check image "$IMAGE" "$TF_VAR_api_image" "$(matches "$IMAGE" "$TF_VAR_api_image")"
@@ -67,6 +77,10 @@ report_check secret_reference_count "$SECRET_COUNT" '15' "$(matches "$SECRET_COU
 report_check ready "$READY" 'CONDITION_SUCCEEDED' "$(matches "$READY" 'CONDITION_SUCCEEDED')"
 if [[ "$REVISION_SHORT" =~ ^lead-agent-staging-api-[0-9]{5}-[a-z0-9]+$ ]]; then REVISION_RESULT=PASS; else REVISION_RESULT=FAIL; fi
 report_check latest_ready_revision "$REVISION" 'lead-agent-staging-api-<revision>' "$REVISION_RESULT"
+report_check web_image "$WEB_IMAGE" "$TF_VAR_web_image" "$(matches "$WEB_IMAGE" "$TF_VAR_web_image")"
+report_check web_ready "$WEB_READY" 'CONDITION_SUCCEEDED' "$(matches "$WEB_READY" 'CONDITION_SUCCEEDED')"
+if [[ "$WEB_REVISION_SHORT" =~ ^lead-agent-staging-web-[0-9]{5}-[a-z0-9]+$ ]]; then WEB_REVISION_RESULT=PASS; else WEB_REVISION_RESULT=FAIL; fi
+report_check web_latest_ready_revision "$WEB_REVISION" 'lead-agent-staging-web-<revision>' "$WEB_REVISION_RESULT"
 
 set +e
 terraform plan -detailed-exitcode -lock-timeout=5m > /dev/null

@@ -595,6 +595,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Verify migrator image-only plan safety");
     expect(workflow).toContain("s22-migrator-image-plan-check.sh");
     expect(workflow).toContain("- api-image-update");
+    expect(workflow).toContain("- api-image-verify");
     expect(workflow).toContain("Verify API image-only plan safety");
     expect(workflow).toContain("Verify exact API image update approval boundary");
     expect(workflow).toContain("Verify API image update live state and convergence");
@@ -621,6 +622,7 @@ describe("S22 staging infrastructure boundary", () => {
     );
     for (const phase of [
       "api-image-update",
+      "api-image-verify",
       "migration-resume",
       "migrator-image-update",
       "migrator-image-verify",
@@ -659,6 +661,10 @@ describe("S22 staging infrastructure boundary", () => {
     expect(apiImagePlanCheck).toContain('.variables.worker_instance_count.value == "1"');
     expect(apiImageLiveVerify).toContain("terraform_convergence_exit_code");
     expect(apiImageLiveVerify).toContain("api_image_live_verification=PASS");
+    expect(apiImageLiveVerify).toContain(".terminalCondition.state");
+    expect(apiImageLiveVerify).toContain("web_latest_ready_revision");
+    expect(workflow).toContain("Verify applied API image read-only");
+    expect(workflow).toContain("Upload read-only API image evidence");
     expect(workflow).toContain('"$PHASE" != "migration-resume"');
     expect(workflow).toContain("env.S22_PHASE == 'migration-resume'");
     expect(workflow.match(/env\.S22_PHASE != 'migration-resume'/gu)).toHaveLength(3);

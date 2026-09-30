@@ -28,6 +28,7 @@ on:
           - migration-resume
           - migration-validate
           - api-image-update
+          - api-image-verify
           - migrator-image-update
           - migrator-image-verify
           - migration-diagnose
@@ -217,7 +218,7 @@ jobs:
           if [[ "$PHASE" == "runtime-diagnose" ]]; then
             [[ "$ACTION" == "plan" ]]
           fi
-          if [[ "$PHASE" == "api-image-update" ]]; then
+          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
             [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
             [[ "$TF_VAR_api_migration_head" == "0030_s22_first_tenant_bootstrap" ]]
             [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -230,6 +231,9 @@ jobs:
             [[ "$TF_VAR_web_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/web@sha256:[0-9a-f]{64}$ ]]
             [[ "$TF_VAR_worker_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]
             [[ "$TF_VAR_migrator_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:[0-9a-f]{64}$ ]]
+          fi
+          if [[ "$PHASE" == "api-image-verify" ]]; then
+            [[ "$ACTION" == "plan" ]]
           fi
           if [[ "$PHASE" == "instagram-verify" ]]; then
             [[ "$ACTION" == "plan" ]]
@@ -365,6 +369,12 @@ jobs:
               SQL_POLICY=ALWAYS
               WORKER_COUNT=1
               ;;
+            api-image-verify)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
             migrator-image-update)
               DEPLOY_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -452,7 +462,7 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "api-image-update" ]]; then
+          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
             API_DEPLOYMENT_TIMESTAMP="$TF_VAR_deployment_timestamp"
             echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
@@ -687,7 +697,7 @@ jobs:
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'api-image-update' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migrator-image-verify' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || env.S22_PHASE == 'owner-workspace-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'api-image-update' || env.S22_PHASE == 'api-image-verify' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migrator-image-verify' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || env.S22_PHASE == 'owner-workspace-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -1430,7 +1440,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -1897,7 +1907,7 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
+        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
@@ -3128,8 +3138,12 @@ jobs:
           REGION: me-central1
         shell: bash
         run: |
+          set +e
           bash ../../../../.github/scripts/s22-api-image-live-verify.sh
+          VERIFY_EXIT_CODE=$?
+          set -e
           cp s22-api-image-live-evidence.txt s22-api-image-apply-evidence.txt
+          exit "$VERIFY_EXIT_CODE"
 
       - name: Upload API image update evidence
         if: always() && env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
@@ -3137,6 +3151,24 @@ jobs:
         with:
           name: s22-api-image-apply-evidence-${{ github.run_id }}
           path: infra/deploy/gcp/staging/s22-api-image-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Verify applied API image read-only
+        if: env.S22_PHASE == 'api-image-verify' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: bash ../../../../.github/scripts/s22-api-image-live-verify.sh
+
+      - name: Upload read-only API image evidence
+        if: always() && env.S22_PHASE == 'api-image-verify' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-api-image-live-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-api-image-live-evidence.txt
           if-no-files-found: warn
           retention-days: 7
 
