@@ -15,6 +15,8 @@ import { describe, expect, it } from "vitest";
 const ISSUER = "https://tenant.auth0.example/";
 const CLIENT_ID = "staff-client";
 const CALLBACK = "https://staff.example.test/v1/staff/auth/callback";
+const MULTI_FACTOR_AUTHENTICATION_CONTEXT =
+  "http://schemas.openid.net/pape/policies/2007/06/multi-factor";
 
 const configuration = createStaffWebAuthConfig({
   browserEnvelopeKey: Buffer.alloc(32, 1).toString("base64url"),
@@ -42,6 +44,7 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
     expect(url.searchParams.get("client_id")).toBe(CLIENT_ID);
     expect(url.searchParams.get("redirect_uri")).toBe(CALLBACK);
     expect(url.searchParams.get("scope")).toBe("openid profile email");
+    expect(url.searchParams.get("acr_values")).toBe(MULTI_FACTOR_AUTHENTICATION_CONTEXT);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("code_challenge")).toBe(
       createHash("sha256").update(first.codeVerifier, "ascii").digest("base64url"),
@@ -162,6 +165,74 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
         maximumAgeSeconds: 43_200,
       }),
     ).resolves.toMatchObject({ authenticationLevel: "single_factor" });
+
+    signedIdToken = await new SignJWT({
+      acr: MULTI_FACTOR_AUTHENTICATION_CONTEXT,
+      auth_time: nowSeconds,
+      email: "person@example.test",
+      email_verified: true,
+      nonce: authorization.nonce,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+      .setIssuer(ISSUER)
+      .setAudience(CLIENT_ID)
+      .setSubject("auth0|verified-subject")
+      .setIssuedAt(nowSeconds)
+      .setExpirationTime(nowSeconds + 600)
+      .sign(keys.privateKey);
+    await expect(
+      callbackClient.complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      }),
+    ).resolves.toMatchObject({ authenticationLevel: "mfa" });
+
+    signedIdToken = await new SignJWT({
+      auth_time: nowSeconds,
+      nonce: authorization.nonce,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+      .setIssuer(ISSUER)
+      .setAudience(CLIENT_ID)
+      .setSubject("auth0|verified-subject")
+      .setIssuedAt(nowSeconds)
+      .setExpirationTime(nowSeconds + 600)
+      .sign(keys.privateKey);
+    await expect(
+      callbackClient.complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      }),
+    ).resolves.toMatchObject({ authenticationLevel: "single_factor" });
+
+    signedIdToken = await new SignJWT({
+      acr: MULTI_FACTOR_AUTHENTICATION_CONTEXT,
+      amr: "mfa",
+      auth_time: nowSeconds,
+      nonce: authorization.nonce,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+      .setIssuer(ISSUER)
+      .setAudience(CLIENT_ID)
+      .setSubject("auth0|verified-subject")
+      .setIssuedAt(nowSeconds)
+      .setExpirationTime(nowSeconds + 600)
+      .sign(keys.privateKey);
+    await expect(
+      callbackClient.complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      }),
+    ).rejects.toMatchObject({ failure: "callback_authentication_methods_invalid" });
 
     await expect(
       callbackClient.complete({

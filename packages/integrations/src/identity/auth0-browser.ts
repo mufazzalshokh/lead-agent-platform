@@ -15,7 +15,10 @@ import {
 } from "openid-client";
 
 const MAXIMUM_ID_TOKEN_LENGTH = 32_768;
+const MAXIMUM_AUTHENTICATION_METHOD_LENGTH = 256;
 const PROVIDER_REQUEST_TIMEOUT_SECONDS = 10;
+const MULTI_FACTOR_AUTHENTICATION_CONTEXT =
+  "http://schemas.openid.net/pape/policies/2007/06/multi-factor";
 
 export type BrowserAuthorizationPurpose = "invitation" | "login" | "reauthenticate" | "step_up";
 
@@ -106,8 +109,14 @@ const parseCallbackEvidence = (
     throw new BrowserOidcCallbackInvalidError("callback_authentication_time_invalid");
   }
   if (
-    !Array.isArray(methods) ||
-    methods.some((method) => typeof method !== "string" || method.length > 64)
+    methods !== undefined &&
+    (!Array.isArray(methods) ||
+      methods.some(
+        (method) =>
+          typeof method !== "string" ||
+          method.length < 1 ||
+          method.length > MAXIMUM_AUTHENTICATION_METHOD_LENGTH,
+      ))
   ) {
     throw new BrowserOidcCallbackInvalidError("callback_authentication_methods_invalid");
   }
@@ -123,8 +132,14 @@ const parseCallbackEvidence = (
     email.length <= 320
       ? email
       : null;
+  // OIDC makes `amr` optional. Auth0 also signs the exact multi-factor `acr`,
+  // so either standard signal may prove MFA; absence proves only single factor.
   return Object.freeze({
-    authenticationLevel: methods.includes("mfa") ? "mfa" : "single_factor",
+    authenticationLevel:
+      (Array.isArray(methods) && methods.includes("mfa")) ||
+      claims?.["acr"] === MULTI_FACTOR_AUTHENTICATION_CONTEXT
+        ? "mfa"
+        : "single_factor",
     authenticationTime: authenticationDate,
     idToken: requireIdToken(idToken),
     verifiedEmailTarget,
@@ -200,6 +215,7 @@ const createClient = (
       const challenge = await calculatePKCECodeChallenge(codeVerifier);
       const maximumAgeSeconds = purpose === "step_up" ? 900 : 43_200;
       const authorizationUrl = buildAuthorizationUrl(client, {
+        ...(configuration.requireMfa ? { acr_values: MULTI_FACTOR_AUTHENTICATION_CONTEXT } : {}),
         client_id: configuration.clientId,
         code_challenge: challenge,
         code_challenge_method: "S256",
