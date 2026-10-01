@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { createStaffWebAuthConfig } from "../../packages/config/src/index.js";
-import { createAuth0BrowserOidcClientForTests } from "../../packages/integrations/src/identity/auth0-browser.js";
+import {
+  BrowserOidcCallbackInvalidError,
+  createAuth0BrowserOidcClientForTests,
+} from "../../packages/integrations/src/identity/auth0-browser.js";
 import {
   OidcCredentialInvalidError,
   OidcProviderUnavailableError,
@@ -168,7 +171,7 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
         expectedState: authorization.state,
         maximumAgeSeconds: 43_200,
       }),
-    ).rejects.toBeInstanceOf(OidcCredentialInvalidError);
+    ).rejects.toMatchObject({ failure: "token_endpoint_invalid_grant" });
     await expect(
       callbackClient.complete({
         callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
@@ -177,7 +180,35 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
         expectedState: authorization.state,
         maximumAgeSeconds: 43_200,
       }),
-    ).rejects.toBeInstanceOf(OidcCredentialInvalidError);
+    ).rejects.toMatchObject({ failure: "oidc_claim_validation_failed" });
+  });
+
+  it("retains only finite diagnostics from rejected token responses", async () => {
+    const client = createAuth0BrowserOidcClientForTests(configuration, () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: "invalid_client",
+            error_description: "must-not-escape-sensitive-provider-detail",
+          }),
+          { headers: { "content-type": "application/json" }, status: 401 },
+        ),
+      ),
+    );
+    const authorization = await client.begin("login");
+    const failure = await client
+      .complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(BrowserOidcCallbackInvalidError);
+    expect(failure).toMatchObject({ failure: "token_endpoint_invalid_client" });
+    expect(JSON.stringify(failure)).not.toContain("must-not-escape-sensitive-provider-detail");
   });
 
   it("fails closed before exchange when callback state is substituted", async () => {

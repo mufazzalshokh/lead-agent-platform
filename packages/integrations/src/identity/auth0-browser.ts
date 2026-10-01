@@ -3,6 +3,7 @@ import { OidcCredentialInvalidError, OidcProviderUnavailableError } from "@lead-
 import {
   Configuration,
   ClientError,
+  ResponseBodyError,
   authorizationCodeGrant,
   buildAuthorizationUrl,
   calculatePKCECodeChallenge,
@@ -17,6 +18,29 @@ const MAXIMUM_ID_TOKEN_LENGTH = 32_768;
 const PROVIDER_REQUEST_TIMEOUT_SECONDS = 10;
 
 export type BrowserAuthorizationPurpose = "invitation" | "login" | "reauthenticate" | "step_up";
+
+export type BrowserOidcCallbackFailure =
+  | "callback_authentication_methods_invalid"
+  | "callback_authentication_time_invalid"
+  | "callback_id_token_invalid"
+  | "oidc_claim_validation_failed"
+  | "oidc_response_invalid"
+  | "oidc_timestamp_validation_failed"
+  | "token_endpoint_invalid_client"
+  | "token_endpoint_invalid_grant"
+  | "token_endpoint_invalid_request"
+  | "token_endpoint_invalid_scope"
+  | "token_endpoint_rejected"
+  | "token_endpoint_unauthorized_client"
+  | "token_endpoint_unsupported_grant_type";
+
+/** Safe, finite callback diagnostics. Provider response bodies are never retained. */
+export class BrowserOidcCallbackInvalidError extends OidcCredentialInvalidError {
+  constructor(readonly failure: BrowserOidcCallbackFailure) {
+    super();
+    this.name = "BrowserOidcCallbackInvalidError";
+  }
+}
 
 export type BrowserOidcAuthorization = Readonly<{
   authorizationUrl: string;
@@ -63,7 +87,7 @@ const requireIdToken = (value: unknown): string => {
     value.length > MAXIMUM_ID_TOKEN_LENGTH ||
     value.split(".").length !== 3
   ) {
-    throw new OidcCredentialInvalidError();
+    throw new BrowserOidcCallbackInvalidError("callback_id_token_invalid");
   }
   return value;
 };
@@ -77,15 +101,21 @@ const parseCallbackEvidence = (
   if (
     typeof authenticationTime !== "number" ||
     !Number.isSafeInteger(authenticationTime) ||
-    authenticationTime < 0 ||
+    authenticationTime < 0
+  ) {
+    throw new BrowserOidcCallbackInvalidError("callback_authentication_time_invalid");
+  }
+  if (
     !Array.isArray(methods) ||
     methods.some((method) => typeof method !== "string" || method.length > 64)
   ) {
-    throw new OidcCredentialInvalidError();
+    throw new BrowserOidcCallbackInvalidError("callback_authentication_methods_invalid");
   }
   const email = claims?.["email"];
   const authenticationDate = new Date(authenticationTime * 1_000);
-  if (!Number.isFinite(authenticationDate.getTime())) throw new OidcCredentialInvalidError();
+  if (!Number.isFinite(authenticationDate.getTime())) {
+    throw new BrowserOidcCallbackInvalidError("callback_authentication_time_invalid");
+  }
   const verifiedEmailTarget =
     claims?.["email_verified"] === true &&
     typeof email === "string" &&
@@ -99,6 +129,36 @@ const parseCallbackEvidence = (
     idToken: requireIdToken(idToken),
     verifiedEmailTarget,
   });
+};
+
+const tokenEndpointFailure = (error: string): BrowserOidcCallbackFailure => {
+  switch (error) {
+    case "invalid_client":
+      return "token_endpoint_invalid_client";
+    case "invalid_grant":
+      return "token_endpoint_invalid_grant";
+    case "invalid_request":
+      return "token_endpoint_invalid_request";
+    case "invalid_scope":
+      return "token_endpoint_invalid_scope";
+    case "unauthorized_client":
+      return "token_endpoint_unauthorized_client";
+    case "unsupported_grant_type":
+      return "token_endpoint_unsupported_grant_type";
+    default:
+      return "token_endpoint_rejected";
+  }
+};
+
+const oidcValidationFailure = (error: ClientError): BrowserOidcCallbackFailure => {
+  switch (error.code) {
+    case "OAUTH_JWT_CLAIM_COMPARISON_FAILED":
+      return "oidc_claim_validation_failed";
+    case "OAUTH_JWT_TIMESTAMP_CHECK_FAILED":
+      return "oidc_timestamp_validation_failed";
+    default:
+      return "oidc_response_invalid";
+  }
 };
 
 const createConfiguration = (
@@ -177,9 +237,15 @@ const createClient = (
         });
         return parseCallbackEvidence(tokens.id_token, tokens.claims());
       } catch (error) {
-        if (error instanceof OidcCredentialInvalidError) throw error;
+        if (error instanceof BrowserOidcCallbackInvalidError) throw error;
         if (isProviderAvailabilityFailure(error)) throw new OidcProviderUnavailableError();
-        throw new OidcCredentialInvalidError();
+        if (error instanceof ResponseBodyError) {
+          throw new BrowserOidcCallbackInvalidError(tokenEndpointFailure(error.error));
+        }
+        if (error instanceof ClientError) {
+          throw new BrowserOidcCallbackInvalidError(oidcValidationFailure(error));
+        }
+        throw new BrowserOidcCallbackInvalidError("oidc_response_invalid");
       }
     },
   });

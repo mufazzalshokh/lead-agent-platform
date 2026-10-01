@@ -10,7 +10,10 @@ import {
   type OrganizationId,
 } from "@lead-agent/contracts";
 import type { StaffWebAuthConfig } from "@lead-agent/config";
-import type { StaffBrowserOidcClient } from "@lead-agent/integrations";
+import {
+  BrowserOidcCallbackInvalidError,
+  type StaffBrowserOidcClient,
+} from "@lead-agent/integrations";
 import {
   AuthorizationDeniedError,
   BrowserAuthenticationTokenInvalidError,
@@ -274,6 +277,7 @@ const equalDigest = (left: string, right: string): boolean => {
 };
 
 const authCallbackFailureCode = (stage: AuthCallbackStage, error: unknown): string => {
+  if (error instanceof BrowserOidcCallbackInvalidError) return error.failure;
   if (error instanceof ExternalIdentityUnmappedError) return "external_identity_unmapped";
   if (error instanceof ExternalIdentityDeniedError) return "external_identity_denied";
   if (error instanceof OidcProviderUnavailableError) return "oidc_provider_unavailable";
