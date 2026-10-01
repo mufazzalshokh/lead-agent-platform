@@ -642,9 +642,12 @@ const registerStaffAuth = async (
       invitationOrganizationId?: OrganizationId;
       invitationTokenHash?: string;
     }> = {},
+    forceProviderAuthentication = false,
   ): Promise<void> => {
     const now = clock();
-    const authorization = await dependencies.oidcClient.begin(purpose);
+    const authorization = await dependencies.oidcClient.begin(
+      purpose === "login" && forceProviderAuthentication ? "reauthenticate" : purpose,
+    );
     const transaction = dependencies.envelopeProtector.sealTransaction({
       ...binding,
       codeVerifier: authorization.codeVerifier,
@@ -666,7 +669,13 @@ const registerStaffAuth = async (
   api.get(STAFF_AUTH_PREFIX + "/login", async (request, reply) => {
     rejectDuplicateSecurityCookies(request);
     const query = request.query as Readonly<Record<string, unknown>>;
-    await begin("login", resolveSafeReturnPath(query["return_to"], "/"), reply);
+    await begin(
+      "login",
+      resolveSafeReturnPath(query["return_to"], "/"),
+      reply,
+      {},
+      query["reauthenticate"] === "true",
+    );
   });
 
   api.post(STAFF_AUTH_PREFIX + "/invitation", async (request, reply) => {

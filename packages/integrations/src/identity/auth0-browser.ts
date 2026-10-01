@@ -16,7 +16,7 @@ import {
 const MAXIMUM_ID_TOKEN_LENGTH = 32_768;
 const PROVIDER_REQUEST_TIMEOUT_SECONDS = 10;
 
-export type BrowserAuthorizationPurpose = "invitation" | "login" | "step_up";
+export type BrowserAuthorizationPurpose = "invitation" | "login" | "reauthenticate" | "step_up";
 
 export type BrowserOidcAuthorization = Readonly<{
   authorizationUrl: string;
@@ -145,7 +145,7 @@ const createClient = (
         code_challenge_method: "S256",
         max_age: String(maximumAgeSeconds),
         nonce,
-        ...(purpose === "step_up" ? { prompt: "login" } : {}),
+        ...(purpose === "step_up" || purpose === "reauthenticate" ? { prompt: "login" } : {}),
         redirect_uri: configuration.callbackUri,
         response_type: "code",
         scope: "openid profile email",

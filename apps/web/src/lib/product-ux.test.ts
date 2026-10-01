@@ -3,6 +3,7 @@ import { Script } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildStaffSignInPath,
   formatStaffDateTime,
   formatStaffLocalDateTime,
   humanizeStaffStatus,
@@ -55,6 +56,16 @@ describe("S19 staff presentation policy", () => {
     expect(readStaffAuthRecovery("ready")).toBeNull();
   });
 
+  it("forces a fresh provider transaction only after explicit authentication recovery", () => {
+    const organizationId = "0193f1a8-7f65-7c28-a434-a10796c46703";
+    expect(buildStaffSignInPath(organizationId, "reauthenticate")).toBe(
+      "/v1/staff/auth/login?return_to=%2Fstaff%3Forganization%3D0193f1a8-7f65-7c28-a434-a10796c46703&reauthenticate=true",
+    );
+    expect(buildStaffSignInPath(organizationId, null)).toBe(
+      "/v1/staff/auth/login?return_to=%2Fstaff%3Forganization%3D0193f1a8-7f65-7c28-a434-a10796c46703",
+    );
+  });
+
   it("derives integration management from the authenticated membership only", () => {
     expect(readStaffMembershipRole({ active_organization: { role: "owner" } })).toBe("owner");
     expect(canManageIntegrations("owner")).toBe(true);
@@ -90,10 +101,12 @@ describe("S19 staff presentation policy", () => {
       assign = vi.fn(),
       popup = { closed: false, close, location: { replace }, opener: {} },
       open = vi.fn(() => popup),
-      request = vi.fn(async (_path: string, _init: RequestInit) =>
-        Response.json(
-          { onboarding_url: `https://t.me/lead_agent_bot?start=${nonce}` },
-          { status: 201 },
+      request = vi.fn(() =>
+        Promise.resolve(
+          Response.json(
+            { onboarding_url: `https://t.me/lead_agent_bot?start=${nonce}` },
+            { status: 201 },
+          ),
         ),
       );
 
@@ -125,8 +138,8 @@ describe("S19 staff presentation policy", () => {
     const nonce = "b".repeat(43),
       authorizationUrl = `https://www.instagram.com/oauth/authorize?client_id=123&state=${nonce}`,
       assign = vi.fn(),
-      request = vi.fn(async (_path: string, _init: RequestInit) =>
-        Response.json({ authorization_url: authorizationUrl }, { status: 201 }),
+      request = vi.fn(() =>
+        Promise.resolve(Response.json({ authorization_url: authorizationUrl }, { status: 201 })),
       );
 
     const result = await initiateIntegrationConnection({
@@ -153,10 +166,12 @@ describe("S19 staff presentation policy", () => {
     const close = vi.fn(),
       replace = vi.fn(),
       popup = { closed: false, close, location: { replace }, opener: {} },
-      request = vi.fn(async (_path: string, _init: RequestInit) =>
-        Response.json(
-          { app_secret: "must-not-enter-client-state", code: "permission_denied" },
-          { status: 403 },
+      request = vi.fn(() =>
+        Promise.resolve(
+          Response.json(
+            { app_secret: "must-not-enter-client-state", code: "permission_denied" },
+            { status: 403 },
+          ),
         ),
       );
 

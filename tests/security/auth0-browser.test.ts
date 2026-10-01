@@ -46,6 +46,10 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
     expect(first.state).not.toBe(second.state);
     expect(first.nonce).not.toBe(second.nonce);
     expect(first.codeVerifier).not.toBe(second.codeVerifier);
+    expect(url.searchParams.has("prompt")).toBe(false);
+
+    const recovery = new URL((await client.begin("reauthenticate")).authorizationUrl);
+    expect(recovery.searchParams.get("prompt")).toBe("login");
   });
 
   it("validates the callback and returns only bounded authentication evidence", async () => {

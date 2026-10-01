@@ -97,6 +97,7 @@ const authorizationState = (headers: Readonly<Record<string, unknown>>): string 
 
 type FixtureControls = {
   acceptedOrganizations: OrganizationId[];
+  authorizationPurposes: string[];
   authenticationLevel: "mfa" | "single_factor";
   identityUser: UserId | null;
   membershipRole: "owner" | "admin" | "staff" | "analyst";
@@ -109,6 +110,7 @@ type FixtureControls = {
 const createFixture = () => {
   const controls: FixtureControls = {
     acceptedOrganizations: [],
+    authorizationPurposes: [],
     authenticationLevel: "mfa",
     identityUser: USER_ID,
     membershipRole: "owner",
@@ -214,7 +216,8 @@ const createFixture = () => {
       },
     },
     oidcClient: {
-      begin: () => {
+      begin: (purpose) => {
+        controls.authorizationPurposes.push(purpose);
         authorizationCount += 1;
         const state = String(authorizationCount).padStart(43, "s");
         return Promise.resolve({
@@ -343,6 +346,37 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
       expect(cookie).toContain("Path=/");
       expect(cookie).toContain("Max-Age=1800");
       expect(cookie).not.toContain("Domain=");
+    } finally {
+      await fixture.api.close();
+    }
+  });
+
+  it("forces fresh provider authentication only for an explicit recovery login", async () => {
+    const fixture = createFixture();
+    const returnPath = `/staff?organization=${ORGANIZATION_A}`;
+    try {
+      const recovery = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/login?reauthenticate=true&return_to=" + encodeURIComponent(returnPath),
+      });
+      expect(recovery.statusCode).toBe(302);
+      expect(fixture.controls.authorizationPurposes).toEqual(["reauthenticate"]);
+
+      const callback = await fixture.api.inject({
+        headers: {
+          cookie: cookieHeader([
+            "__Host-lead-auth-transaction",
+            cookieValue(recovery.headers, "__Host-lead-auth-transaction"),
+          ]),
+        },
+        method: "GET",
+        url: "/v1/staff/auth/callback?code=x&state=" + authorizationState(recovery.headers),
+      });
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(returnPath);
+
+      await fixture.api.inject({ method: "GET", url: "/v1/staff/auth/login" });
+      expect(fixture.controls.authorizationPurposes).toEqual(["reauthenticate", "login"]);
     } finally {
       await fixture.api.close();
     }

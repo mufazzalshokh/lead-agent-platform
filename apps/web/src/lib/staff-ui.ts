@@ -60,6 +60,19 @@ export type StaffAuthRecovery = "denied" | "reauthenticate";
 export const readStaffAuthRecovery = (value: unknown): StaffAuthRecovery | null =>
   value === "denied" || value === "reauthenticate" ? value : null;
 
+export const buildStaffSignInPath = (
+  organizationId: string | null,
+  recovery: StaffAuthRecovery | null,
+): string => {
+  const returnPath =
+    organizationId === null
+      ? "/staff"
+      : `/staff?organization=${encodeURIComponent(organizationId)}`;
+  const parameters = new URLSearchParams({ return_to: returnPath });
+  if (recovery === "reauthenticate") parameters.set("reauthenticate", "true");
+  return `/v1/staff/auth/login?${parameters.toString()}`;
+};
+
 export const readCsrfCookie = (cookieHeader: string): string | null => {
   for (const entry of cookieHeader.split(";")) {
     const [rawName, ...rawValue] = entry.trim().split("=");

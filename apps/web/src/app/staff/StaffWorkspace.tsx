@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  buildStaffSignInPath,
   formatStaffDateTime,
   formatStaffLocalDateTime,
   humanizeStaffStatus,
@@ -598,10 +599,6 @@ export function StaffWorkspace({
   }, [apiOrigin, widgetConfiguration]);
 
   if (authState === "signed-out") {
-    const returnTo =
-      organizationId === null
-        ? "/staff"
-        : `/staff?organization=${encodeURIComponent(organizationId)}`;
     return (
       <main className="staff-auth-shell">
         <section className="staff-auth-card">
@@ -617,7 +614,7 @@ export function StaffWorkspace({
           </p>
           <a
             className="primary-button"
-            href={`${apiOrigin}/v1/staff/auth/login?return_to=${encodeURIComponent(returnTo)}`}
+            href={`${apiOrigin}${buildStaffSignInPath(organizationId, initialAuthRecovery)}`}
           >
             Sign in securely
           </a>
