@@ -226,7 +226,7 @@ jobs:
           fi
           if [[ "$PHASE" == "auth-callback-diagnose" ]]; then
             [[ "$ACTION" == "plan" ]]
-            [[ "$S22_AUTH_CALLBACK_REQUEST_ID" =~ ^request:req-[A-Za-z0-9_-]{1,64}$ ]]
+            [[ "$S22_AUTH_CALLBACK_REQUEST_ID" == "request:latest" || "$S22_AUTH_CALLBACK_REQUEST_ID" =~ ^request:req-[A-Za-z0-9_-]{1,64}$ ]]
           fi
           if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
             [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -1132,7 +1132,8 @@ jobs:
                   timestamp
                 }
             ] as $entries
-            | any($entries[]; .request_id == $request_id)
+            | (($request_id == "request:latest" and ($entries | length) > 0)
+                or any($entries[]; .request_id == $request_id))
               and all($entries[]; .auth_callback_failure | allowed)
           ' "$RAW_LOGS" > /dev/null
           jq -n \
