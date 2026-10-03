@@ -21,6 +21,14 @@ live product and recovery/capacity proof. It does not declare S22 acceptance.
   `2026-10-03T02:57:03.193Z`. This is backup existence proof, not measured RPO/RTO.
   Its only failed assertion was a verification bug: `/` intentionally redirects to
   `/staff`; the probe now checks the organization-bound staff shell directly.
+- Corrected inventory run `37138390710` passed all 12 prerequisites at
+  `2026-10-03T16:51:52.016Z`, using evidence-tooling commit
+  `d5ae4176e53794b4bb7ea7e829408b9fd43225e0`. API health and the organization-bound
+  staff shell both returned HTTP 200. Artifact SHA256:
+  `82fecbc2724987e9c72d762a74ec4f3991253a912c88d19359164966ad7dbbe2`.
+  The artifact explicitly records no infrastructure mutation, secret payload access,
+  restore proof or capacity proof. Runtime images remain on the already-proven
+  `a4fe54eb0c3d3b94df2d289fb917115034291b50` deployment.
 
 ## Remaining gates
 
