@@ -19,6 +19,6 @@ curl --fail --silent --show-error --max-time 30 \
 unset ACCESS_TOKEN
 export S22_API_HEALTH_STATUS S22_WEB_HEALTH_STATUS
 S22_API_HEALTH_STATUS="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' https://lead-agent-staging-api-uj7pjzpksq-ww.a.run.app/health)"
-S22_WEB_HEALTH_STATUS="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' https://lead-agent-staging-web-uj7pjzpksq-ww.a.run.app/)"
+S22_WEB_HEALTH_STATUS="$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' 'https://lead-agent-staging-web-uj7pjzpksq-ww.a.run.app/staff?organization=01a0ee39-91a9-7293-82c0-5b7046c10115')"
 node .github/scripts/s22-acceptance-inventory.mjs "$INVENTORY_DIR" \
   | tee s22-acceptance-inventory.json

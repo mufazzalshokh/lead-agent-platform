@@ -96,6 +96,10 @@ export const acceptanceInventory = (sqlValue, backupsValue, alertsValue, workerV
     evidence_commit: context.commit,
     observed_at: context.now,
     assertions,
+    http_status: {
+      api: /^\d{3}$/u.test(context.apiStatus) ? context.apiStatus : "unavailable",
+      web: /^\d{3}$/u.test(context.webStatus) ? context.webStatus : "unavailable",
+    },
     latest_successful_backup:
       latest === undefined
         ? null

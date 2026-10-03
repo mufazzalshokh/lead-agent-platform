@@ -116,5 +116,7 @@ describe("read-only staging acceptance inventory", () => {
     );
     expect(script).toContain("--max-time 30");
     expect(script).toContain("timeout 90s");
+    expect(script).toContain("/staff?organization=01a0ee39-91a9-7293-82c0-5b7046c10115");
+    expect(script).not.toContain("--location");
   });
 });

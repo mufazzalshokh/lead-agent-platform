@@ -15,6 +15,12 @@ live product and recovery/capacity proof. It does not declare S22 acceptance.
 - Migration validation already passed: 32 migrations through
   `0031_s22_widget_inbound_route_management`, 52 tables, FORCE RLS and role isolation.
   Do not rerun migrations for subsequent acceptance checks.
+- Read-only inventory run `37138195857` confirmed RUNNABLE/private PostgreSQL 17,
+  shared-core tier, backups/PITR enabled, ready worker and both enabled alert policies
+  with notification channels. Actual backup `1790989200000` completed at
+  `2026-10-03T02:57:03.193Z`. This is backup existence proof, not measured RPO/RTO.
+  Its only failed assertion was a verification bug: `/` intentionally redirects to
+  `/staff`; the probe now checks the organization-bound staff shell directly.
 
 ## Remaining gates
 
