@@ -103,8 +103,42 @@ export class InstagramProviderError extends Error {
     public readonly category: ChannelFailureCategory,
     public readonly ambiguousExternalEffect: boolean,
     public readonly retryAfterMilliseconds?: number,
+    public readonly diagnostic?: Readonly<{
+      operation: "short_token" | "long_token" | "profile" | "subscription" | "refresh" | "send";
+      reason:
+        "http_rejection" | "invalid_json" | "invalid_response" | "network" | "oversized_response";
+      httpStatus?: number;
+      providerCode?: number;
+      providerSubcode?: number;
+      invalidField?:
+        | "response_shape"
+        | "access_token"
+        | "user_id"
+        | "expires_in"
+        | "token_type"
+        | "account_type"
+        | "success";
+    }>,
   ) {
     super("Instagram provider request failed");
     this.name = "InstagramProviderError";
   }
 }
+
+export type InstagramOnboardingStage =
+  | "state_validation"
+  | "code_exchange"
+  | "message_subscription"
+  | "credential_storage"
+  | "activation";
+
+// Internal diagnostics contain only a finite stage/category and numeric status codes.
+// Never retain the provider body, authorization code, state, token, or raw cause.
+export type InstagramOnboardingFailure = Readonly<{
+  stage: InstagramOnboardingStage;
+  failure: "provider" | "application" | "unexpected";
+  applicationCode: InstagramApplicationError["code"] | null;
+  providerCategory: ChannelFailureCategory | null;
+  providerDiagnostic: InstagramProviderError["diagnostic"];
+  databaseCode: string | null;
+}>;

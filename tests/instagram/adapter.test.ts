@@ -35,6 +35,83 @@ const fixture = (payloads: readonly unknown[] = [short, long, profile]) => {
   return { request, client: createInstagramPlatformClient(instagramConfig, request) };
 };
 describe("Instagram Login official endpoint boundary", () => {
+  it.each(["17841405822304915", "99999999999999999999999999999999"])(
+    "preserves every digit of a numeric OAuth user_id %s",
+    async (accountId) => {
+      const request = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(new Response(`{"access_token":"${TOKEN}","user_id":${accountId}}`))
+        .mockResolvedValueOnce(response(long))
+        .mockResolvedValueOnce(new Response(`{"user_id":${accountId},"account_type":"Business"}`));
+      const result = await createInstagramPlatformClient(instagramConfig, request).exchangeCode(
+        "code",
+      );
+      expect(result.accountId).toBe(accountId);
+      expect(request).toHaveBeenCalledTimes(3);
+    },
+  );
+  it.each(["0", "-1", "1.5", "1e20", "1".repeat(33)])(
+    "rejects a malformed numeric identity %s without continuing the exchange",
+    async (id) => {
+      const request = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(`{"access_token":"${TOKEN}","user_id":${id}}`));
+      await expect(
+        createInstagramPlatformClient(instagramConfig, request).exchangeCode("code"),
+      ).rejects.toMatchObject({
+        category: "authentication_failed",
+        diagnostic: { operation: "short_token", reason: "invalid_response" },
+      });
+      expect(request).toHaveBeenCalledOnce();
+    },
+  );
+  it("rejects ambiguous token bindings and preserves safe flat OAuth error codes", async () => {
+    await expect(
+      fixture([{ ...short, access_token: TOKEN, user_id: "222" }]).client.exchangeCode("code"),
+    ).rejects.toMatchObject({ category: "authentication_failed" });
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        response(
+          { error_type: "OAuthException", code: 400, error_message: `private ${TOKEN}` },
+          400,
+        ),
+      );
+    await expect(
+      createInstagramPlatformClient(instagramConfig, request).exchangeCode("code"),
+    ).rejects.toMatchObject({
+      diagnostic: {
+        operation: "short_token",
+        reason: "http_rejection",
+        httpStatus: 400,
+        providerCode: 400,
+      },
+      message: "Instagram provider request failed",
+    });
+  });
+  it("records the failed provider step and numeric rejection without retaining provider text", async () => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response(short))
+      .mockResolvedValueOnce(response(long))
+      .mockResolvedValueOnce(
+        response({ error: { code: 100, error_subcode: 33, message: `private ${TOKEN}` } }, 400),
+      );
+    const error: unknown = await createInstagramPlatformClient(instagramConfig, request)
+      .exchangeCode("code")
+      .catch((error: unknown) => error);
+    expect(error).toMatchObject({
+      diagnostic: {
+        operation: "profile",
+        reason: "http_rejection",
+        httpStatus: 400,
+        providerCode: 100,
+        providerSubcode: 33,
+      },
+    });
+    expect(JSON.stringify(error)).not.toContain(TOKEN);
+    expect(JSON.stringify(error)).not.toContain("private");
+  });
   it("rejects malformed response-stream chunks without treating a send as confirmed", async () => {
     const malformed = new Response();
     Object.defineProperty(malformed, "body", {

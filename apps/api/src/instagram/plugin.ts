@@ -1,6 +1,7 @@
 import {
   InstagramApplicationError,
   InstagramProviderError,
+  type InstagramOnboardingFailure,
   type InstagramBusinessUseCases,
 } from "@lead-agent/application";
 import {
@@ -159,18 +160,49 @@ export const registerInstagramPublicRoutes = (
         );
       };
       if (request.query.code === undefined) {
+        request.log.warn(
+          { instagramCallbackFailure: "provider_authorization_denied", requestId: request.id },
+          "Instagram callback did not complete",
+        );
         const resolved = await dependencies.useCases.resolveOnboardingOrganization({
           state: request.query.state,
         });
         return await redirect(resolved.organizationId, "failed");
       }
+      let failureReported = false;
+      const reportFailure = (failure: InstagramOnboardingFailure): void => {
+        failureReported = true;
+        request.log.warn(
+          {
+            instagramCallbackFailure: failure.failure,
+            instagramCallbackStage: failure.stage,
+            applicationCode: failure.applicationCode,
+            providerCategory: failure.providerCategory,
+            providerDiagnostic: failure.providerDiagnostic,
+            databaseCode: failure.databaseCode,
+            requestId: request.id,
+          },
+          "Instagram callback did not complete",
+        );
+      };
       try {
         const completed = await dependencies.useCases.completeOnboarding({
           code: request.query.code,
           state: request.query.state,
+          onFailure: reportFailure,
         });
         return await redirect(completed.organizationId, "connected");
       } catch (error) {
+        if (!failureReported)
+          request.log.warn(
+            {
+              instagramCallbackFailure: "unclassified",
+              applicationCode: error instanceof InstagramApplicationError ? error.code : null,
+              providerCategory: error instanceof InstagramProviderError ? error.category : null,
+              requestId: request.id,
+            },
+            "Instagram callback did not complete",
+          );
         if (instagramHttpProblem(error) === null) throw error;
         const resolved = await dependencies.useCases.resolveOnboardingOrganization({
           state: request.query.state,

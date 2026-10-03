@@ -10,6 +10,7 @@ import {
   type PreparedCanonicalInbound,
   type CredentialSecretStore,
   type InstagramOAuthClient,
+  type InstagramOnboardingFailure,
 } from "../../packages/application/src/index.js";
 import {
   ACCOUNT_ID,
@@ -49,13 +50,14 @@ const fixture = (
     values.delete(key);
     return Promise.resolve();
   });
+  const putCredential = vi.fn<CredentialSecretStore["put"]>((value) => {
+    operations.push("secret.put");
+    const key = `testsecret://instagram/${++secretNumber}`;
+    values.set(key, value);
+    return Promise.resolve(key);
+  });
   const credentials: CredentialSecretStore = {
-    put: vi.fn<CredentialSecretStore["put"]>((value) => {
-      operations.push("secret.put");
-      const key = `testsecret://instagram/${++secretNumber}`;
-      values.set(key, value);
-      return Promise.resolve(key);
-    }),
+    put: putCredential,
     get: vi.fn<CredentialSecretStore["get"]>((key) => Promise.resolve(values.get(key) ?? null)),
     delete: deleteCredential,
   };
@@ -191,6 +193,7 @@ const fixture = (
     credentials,
     activate,
     deleteCredential,
+    putCredential,
     beginOnboarding,
     disconnect,
     replaceCredential,
@@ -219,6 +222,32 @@ const message = {
   content: { type: "text" as const, text: "Salom" },
 };
 describe("Instagram application trust and short-transaction choreography", () => {
+  it.each(["code_exchange", "message_subscription", "credential_storage", "activation"] as const)(
+    "reports a sanitized %s failure while preserving cleanup and error behavior",
+    async (stage) => {
+      const test = fixture();
+      const original = Object.assign(new Error(`private ${TOKEN}`), { code: "23505" });
+      if (stage === "code_exchange") test.exchangeCode.mockRejectedValue(original);
+      if (stage === "message_subscription") test.subscribeMessages.mockRejectedValue(original);
+      if (stage === "credential_storage") test.putCredential.mockRejectedValue(original);
+      if (stage === "activation") test.activate.mockRejectedValue(original);
+      const onFailure = vi.fn<(failure: InstagramOnboardingFailure) => void>();
+      await expect(
+        test.useCases.completeOnboarding({ code: "code", state: NONCE, onFailure }),
+      ).rejects.toThrow();
+      expect(onFailure).toHaveBeenCalledOnce();
+      expect(onFailure.mock.calls[0]?.[0]).toMatchObject({
+        stage,
+        failure: "unexpected",
+        databaseCode: "23505",
+      });
+      expect(JSON.stringify(onFailure.mock.calls)).not.toContain(TOKEN);
+      expect(JSON.stringify(onFailure.mock.calls)).not.toContain("private");
+      expect(test.values.size).toBe(0);
+      if (stage === "activation") expect(test.deleteCredential).toHaveBeenCalledOnce();
+      else expect(test.activate).not.toHaveBeenCalled();
+    },
+  );
   it("reports only the finite tenant-scoped connection state", async () => {
     const test = fixture();
     await expect(

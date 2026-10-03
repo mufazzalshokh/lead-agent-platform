@@ -26,6 +26,8 @@ import {
 import {
   InstagramApplicationError,
   InstagramProviderError,
+  type InstagramOnboardingFailure,
+  type InstagramOnboardingStage,
   type InstagramConnection,
   type InstagramManagementStatus,
   type InstagramInboundMessage,
@@ -65,7 +67,11 @@ export type InstagramBusinessUseCases = Readonly<{
     input: Readonly<{ authorization: AuthorizationContext; displayName: string }>,
   ): Promise<Readonly<{ authorizationUrl: string }>>;
   completeOnboarding(
-    input: Readonly<{ code: string; state: string }>,
+    input: Readonly<{
+      code: string;
+      state: string;
+      onFailure?: (failure: InstagramOnboardingFailure) => void;
+    }>,
   ): Promise<Readonly<{ organizationId: OrganizationId }>>;
   resolveOnboardingOrganization(
     input: Readonly<{ state: string }>,
@@ -182,36 +188,73 @@ export const createInstagramBusinessUseCases = (
         authorizationUrl: `https://www.instagram.com/oauth/authorize?${parameters.toString()}`,
       });
     },
-    completeOnboarding: async ({ code, state }) => {
-      if (!/^[A-Za-z0-9_.|-]{1,2048}$/u.test(code))
-        throw new InstagramApplicationError("validation_failed");
-      const { context, stateHash } = await resolvePendingOnboarding(state);
-      // Each persistence method owns only a short transaction. No provider/secret I/O occurs inside it.
-      const verified = await dependencies.oauth.exchangeCode(code);
-      await dependencies.oauth.subscribeMessages(verified.accountId, verified.token);
-      const reference = await dependencies.credentials.put(verified.token);
-      if (!isCredentialSecretReference(reference)) {
-        await deleteCredential(reference);
-        throw new InstagramApplicationError("business_rule_failed");
-      }
+    completeOnboarding: async ({ code, state, onFailure }) => {
+      let stage: InstagramOnboardingStage = "state_validation";
+      let reported = false;
+      const reportFailure = (error: unknown): void => {
+        if (reported) return;
+        reported = true;
+        const databaseCode: unknown =
+          typeof error === "object" && error !== null && "code" in error ? error.code : null;
+        onFailure?.(
+          Object.freeze({
+            stage,
+            failure:
+              error instanceof InstagramProviderError
+                ? "provider"
+                : error instanceof InstagramApplicationError
+                  ? "application"
+                  : "unexpected",
+            applicationCode: error instanceof InstagramApplicationError ? error.code : null,
+            providerCategory: error instanceof InstagramProviderError ? error.category : null,
+            providerDiagnostic:
+              error instanceof InstagramProviderError ? error.diagnostic : undefined,
+            databaseCode:
+              typeof databaseCode === "string" && /^[0-9A-Z]{5}$/u.test(databaseCode)
+                ? databaseCode
+                : null,
+          }),
+        );
+      };
       try {
-        const now = clock();
-        const changed = await dependencies.persistence.activate({
-          context,
-          stateHash,
-          accountId: verified.accountId,
-          accountHash: instagramAccountRouteHash(verified.accountId),
-          credentialReference: reference,
-          expiresAt: new Date(now.getTime() + verified.expiresInSeconds * 1000),
-          now,
-        });
-        if (!changed) throw new InstagramApplicationError("channel_unavailable");
+        if (!/^[A-Za-z0-9_.|-]{1,2048}$/u.test(code))
+          throw new InstagramApplicationError("validation_failed");
+        const { context, stateHash } = await resolvePendingOnboarding(state);
+        // Each persistence method owns only a short transaction. No provider/secret I/O occurs inside it.
+        stage = "code_exchange";
+        const verified = await dependencies.oauth.exchangeCode(code);
+        stage = "message_subscription";
+        await dependencies.oauth.subscribeMessages(verified.accountId, verified.token);
+        stage = "credential_storage";
+        const reference = await dependencies.credentials.put(verified.token);
+        if (!isCredentialSecretReference(reference)) {
+          await deleteCredential(reference);
+          throw new InstagramApplicationError("business_rule_failed");
+        }
+        try {
+          stage = "activation";
+          const now = clock();
+          const changed = await dependencies.persistence.activate({
+            context,
+            stateHash,
+            accountId: verified.accountId,
+            accountHash: instagramAccountRouteHash(verified.accountId),
+            credentialReference: reference,
+            expiresAt: new Date(now.getTime() + verified.expiresInSeconds * 1000),
+            now,
+          });
+          if (!changed) throw new InstagramApplicationError("channel_unavailable");
+        } catch (error) {
+          await deleteCredential(reference);
+          reportFailure(error);
+          if (error instanceof InstagramApplicationError) throw error;
+          throw new InstagramApplicationError("business_rule_failed");
+        }
+        return Object.freeze({ organizationId: context.organizationId });
       } catch (error) {
-        await deleteCredential(reference);
-        if (error instanceof InstagramApplicationError) throw error;
-        throw new InstagramApplicationError("business_rule_failed");
+        reportFailure(error);
+        throw error;
       }
-      return Object.freeze({ organizationId: context.organizationId });
     },
     resolveOnboardingOrganization: async ({ state }) => {
       const { context } = await resolvePendingOnboarding(state);

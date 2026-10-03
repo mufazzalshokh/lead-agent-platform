@@ -22,6 +22,7 @@ const record = (value: unknown): Record<string, unknown> | null =>
 const one = (value: unknown): Record<string, unknown> | null => {
   const object = record(value);
   const data = object?.["data"];
+  if (Array.isArray(data) && object?.["access_token"] !== undefined) return null;
   return Array.isArray(data) ? (data.length === 1 ? record(data[0]) : null) : object;
 };
 const validId = (value: unknown): value is string =>
@@ -48,6 +49,7 @@ export const createInstagramPlatformClient = (
   const invoke = async (
     url: string,
     init: RequestInit,
+    operation: NonNullable<InstagramProviderError["diagnostic"]>["operation"],
     sideEffecting = false,
   ): Promise<unknown> => {
     const abort = new AbortController();
@@ -62,7 +64,11 @@ export const createInstagramPlatformClient = (
       const chunks: Uint8Array[] = [];
       let length = 0;
       if (Number(response.headers.get("content-length") ?? "0") > 65_536)
-        throw new InstagramProviderError("provider_unavailable", sideEffecting);
+        throw new InstagramProviderError("provider_unavailable", sideEffecting, undefined, {
+          operation,
+          reason: "oversized_response",
+          httpStatus: response.status,
+        });
       if (reader !== undefined) {
         try {
           while (true) {
@@ -70,11 +76,19 @@ export const createInstagramPlatformClient = (
             if (part.done) break;
             const chunk: unknown = part.value;
             if (!(chunk instanceof Uint8Array))
-              throw new InstagramProviderError("provider_unavailable", sideEffecting);
+              throw new InstagramProviderError("provider_unavailable", sideEffecting, undefined, {
+                operation,
+                reason: "invalid_response",
+                httpStatus: response.status,
+              });
             length += chunk.byteLength;
             if (length > 65_536) {
               await reader.cancel();
-              throw new InstagramProviderError("provider_unavailable", sideEffecting);
+              throw new InstagramProviderError("provider_unavailable", sideEffecting, undefined, {
+                operation,
+                reason: "oversized_response",
+                httpStatus: response.status,
+              });
             }
             chunks.push(chunk);
           }
@@ -84,17 +98,40 @@ export const createInstagramPlatformClient = (
       }
       let payload: unknown;
       try {
-        payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        payload = JSON.parse(
+          Buffer.concat(chunks).toString("utf8"),
+          (key: string, value: unknown, context?: unknown): unknown => {
+            // Node 24 exposes the original numeric lexeme. Do not stringify a rounded
+            // Number: Instagram IDs can exceed Number.MAX_SAFE_INTEGER.
+            if (key !== "user_id" || typeof value !== "number") return value;
+            const source = record(context)?.["source"];
+            return validId(source) ? source : value;
+          },
+        );
       } catch {
-        throw new InstagramProviderError("provider_unavailable", sideEffecting);
+        throw new InstagramProviderError("provider_unavailable", sideEffecting, undefined, {
+          operation,
+          reason: "invalid_json",
+          httpStatus: response.status,
+        });
       }
       const error = record(record(payload)?.["error"]);
-      if (!response.ok || error !== null) {
-        const code = error?.["code"];
+      const flatError = record(payload)?.["error_type"];
+      if (!response.ok || error !== null || flatError !== undefined) {
+        const rawCode = error?.["code"] ?? record(payload)?.["code"];
+        const code =
+          typeof rawCode === "number" && Number.isSafeInteger(rawCode) && rawCode >= 0
+            ? rawCode
+            : undefined;
+        const rawSubcode = error?.["error_subcode"];
+        const subcode =
+          typeof rawSubcode === "number" && Number.isSafeInteger(rawSubcode) && rawSubcode >= 0
+            ? rawSubcode
+            : undefined;
         const category: ChannelFailureCategory =
           code === 190 || response.status === 401
             ? "authentication_failed"
-            : response.status === 429 || [4, 17, 32, 613].includes(Number(code))
+            : response.status === 429 || (code !== undefined && [4, 17, 32, 613].includes(code))
               ? "rate_limited"
               : response.status >= 500
                 ? "provider_unavailable"
@@ -106,12 +143,22 @@ export const createInstagramPlatformClient = (
           category === "rate_limited" && Number.isFinite(retry) && retry > 0
             ? Math.min(retry, 300) * 1000
             : undefined,
+          {
+            operation,
+            reason: "http_rejection",
+            httpStatus: response.status,
+            ...(code === undefined ? {} : { providerCode: code }),
+            ...(subcode === undefined ? {} : { providerSubcode: subcode }),
+          },
         );
       }
       return payload;
     } catch (error) {
       if (error instanceof InstagramProviderError) throw error;
-      throw new InstagramProviderError("provider_unavailable", sideEffecting);
+      throw new InstagramProviderError("provider_unavailable", sideEffecting, undefined, {
+        operation,
+        reason: "network",
+      });
     } finally {
       clearTimeout(timeout);
     }
@@ -122,6 +169,7 @@ export const createInstagramPlatformClient = (
   };
   const longCredential = (
     payload: unknown,
+    operation: "long_token" | "refresh",
   ): Readonly<{ expiresInSeconds: number; token: string }> => {
     const result = record(payload);
     if (
@@ -129,7 +177,15 @@ export const createInstagramPlatformClient = (
       !expires(result?.["expires_in"]) ||
       result["token_type"] !== "bearer"
     )
-      throw new InstagramProviderError("authentication_failed", false);
+      throw new InstagramProviderError("authentication_failed", false, undefined, {
+        operation,
+        reason: "invalid_response",
+        invalidField: !tokenValue(result?.["access_token"])
+          ? "access_token"
+          : !expires(result["expires_in"])
+            ? "expires_in"
+            : "token_type",
+      });
     return Object.freeze({ expiresInSeconds: result["expires_in"], token: result["access_token"] });
   };
   return Object.freeze<InstagramPlatformClient>({
@@ -144,13 +200,26 @@ export const createInstagramPlatformClient = (
       }))
         form.set(key, value);
       const short = one(
-        await invoke("https://api.instagram.com/oauth/access_token", {
-          method: "POST",
-          body: form,
-        }),
+        await invoke(
+          "https://api.instagram.com/oauth/access_token",
+          {
+            method: "POST",
+            body: form,
+          },
+          "short_token",
+        ),
       );
       if (!tokenValue(short?.["access_token"]) || !validId(short["user_id"]))
-        throw new InstagramProviderError("authentication_failed", false);
+        throw new InstagramProviderError("authentication_failed", false, undefined, {
+          operation: "short_token",
+          reason: "invalid_response",
+          invalidField:
+            short === null
+              ? "response_shape"
+              : !tokenValue(short["access_token"])
+                ? "access_token"
+                : "user_id",
+        });
       // Meta's token exchange requires server-side query parameters. This URL is never logged or returned.
       const query = new URLSearchParams({
         grant_type: "ig_exchange_token",
@@ -158,15 +227,24 @@ export const createInstagramPlatformClient = (
         access_token: short["access_token"],
       });
       const long = longCredential(
-        await invoke(`https://graph.instagram.com/access_token?${query.toString()}`, {
-          method: "GET",
-        }),
+        await invoke(
+          `https://graph.instagram.com/access_token?${query.toString()}`,
+          {
+            method: "GET",
+          },
+          "long_token",
+        ),
+        "long_token",
       );
       const profile = one(
-        await invoke(`${graph}/me?fields=user_id,account_type`, {
-          method: "GET",
-          headers: bearer(long.token),
-        }),
+        await invoke(
+          `${graph}/me?fields=user_id,account_type`,
+          {
+            method: "GET",
+            headers: bearer(long.token),
+          },
+          "profile",
+        ),
       );
       if (
         !validId(profile?.["user_id"]) ||
@@ -174,7 +252,16 @@ export const createInstagramPlatformClient = (
           String(profile["account_type"]),
         )
       )
-        throw new InstagramProviderError("authentication_failed", false);
+        throw new InstagramProviderError("authentication_failed", false, undefined, {
+          operation: "profile",
+          reason: "invalid_response",
+          invalidField:
+            profile === null
+              ? "response_shape"
+              : !validId(profile["user_id"])
+                ? "user_id"
+                : "account_type",
+        });
       // user_id is the canonical professional ID used in webhook entry.id; id is app scoped.
       return Object.freeze({ ...long, accountId: profile["user_id"] });
     },
@@ -183,19 +270,29 @@ export const createInstagramPlatformClient = (
         await invoke(
           `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token`,
           { method: "GET", headers: bearer(token) },
+          "refresh",
         ),
+        "refresh",
       ),
     subscribeMessages: async (accountId, token) => {
       if (!validId(accountId)) throw new InstagramProviderError("authentication_failed", false);
       const result = record(
-        await invoke(`${graph}/${accountId}/subscribed_apps`, {
-          method: "POST",
-          headers: { ...bearer(token), "content-type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ subscribed_fields: "messages" }),
-        }),
+        await invoke(
+          `${graph}/${accountId}/subscribed_apps`,
+          {
+            method: "POST",
+            headers: { ...bearer(token), "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ subscribed_fields: "messages" }),
+          },
+          "subscription",
+        ),
       );
       if (result?.["success"] !== true)
-        throw new InstagramProviderError("permanent_rejection", false);
+        throw new InstagramProviderError("permanent_rejection", false, undefined, {
+          operation: "subscription",
+          reason: "invalid_response",
+          invalidField: "success",
+        });
     },
     sendMessage: async ({ accountId, recipientId, text, token }) => {
       if (
@@ -213,6 +310,7 @@ export const createInstagramPlatformClient = (
             headers: { ...bearer(token), "content-type": "application/json" },
             body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
           },
+          "send",
           true,
         ),
       );
