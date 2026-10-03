@@ -121,7 +121,7 @@ on:
         required: false
         type: string
       auth_callback_request_id:
-        description: Public request ID for request-scoped sanitized callback diagnostics
+        description: Public request ID for sanitized callback diagnostics; use instagram:req-ID for Instagram
         required: false
         type: string
 
@@ -231,7 +231,7 @@ jobs:
           fi
           if [[ "$PHASE" == "auth-callback-diagnose" ]]; then
             [[ "$ACTION" == "plan" ]]
-            [[ "$S22_AUTH_CALLBACK_REQUEST_ID" == "request:latest" || "$S22_AUTH_CALLBACK_REQUEST_ID" =~ ^request:req-[A-Za-z0-9_-]{1,64}$ ]]
+            [[ "$S22_AUTH_CALLBACK_REQUEST_ID" == "request:latest" || "$S22_AUTH_CALLBACK_REQUEST_ID" =~ ^(request|instagram):req-[A-Za-z0-9_-]{1,64}$ ]]
           fi
           if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
             [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -1093,8 +1093,36 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Read request-scoped sanitized Instagram callback failure
+        if: env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_ID="${S22_AUTH_CALLBACK_REQUEST_ID#instagram:}"
+          RAW_LOGS="$(mktemp)"
+          trap 'rm -f "$RAW_LOGS"' EXIT
+          gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND jsonPayload.instagramCallbackFailure:* AND jsonPayload.requestId=\"$REQUEST_ID\"" \
+            --project="$PROJECT_ID" \
+            --freshness=24h \
+            --limit=20 \
+            --format=json > "$RAW_LOGS"
+          node .github/scripts/s22-instagram-callback-diagnose.mjs "$RAW_LOGS" "$REQUEST_ID" \
+            | tee s22-instagram-callback-diagnostic-evidence.json
+
+      - name: Upload sanitized Instagram callback diagnostic evidence
+        if: always() && env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-callback-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-instagram-callback-diagnostic-evidence.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Read request-scoped sanitized auth callback failure
-        if: env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && !startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         shell: bash
@@ -1188,7 +1216,7 @@ jobs:
             ' > s22-auth-callback-diagnostic-evidence.json
 
       - name: Upload sanitized auth callback diagnostic evidence
-        if: always() && env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan'
+        if: always() && env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && !startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-auth-callback-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
