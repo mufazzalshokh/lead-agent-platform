@@ -45,6 +45,7 @@ on:
           - telegram-verify-access-remove
           - owner-workspace-bootstrap
           - owner-workspace-verify
+          - acceptance-inventory
           - full
           - load
           - dormant
@@ -135,7 +136,68 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  acceptance-inventory:
+    name: Read S22 acceptance inventory
+    if: inputs.phase == 'acceptance-inventory'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REQUESTED_SHA: ${{ inputs.commit_sha }}
+    steps:
+      - name: Enforce read-only staging boundary
+        env:
+          ACTION: ${{ inputs.action }}
+          DISPATCH_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ACTION" == "plan" ]]
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          case "$DISPATCH_REF" in
+            refs/heads/main|refs/heads/verify/s22-staging-recovery-capacity) ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Check out exact evidence tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Prove evidence commit is preserved on the dispatched branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$GITHUB_REF"
+          git merge-base --is-ancestor "$REQUESTED_SHA" FETCH_HEAD
+
+      - name: Authenticate through existing staging WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Read backup and alert metadata without secret access
+        shell: bash
+        run: |
+          bash .github/scripts/s22-acceptance-inventory.sh
+
+      - name: Preserve allowlisted acceptance inventory
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-acceptance-inventory-${{ github.run_id }}
+          path: s22-acceptance-inventory.json
+          if-no-files-found: error
+          retention-days: 7
+
   terraform:
+    if: inputs.phase != 'acceptance-inventory'
     name: Terraform ${{ inputs.action }} / ${{ inputs.phase }}
     runs-on: ubuntu-latest
     environment: staging
