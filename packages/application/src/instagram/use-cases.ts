@@ -67,6 +67,9 @@ export type InstagramBusinessUseCases = Readonly<{
   completeOnboarding(
     input: Readonly<{ code: string; state: string }>,
   ): Promise<Readonly<{ organizationId: OrganizationId }>>;
+  resolveOnboardingOrganization(
+    input: Readonly<{ state: string }>,
+  ): Promise<Readonly<{ organizationId: OrganizationId }>>;
   getStatus(
     input: Readonly<{ authorization: AuthorizationContext }>,
   ): Promise<InstagramManagementStatus>;
@@ -128,6 +131,27 @@ export const createInstagramBusinessUseCases = (
       throw new InstagramApplicationError("validation_failed");
     return Object.freeze({ channelConnectionId, organizationId: authorization.organizationId });
   };
+  const resolvePendingOnboarding = async (
+    state: string,
+  ): Promise<Readonly<{ context: TrustedInboundRoute; stateHash: Uint8Array }>> => {
+    if (!/^[A-Za-z0-9_-]{43}$/u.test(state))
+      throw new InstagramApplicationError("validation_failed");
+    const stateHash = hash(state);
+    const context = await dependencies.routeResolver.resolveInboundRoute(
+      "instagram_webhook",
+      stateHash,
+    );
+    if (context === null) throw new InstagramApplicationError("channel_unavailable");
+    const pending = await dependencies.persistence.loadConnection(context);
+    if (
+      pending?.status !== "pending" ||
+      !sameHash(pending.stateHash, stateHash) ||
+      pending.onboardingExpiresAt === null ||
+      Date.parse(pending.onboardingExpiresAt) <= clock().getTime()
+    )
+      throw new InstagramApplicationError("channel_unavailable");
+    return Object.freeze({ context, stateHash });
+  };
   return Object.freeze<InstagramBusinessUseCases>({
     beginOnboarding: async ({ authorization, displayName }) => {
       requireStaff(authorization);
@@ -137,13 +161,15 @@ export const createInstagramBusinessUseCases = (
       if (!/^[A-Za-z0-9_-]{43}$/u.test(state))
         throw new InstagramApplicationError("business_rule_failed");
       const now = clock();
-      await dependencies.persistence.beginOnboarding({
+      const started = await dependencies.persistence.beginOnboarding({
         actor: authorization,
         displayName,
         stateHash: hash(state),
         expiresAt: new Date(now.getTime() + 10 * 60 * 1000),
         now,
       });
+      if (started.retiredCredentialReference !== null)
+        await deleteCredential(started.retiredCredentialReference);
       const parameters = new URLSearchParams({
         client_id: dependencies.appId,
         redirect_uri: dependencies.oauthRedirectUri,
@@ -157,22 +183,9 @@ export const createInstagramBusinessUseCases = (
       });
     },
     completeOnboarding: async ({ code, state }) => {
-      if (!/^[A-Za-z0-9_-]{43}$/u.test(state) || !/^[A-Za-z0-9_.|-]{1,2048}$/u.test(code))
+      if (!/^[A-Za-z0-9_.|-]{1,2048}$/u.test(code))
         throw new InstagramApplicationError("validation_failed");
-      const stateHash = hash(state);
-      const context = await dependencies.routeResolver.resolveInboundRoute(
-        "instagram_webhook",
-        stateHash,
-      );
-      if (context === null) throw new InstagramApplicationError("channel_unavailable");
-      const pending = await dependencies.persistence.loadConnection(context);
-      if (
-        pending?.status !== "pending" ||
-        !sameHash(pending.stateHash, stateHash) ||
-        pending.onboardingExpiresAt === null ||
-        Date.parse(pending.onboardingExpiresAt) <= clock().getTime()
-      )
-        throw new InstagramApplicationError("channel_unavailable");
+      const { context, stateHash } = await resolvePendingOnboarding(state);
       // Each persistence method owns only a short transaction. No provider/secret I/O occurs inside it.
       const verified = await dependencies.oauth.exchangeCode(code);
       await dependencies.oauth.subscribeMessages(verified.accountId, verified.token);
@@ -198,6 +211,10 @@ export const createInstagramBusinessUseCases = (
         if (error instanceof InstagramApplicationError) throw error;
         throw new InstagramApplicationError("business_rule_failed");
       }
+      return Object.freeze({ organizationId: context.organizationId });
+    },
+    resolveOnboardingOrganization: async ({ state }) => {
+      const { context } = await resolvePendingOnboarding(state);
       return Object.freeze({ organizationId: context.organizationId });
     },
     getStatus: async ({ authorization }) => {

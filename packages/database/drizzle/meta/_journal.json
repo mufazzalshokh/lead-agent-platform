@@ -218,6 +218,13 @@
       "when": 1790064000003,
       "tag": "0030_s22_first_tenant_bootstrap",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791014400000,
+      "tag": "0031_s22_widget_inbound_route_management",
+      "breakpoints": true
     }
   ]
 }

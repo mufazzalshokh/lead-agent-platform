@@ -104,7 +104,7 @@ const fixture = (
     return Promise.resolve(true);
   });
   const beginOnboarding = vi.fn<InstagramPersistenceStore["beginOnboarding"]>(() =>
-    Promise.resolve(IDS.channel),
+    Promise.resolve({ channelConnectionId: IDS.channel, retiredCredentialReference: null }),
   );
   const persistence: InstagramPersistenceStore = {
     activate,
@@ -245,6 +245,18 @@ describe("Instagram application trust and short-transaction choreography", () =>
     expect(input?.stateHash).toEqual(digest(NONCE));
     expect((input?.expiresAt.getTime() ?? 0) - (input?.now.getTime() ?? 0)).toBe(600000);
   });
+  it("retires the prior credential after a tenant-scoped reconnect is persisted", async () => {
+    const test = fixture();
+    test.beginOnboarding.mockResolvedValue({
+      channelConnectionId: IDS.channel,
+      retiredCredentialReference: "testsecret://instagram/old",
+    });
+    await test.useCases.beginOnboarding({
+      authorization: await authorization(),
+      displayName: "Clinic Instagram",
+    });
+    expect(test.deleteCredential).toHaveBeenCalledWith("testsecret://instagram/old");
+  });
   it("requires integrations.manage before touching persistence or provider", async () => {
     const test = fixture();
     await expect(
@@ -279,6 +291,16 @@ describe("Instagram application trust and short-transaction choreography", () =>
       expect(test.resolver).not.toHaveBeenCalled();
     },
   );
+  it("resolves a valid pending callback to its tenant without provider or secret access", async () => {
+    const test = fixture();
+    await expect(test.useCases.resolveOnboardingOrganization({ state: NONCE })).resolves.toEqual({
+      organizationId: IDS.organization,
+    });
+    expect(test.resolver).toHaveBeenCalledWith("instagram_webhook", digest(NONCE));
+    expect(test.exchangeCode).not.toHaveBeenCalled();
+    expect(test.subscribeMessages).not.toHaveBeenCalled();
+    expect(test.values.size).toBe(0);
+  });
   it("rejects expired state and replay without re-exchanging code or creating another secret", async () => {
     const expired = fixture();
     expired.setNow(new Date(NOW.getTime() + 600001));

@@ -15,10 +15,6 @@ export const INSTAGRAM_BUSINESS_CAPABILITIES: ChannelCapabilities =
     supports_delivery_status: false,
     supports_message_edit: false,
   });
-export const INSTAGRAM_MINIMUM_SCOPES = Object.freeze([
-  "instagram_business_basic",
-  "instagram_business_manage_messages",
-] as const);
 const record = (value: unknown): Record<string, unknown> | null =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -153,18 +149,7 @@ export const createInstagramPlatformClient = (
           body: form,
         }),
       );
-      const permissions = short?.["permissions"];
-      const scopes =
-        typeof permissions === "string"
-          ? permissions.split(",")
-          : Array.isArray(permissions)
-            ? permissions
-            : [];
-      if (
-        !tokenValue(short?.["access_token"]) ||
-        !validId(short["user_id"]) ||
-        !INSTAGRAM_MINIMUM_SCOPES.every((scope) => scopes.includes(scope))
-      )
+      if (!tokenValue(short?.["access_token"]) || !validId(short["user_id"]))
         throw new InstagramProviderError("authentication_failed", false);
       // Meta's token exchange requires server-side query parameters. This URL is never logged or returned.
       const query = new URLSearchParams({

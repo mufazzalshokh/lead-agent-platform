@@ -12,6 +12,7 @@ import {
   buildWidgetInstallSnippet,
   readCsrfCookie,
   readInstagramAuthorizationUrl,
+  readInstagramCallbackResult,
   readInstagramIntegrationStatus,
   readOrganizationContext,
   readStaffAuthRecovery,
@@ -20,6 +21,7 @@ import {
   readTelegramIntegrationStatus,
   readWidgetManagementConfiguration,
   staffActionMessage,
+  TELEGRAM_BUSINESS_SETTINGS_URL,
 } from "./staff-ui.js";
 import {
   buildWidgetFrameDocument,
@@ -94,6 +96,14 @@ describe("S19 staff presentation policy", () => {
     ).toBeNull();
   });
 
+  it("accepts only finite Instagram callback results", () => {
+    expect(readInstagramCallbackResult("instagram", "connected")).toBe("connected");
+    expect(readInstagramCallbackResult("instagram", "failed")).toBe("failed");
+    expect(readInstagramCallbackResult("telegram", "connected")).toBeNull();
+    expect(readInstagramCallbackResult("instagram", ["connected"])).toBeNull();
+    expect(readInstagramCallbackResult("instagram", "private-provider-detail")).toBeNull();
+  });
+
   it("opens the tenant-bound Telegram onboarding result from the initiating click", async () => {
     const nonce = "a".repeat(43);
     const replace = vi.fn(),
@@ -134,17 +144,18 @@ describe("S19 staff presentation policy", () => {
     expect(JSON.stringify(result)).not.toContain(nonce);
   });
 
-  it("falls back to same-tab Instagram OAuth navigation when a popup is blocked", async () => {
+  it("keeps Instagram OAuth and its callback in the initiating tab", async () => {
     const nonce = "b".repeat(43),
       authorizationUrl = `https://www.instagram.com/oauth/authorize?client_id=123&state=${nonce}`,
       assign = vi.fn(),
+      open = vi.fn(),
       request = vi.fn(() =>
         Promise.resolve(Response.json({ authorization_url: authorizationUrl }, { status: 201 })),
       );
 
     const result = await initiateIntegrationConnection({
       csrfToken: "csrf-proof",
-      navigation: { assign, open: () => null },
+      navigation: { assign, open },
       provider: "instagram",
       request,
     });
@@ -157,9 +168,14 @@ describe("S19 staff presentation policy", () => {
         method: "POST",
       }),
     );
+    expect(open).not.toHaveBeenCalled();
     expect(assign).toHaveBeenCalledWith(authorizationUrl);
     expect(result).toEqual({ ok: true, provider: "instagram" });
     expect(JSON.stringify(result)).not.toContain(nonce);
+  });
+
+  it("uses Telegram's documented Business settings deep link for pending setup", () => {
+    expect(TELEGRAM_BUSINESS_SETTINGS_URL).toBe("tg://settings/business");
   });
 
   it("closes the pending destination and returns only safe failure metadata", async () => {
@@ -178,7 +194,7 @@ describe("S19 staff presentation policy", () => {
     const result = await initiateIntegrationConnection({
       csrfToken: "csrf-proof",
       navigation: { assign: vi.fn(), open: () => popup },
-      provider: "instagram",
+      provider: "telegram",
       request,
     });
 

@@ -60,6 +60,14 @@ export type StaffAuthRecovery = "denied" | "reauthenticate";
 export const readStaffAuthRecovery = (value: unknown): StaffAuthRecovery | null =>
   value === "denied" || value === "reauthenticate" ? value : null;
 
+export type InstagramCallbackResult = "connected" | "failed";
+
+export const readInstagramCallbackResult = (
+  integration: unknown,
+  result: unknown,
+): InstagramCallbackResult | null =>
+  integration === "instagram" && (result === "connected" || result === "failed") ? result : null;
+
 export const buildStaffSignInPath = (
   organizationId: string | null,
   recovery: StaffAuthRecovery | null,
@@ -216,6 +224,8 @@ const readProblemCode = (value: unknown): string | undefined => {
   return typeof code === "string" && /^[a-z][a-z0-9_]{0,63}$/u.test(code) ? code : undefined;
 };
 
+export const TELEGRAM_BUSINESS_SETTINGS_URL = "tg://settings/business";
+
 const prepareExternalProviderNavigation = (navigation: IntegrationNavigation) => {
   let providerWindow: ExternalProviderWindow | null = null;
   try {
@@ -255,8 +265,15 @@ export const initiateIntegrationConnection = async (
     request(path: string, init: RequestInit): Promise<Response>;
   }>,
 ): Promise<IntegrationInitiationResult> => {
-  // Opening the blank destination before the first await preserves the user's click gesture.
-  const pendingNavigation = prepareExternalProviderNavigation(input.navigation);
+  // Telegram benefits from preserving the click gesture for its external-app handoff. Instagram
+  // must return through the same browser tab so the owner sees the callback result and fresh state.
+  const pendingNavigation =
+    input.provider === "telegram"
+      ? prepareExternalProviderNavigation(input.navigation)
+      : Object.freeze({
+          cancel: (): void => undefined,
+          navigate: (url: string): void => input.navigation.assign(url),
+        });
   try {
     const response = await input.request(`/v1/staff/integrations/${input.provider}/onboarding`, {
       body: JSON.stringify({

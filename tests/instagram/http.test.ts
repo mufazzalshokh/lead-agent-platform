@@ -34,15 +34,18 @@ const fixture = () => {
   const completeOnboarding = vi.fn<InstagramBusinessUseCases["completeOnboarding"]>(() =>
     Promise.resolve({ organizationId: IDS.organization }),
   );
+  const resolveOnboardingOrganization = vi.fn<
+    InstagramBusinessUseCases["resolveOnboardingOrganization"]
+  >(() => Promise.resolve({ organizationId: IDS.organization }));
   const api = createApi({
     instagramWebhook: {
       appSecret: instagramConfig.appSecret,
       webhookVerifyToken: instagramConfig.webhookVerifyToken,
-      useCases: { processMessage, completeOnboarding },
+      useCases: { processMessage, completeOnboarding, resolveOnboardingOrganization },
       clock: () => NOW,
     },
   });
-  return { api, processMessage, completeOnboarding };
+  return { api, processMessage, completeOnboarding, resolveOnboardingOrganization };
 };
 describe("Instagram raw HTTP webhook/callback security", { timeout: 30000 }, () => {
   it.each([undefined, "sha256=bad", "sha256=" + "0".repeat(64)])(
@@ -170,13 +173,47 @@ describe("Instagram raw HTTP webhook/callback security", { timeout: 30000 }, () 
       );
       expect(callback.statusCode).toBe(303);
       expect(callback.headers.location).toBe(
-        `/staff?organization=${IDS.organization}#integrations`,
+        `/staff?organization=${IDS.organization}&integration=instagram&result=connected#integrations`,
       );
       expect(callback.body).not.toContain(NONCE);
+      expect(test.resolveOnboardingOrganization).not.toHaveBeenCalled();
       expect(
         (await test.api.inject(`/v1/integrations/instagram/callback?code=code&state=bad`))
           .statusCode,
       ).toBe(400);
+    } finally {
+      await test.api.close();
+    }
+  });
+  it("returns provider denial to the tenant workspace without exposing provider details", async () => {
+    const test = fixture();
+    try {
+      const callback = await test.api.inject(
+        `/v1/integrations/instagram/callback?error=access_denied&error_reason=user_denied&error_description=private-provider-detail&state=${NONCE}`,
+      );
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(
+        `/staff?organization=${IDS.organization}&integration=instagram&result=failed#integrations`,
+      );
+      expect(callback.headers.location).not.toContain("private-provider-detail");
+      expect(test.completeOnboarding).not.toHaveBeenCalled();
+      expect(test.resolveOnboardingOrganization).toHaveBeenCalledWith({ state: NONCE });
+    } finally {
+      await test.api.close();
+    }
+  });
+  it("returns a known completion failure to the tenant workspace", async () => {
+    const test = fixture();
+    test.completeOnboarding.mockRejectedValue(new InstagramApplicationError("channel_unavailable"));
+    try {
+      const callback = await test.api.inject(
+        `/v1/integrations/instagram/callback?code=synthetic-code&state=${NONCE}`,
+      );
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(
+        `/staff?organization=${IDS.organization}&integration=instagram&result=failed#integrations`,
+      );
+      expect(test.resolveOnboardingOrganization).toHaveBeenCalledWith({ state: NONCE });
     } finally {
       await test.api.close();
     }

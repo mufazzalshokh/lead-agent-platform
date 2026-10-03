@@ -127,8 +127,8 @@ Instagram redirect, and Widget test origin only against these staging URLs.
 Plan/review/apply the `migration` phase with the migrator digest. API and Web remain on
 health-only revisions. The workflow executes the one-shot job once and requires exit
 code zero. Its sanitized structured record must show environment `staging`, exact Git
-SHA, migrator digest, migration count `31`, and head
-`0030_s22_first_tenant_bootstrap`. Confirm the database has 52 production tables
+SHA, migrator digest, migration count `32`, and head
+`0031_s22_widget_inbound_route_management`. Confirm the database has 52 production tables
 and the frozen FORCE-RLS manifest before proceeding.
 
 Plan/review/apply the `full` phase only after migration proof. This activates the real

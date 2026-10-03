@@ -495,7 +495,7 @@ if (mode === "migration_state_flags") {
       const migrations = await pool.query(
         "select count(*)::integer as count from drizzle.__drizzle_migrations",
       );
-      if (migrations.rows[0]?.count === 31) flags |= 32;
+      if (migrations.rows[0]?.count === 32) flags |= 32;
     }
     const tables = await pool.query(
       "select count(*)::integer as count from information_schema.tables where table_schema = $$public$$ and table_type = $$BASE TABLE$$",
@@ -548,8 +548,8 @@ if (mode === "packaged_manifest_flags") {
   const { readStagingMigrationManifest } = await import("./dist/migrate.js");
   const manifest = await readStagingMigrationManifest();
   let flags = 1;
-  if (manifest.entries.length === 31) flags |= 2;
-  if (manifest.entries.at(-1)?.tag === "0030_s22_first_tenant_bootstrap") flags |= 4;
+  if (manifest.entries.length === 32) flags |= 2;
+  if (manifest.entries.at(-1)?.tag === "0031_s22_widget_inbound_route_management") flags |= 4;
   process.exit(flags);
 }
 
@@ -666,12 +666,12 @@ if [[ "${S22_RUN_SQL_PROBE:-false}" == "true" ]]; then
   report runtime_admin_role_bypassrls "$(decode_boolean "$MIGRATION_STATE_FLAGS" 4)"
   report runtime_admin_role_superuser "$(decode_boolean "$MIGRATION_STATE_FLAGS" 8)"
   report runtime_migration_table_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 16)"
-  report runtime_migration_count_31 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 32)"
+  report runtime_migration_count_32 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 32)"
   report runtime_production_table_count_52 "$(decode_boolean "$MIGRATION_STATE_FLAGS" 64)"
   report runtime_required_bypassrls_role_present "$(decode_boolean "$MIGRATION_STATE_FLAGS" 128)"
 
   MIGRATION_FAILURE_INDEX_CODE="$(run_encoded_probe UNUSED UNUSED migration_failure_index)"
-  if (( MIGRATION_FAILURE_INDEX_CODE >= 1 && MIGRATION_FAILURE_INDEX_CODE <= 31 )); then
+  if (( MIGRATION_FAILURE_INDEX_CODE >= 1 && MIGRATION_FAILURE_INDEX_CODE <= 32 )); then
     MIGRATION_FAILURE_INDEX=$((MIGRATION_FAILURE_INDEX_CODE - 1))
     MIGRATION_FAILURE_TAG="$(
       jq -er --argjson index "$MIGRATION_FAILURE_INDEX" \
@@ -719,8 +719,8 @@ if [[ "${S22_RUN_SQL_PROBE:-false}" == "true" ]]; then
 
   PACKAGED_MANIFEST_FLAGS="$(run_encoded_probe UNUSED UNUSED packaged_manifest_flags)"
   report packaged_manifest_importable "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 1)"
-  report packaged_manifest_count_31 "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 2)"
-  report packaged_manifest_head_0030 "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 4)"
+  report packaged_manifest_count_32 "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 2)"
+  report packaged_manifest_head_0031 "$(decode_boolean "$PACKAGED_MANIFEST_FLAGS" 4)"
 fi
 
 if [[ "${S22_SKIP_ACTIVE_PROBES:-false}" == "true" ]]; then

@@ -34,7 +34,7 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
     and .variables.web_max_instance_count.value == "1"
     and .variables.worker_instance_count.value == "1"
     and .variables.worker_memory.value == "512Mi"
-    and .variables.migration_head.value == "0030_s22_first_tenant_bootstrap"
+    and .variables.migration_head.value == "0031_s22_widget_inbound_route_management"
 ' "$PLAN_JSON" > /dev/null
 
 INITIAL_ACTIONS='["create:google_cloud_run_v2_worker_pool.worker[0]","update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]"]'

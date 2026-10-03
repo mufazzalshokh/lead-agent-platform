@@ -19,7 +19,9 @@ import {
   readTelegramIntegrationStatus,
   readWidgetManagementConfiguration,
   staffActionMessage,
+  TELEGRAM_BUSINESS_SETTINGS_URL,
   type IntegrationConnectionStatus,
+  type InstagramCallbackResult,
   type StaffMembershipRole,
   type TelegramIntegrationStatus,
   type WidgetManagementConfiguration,
@@ -202,10 +204,12 @@ const actionIdentity = (
 export function StaffWorkspace({
   apiOrigin,
   initialAuthRecovery,
+  initialInstagramResult,
   initialOrganization,
 }: Readonly<{
   apiOrigin: string;
   initialAuthRecovery: StaffAuthRecovery | null;
+  initialInstagramResult: InstagramCallbackResult | null;
   initialOrganization: string | null;
 }>) {
   const [organizationId] = useState(() => {
@@ -237,13 +241,22 @@ export function StaffWorkspace({
   const [notice, setNotice] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsView | null>(null);
   const [membershipRole, setMembershipRole] = useState<StaffMembershipRole | null>(null);
-  const [integrationNotice, setIntegrationNotice] = useState<string | null>(null);
+  const [integrationNotice, setIntegrationNotice] = useState<string | null>(() =>
+    initialInstagramResult === "connected"
+      ? "Instagram Professional connected successfully."
+      : initialInstagramResult === "failed"
+        ? "Instagram authorization did not complete. Please reconnect securely."
+        : null,
+  );
   const [integrationWorking, setIntegrationWorking] = useState<
     "instagram" | "telegram" | "widget" | null
   >(null);
   const [telegramStatus, setTelegramStatus] = useState<TelegramIntegrationStatus | null>(null);
   const [instagramStatus, setInstagramStatus] = useState<IntegrationConnectionStatus | null>(null);
-  const [integrationStatusState, setIntegrationStatusState] = useState<
+  const [telegramStatusState, setTelegramStatusState] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
+  const [instagramStatusState, setInstagramStatusState] = useState<
     "loading" | "ready" | "unavailable"
   >("loading");
   const [websiteOrigin, setWebsiteOrigin] = useState("");
@@ -287,25 +300,52 @@ export function StaffWorkspace({
     setAnalytics(parseAnalytics(await responseData(response)));
   }, [request]);
 
-  const loadIntegrationStatuses = useCallback(async () => {
-    const [telegram, instagram] = await Promise.all([
-      request("/v1/staff/integrations/telegram/status"),
-      request("/v1/staff/integrations/instagram/status"),
-    ]);
-    if (!telegram.ok || !instagram.ok) {
+  const loadTelegramStatus = useCallback(async () => {
+    setTelegramStatusState("loading");
+    try {
+      const response = await request("/v1/staff/integrations/telegram/status");
+      const value = response.ok ? readTelegramIntegrationStatus(await response.json()) : null;
+      setTelegramStatus(value);
+      setTelegramStatusState(value === null ? "unavailable" : "ready");
+    } catch {
       setTelegramStatus(null);
-      setInstagramStatus(null);
-      setIntegrationStatusState("unavailable");
-      return;
+      setTelegramStatusState("unavailable");
     }
-    const telegramValue = readTelegramIntegrationStatus(await telegram.json());
-    const instagramValue = readInstagramIntegrationStatus(await instagram.json());
-    setTelegramStatus(telegramValue);
-    setInstagramStatus(instagramValue);
-    setIntegrationStatusState(
-      telegramValue === null || instagramValue === null ? "unavailable" : "ready",
-    );
   }, [request]);
+
+  const loadInstagramStatus = useCallback(async () => {
+    setInstagramStatusState("loading");
+    try {
+      const response = await request("/v1/staff/integrations/instagram/status");
+      const value = response.ok ? readInstagramIntegrationStatus(await response.json()) : null;
+      setInstagramStatus(value);
+      setInstagramStatusState(value === null ? "unavailable" : "ready");
+    } catch {
+      setInstagramStatus(null);
+      setInstagramStatusState("unavailable");
+    }
+  }, [request]);
+
+  const loadWidgetStatus = useCallback(async () => {
+    setWidgetStatus("loading");
+    try {
+      const response = await request("/v1/staff/integrations/widget");
+      if (!response.ok) {
+        setWidgetStatus("unavailable");
+        return;
+      }
+      const configuration = readWidgetManagementConfiguration(await response.json());
+      setWidgetConfiguration(configuration);
+      setWidgetStatus(configuration === null ? "not_configured" : "active");
+      if (configuration !== null) setWebsiteOrigin(configuration.websiteOrigin);
+    } catch {
+      setWidgetStatus("unavailable");
+    }
+  }, [request]);
+
+  const loadIntegrationStatuses = useCallback(async () => {
+    await Promise.all([loadTelegramStatus(), loadInstagramStatus(), loadWidgetStatus()]);
+  }, [loadInstagramStatus, loadTelegramStatus, loadWidgetStatus]);
 
   const loadInbox = useCallback(
     async (cursor?: string, append = false) => {
@@ -338,24 +378,7 @@ export function StaffWorkspace({
       setMembershipRole(role);
       setAuthState("ready");
       if (canManageIntegrations(role)) {
-        void loadIntegrationStatuses().catch(() => {
-          setTelegramStatus(null);
-          setInstagramStatus(null);
-          setIntegrationStatusState("unavailable");
-        });
-        void request("/v1/staff/integrations/widget")
-          .then(async (widget) => {
-            if (!widget.ok) {
-              setWidgetStatus("unavailable");
-              return;
-            }
-            const body: unknown = await widget.json();
-            const configuration = readWidgetManagementConfiguration(body);
-            setWidgetConfiguration(configuration);
-            setWidgetStatus(configuration === null ? "not_configured" : "active");
-            if (configuration !== null) setWebsiteOrigin(configuration.websiteOrigin);
-          })
-          .catch(() => setWidgetStatus("unavailable"));
+        void loadIntegrationStatuses();
       }
       void loadAnalytics().catch(() => setAnalytics(null));
       const response = await request(`/v1/staff/inbox?${query.toString()}`);
@@ -404,7 +427,7 @@ export function StaffWorkspace({
 
   useEffect(() => {
     if (authState !== "ready" || !canManageIntegrations(membershipRole)) return;
-    const refresh = () => void loadIntegrationStatuses().catch(() => undefined);
+    const refresh = () => void loadIntegrationStatuses();
     globalThis.addEventListener("focus", refresh);
     return () => globalThis.removeEventListener("focus", refresh);
   }, [authState, loadIntegrationStatuses, membershipRole]);
@@ -770,9 +793,9 @@ export function StaffWorkspace({
                   </div>
                 </div>
                 {canManageIntegrations(membershipRole) ? (
-                  integrationStatusState !== "ready" ? (
+                  telegramStatusState !== "ready" ? (
                     <button className="primary-button" type="button" disabled>
-                      {integrationStatusState === "loading" ? "Checking…" : "Status unavailable"}
+                      {telegramStatusState === "loading" ? "Checking…" : "Status unavailable"}
                     </button>
                   ) : telegramStatus?.status === "connected" ? (
                     <p className="integration-detail">
@@ -781,10 +804,19 @@ export function StaffWorkspace({
                     </p>
                   ) : telegramStatus?.status === "connection_pending" &&
                     telegramStatus.nextStep === "connect_business" ? (
-                    <p className="integration-detail">
-                      <strong>Bot linked.</strong> Finish the connection in Telegram Business
-                      settings using the instructions below.
-                    </p>
+                    <div className="action-row">
+                      <a className="primary-button" href={TELEGRAM_BUSINESS_SETTINGS_URL}>
+                        Open Telegram Business settings
+                      </a>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={integrationWorking !== null}
+                        onClick={() => void loadTelegramStatus()}
+                      >
+                        Check connection
+                      </button>
+                    </div>
                   ) : (
                     <button
                       className="primary-button"
@@ -805,7 +837,7 @@ export function StaffWorkspace({
                 {telegramStatus?.status === "connection_pending" && (
                   <p className="integration-detail">
                     {telegramStatus.nextStep === "connect_business"
-                      ? "Bot identity verified. In Telegram, open Settings → Telegram Business → Chatbots, connect @lead_agent_staging_bot, and allow it to reply to messages."
+                      ? "Bot linked. In Telegram Business → Chatbots, connect @lead_agent_staging_bot and enable reply access, then check the connection."
                       : "Press Start in the bot chat. Then connect @lead_agent_staging_bot under Telegram Business → Chatbots and allow it to reply."}
                   </p>
                 )}
@@ -826,9 +858,9 @@ export function StaffWorkspace({
                   </div>
                 </div>
                 {canManageIntegrations(membershipRole) ? (
-                  integrationStatusState !== "ready" ? (
+                  instagramStatusState !== "ready" ? (
                     <button className="primary-button" type="button" disabled>
-                      {integrationStatusState === "loading" ? "Checking…" : "Status unavailable"}
+                      {instagramStatusState === "loading" ? "Checking…" : "Status unavailable"}
                     </button>
                   ) : instagramStatus === "connected" ? (
                     <p className="integration-detail">

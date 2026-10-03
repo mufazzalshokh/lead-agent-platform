@@ -150,13 +150,6 @@ export const createWidgetManagementStore = (
             values: [organizationId, channelConnectionId, JSON.stringify(configuration), input.now],
           }));
           await executeTenantQuery(session, (organizationId) => ({
-            text: `update inbound_routes
-                      set status='disabled', rotated_at=$3
-                    where organization_id=$1 and channel_connection_id=$2
-                      and route_type='widget_key' and status='active'`,
-            values: [organizationId, channelConnectionId, input.now],
-          }));
-          await executeTenantQuery(session, (organizationId) => ({
             text: `update widget_allowed_origins
                       set status='disabled'
                     where organization_id=$1 and channel_connection_id=$2 and status='active'`,
@@ -167,18 +160,11 @@ export const createWidgetManagementStore = (
         const port = origin.port === "" ? null : Number(origin.port);
         const routeId = identifiers.issueResourceId(input.now);
         const allowedOriginId = identifiers.issueResourceId(input.now);
-        await executeTenantQuery(session, (organizationId) => ({
-          text: `insert into inbound_routes
-            (id,route_type,route_key_hash,organization_id,channel_connection_id,status,created_at)
-            values ($2,'widget_key',$3::bytea,$1,$4,'active',$5)`,
-          values: [
-            organizationId,
-            routeId,
-            Buffer.from(input.publishableKeyHash),
-            channelConnectionId,
-            input.now,
-          ],
+        const route = await executeTenantQuery<{ changed: boolean }>(session, () => ({
+          text: "select app.replace_widget_inbound_route($1,$2,$3::bytea) as changed",
+          values: [routeId, channelConnectionId, Buffer.from(input.publishableKeyHash)],
         }));
+        if (route.rows[0]?.changed !== true) throw new Error("Widget route update failed");
         await executeTenantQuery(session, (organizationId) => ({
           text: `insert into widget_allowed_origins
             (id,organization_id,channel_connection_id,match_type,scheme,normalized_host,
@@ -211,12 +197,7 @@ export const createWidgetManagementStore = (
                    from channel_connections cc
                   where cc.organization_id=$1 and cc.channel_type='widget'
                     and lower(cc.display_name)=lower($2) and cc.status='active'
-                    and exists (
-                      select 1 from inbound_routes ir
-                       where ir.organization_id=cc.organization_id
-                         and ir.channel_connection_id=cc.id
-                         and ir.route_type='widget_key' and ir.status='active'
-                    )
+                    and app.has_active_widget_inbound_route(cc.id)
                     and exists (
                       select 1 from widget_allowed_origins wao
                        where wao.organization_id=cc.organization_id

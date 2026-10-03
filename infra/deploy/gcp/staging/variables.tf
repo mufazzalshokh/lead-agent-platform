@@ -161,11 +161,11 @@ variable "deployment_timestamp" {
 variable "migration_head" {
   description = "Migration head packaged in the exact deployment artifact."
   type        = string
-  default     = "0030_s22_first_tenant_bootstrap"
+  default     = "0031_s22_widget_inbound_route_management"
 
   validation {
-    condition     = var.migration_head == "0030_s22_first_tenant_bootstrap"
-    error_message = "S22 requires the approved first-tenant bootstrap migration head."
+    condition     = var.migration_head == "0031_s22_widget_inbound_route_management"
+    error_message = "S22 requires the approved Widget route-management migration head."
   }
 }
 

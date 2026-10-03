@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 const folder = new URL("../../packages/database/drizzle/", import.meta.url);
 const sql = await readFile(new URL("0027_s11_instagram_identity_routing.sql", folder), "utf8");
+const widgetRouteSql = await readFile(
+  new URL("0031_s22_widget_inbound_route_management.sql", folder),
+  "utf8",
+);
 describe("S11.B migration source invariants (real PostgreSQL proof is separate)", () => {
   it("keeps the shared Telegram-before-Instagram selector on existing identity columns", async () => {
     const telegram = await readFile(
@@ -35,9 +39,9 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
   it("has the approved S22 migration head, 52 business tables, and ordered history", async () => {
     const files = (await readdir(folder)).filter((name) => name.endsWith(".sql")).sort();
     expect(files.map((name) => name.slice(0, 4))).toEqual(
-      Array.from({ length: 31 }, (_, index) => String(index).padStart(4, "0")),
+      Array.from({ length: 32 }, (_, index) => String(index).padStart(4, "0")),
     );
-    expect(files.at(-1)).toBe("0030_s22_first_tenant_bootstrap.sql");
+    expect(files.at(-1)).toBe("0031_s22_widget_inbound_route_management.sql");
     for (const [name, expectedTables] of [
       ["0027", 51],
       ["0028", 51],
@@ -66,7 +70,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       !Array.isArray(journal.entries)
     )
       throw new Error("Invalid journal");
-    expect(journal.entries).toHaveLength(31);
+    expect(journal.entries).toHaveLength(32);
     let previous = -1;
     const entries: readonly unknown[] = journal.entries;
     for (const [index, entry] of entries.entries()) {
@@ -85,6 +89,18 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       expect(entry.when).toBeGreaterThan(previous);
       previous = entry.when;
     }
+  });
+  it("adds only narrow runtime Widget route functions without direct table access", () => {
+    expect(widgetRouteSql.match(/CREATE FUNCTION app\./gu)).toHaveLength(2);
+    expect(widgetRouteSql.match(/SECURITY DEFINER/gu)).toHaveLength(2);
+    expect(widgetRouteSql.match(/SET search_path = pg_catalog/gu)).toHaveLength(2);
+    expect(widgetRouteSql).toContain("channel_type = 'widget'");
+    expect(widgetRouteSql).toContain("route_type = 'widget_key'");
+    expect(widgetRouteSql).toContain("TO lead_agent_runtime");
+    expect(widgetRouteSql).toContain("FROM PUBLIC, lead_agent_ingress");
+    expect(widgetRouteSql).not.toMatch(
+      /GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE).*lead_agent_runtime|input_organization/isu,
+    );
   });
   it("expands only the finite route and identity vocabulary and preserves same-tenant enforcement", () => {
     expect(sql).toContain("'widget_key', 'telegram_webhook', 'instagram_webhook'");

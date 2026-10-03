@@ -91,7 +91,8 @@ const fixture = (overrides: Partial<InstagramOutboundRecord> = {}) => {
     connections: {
       disconnect,
       activate: () => Promise.resolve(false),
-      beginOnboarding: () => Promise.resolve(IDS.channel),
+      beginOnboarding: () =>
+        Promise.resolve({ channelConnectionId: IDS.channel, retiredCredentialReference: null }),
       loadConnection: () => Promise.resolve(null),
       loadManagementStatus: () => Promise.resolve({ status: "not_connected" }),
       replaceCredential: () => Promise.resolve(false),

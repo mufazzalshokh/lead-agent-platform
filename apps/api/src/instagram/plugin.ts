@@ -43,7 +43,10 @@ export type StaffInstagramDependencies = Readonly<{
 export type InstagramWebhookDependencies = Readonly<{
   appSecret: string;
   webhookVerifyToken: string;
-  useCases: Pick<InstagramBusinessUseCases, "completeOnboarding" | "processMessage">;
+  useCases: Pick<
+    InstagramBusinessUseCases,
+    "completeOnboarding" | "processMessage" | "resolveOnboardingOrganization"
+  >;
   clock?: () => Date;
 }>;
 
@@ -120,25 +123,60 @@ export const registerInstagramPublicRoutes = (
       }
     },
   );
-  api.get<{ Querystring: { code: string; state: string } }>(
+  api.get<{
+    Querystring: {
+      code?: string;
+      error?: string;
+      error_description?: string;
+      error_reason?: string;
+      state: string;
+    };
+  }>(
     "/v1/integrations/instagram/callback",
     {
       schema: {
         querystring: {
           type: "object",
           additionalProperties: false,
-          required: ["code", "state"],
+          required: ["state"],
+          anyOf: [{ required: ["code"] }, { required: ["error"] }],
           properties: {
             code: { type: "string", minLength: 1, maxLength: 2048, pattern: "^[A-Za-z0-9_.|-]+$" },
+            error: { type: "string", minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_.-]+$" },
+            error_description: { type: "string", maxLength: 1024 },
+            error_reason: { type: "string", maxLength: 128 },
             state: { type: "string", minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$" },
           },
         },
       },
     },
     async (request, reply) => {
-      const completed = await dependencies.useCases.completeOnboarding(request.query);
-      const organization = encodeURIComponent(completed.organizationId);
-      return await reply.redirect(`/staff?organization=${organization}#integrations`, 303);
+      const redirect = async (organizationId: string, result: "connected" | "failed") => {
+        const organization = encodeURIComponent(organizationId);
+        return await reply.redirect(
+          `/staff?organization=${organization}&integration=instagram&result=${result}#integrations`,
+          303,
+        );
+      };
+      if (request.query.code === undefined) {
+        const resolved = await dependencies.useCases.resolveOnboardingOrganization({
+          state: request.query.state,
+        });
+        return await redirect(resolved.organizationId, "failed");
+      }
+      try {
+        const completed = await dependencies.useCases.completeOnboarding({
+          code: request.query.code,
+          state: request.query.state,
+        });
+        return await redirect(completed.organizationId, "connected");
+      } catch (error) {
+        if (instagramHttpProblem(error) === null) throw error;
+        const resolved = await dependencies.useCases.resolveOnboardingOrganization({
+          state: request.query.state,
+        });
+        return await redirect(resolved.organizationId, "failed");
+      }
     },
   );
 };

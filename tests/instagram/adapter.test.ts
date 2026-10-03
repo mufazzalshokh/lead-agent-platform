@@ -13,7 +13,6 @@ const short = {
     {
       access_token: TOKEN,
       user_id: "111",
-      permissions: "instagram_business_basic,instagram_business_manage_messages",
     },
   ],
 };
@@ -57,7 +56,7 @@ describe("Instagram Login official endpoint boundary", () => {
       }),
     ).rejects.toMatchObject({ category: "provider_unavailable", ambiguousExternalEffect: true });
   });
-  it("maps canonical professional user_id, not the app-scoped id, using the minimum scopes", async () => {
+  it("maps the canonical professional user_id from Meta's documented token shape", async () => {
     const test = fixture();
     expect(await test.client.exchangeCode("synthetic-code")).toEqual({
       accountId: ACCOUNT_ID,
@@ -99,10 +98,8 @@ describe("Instagram Login official endpoint boundary", () => {
       ),
     ).rejects.toMatchObject({ category: "authentication_failed" });
   });
-  it("rejects missing manage-messages permission before long-token exchange", async () => {
-    const test = fixture([
-      { data: [{ ...short.data[0], permissions: "instagram_business_basic" }] },
-    ]);
+  it("rejects a token response without its required user binding", async () => {
+    const test = fixture([{ data: [{ access_token: TOKEN }] }]);
     await expect(test.client.exchangeCode("code")).rejects.toMatchObject({
       category: "authentication_failed",
     });

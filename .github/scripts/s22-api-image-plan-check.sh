@@ -42,7 +42,7 @@ jq -e \
     and .variables.api_git_commit_sha.value == $api_commit
     and .variables.api_deployment_timestamp.value == $api_timestamp
     and .variables.api_migration_head.value == $api_migration_head
-    and .variables.migration_head.value == "0030_s22_first_tenant_bootstrap"
+    and .variables.migration_head.value == "0031_s22_widget_inbound_route_management"
     and .variables.runtime_migration_head.value == $runtime_migration_head
     and .variables.api_image.value == $api_image
     and .variables.web_image.value == $web_image

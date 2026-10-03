@@ -642,6 +642,44 @@ export const registerWidgetIntakeTests = (options: Options): void => {
         [options.organizationId, first.channelConnectionId],
       );
       expect(state.rows[0]).toEqual({ active_origins: 1, active_routes: 1, audits: 2 });
+
+      await expect(
+        management.get({ ...staffActor, organizationId: OTHER_ORGANIZATION_ID }),
+      ).resolves.toBeNull();
+
+      const client = await options.privilegedPool().connect();
+      try {
+        await client.query("set role lead_agent_runtime");
+        await expect(
+          client.query("select id from public.inbound_routes limit 1"),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await client.query("reset role");
+        client.release();
+      }
+
+      const functions = await options.privilegedPool().query<{
+        ingress: boolean;
+        owner: string;
+        runtime: boolean;
+        search_path: string[];
+      }>(
+        `select has_function_privilege('lead_agent_runtime',p.oid,'EXECUTE') as runtime,
+                has_function_privilege('lead_agent_ingress',p.oid,'EXECUTE') as ingress,
+                pg_get_userbyid(p.proowner) as owner,p.proconfig as search_path
+           from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='app'
+            and p.proname in('replace_widget_inbound_route','has_active_widget_inbound_route')
+          order by p.proname`,
+      );
+      expect(functions.rows).toHaveLength(2);
+      for (const row of functions.rows)
+        expect(row).toMatchObject({
+          ingress: false,
+          owner: "lead_agent_inbound_route_definer",
+          runtime: true,
+          search_path: ["search_path=pg_catalog"],
+        });
     });
   });
 };

@@ -140,26 +140,26 @@ const main = async () => {
   await check(
     {
       assertion: "migration_count",
-      expected: 31,
+      expected: 32,
       failureCode: "S22V001_MIGRATION_COUNT",
     },
     async () => {
       manifest = await readStagingMigrationManifest();
       const observed = manifest.entries.length;
-      return { observed, pass: observed === 31 };
+      return { observed, pass: observed === 32 };
     },
   );
 
   await check(
     {
       assertion: "migration_head",
-      expected: "0030_s22_first_tenant_bootstrap",
+      expected: "0031_s22_widget_inbound_route_management",
       failureCode: "S22V002_MIGRATION_HEAD",
     },
     async () => {
       manifest ??= await readStagingMigrationManifest();
       const observed = manifest.entries.at(-1)?.tag ?? "unavailable";
-      return { observed, pass: observed === "0030_s22_first_tenant_bootstrap" };
+      return { observed, pass: observed === "0031_s22_widget_inbound_route_management" };
     },
   );
 
@@ -206,7 +206,7 @@ const main = async () => {
   await check(
     {
       assertion: "applied_migration_count",
-      expected: 31,
+      expected: 32,
       failureCode: "S22V004_APPLIED_MIGRATION_COUNT",
     },
     () =>
@@ -215,14 +215,14 @@ const main = async () => {
           "select count(*)::integer as count from drizzle.__drizzle_migrations",
         );
         const observed = applied.rows[0]?.count ?? 0;
-        return { observed, pass: observed === 31 };
+        return { observed, pass: observed === 32 };
       }),
   );
 
   await check(
     {
       assertion: "applied_migration_head",
-      expected: "0030_s22_first_tenant_bootstrap",
+      expected: "0031_s22_widget_inbound_route_management",
       failureCode: "S22V005_APPLIED_MIGRATION_HEAD",
     },
     () =>
@@ -240,7 +240,7 @@ const main = async () => {
         return {
           observed,
           pass:
-            head?.tag === "0030_s22_first_tenant_bootstrap" &&
+            head?.tag === "0031_s22_widget_inbound_route_management" &&
             latestAppliedWhen === String(head.when),
         };
       }),

@@ -119,7 +119,8 @@ billing guarantees; logging, requests, backup growth, and egress remain usage-de
 ## Explicit non-goals and pending evidence
 
 S22 adds no Kubernetes, Redis, Kafka, vector database, microservice split, production
-billing, external calendar, or migration after `0029`. Initial `run.app` origins are
+billing or external calendar. Migration `0031` adds only narrowly scoped Widget
+route-management functions so the runtime keeps no direct `inbound_routes` access. Initial `run.app` origins are
 acceptable; the Web origin is the canonical browser/provider-facing staging origin
 while Web and API remain separate Cloud Run services. Real Auth0, Telegram Business,
 Instagram Professional, Gemini, end-to-end journey, TTFR, restore, failure, and

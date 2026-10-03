@@ -33,7 +33,7 @@ jq -e \
     and .variables.region.value == "me-central1"
     and .variables.git_commit_sha.value == $runtime_commit
     and .variables.deployment_timestamp.value == $runtime_timestamp
-    and .variables.migration_head.value == "0030_s22_first_tenant_bootstrap"
+    and .variables.migration_head.value == "0031_s22_widget_inbound_route_management"
     and .variables.runtime_migration_head.value == $runtime_migration_head
     and .variables.api_image.value == $api_image
     and .variables.web_image.value == $web_image
@@ -107,7 +107,7 @@ jq -e \
     and $changes[0].after.template[0].template[0].containers[0].image == $image
     and ($changes[0].after.labels["git-sha"] == ($commit[0:12]))
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_GIT_SHA" and .value == $commit)
-    and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_MIGRATION_HEAD" and .value == "0030_s22_first_tenant_bootstrap")
+    and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_MIGRATION_HEAD" and .value == "0031_s22_widget_inbound_route_management")
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_TIMESTAMP" and .value == $timestamp)
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_IMAGE_DIGEST" and .value == $image)
     and ([ $changes[0].before.template[0].template[0].containers[0].env[]
