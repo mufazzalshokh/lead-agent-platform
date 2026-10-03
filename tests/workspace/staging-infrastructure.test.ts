@@ -611,6 +611,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("s22-api-image-live-verify.sh");
     expect(workflow).toContain("runtime_git_commit_sha:");
     expect(workflow).toContain("api_git_commit_sha:");
+    expect(workflow).toContain("api_deployment_timestamp:");
     expect(workflow).toContain("api_migration_head:");
     expect(workflow).toContain("migrator_git_commit_sha:");
     expect(workflow).toContain("runtime_deployment_timestamp:");
@@ -624,6 +625,10 @@ describe("S22 staging infrastructure boundary", () => {
     );
     expect(workflow).toContain(
       'echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP"',
+    );
+    expect(workflow).toContain('echo "TF_VAR_api_git_commit_sha=$S22_API_GIT_COMMIT_SHA"');
+    expect(workflow).toContain(
+      'echo "TF_VAR_api_deployment_timestamp=$S22_API_DEPLOYMENT_TIMESTAMP"',
     );
     expect(workflow).toContain(
       '[[ "$TF_VAR_worker_image" =~ ^me-central1-docker\\.pkg\\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]',
@@ -662,6 +667,13 @@ describe("S22 staging infrastructure boundary", () => {
     );
     expect(migratorImagePlanCheck).toContain('.variables.bootstrap_runtime.value == "false"');
     expect(migratorImagePlanCheck).toContain('.variables.worker_instance_count.value == "1"');
+    expect(migratorImagePlanCheck).toContain(".variables.api_git_commit_sha.value == $api_commit");
+    expect(migratorImagePlanCheck).toContain(
+      ".variables.api_deployment_timestamp.value == $api_timestamp",
+    );
+    expect(migratorImagePlanCheck).toContain(
+      ".variables.api_migration_head.value == $api_migration_head",
+    );
     expect(apiImagePlanCheck).toContain(
       '[[ "$ACTUAL_ACTIONS" == \'["update:google_cloud_run_v2_service.api[0]"]\' ]]',
     );

@@ -10,8 +10,11 @@ EXPECTED_RUNTIME_COMMIT="${5:?expected preserved runtime commit is required}"
 EXPECTED_RUNTIME_TIMESTAMP="${6:?expected preserved runtime deployment timestamp is required}"
 EXPECTED_RUNTIME_MIGRATION_HEAD="${7:?expected preserved runtime migration head is required}"
 EXPECTED_API_IMAGE="${8:?expected preserved API image is required}"
-EXPECTED_WEB_IMAGE="${9:?expected preserved Web image is required}"
-EXPECTED_WORKER_IMAGE="${10:?expected preserved Worker image is required}"
+EXPECTED_API_COMMIT="${9:?expected preserved API commit is required}"
+EXPECTED_API_TIMESTAMP="${10:?expected preserved API deployment timestamp is required}"
+EXPECTED_API_MIGRATION_HEAD="${11:?expected preserved API migration head is required}"
+EXPECTED_WEB_IMAGE="${12:?expected preserved Web image is required}"
+EXPECTED_WORKER_IMAGE="${13:?expected preserved Worker image is required}"
 PLAN_DIR="$(dirname "$PLAN_PATH")"
 PLAN_NAME="$(basename "$PLAN_PATH")"
 PLAN_JSON="$(mktemp)"
@@ -27,6 +30,9 @@ jq -e \
   --arg runtime_timestamp "$EXPECTED_RUNTIME_TIMESTAMP" \
   --arg runtime_migration_head "$EXPECTED_RUNTIME_MIGRATION_HEAD" \
   --arg api_image "$EXPECTED_API_IMAGE" \
+  --arg api_commit "$EXPECTED_API_COMMIT" \
+  --arg api_timestamp "$EXPECTED_API_TIMESTAMP" \
+  --arg api_migration_head "$EXPECTED_API_MIGRATION_HEAD" \
   --arg web_image "$EXPECTED_WEB_IMAGE" \
   --arg worker_image "$EXPECTED_WORKER_IMAGE" '
   .variables.project_id.value == "lead-agent-stg-739284"
@@ -36,6 +42,9 @@ jq -e \
     and .variables.migration_head.value == "0031_s22_widget_inbound_route_management"
     and .variables.runtime_migration_head.value == $runtime_migration_head
     and .variables.api_image.value == $api_image
+    and .variables.api_git_commit_sha.value == $api_commit
+    and .variables.api_deployment_timestamp.value == $api_timestamp
+    and .variables.api_migration_head.value == $api_migration_head
     and .variables.web_image.value == $web_image
     and .variables.worker_image.value == $worker_image
     and .variables.migrator_git_commit_sha.value == $commit
