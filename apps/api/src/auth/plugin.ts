@@ -10,7 +10,10 @@ import {
   type OrganizationId,
 } from "@lead-agent/contracts";
 import type { StaffWebAuthConfig } from "@lead-agent/config";
-import type { StaffBrowserOidcClient } from "@lead-agent/integrations";
+import {
+  BrowserOidcCallbackInvalidError,
+  type StaffBrowserOidcClient,
+} from "@lead-agent/integrations";
 import {
   AuthorizationDeniedError,
   BrowserAuthenticationTokenInvalidError,
@@ -51,7 +54,7 @@ import {
   WidgetRateLimitError,
   WidgetTokenInvalidError,
 } from "@lead-agent/security";
-import { WidgetApplicationError } from "@lead-agent/application";
+import { WidgetApplicationError, WidgetManagementError } from "@lead-agent/application";
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from "fastify";
 import Fastify, { LogController } from "fastify";
 
@@ -66,6 +69,10 @@ import {
   type StaffConversationDependencies,
 } from "../conversations/plugin.js";
 import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
+import {
+  registerStaffWidgetManagement,
+  type StaffWidgetManagementDependencies,
+} from "../widget/management-plugin.js";
 import { registerStaffOperations, type StaffOperationsDependencies } from "../staff/plugin.js";
 import {
   AnalyticsApplicationError,
@@ -92,6 +99,22 @@ const STAFF_AUTH_PREFIX = "/v1/staff/auth";
 const CSRF_HEADER = "x-csrf-token";
 const COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const MAX_INVITATION_TOKEN_LENGTH = 512;
+
+type AuthCallbackStage =
+  | "authorization_code_missing"
+  | "external_identity_resolution"
+  | "id_token_validation"
+  | "invitation_proof_issuance"
+  | "mfa_required"
+  | "provider_authorization_error"
+  | "session_issuance"
+  | "state_mismatch"
+  | "state_replay"
+  | "token_exchange_or_oidc_response_validation"
+  | "transaction_cookie_missing"
+  | "transaction_envelope_invalid_or_expired";
+
+type AuthCallbackRecovery = "denied" | "reauthenticate";
 
 export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.authorization",
@@ -145,6 +168,7 @@ export type ApiOptions = Readonly<{
   staffInstagram?: StaffInstagramDependencies;
   instagramWebhook?: InstagramWebhookDependencies;
   widget?: WidgetDependencies;
+  staffWidgetManagement?: StaffWidgetManagementDependencies;
 }>;
 
 type SessionResolution = Readonly<{
@@ -250,6 +274,49 @@ const equalDigest = (left: string, right: string): boolean => {
   const leftBytes = Buffer.from(left, "base64url");
   const rightBytes = Buffer.from(right, "base64url");
   return leftBytes.length === rightBytes.length && leftBytes.equals(rightBytes);
+};
+
+const authCallbackFailureCode = (stage: AuthCallbackStage, error: unknown): string => {
+  if (error instanceof BrowserOidcCallbackInvalidError) return error.failure;
+  if (error instanceof ExternalIdentityUnmappedError) return "external_identity_unmapped";
+  if (error instanceof ExternalIdentityDeniedError) return "external_identity_denied";
+  if (error instanceof OidcProviderUnavailableError) return "oidc_provider_unavailable";
+  if (error instanceof SessionAuthenticationRequiredError && stage === "session_issuance") {
+    return "session_issuance_rejected";
+  }
+  return stage;
+};
+
+const authCallbackRecovery = (error: unknown): AuthCallbackRecovery | null => {
+  if (
+    error instanceof BrowserAuthenticationTokenInvalidError ||
+    error instanceof OidcCredentialInvalidError ||
+    error instanceof SessionAuthenticationRequiredError
+  ) {
+    return "reauthenticate";
+  }
+  if (
+    error instanceof ExternalIdentityDeniedError ||
+    error instanceof ExternalIdentityUnmappedError
+  ) {
+    return "denied";
+  }
+  return null;
+};
+
+const isStaleBrowserSession = (error: unknown): boolean =>
+  error instanceof BrowserAuthenticationTokenInvalidError ||
+  error instanceof SessionAuthenticationRequiredError;
+
+const staffAuthRecoveryPath = (returnPath: string, recovery: AuthCallbackRecovery): string => {
+  const target = new URL(returnPath, "https://lead-agent.invalid");
+  if (target.pathname !== "/staff") {
+    target.pathname = "/staff";
+    target.search = "";
+    target.hash = "";
+  }
+  target.searchParams.set("auth", recovery);
+  return target.pathname + target.search + target.hash;
 };
 
 const createUuidV7 = (now: Date): string => {
@@ -396,6 +463,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
   } else if (error instanceof WidgetRateLimitError) {
     code = "rate_limited";
     status = 429;
+  } else if (error instanceof WidgetManagementError) {
+    code = error.code;
+    status = error.code === "permission_denied" ? 403 : 400;
   } else if (error instanceof WidgetApplicationError) {
     code = error.code === "channel_unavailable" ? "resource_not_found" : error.code;
     status =
@@ -452,6 +522,7 @@ const registerStaffAuth = async (
   staffInstagram?: StaffInstagramDependencies,
   staffOperations?: StaffOperationsDependencies,
   staffAnalytics?: StaffAnalyticsDependencies,
+  staffWidgetManagement?: StaffWidgetManagementDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -474,25 +545,30 @@ const registerStaffAuth = async (
     reply: FastifyReply,
     rotateWhenDue = true,
   ): Promise<SessionResolution> => {
-    rejectDuplicateSecurityCookies(request);
-    const now = clock();
-    const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
-    if (sealed === undefined) throw new SessionAuthenticationRequiredError();
-    const credential = dependencies.envelopeProtector.openSession(sealed, now);
-    const session = await dependencies.sessions.resolveSession(credential.sessionToken);
-    if (rotateWhenDue && session.rotationDue) {
-      const issued = await dependencies.sessions.rotateSession(credential.sessionToken);
-      setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
-      return Object.freeze({
-        credential: Object.freeze({
-          csrfSecret: issued.csrfSecret,
-          expiresAt: issued.session.absoluteExpiresAt,
-          sessionToken: issued.sessionToken,
-        }),
-        session: issued.session,
-      });
+    try {
+      rejectDuplicateSecurityCookies(request);
+      const now = clock();
+      const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
+      if (sealed === undefined) throw new SessionAuthenticationRequiredError();
+      const credential = dependencies.envelopeProtector.openSession(sealed, now);
+      const session = await dependencies.sessions.resolveSession(credential.sessionToken);
+      if (rotateWhenDue && session.rotationDue) {
+        const issued = await dependencies.sessions.rotateSession(credential.sessionToken);
+        setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
+        return Object.freeze({
+          credential: Object.freeze({
+            csrfSecret: issued.csrfSecret,
+            expiresAt: issued.session.absoluteExpiresAt,
+            sessionToken: issued.sessionToken,
+          }),
+          session: issued.session,
+        });
+      }
+      return Object.freeze({ credential, session });
+    } catch (error) {
+      if (isStaleBrowserSession(error)) clearSecurityCookies(reply);
+      throw error;
     }
-    return Object.freeze({ credential, session });
   };
 
   const requireMutationSession = async (
@@ -570,9 +646,12 @@ const registerStaffAuth = async (
       invitationOrganizationId?: OrganizationId;
       invitationTokenHash?: string;
     }> = {},
+    forceProviderAuthentication = false,
   ): Promise<void> => {
     const now = clock();
-    const authorization = await dependencies.oidcClient.begin(purpose);
+    const authorization = await dependencies.oidcClient.begin(
+      purpose === "login" && forceProviderAuthentication ? "reauthenticate" : purpose,
+    );
     const transaction = dependencies.envelopeProtector.sealTransaction({
       ...binding,
       codeVerifier: authorization.codeVerifier,
@@ -594,7 +673,13 @@ const registerStaffAuth = async (
   api.get(STAFF_AUTH_PREFIX + "/login", async (request, reply) => {
     rejectDuplicateSecurityCookies(request);
     const query = request.query as Readonly<Record<string, unknown>>;
-    await begin("login", resolveSafeReturnPath(query["return_to"], "/"), reply);
+    await begin(
+      "login",
+      resolveSafeReturnPath(query["return_to"], "/"),
+      reply,
+      {},
+      query["reauthenticate"] === "true",
+    );
   });
 
   api.post(STAFF_AUTH_PREFIX + "/invitation", async (request, reply) => {
@@ -622,94 +707,135 @@ const registerStaffAuth = async (
   });
 
   api.get(STAFF_AUTH_PREFIX + "/callback", async (request, reply) => {
-    rejectDuplicateSecurityCookies(request);
-    const now = clock();
-    const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.loginTransaction];
-    reply.clearCookie(BROWSER_AUTH_COOKIE_NAMES.loginTransaction, baseCookie);
-    if (sealed === undefined) throw new BrowserAuthenticationTokenInvalidError();
-    const transaction = dependencies.envelopeProtector.openTransaction(sealed, now);
-    const query = request.query as Readonly<Record<string, unknown>>;
-    if (query["state"] !== transaction.state || typeof query["code"] !== "string") {
-      throw new BrowserAuthenticationTokenInvalidError();
-    }
-    consumeState(transaction.state, now);
-    const callback = new URL(dependencies.config.callbackUri);
-    callback.search = new URL(request.url, dependencies.config.callbackUri).search;
-    const oidc = await dependencies.oidcClient.complete({
-      callbackUrl: callback,
-      codeVerifier: transaction.codeVerifier,
-      expectedNonce: transaction.nonce,
-      expectedState: transaction.state,
-      maximumAgeSeconds: transaction.maximumAgeSeconds,
-    });
-    if (dependencies.config.requireMfa && oidc.authenticationLevel !== "mfa") {
-      throw new OidcCredentialInvalidError();
-    }
-    const verifiedIdentity = await dependencies.oidcVerifier.verify({
-      expectedNonce: transaction.nonce,
-      idToken: oidc.idToken,
-    });
+    let stage: AuthCallbackStage = "transaction_cookie_missing";
+    let returnPath = "/staff";
+    try {
+      rejectDuplicateSecurityCookies(request);
+      const now = clock();
+      const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.loginTransaction];
+      reply.clearCookie(BROWSER_AUTH_COOKIE_NAMES.loginTransaction, baseCookie);
+      if (sealed === undefined) throw new BrowserAuthenticationTokenInvalidError();
 
-    if (transaction.purpose === "invitation") {
-      if (
-        oidc.verifiedEmailTarget === null ||
-        transaction.invitationOrganizationId === undefined ||
-        transaction.invitationTokenHash === undefined
-      ) {
-        throw new InvitationTokenInvalidError();
+      stage = "transaction_envelope_invalid_or_expired";
+      const transaction = dependencies.envelopeProtector.openTransaction(sealed, now);
+      returnPath = transaction.returnPath;
+      const query = request.query as Readonly<Record<string, unknown>>;
+      if (typeof query["error"] === "string") {
+        stage = "provider_authorization_error";
+        throw new OidcCredentialInvalidError();
       }
-      const proof = dependencies.envelopeProtector.sealInvitationProof({
-        authenticationLevel: oidc.authenticationLevel,
-        authenticationTime: oidc.authenticationTime,
-        expiresAt: new Date(
-          now.getTime() + BROWSER_AUTH_POLICY.invitationProofLifetimeMilliseconds,
-        ),
-        identity: verifiedIdentity,
-        invitationOrganizationId: transaction.invitationOrganizationId,
-        invitationTokenHash: transaction.invitationTokenHash,
-        issuedAt: now,
-        verifiedEmailTarget: canonicalizeInvitationEmailTarget(oidc.verifiedEmailTarget),
+      if (query["state"] !== transaction.state) {
+        stage = "state_mismatch";
+        throw new BrowserAuthenticationTokenInvalidError();
+      }
+      if (typeof query["code"] !== "string" || query["code"].length < 1) {
+        stage = "authorization_code_missing";
+        throw new BrowserAuthenticationTokenInvalidError();
+      }
+
+      stage = "state_replay";
+      consumeState(transaction.state, now);
+      const callback = new URL(dependencies.config.callbackUri);
+      callback.search = new URL(request.url, dependencies.config.callbackUri).search;
+
+      stage = "token_exchange_or_oidc_response_validation";
+      const oidc = await dependencies.oidcClient.complete({
+        callbackUrl: callback,
+        codeVerifier: transaction.codeVerifier,
+        expectedNonce: transaction.nonce,
+        expectedState: transaction.state,
+        maximumAgeSeconds: transaction.maximumAgeSeconds,
       });
-      setInvitationProofCookie(reply, proof);
-      await reply.redirect(transaction.returnPath, 303);
-      return;
-    }
-
-    const authentication = await authenticateValidatedExternalIdentity(
-      verifiedIdentity,
-      dependencies.identityResolver,
-    );
-    const evidence = createSessionAuthenticationEvidence(authentication, oidc);
-
-    if (transaction.purpose === "step_up") {
-      const current = await resolveSession(request, reply, false);
-      if (
-        current.session.sessionId !== transaction.expectedSessionId ||
-        current.session.userId !== transaction.expectedUserId ||
-        authentication.userId !== transaction.expectedUserId ||
-        !isFreshStepUp(evidence, now)
-      ) {
-        throw new AuthorizationDeniedError();
+      if (dependencies.config.requireMfa && oidc.authenticationLevel !== "mfa") {
+        stage = "mfa_required";
+        throw new OidcCredentialInvalidError();
       }
-      const rotated = await dependencies.sessions.rotateSession(
-        current.credential.sessionToken,
-        evidence,
-      );
-      setApplicationCookies(reply, dependencies.envelopeProtector, rotated, now);
-    } else {
-      const previous = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
-      if (previous !== undefined) {
-        try {
-          const credential = dependencies.envelopeProtector.openSession(previous, now);
-          await dependencies.sessions.revokeSession(credential.sessionToken);
-        } catch {
-          // Invalid prior browser material is replaced, never trusted or revived.
+
+      stage = "id_token_validation";
+      const verifiedIdentity = await dependencies.oidcVerifier.verify({
+        expectedNonce: transaction.nonce,
+        idToken: oidc.idToken,
+      });
+
+      if (transaction.purpose === "invitation") {
+        stage = "invitation_proof_issuance";
+        if (
+          oidc.verifiedEmailTarget === null ||
+          transaction.invitationOrganizationId === undefined ||
+          transaction.invitationTokenHash === undefined
+        ) {
+          throw new InvitationTokenInvalidError();
         }
+        const proof = dependencies.envelopeProtector.sealInvitationProof({
+          authenticationLevel: oidc.authenticationLevel,
+          authenticationTime: oidc.authenticationTime,
+          expiresAt: new Date(
+            now.getTime() + BROWSER_AUTH_POLICY.invitationProofLifetimeMilliseconds,
+          ),
+          identity: verifiedIdentity,
+          invitationOrganizationId: transaction.invitationOrganizationId,
+          invitationTokenHash: transaction.invitationTokenHash,
+          issuedAt: now,
+          verifiedEmailTarget: canonicalizeInvitationEmailTarget(oidc.verifiedEmailTarget),
+        });
+        setInvitationProofCookie(reply, proof);
+        await reply.redirect(transaction.returnPath, 303);
+        return;
       }
-      const issued = await dependencies.sessions.createSession(evidence);
-      setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
+
+      stage = "external_identity_resolution";
+      const authentication = await authenticateValidatedExternalIdentity(
+        verifiedIdentity,
+        dependencies.identityResolver,
+      );
+      const evidence = createSessionAuthenticationEvidence(authentication, oidc);
+
+      stage = "session_issuance";
+      if (transaction.purpose === "step_up") {
+        const current = await resolveSession(request, reply, false);
+        if (
+          current.session.sessionId !== transaction.expectedSessionId ||
+          current.session.userId !== transaction.expectedUserId ||
+          authentication.userId !== transaction.expectedUserId ||
+          !isFreshStepUp(evidence, now)
+        ) {
+          throw new AuthorizationDeniedError();
+        }
+        const rotated = await dependencies.sessions.rotateSession(
+          current.credential.sessionToken,
+          evidence,
+        );
+        setApplicationCookies(reply, dependencies.envelopeProtector, rotated, now);
+      } else {
+        const previous = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
+        if (previous !== undefined) {
+          try {
+            const credential = dependencies.envelopeProtector.openSession(previous, now);
+            await dependencies.sessions.revokeSession(credential.sessionToken);
+          } catch {
+            // Invalid prior browser material is replaced, never trusted or revived.
+          }
+        }
+        const issued = await dependencies.sessions.createSession(evidence);
+        setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
+      }
+      await reply.redirect(transaction.returnPath, 303);
+    } catch (error) {
+      request.log.warn(
+        {
+          authCallbackFailure: authCallbackFailureCode(stage, error),
+          requestId: request.id,
+        },
+        "staff authentication callback rejected",
+      );
+      const recovery = authCallbackRecovery(error);
+      if (recovery !== null) {
+        clearSecurityCookies(reply);
+        await reply.redirect(staffAuthRecoveryPath(returnPath, recovery), 303);
+        return;
+      }
+      throw error;
     }
-    await reply.redirect(transaction.returnPath, 303);
   });
 
   api.get(STAFF_AUTH_PREFIX + "/session", async (request, reply) => {
@@ -874,6 +1000,7 @@ const registerStaffAuth = async (
       authorizationResolver: dependencies.authorizationResolver,
       resolveMutationSession: async (request, reply) =>
         (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
   if (staffInstagram !== undefined) {
@@ -881,6 +1008,15 @@ const registerStaffAuth = async (
       authorizationResolver: dependencies.authorizationResolver,
       resolveMutationSession: async (request, reply) =>
         (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
+  if (staffWidgetManagement !== undefined) {
+    registerStaffWidgetManagement(api, staffWidgetManagement, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
 };
@@ -901,6 +1037,8 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   }
   if (options.staffInstagram !== undefined && options.staffAuth === undefined)
     throw new TypeError("Staff Instagram routes require the staff authentication boundary");
+  if (options.staffWidgetManagement !== undefined && options.staffAuth === undefined)
+    throw new TypeError("Staff Widget routes require the staff authentication boundary");
   const api = Fastify({
     ajv: { customOptions: { removeAdditional: false, strict: false } },
     logController: new LogController({ disableRequestLogging: true }),
@@ -1028,6 +1166,7 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         options.staffInstagram,
         options.staffOperations,
         options.staffAnalytics,
+        options.staffWidgetManagement,
       ),
     );
   }

@@ -47,7 +47,7 @@ describe("S6.6 browser authentication security primitives", () => {
   it("round-trips a purpose-bound login transaction and rejects tampering or expiry", () => {
     const sealed = protector.sealTransaction({
       codeVerifier: opaque("v"),
-      expiresAt: new Date(NOW.getTime() + 600_000),
+      expiresAt: new Date(NOW.getTime() + 1_800_000),
       issuedAt: NOW,
       maximumAgeSeconds: 43_200,
       nonce: opaque("n"),
@@ -59,12 +59,15 @@ describe("S6.6 browser authentication security primitives", () => {
       purpose: "login",
       returnPath: "/dashboard?tab=leads",
     });
+    expect(
+      protector.openTransaction(sealed, new Date(NOW.getTime() + 20 * 60 * 1_000)),
+    ).toMatchObject({ purpose: "login" });
     const tampered = flipBase64UrlByte(sealed, 1 + 12);
     expect(tampered).not.toBe(sealed);
     expect(() => protector.openTransaction(tampered, NOW)).toThrow(
       BrowserAuthenticationTokenInvalidError,
     );
-    expect(() => protector.openTransaction(sealed, new Date(NOW.getTime() + 600_000))).toThrow(
+    expect(() => protector.openTransaction(sealed, new Date(NOW.getTime() + 1_800_000))).toThrow(
       BrowserAuthenticationTokenInvalidError,
     );
   });

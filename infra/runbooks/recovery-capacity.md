@@ -13,7 +13,8 @@ not belong in evidence or telemetry.
    staging and never expose a public IP.
 3. Attach the recovery instance to the same isolated VPC with a temporary, dedicated
    recovery credential. Do not reuse application secrets in logs or Terraform state.
-4. Run read-only validation for PostgreSQL 17, migration head `0029`, all 30 migrations,
+4. Run read-only validation for PostgreSQL 17, migration head
+   `0031_s22_widget_inbound_route_management`, all 32 migrations,
    52 production tables, FORCE RLS/policy/role drift, and pg-boss ownership.
 5. Validate representative synthetic Contacts, Leads, Conversations, Messages,
    AppointmentRequests, confirmation evidence, eligibility controls, audit and Outbox.

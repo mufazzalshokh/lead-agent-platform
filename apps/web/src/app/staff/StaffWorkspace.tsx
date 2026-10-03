@@ -3,13 +3,28 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  buildStaffSignInPath,
   formatStaffDateTime,
   formatStaffLocalDateTime,
   humanizeStaffStatus,
+  buildWidgetInstallSnippet,
+  canManageIntegrations,
+  initiateIntegrationConnection,
   makeIdempotencyKey,
   readCsrfCookie,
+  readInstagramIntegrationStatus,
   readOrganizationContext,
+  type StaffAuthRecovery,
+  readStaffMembershipRole,
+  readTelegramIntegrationStatus,
+  readWidgetManagementConfiguration,
   staffActionMessage,
+  TELEGRAM_BUSINESS_SETTINGS_URL,
+  type IntegrationConnectionStatus,
+  type InstagramCallbackResult,
+  type StaffMembershipRole,
+  type TelegramIntegrationStatus,
+  type WidgetManagementConfiguration,
 } from "../../lib/staff-ui";
 
 type RecordValue = Readonly<Record<string, unknown>>;
@@ -188,8 +203,15 @@ const actionIdentity = (
 
 export function StaffWorkspace({
   apiOrigin,
+  initialAuthRecovery,
+  initialInstagramResult,
   initialOrganization,
-}: Readonly<{ apiOrigin: string; initialOrganization: string | null }>) {
+}: Readonly<{
+  apiOrigin: string;
+  initialAuthRecovery: StaffAuthRecovery | null;
+  initialInstagramResult: InstagramCallbackResult | null;
+  initialOrganization: string | null;
+}>) {
   const [organizationId] = useState(() => {
     const fromUrl = readOrganizationContext(initialOrganization);
     if (fromUrl !== null) {
@@ -201,19 +223,48 @@ export function StaffWorkspace({
     );
   });
   const [authState, setAuthState] = useState<"checking" | "ready" | "signed-out" | "denied">(
-    "checking",
+    initialAuthRecovery === "reauthenticate"
+      ? "signed-out"
+      : initialAuthRecovery === "denied"
+        ? "denied"
+        : "checking",
   );
   const [items, setItems] = useState<readonly WorkItem[]>([]);
   const [summaries, setSummaries] = useState<Readonly<Record<string, string>>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<WorkItem | null>(null);
   const [detail, setDetail] = useState<DetailState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialAuthRecovery === null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsView | null>(null);
+  const [membershipRole, setMembershipRole] = useState<StaffMembershipRole | null>(null);
+  const [integrationNotice, setIntegrationNotice] = useState<string | null>(() =>
+    initialInstagramResult === "connected"
+      ? "Instagram Professional connected successfully."
+      : initialInstagramResult === "failed"
+        ? "Instagram authorization did not complete. Please reconnect securely."
+        : null,
+  );
+  const [integrationWorking, setIntegrationWorking] = useState<
+    "instagram" | "telegram" | "widget" | null
+  >(null);
+  const [telegramStatus, setTelegramStatus] = useState<TelegramIntegrationStatus | null>(null);
+  const [instagramStatus, setInstagramStatus] = useState<IntegrationConnectionStatus | null>(null);
+  const [telegramStatusState, setTelegramStatusState] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
+  const [instagramStatusState, setInstagramStatusState] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
+  const [websiteOrigin, setWebsiteOrigin] = useState("");
+  const [widgetConfiguration, setWidgetConfiguration] =
+    useState<WidgetManagementConfiguration | null>(null);
+  const [widgetStatus, setWidgetStatus] = useState<
+    "active" | "loading" | "not_configured" | "unavailable"
+  >("loading");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
 
@@ -249,6 +300,53 @@ export function StaffWorkspace({
     setAnalytics(parseAnalytics(await responseData(response)));
   }, [request]);
 
+  const loadTelegramStatus = useCallback(async () => {
+    setTelegramStatusState("loading");
+    try {
+      const response = await request("/v1/staff/integrations/telegram/status");
+      const value = response.ok ? readTelegramIntegrationStatus(await response.json()) : null;
+      setTelegramStatus(value);
+      setTelegramStatusState(value === null ? "unavailable" : "ready");
+    } catch {
+      setTelegramStatus(null);
+      setTelegramStatusState("unavailable");
+    }
+  }, [request]);
+
+  const loadInstagramStatus = useCallback(async () => {
+    setInstagramStatusState("loading");
+    try {
+      const response = await request("/v1/staff/integrations/instagram/status");
+      const value = response.ok ? readInstagramIntegrationStatus(await response.json()) : null;
+      setInstagramStatus(value);
+      setInstagramStatusState(value === null ? "unavailable" : "ready");
+    } catch {
+      setInstagramStatus(null);
+      setInstagramStatusState("unavailable");
+    }
+  }, [request]);
+
+  const loadWidgetStatus = useCallback(async () => {
+    setWidgetStatus("loading");
+    try {
+      const response = await request("/v1/staff/integrations/widget");
+      if (!response.ok) {
+        setWidgetStatus("unavailable");
+        return;
+      }
+      const configuration = readWidgetManagementConfiguration(await response.json());
+      setWidgetConfiguration(configuration);
+      setWidgetStatus(configuration === null ? "not_configured" : "active");
+      if (configuration !== null) setWebsiteOrigin(configuration.websiteOrigin);
+    } catch {
+      setWidgetStatus("unavailable");
+    }
+  }, [request]);
+
+  const loadIntegrationStatuses = useCallback(async () => {
+    await Promise.all([loadTelegramStatus(), loadInstagramStatus(), loadWidgetStatus()]);
+  }, [loadInstagramStatus, loadTelegramStatus, loadWidgetStatus]);
+
   const loadInbox = useCallback(
     async (cursor?: string, append = false) => {
       if (organizationId === null) {
@@ -271,7 +369,17 @@ export function StaffWorkspace({
         setLoading(false);
         return;
       }
+      const role = readStaffMembershipRole(await responseData(me));
+      if (role === null) {
+        setAuthState("denied");
+        setLoading(false);
+        return;
+      }
+      setMembershipRole(role);
       setAuthState("ready");
+      if (canManageIntegrations(role)) {
+        void loadIntegrationStatuses();
+      }
       void loadAnalytics().catch(() => setAnalytics(null));
       const response = await request(`/v1/staff/inbox?${query.toString()}`);
       if (!response.ok) throw new Error("inbox_unavailable");
@@ -303,10 +411,11 @@ export function StaffWorkspace({
       setNextCursor(stringValue(body["meta"]["next_cursor"]));
       setLoading(false);
     },
-    [loadAnalytics, organizationId, request],
+    [loadAnalytics, loadIntegrationStatuses, organizationId, request],
   );
 
   useEffect(() => {
+    if (initialAuthRecovery !== null) return;
     const handle = globalThis.setTimeout(() => {
       void loadInbox().catch(() => {
         setError("We could not load active work. Please try again.");
@@ -314,7 +423,14 @@ export function StaffWorkspace({
       });
     }, 0);
     return () => globalThis.clearTimeout(handle);
-  }, [loadInbox]);
+  }, [initialAuthRecovery, loadInbox]);
+
+  useEffect(() => {
+    if (authState !== "ready" || !canManageIntegrations(membershipRole)) return;
+    const refresh = () => void loadIntegrationStatuses();
+    globalThis.addEventListener("focus", refresh);
+    return () => globalThis.removeEventListener("focus", refresh);
+  }, [authState, loadIntegrationStatuses, membershipRole]);
 
   const loadDetail = useCallback(
     async (item: WorkItem) => {
@@ -412,11 +528,100 @@ export function StaffWorkspace({
     [loadInbox, request],
   );
 
+  const startIntegration = useCallback(
+    async (provider: "instagram" | "telegram") => {
+      const csrf = readCsrfCookie(document.cookie);
+      if (csrf === null) {
+        setIntegrationNotice("Refresh your secure session before connecting an integration.");
+        return;
+      }
+      setIntegrationWorking(provider);
+      setIntegrationNotice(null);
+      try {
+        const result = await initiateIntegrationConnection({
+          csrfToken: csrf,
+          navigation: {
+            assign: (url) => globalThis.location.assign(url),
+            open: () => globalThis.open("about:blank", "_blank"),
+          },
+          provider,
+          request,
+        });
+        if (!result.ok) {
+          setIntegrationNotice(
+            result.code === "invalid_provider_response"
+              ? "The provider returned an invalid connection link. Please try again later."
+              : staffActionMessage(result.status, result.code),
+          );
+          return;
+        }
+        if (provider === "telegram") {
+          setTelegramStatus({ nextStep: "open_bot", status: "connection_pending" });
+          setIntegrationNotice("Telegram opened securely. Press Start to bind this workspace.");
+          return;
+        }
+        setIntegrationNotice("Instagram authorization opened securely.");
+      } catch {
+        setIntegrationNotice("We could not start the secure connection. Please try again.");
+      } finally {
+        setIntegrationWorking(null);
+      }
+    },
+    [request],
+  );
+
+  const configureWidget = useCallback(async () => {
+    const csrf = readCsrfCookie(document.cookie);
+    if (csrf === null) {
+      setIntegrationNotice("Refresh your secure session before setting up Website Chat.");
+      return;
+    }
+    setIntegrationWorking("widget");
+    setIntegrationNotice(null);
+    try {
+      const response = await request("/v1/staff/integrations/widget/setup", {
+        body: JSON.stringify({ website_origin: websiteOrigin }),
+        headers: { "content-type": "application/json", "x-csrf-token": csrf },
+        method: "POST",
+      });
+      if (!response.ok) {
+        const failed: unknown = await response.json().catch(() => null);
+        setIntegrationNotice(
+          staffActionMessage(
+            response.status,
+            isRecord(failed) ? (stringValue(failed["code"]) ?? undefined) : undefined,
+          ),
+        );
+        return;
+      }
+      const body: unknown = await response.json();
+      const configured = readWidgetManagementConfiguration(body);
+      if (configured === null) throw new Error("invalid_widget_configuration");
+      setWidgetConfiguration(configured);
+      setWidgetStatus("active");
+      setWebsiteOrigin(configured.websiteOrigin);
+      setIntegrationNotice("Website Chat is configured. Copy the new installation code.");
+    } catch {
+      setIntegrationNotice("We could not configure Website Chat. Check the HTTPS website origin.");
+    } finally {
+      setIntegrationWorking(null);
+    }
+  }, [request, websiteOrigin]);
+
+  const copyWidgetSnippet = useCallback(async () => {
+    if (widgetConfiguration === null) return;
+    try {
+      const platformOrigin = apiOrigin.length > 0 ? apiOrigin : globalThis.location.origin;
+      await globalThis.navigator.clipboard.writeText(
+        buildWidgetInstallSnippet(platformOrigin, widgetConfiguration),
+      );
+      setIntegrationNotice("Installation code copied.");
+    } catch {
+      setIntegrationNotice("Copy is unavailable in this browser. Please try again.");
+    }
+  }, [apiOrigin, widgetConfiguration]);
+
   if (authState === "signed-out") {
-    const returnTo =
-      organizationId === null
-        ? "/staff"
-        : `/staff?organization=${encodeURIComponent(organizationId)}`;
     return (
       <main className="staff-auth-shell">
         <section className="staff-auth-card">
@@ -425,10 +630,14 @@ export function StaffWorkspace({
           </span>
           <p className="eyebrow">Lead Agent</p>
           <h1>Your customer work, in one place.</h1>
-          <p>Sign in to manage conversations, handoffs, and appointment requests.</p>
+          <p>
+            {initialAuthRecovery === "reauthenticate"
+              ? "Your previous session ended. Sign in again to continue."
+              : "Sign in to manage conversations, handoffs, and appointment requests."}
+          </p>
           <a
             className="primary-button"
-            href={`${apiOrigin}/v1/staff/auth/login?return_to=${encodeURIComponent(returnTo)}`}
+            href={`${apiOrigin}${buildStaffSignInPath(organizationId, initialAuthRecovery)}`}
           >
             Sign in securely
           </a>
@@ -477,6 +686,9 @@ export function StaffWorkspace({
           <a className="staff-nav-link" href="#analytics">
             Analytics
           </a>
+          <a className="staff-nav-link" href="#integrations">
+            Integrations
+          </a>
         </nav>
         <section className="staff-list" id="work" aria-busy={loading}>
           <div className="section-heading">
@@ -493,6 +705,199 @@ export function StaffWorkspace({
               Refresh
             </button>
           </div>
+          <section className="integrations-overview" id="integrations" aria-label="Integrations">
+            <div className="integrations-overview__heading">
+              <div>
+                <p className="eyebrow">Settings</p>
+                <h2>Integrations</h2>
+              </div>
+              <span>Owner-managed</span>
+            </div>
+            <p className="integrations-intro">
+              Connect the channels your customers already use. Credentials and tenant identifiers
+              stay private.
+            </p>
+            {integrationNotice !== null && (
+              <div className="notice" role="status">
+                {integrationNotice}
+              </div>
+            )}
+            <div className="integration-cards">
+              <article className="integration-card">
+                <div>
+                  <span className="integration-icon" aria-hidden="true">
+                    W
+                  </span>
+                  <div>
+                    <h3>Website Chat</h3>
+                    <p>Secure chat for an approved business website.</p>
+                  </div>
+                </div>
+                {canManageIntegrations(membershipRole) ? (
+                  <>
+                    <label className="integration-origin">
+                      Business website
+                      <input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://clinic.example"
+                        value={websiteOrigin}
+                        onChange={(event) => setWebsiteOrigin(event.target.value)}
+                      />
+                    </label>
+                    <div className="action-row">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={integrationWorking !== null || websiteOrigin.length === 0}
+                        onClick={() => void configureWidget()}
+                      >
+                        {integrationWorking === "widget"
+                          ? "Configuring…"
+                          : widgetStatus === "active"
+                            ? "Replace setup"
+                            : "Set up"}
+                      </button>
+                      {widgetConfiguration !== null && (
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => void copyWidgetSnippet()}
+                        >
+                          Copy installation code
+                        </button>
+                      )}
+                    </div>
+                    <p className="integration-detail">
+                      {widgetStatus === "active"
+                        ? `Active for ${widgetConfiguration?.websiteOrigin ?? websiteOrigin}. Replacing setup invalidates the prior installation key.`
+                        : widgetStatus === "not_configured"
+                          ? "Not connected. Enter the exact HTTPS origin of the business website."
+                          : widgetStatus === "loading"
+                            ? "Checking the current setup…"
+                            : "Current setup could not be loaded."}
+                    </p>
+                  </>
+                ) : (
+                  <p className="integration-permission">Owner or admin access is required.</p>
+                )}
+              </article>
+              <article className="integration-card">
+                <div>
+                  <span className="integration-icon" aria-hidden="true">
+                    T
+                  </span>
+                  <div>
+                    <h3>Telegram Business</h3>
+                    <p>Reply from the same business DM with staff-safe escalation.</p>
+                  </div>
+                </div>
+                {canManageIntegrations(membershipRole) ? (
+                  telegramStatusState !== "ready" ? (
+                    <button className="primary-button" type="button" disabled>
+                      {telegramStatusState === "loading" ? "Checking…" : "Status unavailable"}
+                    </button>
+                  ) : telegramStatus?.status === "connected" ? (
+                    <p className="integration-detail">
+                      <strong>Connected.</strong> Telegram Business can receive and reply in the
+                      same customer DM.
+                    </p>
+                  ) : telegramStatus?.status === "connection_pending" &&
+                    telegramStatus.nextStep === "connect_business" ? (
+                    <div className="action-row">
+                      <a className="primary-button" href={TELEGRAM_BUSINESS_SETTINGS_URL}>
+                        Open Telegram Business settings
+                      </a>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={integrationWorking !== null}
+                        onClick={() => void loadTelegramStatus()}
+                      >
+                        Check connection
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={integrationWorking !== null}
+                      onClick={() => void startIntegration("telegram")}
+                    >
+                      {integrationWorking === "telegram"
+                        ? "Preparing…"
+                        : telegramStatus?.status === "needs_attention"
+                          ? "Reconnect Telegram"
+                          : "Connect Telegram"}
+                    </button>
+                  )
+                ) : (
+                  <p className="integration-permission">Owner or admin access is required.</p>
+                )}
+                {telegramStatus?.status === "connection_pending" && (
+                  <p className="integration-detail">
+                    {telegramStatus.nextStep === "connect_business"
+                      ? "Bot linked. In Telegram Business → Chatbots, connect @lead_agent_staging_bot and enable reply access, then check the connection."
+                      : "Press Start in the bot chat. Then connect @lead_agent_staging_bot under Telegram Business → Chatbots and allow it to reply."}
+                  </p>
+                )}
+                {telegramStatus?.status === "needs_attention" && (
+                  <p className="integration-detail">
+                    The connection needs attention. Start a new secure connection.
+                  </p>
+                )}
+              </article>
+              <article className="integration-card">
+                <div>
+                  <span className="integration-icon" aria-hidden="true">
+                    I
+                  </span>
+                  <div>
+                    <h3>Instagram Professional</h3>
+                    <p>Authorize the business account through Instagram.</p>
+                  </div>
+                </div>
+                {canManageIntegrations(membershipRole) ? (
+                  instagramStatusState !== "ready" ? (
+                    <button className="primary-button" type="button" disabled>
+                      {instagramStatusState === "loading" ? "Checking…" : "Status unavailable"}
+                    </button>
+                  ) : instagramStatus === "connected" ? (
+                    <p className="integration-detail">
+                      <strong>Connected.</strong> Instagram Professional messaging is active.
+                    </p>
+                  ) : (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={integrationWorking !== null}
+                      onClick={() => void startIntegration("instagram")}
+                    >
+                      {integrationWorking === "instagram"
+                        ? "Redirecting…"
+                        : instagramStatus === "needs_attention"
+                          ? "Reconnect Instagram"
+                          : instagramStatus === "connection_pending"
+                            ? "Continue Instagram connection"
+                            : "Connect Instagram"}
+                    </button>
+                  )
+                ) : (
+                  <p className="integration-permission">Owner or admin access is required.</p>
+                )}
+                {instagramStatus === "connection_pending" && (
+                  <p className="integration-detail">
+                    Instagram authorization is waiting to finish.
+                  </p>
+                )}
+                {instagramStatus === "needs_attention" && (
+                  <p className="integration-detail">
+                    The connection needs attention. Reconnect securely.
+                  </p>
+                )}
+              </article>
+            </div>
+          </section>
           {analytics !== null && (
             <section
               className="analytics-overview"

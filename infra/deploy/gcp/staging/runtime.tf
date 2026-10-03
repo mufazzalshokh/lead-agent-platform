@@ -5,39 +5,59 @@ locals {
     "require('http').createServer((_,response)=>{response.writeHead(200,{'content-type':'text/plain'});response.end('ok')}).listen(process.env.PORT||8080,'0.0.0.0')",
   ]
 
+  runtime_migration_head = var.runtime_migration_head != "" ? var.runtime_migration_head : var.migration_head
+
+  # Secret Manager responses use the canonical project-number resource name.
+  # API and worker must share that exact namespace; do not accept arbitrary aliases.
+  channel_credential_resource = "projects/${data.google_project.staging.number}/secrets/${google_secret_manager_secret.channel_credentials.secret_id}"
+
   provenance_env = {
     DEPLOYMENT_ENVIRONMENT    = var.environment
     DEPLOYMENT_GIT_SHA        = var.git_commit_sha
-    DEPLOYMENT_MIGRATION_HEAD = var.migration_head
+    DEPLOYMENT_MIGRATION_HEAD = local.runtime_migration_head
     DEPLOYMENT_TIMESTAMP      = var.deployment_timestamp
   }
+
+  api_git_commit_sha = var.api_git_commit_sha != "" ? var.api_git_commit_sha : var.git_commit_sha
+  api_deployment_timestamp = (
+    var.api_deployment_timestamp != "" ? var.api_deployment_timestamp : var.deployment_timestamp
+  )
+  api_migration_head = var.api_migration_head != "" ? var.api_migration_head : local.runtime_migration_head
+  api_provenance_env = merge(local.provenance_env, {
+    DEPLOYMENT_GIT_SHA        = local.api_git_commit_sha
+    DEPLOYMENT_IMAGE_DIGEST   = var.api_image
+    DEPLOYMENT_MIGRATION_HEAD = local.api_migration_head
+    DEPLOYMENT_TIMESTAMP      = local.api_deployment_timestamp
+  })
 
   migrator_git_commit_sha = var.migrator_git_commit_sha != "" ? var.migrator_git_commit_sha : var.git_commit_sha
   migrator_deployment_timestamp = (
     var.migrator_deployment_timestamp != "" ? var.migrator_deployment_timestamp : var.deployment_timestamp
   )
   migrator_provenance_env = merge(local.provenance_env, {
-    DEPLOYMENT_GIT_SHA   = local.migrator_git_commit_sha
-    DEPLOYMENT_TIMESTAMP = local.migrator_deployment_timestamp
+    DEPLOYMENT_GIT_SHA        = local.migrator_git_commit_sha
+    DEPLOYMENT_MIGRATION_HEAD = var.migration_head
+    DEPLOYMENT_TIMESTAMP      = local.migrator_deployment_timestamp
   })
 
-  api_plain_env = merge(local.provenance_env, {
+  api_plain_env = merge(local.api_provenance_env, {
     APP_ENV                         = "production"
-    AUTH0_CALLBACK_URI              = "${var.api_public_origin}/v1/staff/auth/callback"
+    AUTH0_CALLBACK_URI              = "${var.web_public_origin}/v1/staff/auth/callback"
     AUTH0_CLIENT_ID                 = var.auth0_client_id
     AUTH0_ISSUER                    = var.auth0_issuer
     AUTH_PRODUCTION_MFA_REQUIRED    = "true"
-    CREDENTIAL_SECRET_RESOURCE      = google_secret_manager_secret.channel_credentials.id
+    CREDENTIAL_SECRET_RESOURCE      = local.channel_credential_resource
     CUSTOMER_DATA_ENCRYPTION_KEY_ID = "s22-staging-v1"
+    HOST                            = "0.0.0.0"
     INSTAGRAM_APP_ID                = var.instagram_app_id
     INSTAGRAM_GRAPH_API_VERSION     = var.instagram_graph_api_version
-    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.api_public_origin}/v1/integrations/instagram/callback"
+    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.web_public_origin}/v1/integrations/instagram/callback"
     STAFF_ALLOWED_ORIGINS           = var.web_public_origin
     STAFF_APPLICATION_ORIGIN        = var.web_public_origin
     TELEGRAM_BOT_USERNAME           = var.telegram_bot_username
-    TELEGRAM_WEBHOOK_URL            = "${var.api_public_origin}/v1/webhooks/telegram"
+    TELEGRAM_WEBHOOK_URL            = "${var.web_public_origin}/v1/webhooks/telegram"
     WIDGET_PLATFORM_ORIGIN          = var.web_public_origin
-    WIDGET_PUBLIC_API_ORIGIN        = var.api_public_origin
+    WIDGET_PUBLIC_API_ORIGIN        = var.web_public_origin
   })
 
   api_secret_env = {
@@ -62,13 +82,13 @@ locals {
     AI_MODEL                        = "gemini-3.8-flash"
     AI_PROVIDER                     = "gemini"
     AI_REQUEST_TIMEOUT_MS           = "15000"
-    CREDENTIAL_SECRET_RESOURCE      = google_secret_manager_secret.channel_credentials.id
+    CREDENTIAL_SECRET_RESOURCE      = local.channel_credential_resource
     CUSTOMER_DATA_ENCRYPTION_KEY_ID = "s22-staging-v1"
     INSTAGRAM_APP_ID                = var.instagram_app_id
     INSTAGRAM_GRAPH_API_VERSION     = var.instagram_graph_api_version
-    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.api_public_origin}/v1/integrations/instagram/callback"
+    INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.web_public_origin}/v1/integrations/instagram/callback"
     TELEGRAM_BOT_USERNAME           = var.telegram_bot_username
-    TELEGRAM_WEBHOOK_URL            = "${var.api_public_origin}/v1/webhooks/telegram"
+    TELEGRAM_WEBHOOK_URL            = "${var.web_public_origin}/v1/webhooks/telegram"
   })
 
   worker_secret_env = {
@@ -93,10 +113,15 @@ locals {
 
   deployment_labels = merge(local.common_labels, {
     git-sha        = var.deploy_runtime ? substr(var.git_commit_sha, 0, 12) : "foundation"
-    migration-head = replace(var.migration_head, "_", "-")
+    migration-head = replace(local.runtime_migration_head, "_", "-")
+  })
+  api_deployment_labels = merge(local.deployment_labels, {
+    git-sha        = var.deploy_runtime ? substr(local.api_git_commit_sha, 0, 12) : "foundation"
+    migration-head = replace(local.api_migration_head, "_", "-")
   })
   migrator_deployment_labels = merge(local.deployment_labels, {
-    git-sha = substr(local.migrator_git_commit_sha, 0, 12)
+    git-sha        = substr(local.migrator_git_commit_sha, 0, 12)
+    migration-head = replace(var.migration_head, "_", "-")
   })
 }
 
@@ -108,7 +133,7 @@ resource "google_cloud_run_v2_service" "api" {
   location            = var.region
   deletion_protection = true
   ingress             = "INGRESS_TRAFFIC_ALL"
-  labels              = local.deployment_labels
+  labels              = local.api_deployment_labels
 
   template {
     service_account                  = google_service_account.api.email
@@ -249,8 +274,9 @@ resource "google_cloud_run_v2_service" "web" {
 
       dynamic "env" {
         for_each = var.bootstrap_runtime ? {} : merge(local.provenance_env, {
-          NEXT_PUBLIC_API_ORIGIN   = var.api_public_origin
-          WIDGET_PUBLIC_API_ORIGIN = var.api_public_origin
+          API_INTERNAL_ORIGIN      = var.api_public_origin
+          NEXT_PUBLIC_API_ORIGIN   = var.web_public_origin
+          WIDGET_PUBLIC_API_ORIGIN = var.web_public_origin
         })
         content {
           name  = env.key

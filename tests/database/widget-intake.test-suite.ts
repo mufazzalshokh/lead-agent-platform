@@ -10,6 +10,7 @@ import {
 } from "../../packages/config/src/index.js";
 import type { ChannelConnectionId, OrganizationId } from "../../packages/contracts/src/index.js";
 import {
+  createWidgetManagementStore,
   createWidgetPersistenceStore,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
@@ -18,6 +19,7 @@ import {
   createWidgetRateLimiter,
   createWidgetExchangeGrantService,
   createWidgetTokenService,
+  type AuthorizationContext,
 } from "../../packages/security/src/index.js";
 
 type Options = Readonly<{
@@ -26,6 +28,7 @@ type Options = Readonly<{
   privilegedPool(): Pool;
   runtime(): TenantDatabaseRuntime;
   seed(): Promise<void>;
+  staffActor(): Promise<AuthorizationContext>;
 }>;
 
 const NOW = new Date("2026-09-15T10:00:00.000Z");
@@ -595,5 +598,88 @@ export const registerWidgetIntakeTests = (options: Options): void => {
         expect((await pool.query("select id from messages")).rowCount).toBe(1);
       },
     );
+  });
+
+  describe("S22 owner-managed Widget configuration", () => {
+    it("atomically creates and rotates one tenant-bound public setup", async () => {
+      await options.seed();
+      const staffActor = await options.staffActor();
+      const management = createWidgetManagementStore(options.runtime());
+      const firstKey = "w".repeat(43);
+      const first = await management.configure({
+        actor: staffActor,
+        now: NOW,
+        publishableKey: firstKey,
+        publishableKeyHash: createHash("sha256").update(firstKey).digest(),
+        websiteOrigin: ORIGIN,
+      });
+      await expect(management.get(staffActor)).resolves.toEqual(first);
+
+      const secondKey = "x".repeat(43);
+      const second = await management.configure({
+        actor: staffActor,
+        now: new Date(NOW.getTime() + 1_000),
+        publishableKey: secondKey,
+        publishableKeyHash: createHash("sha256").update(secondKey).digest(),
+        websiteOrigin: "https://www.clinic.example",
+      });
+      expect(second.channelConnectionId).toBe(first.channelConnectionId);
+      await expect(management.get(staffActor)).resolves.toEqual(second);
+
+      const state = await options.privilegedPool().query<{
+        active_origins: number;
+        active_routes: number;
+        audits: number;
+      }>(
+        `select
+           (select count(*)::int from widget_allowed_origins
+             where organization_id=$1 and channel_connection_id=$2 and status='active') active_origins,
+           (select count(*)::int from inbound_routes
+             where organization_id=$1 and channel_connection_id=$2 and status='active') active_routes,
+           (select count(*)::int from audit_events
+             where organization_id=$1 and target_id=$2
+               and action='widget.configuration_updated') audits`,
+        [options.organizationId, first.channelConnectionId],
+      );
+      expect(state.rows[0]).toEqual({ active_origins: 1, active_routes: 1, audits: 2 });
+
+      await expect(
+        management.get({ ...staffActor, organizationId: OTHER_ORGANIZATION_ID }),
+      ).resolves.toBeNull();
+
+      const client = await options.privilegedPool().connect();
+      try {
+        await client.query("set role lead_agent_runtime");
+        await expect(
+          client.query("select id from public.inbound_routes limit 1"),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await client.query("reset role");
+        client.release();
+      }
+
+      const functions = await options.privilegedPool().query<{
+        ingress: boolean;
+        owner: string;
+        runtime: boolean;
+        search_path: string[];
+      }>(
+        `select has_function_privilege('lead_agent_runtime',p.oid,'EXECUTE') as runtime,
+                has_function_privilege('lead_agent_ingress',p.oid,'EXECUTE') as ingress,
+                pg_get_userbyid(p.proowner) as owner,p.proconfig as search_path
+           from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='app'
+            and p.proname in('replace_widget_inbound_route','has_active_widget_inbound_route')
+          order by p.proname`,
+      );
+      expect(functions.rows).toHaveLength(2);
+      for (const row of functions.rows)
+        expect(row).toMatchObject({
+          ingress: false,
+          owner: "lead_agent_inbound_route_definer",
+          runtime: true,
+          search_path: ["search_path=pg_catalog"],
+        });
+    });
   });
 };

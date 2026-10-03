@@ -15,5 +15,9 @@ export {
   type StaffConversationDependencies,
 } from "./conversations/plugin.js";
 export { registerWidgetRoutes, type WidgetDependencies } from "./widget/plugin.js";
+export {
+  registerStaffWidgetManagement,
+  type StaffWidgetManagementDependencies,
+} from "./widget/management-plugin.js";
 export * from "./telegram/index.js";
 export * from "./instagram/index.js";

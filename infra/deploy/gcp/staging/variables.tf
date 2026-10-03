@@ -58,6 +58,18 @@ variable "prepare_migration" {
   }
 }
 
+variable "temporary_instagram_verifier_access_enabled" {
+  description = "Temporarily allow the staging deployer to read only the Instagram webhook verification token for one sanitized HTTP challenge."
+  type        = bool
+  default     = false
+}
+
+variable "temporary_telegram_verifier_access_enabled" {
+  description = "Temporarily allow the staging deployer to read only the Telegram bot token and webhook secret for one sanitized live webhook verification."
+  type        = bool
+  default     = false
+}
+
 variable "cloud_sql_tier" {
   description = "Cost-bounded Cloud SQL tier. Shared-core is the dormant/functional default; dedicated-core is temporary for capacity drills."
   type        = string
@@ -149,11 +161,55 @@ variable "deployment_timestamp" {
 variable "migration_head" {
   description = "Migration head packaged in the exact deployment artifact."
   type        = string
-  default     = "0029_s21_thread_automation_controls"
+  default     = "0031_s22_widget_inbound_route_management"
 
   validation {
-    condition     = var.migration_head == "0029_s21_thread_automation_controls"
-    error_message = "S22 does not authorize a migration after 0029."
+    condition     = var.migration_head == "0031_s22_widget_inbound_route_management"
+    error_message = "S22 requires the approved Widget route-management migration head."
+  }
+}
+
+variable "runtime_migration_head" {
+  description = "Optional migration head preserved on already-deployed API, Web, and Worker resources during an isolated migrator update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.runtime_migration_head == "" || can(regex("^[0-9]{4}_[a-z0-9_]+$", var.runtime_migration_head))
+    error_message = "runtime_migration_head must be empty or a normalized migration identifier."
+  }
+}
+
+variable "api_git_commit_sha" {
+  description = "Optional exact source commit for an API-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.api_git_commit_sha == "" || can(regex("^[0-9a-f]{40}$", var.api_git_commit_sha))
+    error_message = "api_git_commit_sha must be empty or an exact lowercase 40-character commit SHA."
+  }
+}
+
+variable "api_deployment_timestamp" {
+  description = "Optional UTC deployment timestamp for an API-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.api_deployment_timestamp == "" || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", var.api_deployment_timestamp))
+    error_message = "api_deployment_timestamp must be empty or a UTC RFC3339 timestamp."
+  }
+}
+
+variable "api_migration_head" {
+  description = "Optional migration head packaged in an API-only image update."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.api_migration_head == "" || can(regex("^[0-9]{4}_[a-z0-9_]+$", var.api_migration_head))
+    error_message = "api_migration_head must be empty or a normalized migration identifier."
   }
 }
 
@@ -229,7 +285,7 @@ variable "api_public_origin" {
   default     = ""
 
   validation {
-    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9-]+\\.run\\.app$", var.api_public_origin))
+    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.run\\.app$", var.api_public_origin))
     error_message = "Full runtime deployment requires the exact API run.app origin."
   }
 }
@@ -240,7 +296,7 @@ variable "web_public_origin" {
   default     = ""
 
   validation {
-    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9-]+\\.run\\.app$", var.web_public_origin))
+    condition     = !var.deploy_runtime || var.bootstrap_runtime || can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.run\\.app$", var.web_public_origin))
     error_message = "Full runtime deployment requires the exact Web run.app origin."
   }
 }
