@@ -59,6 +59,14 @@ One pre-provisioned secret is a narrow versioned credential namespace: API and w
 may add/read/destroy versions, and PostgreSQL stores only an opaque version reference.
 References outside that exact secret fail closed.
 
+The credential namespace uses the canonical numeric project resource name derived
+from Terraform's authenticated project metadata. API and worker receive the same
+exact `projects/<project-number>/secrets/<secret-id>` namespace, matching Secret
+Manager's returned version names. The adapter supports canonical project-number
+names without treating arbitrary project IDs/numbers as interchangeable; foreign
+project/secret references remain denied. This is resource-name normalization, not
+credential rotation or a tenant-binding change.
+
 ## Release and rollback
 
 OCI images use a pinned Node base digest and run as a non-root user. GitHub builds API,

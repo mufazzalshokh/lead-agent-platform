@@ -7,6 +7,10 @@ locals {
 
   runtime_migration_head = var.runtime_migration_head != "" ? var.runtime_migration_head : var.migration_head
 
+  # Secret Manager responses use the canonical project-number resource name.
+  # API and worker must share that exact namespace; do not accept arbitrary aliases.
+  channel_credential_resource = "projects/${data.google_project.staging.number}/secrets/${google_secret_manager_secret.channel_credentials.secret_id}"
+
   provenance_env = {
     DEPLOYMENT_ENVIRONMENT    = var.environment
     DEPLOYMENT_GIT_SHA        = var.git_commit_sha
@@ -42,7 +46,7 @@ locals {
     AUTH0_CLIENT_ID                 = var.auth0_client_id
     AUTH0_ISSUER                    = var.auth0_issuer
     AUTH_PRODUCTION_MFA_REQUIRED    = "true"
-    CREDENTIAL_SECRET_RESOURCE      = google_secret_manager_secret.channel_credentials.id
+    CREDENTIAL_SECRET_RESOURCE      = local.channel_credential_resource
     CUSTOMER_DATA_ENCRYPTION_KEY_ID = "s22-staging-v1"
     HOST                            = "0.0.0.0"
     INSTAGRAM_APP_ID                = var.instagram_app_id
@@ -78,7 +82,7 @@ locals {
     AI_MODEL                        = "gemini-3.8-flash"
     AI_PROVIDER                     = "gemini"
     AI_REQUEST_TIMEOUT_MS           = "15000"
-    CREDENTIAL_SECRET_RESOURCE      = google_secret_manager_secret.channel_credentials.id
+    CREDENTIAL_SECRET_RESOURCE      = local.channel_credential_resource
     CUSTOMER_DATA_ENCRYPTION_KEY_ID = "s22-staging-v1"
     INSTAGRAM_APP_ID                = var.instagram_app_id
     INSTAGRAM_GRAPH_API_VERSION     = var.instagram_graph_api_version

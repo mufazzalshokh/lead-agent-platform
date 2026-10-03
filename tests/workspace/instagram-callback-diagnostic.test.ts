@@ -39,6 +39,18 @@ const entry = {
   },
 };
 describe("request-scoped Instagram callback evidence", () => {
+  it("configures API and worker with the same trusted canonical credential namespace", async () => {
+    const runtime = await readFile("infra/deploy/gcp/staging/runtime.tf", "utf8");
+    expect(runtime).toContain(
+      'channel_credential_resource = "projects/${data.google_project.staging.number}/secrets/${google_secret_manager_secret.channel_credentials.secret_id}"',
+    );
+    expect(
+      runtime.match(/CREDENTIAL_SECRET_RESOURCE\s*= local.channel_credential_resource/gu),
+    ).toHaveLength(2);
+    expect(runtime).not.toMatch(
+      /CREDENTIAL_SECRET_RESOURCE\s*= google_secret_manager_secret.channel_credentials.id/u,
+    );
+  });
   it("projects the exact request and finite failure fields, excluding sensitive/foreign content", () => {
     const result = instagramCallbackEvidence(
       [entry, { ...entry, jsonPayload: { ...entry.jsonPayload, requestId: "req-other" } }],

@@ -2,9 +2,9 @@ import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import type { CredentialSecretStore } from "@lead-agent/application";
 
 const SECRET_RESOURCE_PATTERN =
-  /^projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/secrets\/[A-Za-z0-9_-]{1,255}$/u;
+  /^projects\/(?:[a-z][a-z0-9-]{4,28}[a-z0-9]|[1-9][0-9]{0,31})\/secrets\/[A-Za-z0-9_-]{1,255}$/u;
 const VERSION_RESOURCE_PATTERN =
-  /^(projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/secrets\/[A-Za-z0-9_-]{1,255})\/versions\/([1-9][0-9]*)$/u;
+  /^(projects\/(?:[a-z][a-z0-9-]{4,28}[a-z0-9]|[1-9][0-9]{0,31})\/secrets\/[A-Za-z0-9_-]{1,255})\/versions\/([1-9][0-9]*)$/u;
 const REFERENCE_PREFIX = "gcp-secret://";
 const MAXIMUM_SECRET_BYTES = 65_536;
 
