@@ -5255,7 +5255,7 @@ jobs:
         run: |
           set -euo pipefail
           STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
-          [[ "$STATE_COUNT" == "88" ]]
+          [[ "$STATE_COUNT" == "89" ]]
           set +e
           terraform plan -detailed-exitcode -lock-timeout=5m
           PLAN_EXIT_CODE=$?

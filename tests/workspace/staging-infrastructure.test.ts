@@ -713,7 +713,7 @@ describe("S22 staging infrastructure boundary", () => {
       /console\.(?:info|error)\([^)]*(?:password|token|secret|authorization|database[_-]?url)/iu,
     );
     expect(workflow).toContain("Verify migration Terraform convergence");
-    expect(workflow).toContain('[[ "$STATE_COUNT" == "88" ]]');
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "89" ]]');
     expect(workflow).toContain("migration_convergence_exit_code=$PLAN_EXIT_CODE");
     expect(workflow).toContain("- migration-diagnose");
     expect(workflow).toContain("- migration-wiring-diagnose");
