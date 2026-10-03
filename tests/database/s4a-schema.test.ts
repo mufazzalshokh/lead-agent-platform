@@ -9653,7 +9653,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S21_RLS_TABLES.length + 18);
+    expect(policies.rows).toHaveLength(S21_RLS_TABLES.length + 22);
     const tenantIsolationPolicies = policies.rows.filter(({ policyname }) =>
       policyname.endsWith("_tenant_isolation"),
     );
@@ -9735,6 +9735,32 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       {
         cmd: "SELECT",
         policyname: "organizations_membership_onboarding",
+        tablename: "organizations",
+      },
+    ]);
+    expect(
+      policies.rows
+        .filter(({ roles }) => roles === "{lead_agent_first_tenant_bootstrap_definer}")
+        .map(({ cmd, policyname, tablename }) => ({ cmd, policyname, tablename })),
+    ).toEqual([
+      {
+        cmd: "INSERT",
+        policyname: "memberships_first_tenant_bootstrap_insert",
+        tablename: "memberships",
+      },
+      {
+        cmd: "SELECT",
+        policyname: "memberships_first_tenant_bootstrap_select",
+        tablename: "memberships",
+      },
+      {
+        cmd: "INSERT",
+        policyname: "organizations_first_tenant_bootstrap_insert",
+        tablename: "organizations",
+      },
+      {
+        cmd: "SELECT",
+        policyname: "organizations_first_tenant_bootstrap_select",
         tablename: "organizations",
       },
     ]);
