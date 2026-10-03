@@ -90,5 +90,13 @@ describe("request-scoped Instagram callback evidence", () => {
     expect(workflow).toContain(
       "env.S22_ACTION == 'plan' && !startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')",
     );
+    expect(workflow).toContain("--format='json(name,createTime,state)'");
+    const reader = workflow.slice(
+      workflow.indexOf("- name: Read request-scoped sanitized Instagram"),
+      workflow.indexOf("- name: Upload sanitized Instagram callback"),
+    );
+    expect(reader).not.toContain("versions access");
+    expect(reader).not.toContain("versions add");
+    expect(reader).not.toContain("versions destroy");
   });
 });

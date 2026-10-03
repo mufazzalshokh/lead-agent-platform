@@ -1111,13 +1111,28 @@ jobs:
             --format=json > "$RAW_LOGS"
           node .github/scripts/s22-instagram-callback-diagnose.mjs "$RAW_LOGS" "$REQUEST_ID" \
             | tee s22-instagram-callback-diagnostic-evidence.json
+          if jq -e 'any(.entries[]; .stage == "credential_storage")' s22-instagram-callback-diagnostic-evidence.json > /dev/null; then
+            PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+            [[ "$PROJECT_NUMBER" =~ ^[1-9][0-9]+$ ]]
+            CANONICAL_SECRET="$(gcloud secrets describe lead-agent-staging-channel-credentials --project="$PROJECT_ID" --format='value(name)')"
+            [[ "$CANONICAL_SECRET" == "projects/$PROJECT_NUMBER/secrets/lead-agent-staging-channel-credentials" ]]
+            gcloud secrets versions list lead-agent-staging-channel-credentials \
+              --project="$PROJECT_ID" --limit=10 --sort-by='~createTime' \
+              --format='json(name,createTime,state)' > s22-instagram-credential-version-metadata.json
+            jq -n --arg canonical_secret "$CANONICAL_SECRET" --slurpfile versions s22-instagram-credential-version-metadata.json \
+              '{canonical_secret: $canonical_secret, versions: $versions[0], secret_payloads_read: false}' \
+              > s22-instagram-credential-metadata-evidence.json
+            rm -f s22-instagram-credential-version-metadata.json
+          fi
 
       - name: Upload sanitized Instagram callback diagnostic evidence
         if: always() && env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-instagram-callback-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
-          path: s22-instagram-callback-diagnostic-evidence.json
+          path: |
+            s22-instagram-callback-diagnostic-evidence.json
+            s22-instagram-credential-metadata-evidence.json
           if-no-files-found: error
           retention-days: 1
 
