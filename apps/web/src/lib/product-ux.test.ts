@@ -39,6 +39,8 @@ describe("S19 staff presentation policy", () => {
     expect(humanizeStaffStatus("requested")).toBe("Needs staff review");
     expect(humanizeStaffStatus("staff_accepted")).toBe("Waiting for customer confirmation");
     expect(humanizeStaffStatus("confirmed")).toBe("Confirmed");
+    expect(humanizeStaffStatus("assigned")).toBe("Assigned to staff");
+    expect(humanizeStaffStatus("in_progress")).toBe("Being handled");
     expect(staffActionMessage(409)).toBe("This request was already handled.");
   });
 

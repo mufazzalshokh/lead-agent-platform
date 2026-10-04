@@ -29,12 +29,63 @@ live product and recovery/capacity proof. It does not declare S22 acceptance.
   The artifact explicitly records no infrastructure mutation, secret payload access,
   restore proof or capacity proof. Runtime images remain on the already-proven
   `a4fe54eb0c3d3b94df2d289fb917115034291b50` deployment.
+- Subsequent deployment summary `37188579463` records runtime source
+  `61b93093b1a7f28af2060fc1cd2bbe41fba75f54`. Privacy/deletion notices are deployed.
+  Instagram is connected and the Meta app is published; do not repeat OAuth.
+  The owner reports that a real friend's DM was persisted, automatically replied to,
+  and displayed in the staff transcript with a handoff. Claim followed by Resolve
+  reduced Inbox to 0. These are owner-observed live results, not independent
+  post-action database/history/audit verification. No message content is recorded here.
+
+## Staff conversation workflow milestone — local, not deployed
+
+Customer work and conversation details precede integrations/analytics. Opening a
+card focuses and scrolls to the transcript. Inbox and History use the existing
+tenant-authorized `/v1/staff/inbox` `view=active|history` contract. History means no
+pending staff work, not necessarily a terminal conversation. Inbox 0 never means
+messages were deleted.
+
+Claim/Resolve retain the selected conversation, transcript, and explicit feedback.
+The client obtains current resource and conversation versions before allowing the
+next command. Failed list/detail refreshes pause actions while preserving context;
+manual refresh can restore readiness. Late responses from older views, selections,
+or an unmounted component cannot overwrite current work. Assigned/in-progress
+handoffs display their authoritative states. Backend authorization, CSRF,
+idempotency, ETags, privacy eligibility and domain transitions remain unchanged.
+
+Focused verification on `2026-10-04`:
+
+- `node node_modules/vitest/vitest.mjs run apps/web/src/lib/staff-workflow.test.ts apps/web/src/lib/product-ux.test.ts`:
+  **35/35 PASS** (19 workflow regressions, 16 existing presentation/integration tests).
+- `node node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit`: PASS.
+- Scoped ESLint with `--max-warnings=0` for the component, workflow helper/tests,
+  and existing presentation helper/tests: PASS.
+- Web production `node node_modules/next/dist/bin/next build` from `apps/web`: PASS.
+- Installed Edge against the production localhost Web build, isolated temporary
+  profile and mocked tenant API: PASS for actual card focus/scroll, work-before-settings,
+  Claim, fresh-version Resolve, preserved transcript/feedback, failed-refresh action
+  pause, manual recovery, Inbox 0 and History reopen. No staging/provider requests.
+  The sandboxed attempt could not expose its debugging endpoint; the same bounded
+  check succeeded outside the sandbox. This is browser interaction proof with mocks,
+  not a real authenticated staging mutation or post-action audit proof.
+- Scoped Prettier and diff checks: PASS.
+
+This milestone adds no migration, dependency, IAM change, provider authorization,
+or personal-DM eligibility change. Local/mock verification is not live staging proof.
+Deployment and real owner verification of layout/focus, History, retained feedback,
+fresh-version sequencing and direct post-action history/audit remain pending.
+
+Rollout starts with `Build staging images` (`staging-images.yml`), dispatched on the
+existing S22 branch with the exact new checkpoint SHA and `image_scope=all`; the
+workflow has no Web-only scope. Use its fresh immutable digests to generate a new
+reviewable plan. Do not reuse earlier saved plans, image digests or approval hashes.
+Infrastructure apply requires repository-mandated approval of that exact new plan.
 
 ## Remaining gates
 
 | Gate | Evidence still required |
 | --- | --- |
-| Instagram DM | Real synthetic inbound, eligibility suppression/enablement, same-DM reply, tenant routing |
+| Instagram DM / staff workflow | Owner-observed inbound, automatic reply and Claim/Resolve preserved; direct post-action history/audit and tenant-routing/eligibility proof remain pending, together with the new staff workflow deployment/live proof |
 | Website Widget | Real allowed/disallowed cross-origin embed, meaningful response, session and token isolation |
 | Gemini and business journey | Approved live model, bounded cost ledger, grounding/qualification/request/staff acceptance/customer confirmation, deterministic medical safety |
 | Observability | Actual meaningful-response TTFR, queue/provider/channel failures and cost without message content |

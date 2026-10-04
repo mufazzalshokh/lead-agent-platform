@@ -209,6 +209,28 @@ input:focus-visible {
   font-size: 0.88rem;
   font-weight: 650;
   text-decoration: none;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.staff-nav-link:disabled,
+.work-card:disabled,
+.load-more:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.staff-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: 1.5rem;
+  padding: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.staff-detail:focus-visible {
+  outline: 3px solid #80b7a9;
+  outline-offset: -3px;
 }
 .staff-nav-link span {
   display: grid;
@@ -651,17 +673,7 @@ input:focus-visible {
 
 @media (max-width: 1120px) {
   .staff-layout {
-    grid-template-columns: 4.5rem minmax(18rem, 22rem) 1fr;
-  }
-  .staff-nav-label,
-  .staff-nav-link {
-    font-size: 0;
-  }
-  .staff-nav-link {
-    justify-content: center;
-  }
-  .staff-nav-link::first-letter {
-    font-size: 0.85rem;
+    grid-template-columns: 9rem minmax(18rem, 22rem) 1fr;
   }
 }
 
@@ -680,6 +692,7 @@ input:focus-visible {
     display: none;
   }
   .staff-nav-link {
+    width: auto;
     flex: 0 0 auto;
     font-size: 0.78rem;
   }
