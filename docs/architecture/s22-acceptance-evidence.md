@@ -1500,10 +1500,11 @@ Prepared exact subsequent inputs for `staging-terraform.yml` on the same branch:
 | ai_journey_mode | `preserve` |
 | owner_approval_token | **Not supplied; exact-plan owner approval required before dispatch** |
 
-No apply was dispatched. Terraform must reject a stale saved plan rather than
+At packet preparation, no apply was dispatched. Terraform must reject a stale saved plan rather than
 silently replan. Current GCS serial was not independently re-read after plan
 creation; no claim of post-plan live convergence is made. Documentation-only
 follow-up commits do not change the reviewed runtime source or require rebuilding.
+The subsequent owner-approved apply and post-apply proof are recorded below.
 
 Validation remains the focused **204/204** local regressions, root TypeScript,
 Application/Database declaration builds, Worker production build, scoped lint,
@@ -1512,6 +1513,40 @@ plan checks. The new real-PostgreSQL persistence case is registered but still
 unexecuted locally; final authoritative CI and subsequent live fallback/delivery
 proof remain pending. No historical NULL reconciliation, grounded-answer PASS,
 booking confirmation or S22 acceptance follows from this packet.
+
+### Rejected-proposal fallback: approved rollout complete
+
+The owner approved the exact packet above. [Apply 37360464046](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37360464046)
+**PASS**, applying only saved plan **37359246514** with SHA256
+`dc4613637939f7857dfc28e6169190bf4c525bb8eebec6f7d226f8de620ca3a4`.
+Local independent checksum recheck and workflow saved-plan integrity/scope checks
+PASS. Actual Terraform result: **0 added / 4 changed / 0 destroyed**; approved
+replacement count **0**. Completion logs identify exactly API, Web, Worker and
+Migrator workload updates. `Create reviewed plan` and `Execute one-shot migrator`
+were **SKIPPED**. No images were rebuilt, migrations executed or paid calls made.
+
+Existing read-only [verification 37360711370](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37360711370)
+**PASS**. Authenticated allowlisted artifact download verifies the exact API/Web
+images, API source `da9d609b4831d041aef71b271cc6994b3df74cf8`, preserved timestamp
+`2026-10-05T18:46:33Z`, migration head
+`0031_s22_widget_inbound_route_management`, runtime identity/private VPC/subnet/
+egress and 15 API secret references. API revision `lead-agent-staging-api-00019-r2c`
+and Web revision `lead-agent-staging-web-00015-vnd` are ready. Whole-runtime
+Terraform refresh/convergence returns **exit 0**, corroborating the planned
+Worker/Migrator images and preserved configuration; these two workloads did not
+receive separate direct Cloud Run assertion artifacts in this check.
+
+Public bounded `curl.exe --max-time 20 --output NUL --write-out` checks: exact
+staging API `/health` **HTTP 200** and Web `/staff` **HTTP 200**. This proves health/
+reachability, not an authenticated owner interaction or customer receipt.
+
+The approved rollout milestone is complete. The original USD0.001950 turn remains
+counted and is not replayed; historical NULL costs remain untouched. Further paid
+messages remain paused pending current conversation/cohort readiness for the
+second already-authorized turn. The new PostgreSQL persistence regression, live
+safe-fallback delivery and complete booking journey remain unproven. S22 is not
+accepted; no S23 work. Only these evidence documents changed after deployment;
+unrelated owner edits are preserved.
 
 | Gate | Evidence still required |
 | --- | --- |

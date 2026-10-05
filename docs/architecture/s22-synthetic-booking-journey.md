@@ -95,7 +95,7 @@ subsequent grounded answer and authorized provenance/state reads.
 
 ## Model and cost readiness
 
-### First paid turn: terminal policy denial, rollout pending
+### First paid turn: terminal policy denial, rollout complete; journey pending
 
 The first authorized price/duration message was persisted on 2026-10-05 at
 17:23:28.698Z, but its schema-valid Gemini handoff proposal was rejected and the
@@ -109,7 +109,7 @@ The focused application fix retains the model denial and uses only the existing
 deterministic policy-blocked staff fallback, with correlated disposition metadata.
 It does not manufacture a grounded answer, request, staff acceptance or customer
 confirmation for this old turn. Further paid customer messages stay paused until
-the new exact rollout is approved/verified and the remaining bounded journey can
+current conversation/cohort readiness is checked and the remaining bounded journey can
 proceed with current authoritative state. Staff acceptance is still not booking
 confirmation. No additional paid allowance is approved by this correction.
 
@@ -123,9 +123,16 @@ Timestamp `2026-10-05T18:46:33Z`; migration head remains
 `0031_s22_widget_inbound_route_management`. The
 [exact rollout packet](s22-acceptance-evidence.md#rejected-proposal-fallback-exact-rollout-approval-packet)
 contains immutable references, inspected safeguards and prepared apply inputs.
-**Apply is not dispatched or approved by this preparation.** No new customer
-message is requested until that exact rollout is approved and verified; retain
-the first-turn cost and original historical NULLs.
+This packet was prepared before owner approval. The owner subsequently approved
+it: exact saved-plan **apply 37360464046 PASS**, actual **0 added / 4 changed /
+0 destroyed**, no replacements or migration execution. Existing read-only
+**verification 37360711370 PASS**, whole-runtime convergence exit 0, exact API/Web
+image bindings and API source/timestamp/head, ready revisions, API `/health` and
+Web `/staff` HTTP 200. Worker/Migrator binding is corroborated by whole-runtime
+refresh/convergence, not separate direct assertion artifacts. No paid call or
+customer event was replayed. Retain the first-turn cost and original historical
+NULLs. Next check current conversation/cohort readiness before the second
+already-authorized paid message; live booking and S22 acceptance are still pending.
 
 The source-approved Commercial V1 profile is Gemini API `gemini-3.8-flash`, paid
 tier, low thinking, stateless `AgentDecision.v1` structured JSON, maximum output
