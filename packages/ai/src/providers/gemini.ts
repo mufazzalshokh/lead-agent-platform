@@ -93,6 +93,7 @@ export const buildGeminiRequest = (
     },
   ],
   generationConfig: {
+    candidateCount: 1,
     responseMimeType: "application/json",
     responseJsonSchema: OPENAI_AGENT_DECISION_SCHEMA,
     maxOutputTokens: COMMERCIAL_V1_AI_PROFILE.maxOutputTokens,

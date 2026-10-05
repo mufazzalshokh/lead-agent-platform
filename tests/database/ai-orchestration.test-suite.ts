@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { COMMERCIAL_V1_AI_PROFILE } from "../../packages/config/src/index.js";
+import { COMMERCIAL_V1_AI_PROFILE, S22_BOOKING_COHORT } from "../../packages/config/src/index.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAIOrchestrator,
@@ -24,6 +24,7 @@ import {
 } from "../../packages/contracts/src/index.js";
 import {
   createAIOrchestrationStore,
+  createAIJourneyBudgetGuard,
   createConversationKnowledgeReader,
   createCanonicalInboundPersistenceStore,
   createThreadAutomationControlStore,
@@ -1440,6 +1441,140 @@ const registerSalesFlowTests = (harness: Harness): void => {
   });
 };
 export const registerAIOrchestrationTests = (harness: Harness): void => {
+  describe("S22 durable synthetic booking budget", () => {
+    const now = () => new Date("2026-10-05T20:00:00Z");
+    const prepare = async () => {
+      await seed(harness);
+      const receipt = await accept(harness, { receivedAt: now().toISOString() });
+      const reference = referenceFor(receipt);
+      const cohort = {
+        ...S22_BOOKING_COHORT,
+        mode: "booking" as const,
+        organizationId: reference.organizationId,
+        conversationId: reference.conversationId,
+        historicalRunIds: [],
+      };
+      const persistence = createAIOrchestrationStore(harness.runtime(), {
+        requestedModel: COMMERCIAL_V1_AI_PROFILE.model,
+        providerId: "gemini",
+        journeyCohort: cohort,
+        clock: now,
+        dataProtection,
+        protectProposal: proposalProtection.protect,
+      });
+      const snapshot = await persistence.load(reference);
+      if (snapshot === null) throw new Error("Missing synthetic budget context");
+      const reserve = async () => {
+        const reservation = await persistence.reserve({
+          reference,
+          snapshot,
+          inputHash: new Uint8Array(32).fill(19),
+        });
+        if (reservation === null) throw new Error("Missing synthetic AI run");
+        return reservation;
+      };
+      return { reference, cohort, persistence, snapshot, reserve };
+    };
+    it("serializes two independent dispatch gates and persists one committed reservation", async () => {
+      const { reference, cohort, reserve } = await prepare();
+      const reservations = await Promise.all([reserve(), reserve()]);
+      const results = await Promise.all(
+        reservations.map((reservation) =>
+          createAIJourneyBudgetGuard(harness.runtime(), cohort, now).authorizeDispatch({
+            reference,
+            reservation,
+          }),
+        ),
+      );
+      expect(results.filter(Boolean)).toHaveLength(1);
+      const reader = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await reader.read(reference.organizationId)).toMatchObject({
+        physicalCalls: 1,
+        unresolvedReserveMicros: "801432",
+        combinedExposureMicros: "1834828",
+        blocked: true,
+        reason: "dispatch_in_flight",
+        accountingComplete: false,
+      });
+      const counts = await harness.privilegedPool().query<{ starts: number; reservations: number }>(
+        `select count(*) filter (where action='ai_run.journey_started')::int as starts,
+          count(*) filter (where action='ai_run.dispatch_reserved')::int as reservations
+          from audit_events where organization_id=$1 and target_type='ai_run'`,
+        [reference.organizationId],
+      );
+      expect(counts.rows[0]).toEqual({ starts: 2, reservations: 1 });
+    });
+    it("unknown timeout costs retain their reserve and prevent a new process authorizing a retry", async () => {
+      const { reference, cohort, persistence, snapshot, reserve } = await prepare();
+      const reservation = await reserve();
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.authorizeDispatch({ reference, reservation })).toBe(true);
+      await persistence.finish({
+        reference,
+        snapshot,
+        reservation,
+        provider: null,
+        dispatchAuthorized: true,
+        outcome: { kind: "fallback_required", reason: "timeout", applied: false },
+        allowRepair: false,
+      });
+      const reader = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await reader.read(reference.organizationId)).toMatchObject({
+        unresolvedReserveMicros: "801432",
+        blocked: true,
+        reason: "cost_unknown",
+      });
+      expect(await reader.authorizeDispatch({ reference, reservation })).toBe(false);
+      const record = await harness
+        .privilegedPool()
+        .query<{ estimated_cost_micros: null }>(
+          `select estimated_cost_micros from ai_runs where organization_id=$1 and id=$2`,
+          [reference.organizationId, reservation.runId],
+        );
+      expect(record.rows[0]?.estimated_cost_micros).toBeNull();
+    });
+    it("a priced schema repair consumes its own physical authorization without leaking another tenant", async () => {
+      const { reference, cohort, persistence, snapshot, reserve } = await prepare();
+      await seed(harness, "b");
+      const hostile = await accept(harness, { tenant: "b", receivedAt: now().toISOString() });
+      const first = await reserve(),
+        guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.authorizeDispatch({ reference, reservation: first })).toBe(true);
+      await persistence.finish({
+        reference,
+        snapshot,
+        reservation: first,
+        dispatchAuthorized: true,
+        provider: {
+          ...AI_METADATA,
+          model: "gemini-3.8-flash",
+          kind: "invalid_output",
+          outputHash: new Uint8Array(32).fill(12),
+        },
+        outcome: { kind: "fallback_required", reason: "invalid_output", applied: false },
+        allowRepair: true,
+      });
+      const second = await reserve();
+      expect(await guard.authorizeDispatch({ reference, reservation: second })).toBe(true);
+      expect((await guard.read(reference.organizationId)).physicalCalls).toBe(2);
+      expect(
+        await guard.authorizeDispatch({
+          reference: { ...referenceFor(hostile), organizationId: tenantB },
+          reservation: second,
+        }),
+      ).toBe(false);
+      await expect(guard.read(tenantB)).rejects.toMatchObject({
+        code: "repository_data_integrity_error",
+      });
+      const audits = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          `select count(*)::int as count from audit_events where organization_id=$1 and action='ai_run.dispatch_reserved'`,
+          [tenantB],
+        );
+      expect(audits.rows[0]?.count).toBe(0);
+    });
+  });
   const seedRequest = async (
     tenant: "a" | "b",
     channelType: "widget" | "telegram" | "instagram" = "widget",

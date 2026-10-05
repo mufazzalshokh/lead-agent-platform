@@ -185,11 +185,18 @@ export type AIRunFinish = Readonly<{
   reservation: AIRunReservation;
   snapshot: AIContextSnapshot;
   provider: AIProviderResult | null;
+  /** Direct execution-path fact, not proof a request reached the provider. */
+  dispatchAuthorized?: boolean;
   outcome: AIOutcome;
   allowRepair: boolean;
 }>;
 export interface AIOrchestrationStore {
   load(reference: AIWorkReference): Promise<AIContextSnapshot | null>;
+  /** Optional private monetary gate. A durable authorization is consumed once,
+   * before each physical call; errors deny dispatch and are not retried here. */
+  authorizeDispatch?(
+    input: Readonly<{ reference: AIWorkReference; reservation: AIRunReservation }>,
+  ): Promise<boolean>;
   reserve(
     input: Readonly<{
       reference: AIWorkReference;

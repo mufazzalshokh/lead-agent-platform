@@ -552,6 +552,35 @@ tool-access limitation, not evidence that the accepted Auth0 flow broke.
 
 ## Deterministic checks versus live evidence
 
+### Bounded money-control preparation — 2026-10-05
+
+See the exact [booking-readiness packet](s22-acceptance-evidence.md#bounded-booking-readiness-packet--2026-10-05).
+The live Worker previously had token/time/repair caps but no durable cohort money
+gate. New code remains paused by default and requires real PostgreSQL control
+proof, owner approval of the historical reserve/allowance, and a fresh reviewed
+saved deployment plan before activation. It is not deployed by this document.
+
+Future slots reserve **USD0.801432**: the documented input maximum and enforced
+4,000 output tokens including thinking, one candidate and no extra tools/storage.
+Three distinct paid messages / six slots / two per message give **USD4.808592**
+additional allowance and **USD5.841988** combined with the pending historical
+USD1.033396. The USD5 target may be exceeded at worst case; USD10 is unchanged.
+Unknown cost/timeout/crash retains its full slot and prevents another paid call.
+The internal tenant-authorized reader never assigns zero to the historical NULLs.
+Application character limits are not a proven token conversion. This exact
+single-Instagram-thread guard does not authorize Widget/other-provider samples.
+
+After all gates, the next customer message remains:
+**“Salom, S22 sinov konsultatsiyasi qancha turadi?”**
+Then one real chosen future preference (clarification only if required within the
+three-message allowance), fresh staff acceptance and actual delivered-offer
+confirmation. Confirmation is handled deterministically before AI, not an
+optional fourth paid turn. No actions should be requested from the friend yet.
+
+The completion map now separates S22 M1–M4, initial-launch L1–L3/S23 and later
+P1/P2, attaching exact source criteria. No larger launch target, privacy decision,
+accounting threshold or uninspected control is silently marked satisfied/missing.
+
 Focused fixture tests validate the exact configuration payloads against existing
 contracts, integer pricing, UZ/RU/EN content, reference binding, hours and booking
 wording. Existing focused grounding/medical tests check missing/ambiguous facts,

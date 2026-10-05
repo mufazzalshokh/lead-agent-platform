@@ -1,3 +1,14 @@
+variable "ai_journey_mode" {
+  description = "Internal S22 synthetic booking gate; booking needs historical-reserve and exact saved-plan owner approval."
+  type        = string
+  default     = "paused"
+
+  validation {
+    condition     = contains(["paused", "booking"], var.ai_journey_mode)
+    error_message = "ai_journey_mode must be paused or booking."
+  }
+}
+
 variable "project_id" {
   description = "Billing-enabled, staging-only Google Cloud project ID."
   type        = string

@@ -51,57 +51,68 @@ export const createAIOrchestrator = (
         const reservation = await options.store.reserve({ reference, snapshot, inputHash });
         if (reservation === null) return aiFallback("stale_context");
         let provider: AIProviderResult | null = null;
+        let dispatchAuthorized = false;
         let outcome: AIOutcome = aiFallback("provider_unavailable");
         const preflight = options.preflight?.(snapshot) ?? null;
         if (preflight !== null) outcome = aiFallback(preflight);
         else if (input === null) outcome = aiFallback("context_too_large");
         else if (deadline.aborted) outcome = aiFallback("timeout");
         else {
-          try {
-            provider = await Promise.race([
-              options.provider.decide(input),
-              new Promise<AIProviderResult>((resolve) =>
-                deadline.addEventListener(
-                  "abort",
-                  () =>
-                    resolve({
-                      kind: "timeout",
-                      model: null,
-                      responseId: null,
-                      latencyMs: options.timeoutMs,
-                      usage: {
-                        input: null,
-                        output: null,
-                        total: null,
-                        cachedInput: null,
-                        reasoning: null,
-                      },
-                    }),
-                  { once: true },
+          // Do not put a monetary guard after the paid call or inside a retrying
+          // transport. Every repair/job retry must acquire its own durable slot.
+          const dispatchAllowed =
+            options.store.authorizeDispatch === undefined ||
+            (await options.store.authorizeDispatch({ reference, reservation }));
+          if (!dispatchAllowed) outcome = aiFallback("policy_denied");
+          else if (deadline.aborted) outcome = aiFallback("timeout");
+          else {
+            dispatchAuthorized = true;
+            try {
+              provider = await Promise.race([
+                options.provider.decide(input),
+                new Promise<AIProviderResult>((resolve) =>
+                  deadline.addEventListener(
+                    "abort",
+                    () =>
+                      resolve({
+                        kind: "timeout",
+                        model: null,
+                        responseId: null,
+                        latencyMs: options.timeoutMs,
+                        usage: {
+                          input: null,
+                          output: null,
+                          total: null,
+                          cachedInput: null,
+                          reasoning: null,
+                        },
+                      }),
+                    { once: true },
+                  ),
                 ),
-              ),
-            ]);
-          } catch {
-            // Provider exceptions are never propagated as raw diagnostics or customer text.
-            outcome = aiFallback("provider_unavailable");
-          }
-          if (provider !== null) {
-            if (deadline.aborted) outcome = aiFallback("timeout");
-            else if (provider.kind === "completed")
-              outcome = validateAgentDecision(provider.value)
-                ? (options.evaluateDecision?.(provider.value, snapshot) ??
-                  evaluateAIDecision(provider.value, snapshot.policy))
-                : aiFallback("invalid_output");
-            else
-              outcome = aiFallback(
-                provider.kind === "timeout"
-                  ? "timeout"
-                  : provider.kind === "refusal"
-                    ? "refusal"
-                    : provider.kind === "invalid_output"
-                      ? "invalid_output"
-                      : "provider_unavailable",
-              );
+              ]);
+            } catch {
+              // Provider exceptions are never propagated as raw diagnostics or customer text.
+              outcome = aiFallback("provider_unavailable");
+            }
+            if (provider !== null) {
+              if (deadline.aborted) outcome = aiFallback("timeout");
+              else if (provider.kind === "completed")
+                outcome = validateAgentDecision(provider.value)
+                  ? (options.evaluateDecision?.(provider.value, snapshot) ??
+                    evaluateAIDecision(provider.value, snapshot.policy))
+                  : aiFallback("invalid_output");
+              else
+                outcome = aiFallback(
+                  provider.kind === "timeout"
+                    ? "timeout"
+                    : provider.kind === "refusal"
+                      ? "refusal"
+                      : provider.kind === "invalid_output"
+                        ? "invalid_output"
+                        : "provider_unavailable",
+                );
+            }
           }
         }
         const schemaInvalid =
@@ -114,6 +125,7 @@ export const createAIOrchestrator = (
           reservation,
           snapshot,
           provider,
+          dispatchAuthorized,
           outcome,
           allowRepair,
         });

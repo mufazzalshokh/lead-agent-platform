@@ -79,6 +79,7 @@ locals {
   }
 
   worker_plain_env = merge(local.provenance_env, {
+    AI_JOURNEY_MODE                 = var.ai_journey_mode
     AI_MODEL                        = "gemini-3.8-flash"
     AI_PROVIDER                     = "gemini"
     AI_REQUEST_TIMEOUT_MS           = "15000"

@@ -14,6 +14,7 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
   --arg commit "$TF_VAR_git_commit_sha" --arg timestamp "$TF_VAR_deployment_timestamp" \
   --arg api_image "$TF_VAR_api_image" --arg web_image "$TF_VAR_web_image" \
   --arg worker_image "$TF_VAR_worker_image" --arg migrator_image "$TF_VAR_migrator_image" \
+  --arg journey_mode "$TF_VAR_ai_journey_mode" \
   --arg api_origin "$TF_VAR_api_public_origin" --arg web_origin "$TF_VAR_web_public_origin" '
   .variables.project_id.value == $project
     and .variables.region.value == $region
@@ -23,6 +24,8 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
     and .variables.web_image.value == $web_image
     and .variables.worker_image.value == $worker_image
     and .variables.migrator_image.value == $migrator_image
+    and .variables.ai_journey_mode.value == $journey_mode
+    and ($journey_mode == "paused" or $journey_mode == "booking")
     and .variables.api_public_origin.value == $api_origin
     and .variables.web_public_origin.value == $web_origin
     and .variables.deploy_runtime.value == "true"
@@ -65,6 +68,11 @@ case "$ACTUAL_ACTIONS" in
     ;;
 esac
 
+if [[ "$TF_VAR_ai_journey_mode" == "booking" && "$PLAN_MODE" != "reconciliation" ]]; then
+  echo "Booking gate requires an existing full runtime, not initial resource creation." >&2
+  exit 1
+fi
+
 jq -e '
   [.resource_changes[]
    | select(.mode == "data" and .change.actions != ["no-op"])]
@@ -105,7 +113,7 @@ jq -e --arg image "$TF_VAR_web_image" '
     and $web[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
 ' "$PLAN_JSON" > /dev/null
 
-jq -e --arg image "$TF_VAR_worker_image" '
+jq -e --arg image "$TF_VAR_worker_image" --arg journey_mode "$TF_VAR_ai_journey_mode" '
   [.resource_changes[]
    | select(.address == "google_cloud_run_v2_worker_pool.worker[0]")
    | .change.after] as $worker
@@ -114,6 +122,7 @@ jq -e --arg image "$TF_VAR_worker_image" '
     and $worker[0].scaling[0].manual_instance_count == 1
     and $worker[0].template[0].service_account == "lead-agent-staging-worker@lead-agent-stg-739284.iam.gserviceaccount.com"
     and $worker[0].template[0].containers[0].image == $image
+    and ([$worker[0].template[0].containers[0].env[] | select(.name == "AI_JOURNEY_MODE") | .value] == [$journey_mode])
     and $worker[0].template[0].containers[0].resources[0].limits.cpu == "1"
     and $worker[0].template[0].containers[0].resources[0].limits.memory == "512Mi"
     and $worker[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"

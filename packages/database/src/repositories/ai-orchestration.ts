@@ -32,6 +32,7 @@ import {
 } from "@lead-agent/contracts";
 import { createSecurityIdentifierFactory, type CustomerDataProtection } from "@lead-agent/security";
 import { estimateAIUsageCost, resolveAIPrice } from "@lead-agent/observability";
+import type { AIJourneyCohortConfig } from "@lead-agent/config";
 import type { QueryResultRow } from "pg";
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
 import { createConversationRepository } from "./conversations.js";
@@ -58,6 +59,7 @@ import {
   appointmentSubmissionState,
   persistAppointmentSubmission,
 } from "./appointment-submission.js";
+import { createAIJourneyBudgetGuard } from "./ai-journey-budget.js";
 
 type SourceRow = QueryResultRow & {
   id: unknown;
@@ -101,6 +103,8 @@ type AIStoreOptions = Readonly<{
     }>,
   ) => Promise<readonly AIFact[]>;
   clock?: () => Date;
+  /** Private staging cohort only; no model/customer-authored budget authority. */
+  journeyCohort?: AIJourneyCohortConfig;
 }>;
 const hash = (value: unknown): Uint8Array =>
   createHash("sha256").update(JSON.stringify(value)).digest();
@@ -172,6 +176,15 @@ export const createAIOrchestrationStore = (
   const identifiers = createSecurityIdentifierFactory();
   const now = options.clock ?? (() => new Date());
   const nextId = (): string => identifiers.issueResourceId(now());
+  const journey =
+    options.journeyCohort === undefined
+      ? null
+      : createAIJourneyBudgetGuard(runtime, options.journeyCohort, now);
+  if (
+    journey !== null &&
+    (providerId !== "gemini" || options.requestedModel !== "gemini-3.8-flash")
+  )
+    throw new TypeError("Journey cohort requires the approved provider/model");
   const load = async (reference: AIWorkReference): Promise<AIContextSnapshot | null> => {
     requireReference(reference);
     return await runtime.withTenantTransaction(reference.organizationId, async (session) => {
@@ -328,6 +341,7 @@ export const createAIOrchestrationStore = (
   };
   return Object.freeze<AIOrchestrationStore>({
     load,
+    ...(journey === null ? {} : { authorizeDispatch: journey.authorizeDispatch }),
     reserve: async (input) => {
       requireReference(input.reference);
       if (
@@ -387,6 +401,8 @@ export const createAIOrchestrationStore = (
               initialPrice?.version ?? "not-priced.v1",
             ],
           );
+          if (journey !== null)
+            await journey.recordStart(session, { reference: input.reference, runId });
           return Object.freeze({ runId, attemptNo });
         },
       );
@@ -692,7 +708,16 @@ const finishAIRun = async (
       category,
       `ai-run:${input.reservation.runId}`,
       input.reference.correlationId,
-      JSON.stringify({ status, attempt_no: input.reservation.attemptNo }),
+      JSON.stringify({
+        status,
+        attempt_no: input.reservation.attemptNo,
+        ...(options.journeyCohort === undefined
+          ? {}
+          : {
+              journey_profile: options.journeyCohort.profile,
+              dispatch_authorized: input.dispatchAuthorized === true,
+            }),
+      }),
       finishedAt,
     ],
   );

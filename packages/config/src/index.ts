@@ -52,3 +52,8 @@ export {
   type CommercialV1AIConfig,
   type OpenAIHarnessConfig,
 } from "./ai.js";
+export {
+  S22_BOOKING_COHORT,
+  loadAIJourneyCohortConfig,
+  type AIJourneyCohortConfig,
+} from "./ai-journey.js";

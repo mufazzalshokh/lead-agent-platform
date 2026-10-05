@@ -6,6 +6,7 @@ import {
   loadInstagramPlatformConfig,
   COMMERCIAL_V1_AI_PROFILE,
   loadCommercialV1AIConfig,
+  loadAIJourneyCohortConfig,
 } from "@lead-agent/config";
 import {
   createOutboxDispatcherId,
@@ -56,6 +57,7 @@ export const composeProductionWorkerRuntime = (
   options: Readonly<{ credentialSecretStore?: CredentialSecretStore }> = {},
 ): WorkerRuntime => {
   const aiConfig = loadCommercialV1AIConfig(environment);
+  const journeyCohort = loadAIJourneyCohortConfig(environment);
   const instagramConfig =
     environment["INSTAGRAM_APP_ID"] === undefined ? null : loadInstagramPlatformConfig(environment);
   const credentials = options.credentialSecretStore;
@@ -129,6 +131,7 @@ export const composeProductionWorkerRuntime = (
               appointmentSubmission: true,
               dataProtection: createCustomerDataProtection(protectionConfig),
               protectProposal: createAIProposalProtection(protectionConfig).protect,
+              ...(journeyCohort === null ? {} : { journeyCohort }),
             }),
             timeoutMs: aiConfig.requestTimeoutMs,
             telemetry: { record: (metric) => console.info("AI orchestration outcome", metric) },

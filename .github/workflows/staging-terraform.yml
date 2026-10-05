@@ -81,6 +81,15 @@ on:
         description: Immutable worker image reference by digest (full phase)
         required: false
         type: string
+      ai_journey_mode:
+        description: Preserve current mode by default; booking requires separate historical-reserve approval plus the exact full-runtime saved plan
+        required: false
+        default: preserve
+        type: choice
+        options:
+          - preserve
+          - paused
+          - booking
       migrator_image:
         description: Immutable migrator image reference by digest (migration and later phases)
         required: false
@@ -214,6 +223,7 @@ jobs:
       S22_MIGRATOR_DEPLOYMENT_TIMESTAMP: ${{ inputs.migrator_deployment_timestamp }}
       S22_MIGRATOR_EXECUTION_ID: ${{ inputs.migrator_execution_id }}
       S22_PHASE: ${{ inputs.phase }}
+      S22_AI_JOURNEY_MODE: ${{ inputs.ai_journey_mode || 'preserve' }}
       S22_PLAN_RUN_ID: ${{ inputs.plan_run_id }}
       S22_RUNTIME_DEPLOYMENT_TIMESTAMP: ${{ inputs.runtime_deployment_timestamp }}
       S22_RUNTIME_GIT_COMMIT_SHA: ${{ inputs.runtime_git_commit_sha }}
@@ -262,6 +272,10 @@ jobs:
             *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
           esac
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$S22_AI_JOURNEY_MODE" == "preserve" || "$S22_AI_JOURNEY_MODE" == "paused" || "$S22_AI_JOURNEY_MODE" == "booking" ]]
+          if [[ "$S22_AI_JOURNEY_MODE" != "preserve" ]]; then
+            [[ "$PHASE" == "full" ]]
+          fi
           if [[ "$PHASE" == "migration-error-read" ]]; then
             [[ "$ACTION" == "plan" ]]
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
@@ -773,6 +787,16 @@ jobs:
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
+
+      - name: Preserve or explicitly select the private AI journey gate
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_PHASE != 'owner-workspace-verify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Read authoritative remote state internally; emit only the non-secret mode.
+          MODE="$(terraform -chdir=infra/deploy/gcp/staging state pull | node .github/scripts/s22-ai-journey-mode.mjs "$S22_PHASE" "$S22_AI_JOURNEY_MODE")"
+          [[ "$MODE" == "paused" || "$MODE" == "booking" ]]
+          echo "TF_VAR_ai_journey_mode=$MODE" >> "$GITHUB_ENV"
 
       - name: Validate staging Terraform
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_PHASE != 'owner-workspace-verify'
