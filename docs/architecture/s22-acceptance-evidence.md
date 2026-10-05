@@ -37,7 +37,7 @@ live product and recovery/capacity proof. It does not declare S22 acceptance.
   reduced Inbox to 0. These are owner-observed live results, not independent
   post-action database/history/audit verification. No message content is recorded here.
 
-## Staff conversation workflow milestone — local, not deployed
+## Staff conversation workflow milestone — deployed, live proof pending
 
 Customer work and conversation details precede integrations/analytics. Opening a
 card focuses and scrolls to the transcript. Inbox and History use the existing
@@ -72,20 +72,84 @@ Focused verification on `2026-10-04`:
 
 This milestone adds no migration, dependency, IAM change, provider authorization,
 or personal-DM eligibility change. Local/mock verification is not live staging proof.
-Deployment and real owner verification of layout/focus, History, retained feedback,
-fresh-version sequencing and direct post-action history/audit remain pending.
+Fresh synthetic Claim/Resolve verification of retained feedback and fresh-version
+sequencing, together with direct transition/audit-row proof, remains pending.
 
-Rollout starts with `Build staging images` (`staging-images.yml`), dispatched on the
-existing S22 branch with the exact new checkpoint SHA and `image_scope=all`; the
-workflow has no Web-only scope. Use its fresh immutable digests to generate a new
-reviewable plan. Do not reuse earlier saved plans, image digests or approval hashes.
-Infrastructure apply requires repository-mandated approval of that exact new plan.
+The milestone is deployed from `a26b28c7da44ae56c32a8d9dc1bac7cc3c06095c` on
+`verify/s22-staging-recovery-capacity`. Image build `37200748224` produced four fresh
+immutable images; plan `37201067535` was reviewed and owner-approved with saved-plan
+SHA256 `de33c4c9aa43e892e0ca163d5861c1d7d036bcf280bd810be8a1b064f6847865`.
+Apply `37275743607` succeeded on `2026-10-05`: 0 creates, 4 in-place workload
+updates (API, Web, Worker, Migrator), 0 destroys, 0 replacements. Approved provenance
+timestamp `2026-10-04T12:07:31Z` was preserved. No SQL, IAM, networking or secret
+changes occurred, and migrator execution was skipped. Post-apply API health returned
+`status=ok`; the organization-bound Web shell returned HTTP 200. Neither is
+authenticated staff workflow proof.
+
+### Authenticated live read-only verification — 2026-10-05
+
+- Windows desktop UI automation opened the exact organization-bound workspace in a
+  new tab of the owner's existing normal Chrome profile. The correct staging origin,
+  staff path and organization context were independently checked without extracting
+  cookies, tokens, credentials or browser profiles.
+- The page initially displayed `Sign in securely`. After owner interaction during
+  the check, the real workspace became available. Same-origin `/v1/staff/me` returned
+  the authorized `owner` role. No authentication configuration or identity binding
+  changed, and no provider onboarding/OAuth was repeated.
+- Live layout PASS: Inbox/customer work and conversation details appear before the
+  settings/integrations/analytics panels. At the observed desktop viewport the work
+  heading was near screen Y=231 and settings began at Y=720.
+- Actual History button/card interaction PASS: History loaded one conversation,
+  opening its card focused the `conversation` region and scrolled its top from
+  screen Y=189 to Y=121. The transcript was nonempty and no Claim/Resolve buttons
+  were present. Switching History -> Inbox -> History preserved the selected
+  transcript; reopening the History card also retained it and focused the region.
+- Live Inbox empty-state PASS: `Inbox 0` and the explicit explanation that there
+  is no pending staff work and messages remain in History were visible. Navigation
+  requests settled without a stuck loading state or visible list/detail failure.
+  Transient loading text was not captured; artificial failures/races were not
+  induced. Failure/race handling remains covered only by preserved local tests.
+- Read-only same-origin GETs used the browser's native authenticated session and
+  tenant context. Only allowlisted IDs, states, versions and counts were observed;
+  no customer body, provider account identifier, cookie or token was exported.
+  Current authoritative reader results:
+  - `/v1/staff/inbox?view=active&limit=25`: empty.
+  - `/v1/staff/inbox?view=history&limit=25`: one non-actionable conversation,
+    `01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7`, status `open`, version **6**.
+  - `/v2/staff/conversations/:id`: same ID/version, `automation_mode=ai`,
+    `active_handoff_id=null`, participant identity type `instagram_user`.
+  - `/v1/staff/conversations/:id/messages?limit=100`: **3** nonempty messages,
+    **2 inbound / 1 outbound**, sequence numbers **1, 2, 3**. Bodies are omitted.
+  - `/v1/staff/handoffs?view=history&limit=25`: the matching handoff
+    `01a1067f-e98f-754e-b5ac-94badf1ca03a`, status `resolved`, version **4**,
+    conversation version **6**, `actionable=false`.
+  - `/v1/staff/handoffs?view=active&limit=25`: empty.
+- These live reads independently confirm persisted post-resolution state and
+  transcript preservation for the sole historical Instagram conversation. History
+  means no actionable staff work, not deletion or a necessarily terminal conversation:
+  the conversation remains `open` in AI mode after the earlier owner Resolve.
+- There is no fresh active handoff suitable for new Claim/Resolve proof. No mutation
+  was performed, message sent, or unrelated record used. Live retained mutation
+  feedback, assigned/in-progress handoff labels and successive authoritative-version
+  sequencing remain pending a clearly identified owner-approved synthetic handoff.
+  A friend may send `Salom, operator bilan gaplashmoqchiman. Menga xodim yordam bera
+  oladimi?` to the already connected Instagram account; receipt/handoff creation must
+  be observed, not fabricated.
+- The current staff/API readers do not expose persisted transition/audit rows. The
+  mutation implementation persists coupled state, transitions, audit and Outbox,
+  but source inspection and prior tests do not prove the friend's live post-action
+  audit. Direct audit evidence remains unavailable through these readers/pending;
+  no endpoint or privileged database access was invented.
+- Prior 35/35 focused tests and local mocked browser proof remain preserved and
+  separate from live evidence. No CI, inventory, deployment or migration was rerun
+  for this verification. No staff-workflow defect was observed in the read-only
+  checks. This evidence-only update does not require runtime deployment.
 
 ## Remaining gates
 
 | Gate | Evidence still required |
 | --- | --- |
-| Instagram DM / staff workflow | Owner-observed inbound, automatic reply and Claim/Resolve preserved; direct post-action history/audit and tenant-routing/eligibility proof remain pending, together with the new staff workflow deployment/live proof |
+| Instagram DM / staff workflow | Deployment and authenticated read-only History/transcript/navigation/current-state proof PASS; earlier Claim/Resolve remains owner-observed; fresh synthetic mutation feedback/version sequencing, direct transition/audit rows and tenant-routing/eligibility proof remain pending |
 | Website Widget | Real allowed/disallowed cross-origin embed, meaningful response, session and token isolation |
 | Gemini and business journey | Approved live model, bounded cost ledger, grounding/qualification/request/staff acceptance/customer confirmation, deterministic medical safety |
 | Observability | Actual meaningful-response TTFR, queue/provider/channel failures and cost without message content |
