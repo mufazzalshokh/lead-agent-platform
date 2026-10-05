@@ -9,13 +9,15 @@ const project = "lead-agent-stg-739284",
   region = "me-central1",
   job = "lead-agent-staging-migrator";
 export const reviewed = Object.freeze({
-  source: "f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d",
-  timestamp: "2026-10-05T16:28:09Z",
+  // Exact owner-approved apply 37360464046; post-apply verification 37360711370.
+  // Updating diagnostic pins does not authorize another runtime rollout.
+  source: "da9d609b4831d041aef71b271cc6994b3df74cf8",
+  timestamp: "2026-10-05T18:46:33Z",
   head: "0031_s22_widget_inbound_route_management",
   worker:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:ebdd10763876631af48baea838814a37f7cc397088a1810991f4f36b52509669",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:9013c4f4303255678151bd5ab6907da3877bc7e76fe80c81ad554b50b4845beb",
   migrator:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:612db330f27d25a9b6c92c05d361bee86ba59e6ff03e0e61c646eef4d1b476fd",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:fc9d7e383d7ae569546a383266919ee49a65c41e2a09078e4cad9f86cd68fe0c",
 });
 const requireSafe = (value, code) => {
   if (!value) throw Object.assign(new Error(), { code });

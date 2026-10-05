@@ -1548,6 +1548,30 @@ safe-fallback delivery and complete booking journey remain unproven. S22 is not
 accepted; no S23 work. Only these evidence documents changed after deployment;
 unrelated owner edits are preserved.
 
+### Post-rollout second-turn readiness: diagnostic preparation
+
+The owner requested continuation with the read-only readiness check. Before
+dispatch, source inspection found that `s22-booking-evidence.mjs` still pinned
+the previous `f523ba3` Worker/Migrator images and timestamp. Those guards would
+correctly reject the new live deployment; no failed live run was consumed to
+discover this. Only the reviewed diagnostic pins now reference the exact
+`da9d609b4831d041aef71b271cc6994b3df74cf8` manifest, approved apply **37360464046**
+and verified timestamp **2026-10-05T18:46:33Z**. Runtime code/configuration, reader
+queries, RLS, identity/VPC/explicit-zero-retry checks, timeouts, rollback/cleanup
+and redaction are unchanged. This does not require or authorize another image
+build/deployment, migration, paid message or IAM change.
+
+The exact new pin assertion failed before correction and passed afterward;
+separate tests prove both old Worker and old Migrator digests remain rejected.
+`node --test .github/scripts/s22-booking-evidence.test.mjs
+.github/scripts/s22-booking-first-turn.test.mjs`: **15/15 PASS** including the
+actual ES-module subprocess/relative-package resolution, complete controlled
+reader, rollback/cleanup, security guards and output redaction. Scoped script
+lint, formatting and diff checks PASS. These are local diagnostic-tool tests,
+not a fresh live ledger/conversation observation. The existing `observe` phase
+will collect current synthetic state/requests/delivery and budget metadata;
+paid messages remain paused until those observed values satisfy readiness.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |
