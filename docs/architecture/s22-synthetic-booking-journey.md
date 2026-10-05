@@ -113,6 +113,20 @@ the new exact rollout is approved/verified and the remaining bounded journey can
 proceed with current authoritative state. Staff acceptance is still not booking
 confirmation. No additional paid allowance is approved by this correction.
 
+Focused fix source `da9d609b4831d041aef71b271cc6994b3df74cf8` is pushed.
+Fresh four-image build **37358285290 PASS** and full-runtime plan
+**37359246514 PASS**, with exactly four in-place image/provenance updates and
+no create/destroy/replacement, SQL, IAM, network, scaling or migration execution.
+Saved-plan SHA256:
+`dc4613637939f7857dfc28e6169190bf4c525bb8eebec6f7d226f8de620ca3a4`.
+Timestamp `2026-10-05T18:46:33Z`; migration head remains
+`0031_s22_widget_inbound_route_management`. The
+[exact rollout packet](s22-acceptance-evidence.md#rejected-proposal-fallback-exact-rollout-approval-packet)
+contains immutable references, inspected safeguards and prepared apply inputs.
+**Apply is not dispatched or approved by this preparation.** No new customer
+message is requested until that exact rollout is approved and verified; retain
+the first-turn cost and original historical NULLs.
+
 The source-approved Commercial V1 profile is Gemini API `gemini-3.8-flash`, paid
 tier, low thinking, stateless `AgentDecision.v1` structured JSON, maximum output
 4,000 tokens. Deterministic policy is authoritative; no generic tools, provider

@@ -1436,6 +1436,83 @@ Fresh plan provenance is recorded in the rollout packet. No migration/public sch
 eligibility, model settings or budget limit changes. No live-fix/booking/S22 PASS
 is asserted before deployment and subsequent authorized evidence.
 
+### Rejected-proposal fallback: exact rollout approval packet
+
+**Source:** `da9d609b4831d041aef71b271cc6994b3df74cf8`, preserved on
+`verify/s22-staging-recovery-capacity`. This fixes terminal handling of rejected
+model output, not the original model proposal or historical accounting.
+The already-consumed first paid turn remains counted; no replay or new paid
+message ran. Further paid messages remain operationally paused.
+
+One fresh [image build 37358285290](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37358285290)
+**PASS**. Authenticated manifest download binds all four Linux/amd64 images to
+the exact source and build run; the fresh saved plan independently matches each
+reference. No older image, timestamp, approval hash or plan is reused.
+
+| Image | Exact immutable reference |
+| --- | --- |
+| API | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:4b9fabe32ba26025357f604e1107090ac105112a6a654568958192705cd29399` |
+| Web | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:1e650251f7c1f720c15153e2cd8b2245d60afba15888325d764fd03151e86ea0` |
+| Worker | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:9013c4f4303255678151bd5ab6907da3877bc7e76fe80c81ad554b50b4845beb` |
+| Migrator | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:fc9d7e383d7ae569546a383266919ee49a65c41e2a09078e4cad9f86cd68fe0c` |
+
+One fresh [full-runtime plan 37359246514](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37359246514)
+**PASS**. Saved binary SHA256, independently computed after authenticated download
+and matched to `s22.tfplan.sha256`:
+
+`dc4613637939f7857dfc28e6169190bf4c525bb8eebec6f7d226f8de620ca3a4`
+
+| Plan binding / safeguard | Verified result |
+| --- | --- |
+| Project / region | `lead-agent-stg-739284` / `me-central1` |
+| Source | `da9d609b4831d041aef71b271cc6994b3df74cf8` |
+| Chosen timestamp, preserved in all planned workload provenance | `2026-10-05T18:46:33Z` |
+| Existing migration head, unchanged in all four workloads | `0031_s22_widget_inbound_route_management` |
+| Creates / changes / destroys / replacements | **0 / 4 / 0 / 0** |
+| Intended actions | `update:google_cloud_run_v2_service.api[0]`; `update:google_cloud_run_v2_service.web[0]`; `update:google_cloud_run_v2_worker_pool.worker[0]`; `update:google_cloud_run_v2_job.migrator[0]` |
+| Independent private saved-plan inspection | Only images, Git labels and deployment SHA/image/timestamp provenance change; computed revision fields are not new configuration |
+| SQL / IAM / network / scaling / secret binding changes | **NONE** |
+| Runtime identity / VPC / resources / entrypoints | Unchanged before/after |
+| AI gate | `preserve` resolves from authoritative state to existing `booking`; mode, cohort limits and history remain unchanged |
+| Unexpected / deferred resource actions | **NONE** |
+| Apply / one-shot migrator / database validator execution | **SKIPPED** in this plan run; full reconciliation does not execute migrations |
+| Runtime before-source | `f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d` |
+
+The saved plan also records three **refresh metadata** entries: registry
+`update_time`; migrator `execution_count` and latest-execution name/timestamps;
+Cloud SQL `settings.version`. These are not additional apply actions. Registry
+and Cloud SQL have explicit planned `no-op`; the migrator's planned configuration
+change remains only image/provenance. No SQL configuration difference is accepted
+or hidden. Raw Terraform JSON/state and environment contents were not printed.
+
+Prepared exact subsequent inputs for `staging-terraform.yml` on the same branch:
+
+| Input | Exact value |
+| --- | --- |
+| action / phase | `apply` / `full` |
+| commit_sha | `da9d609b4831d041aef71b271cc6994b3df74cf8` |
+| plan_run_id | `37359246514` |
+| approved_plan_sha256 | `dc4613637939f7857dfc28e6169190bf4c525bb8eebec6f7d226f8de620ca3a4` |
+| api_image / web_image / worker_image / migrator_image | Exact respective immutable references in the image table above |
+| deployment_timestamp / api_deployment_timestamp / migrator_deployment_timestamp / runtime_deployment_timestamp | `2026-10-05T18:46:33Z` |
+| api_git_commit_sha / migrator_git_commit_sha / runtime_git_commit_sha | `da9d609b4831d041aef71b271cc6994b3df74cf8` |
+| api_migration_head / runtime_migration_head | `0031_s22_widget_inbound_route_management` |
+| ai_journey_mode | `preserve` |
+| owner_approval_token | **Not supplied; exact-plan owner approval required before dispatch** |
+
+No apply was dispatched. Terraform must reject a stale saved plan rather than
+silently replan. Current GCS serial was not independently re-read after plan
+creation; no claim of post-plan live convergence is made. Documentation-only
+follow-up commits do not change the reviewed runtime source or require rebuilding.
+
+Validation remains the focused **204/204** local regressions, root TypeScript,
+Application/Database declaration builds, Worker production build, scoped lint,
+format and diff checks recorded above, plus the completed four-image build and
+plan checks. The new real-PostgreSQL persistence case is registered but still
+unexecuted locally; final authoritative CI and subsequent live fallback/delivery
+proof remain pending. No historical NULL reconciliation, grounded-answer PASS,
+booking confirmation or S22 acceptance follows from this packet.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |
