@@ -140,6 +140,22 @@ export const createAIOrchestrator = (
           latencyMs: provider?.latencyMs ?? 0,
           usage: provider?.usage ?? null,
           repair: attempt === 1,
+          organizationId: reference.organizationId,
+          conversationId: reference.conversationId,
+          messageId: reference.messageId,
+          correlationId: reference.correlationId,
+          runId: reservation.runId,
+          attemptNo: reservation.attemptNo,
+          proposedAction:
+            provider?.kind === "completed" && validateAgentDecision(provider.value)
+              ? provider.value.action.type
+              : null,
+          schemaValid:
+            provider?.kind === "completed" ? validateAgentDecision(provider.value) : null,
+          modelRejection:
+            resolved.kind === "fallback_required" ? (resolved.modelRejection ?? null) : null,
+          salesResultKind: resolved.salesResult?.kind ?? null,
+          replyDisposition: resolved.replyDisposition ?? "not_planned",
         });
         if (
           attempt === 0 &&

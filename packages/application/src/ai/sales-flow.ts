@@ -260,12 +260,18 @@ export const evaluateSalesDecision = (
       decision.extracted_facts.display_name,
       decision.extracted_facts.phone_raw,
       decision.extracted_facts.email_raw,
-    ].some((value) => value !== null && !snapshot.message.includes(value)) ||
+    ].some((value) => value !== null && !snapshot.message.includes(value))
+  )
+    return aiFallback("policy_denied", "untrusted_extraction");
+  if (
     decision.safety.risk_flags.some(
       (flag) => !["price_missing", "service_missing", "location_missing"].includes(flag),
     ) ||
     !decision.safety.safe_to_send ||
-    decision.message.mode !== "send_candidate" ||
+    decision.message.mode !== "send_candidate"
+  )
+    return aiFallback("policy_denied", "unsafe_response");
+  if (
     decision.factual_claims.some(
       (claim) =>
         !snapshot.policy.facts.some(
@@ -273,10 +279,11 @@ export const evaluateSalesDecision = (
         ),
     )
   )
-    return aiFallback("policy_denied");
-  if (decision.action.type === "request_handoff") return aiFallback("policy_denied");
+    return aiFallback("policy_denied", "untrusted_citation");
+  if (decision.action.type === "request_handoff")
+    return aiFallback("policy_denied", "handoff_not_authorized");
   if (["confirm_appointment", "decline_appointment"].includes(decision.action.type))
-    return aiFallback("policy_denied");
+    return aiFallback("policy_denied", "confirmation_not_authorized");
   // No model wording or action is executed. S16 requests remain a typed application boundary.
   return Object.freeze({ kind: "decision", disposition: "candidate", applied: false, decision });
 };
@@ -326,6 +333,23 @@ export const planSalesFlow = (snapshot: AIContextSnapshot, outcome: AIOutcome): 
       handoffReason: null,
     };
   if (preflight !== null && preflight !== "staff_requested") return none(preflight);
+  if (
+    preflight === null &&
+    outcome.kind === "fallback_required" &&
+    outcome.reason === "policy_denied" &&
+    outcome.modelRejection !== undefined &&
+    snapshot.sales?.contactable === true
+  )
+    // Reject ALL model text/facts/actions. A current, contactable tenant context
+    // independently authorizes the application's policy-blocked staff fallback.
+    // Preflight injection, stale state and monetary dispatch denial never enter it.
+    return {
+      evidence,
+      result: { kind: "handoff_requested", reason: "policy_blocked", missing },
+      text: handoffText(locale, false),
+      sources: [],
+      handoffReason: "policy_blocked",
+    };
   if (
     outcome.kind === "fallback_required" &&
     ![

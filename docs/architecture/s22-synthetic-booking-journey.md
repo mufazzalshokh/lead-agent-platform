@@ -95,6 +95,24 @@ subsequent grounded answer and authorized provenance/state reads.
 
 ## Model and cost readiness
 
+### First paid turn: terminal policy denial, rollout pending
+
+The first authorized price/duration message was persisted on 2026-10-05 at
+17:23:28.698Z, but its schema-valid Gemini handoff proposal was rejected and the
+old terminal fallback silently suppressed the inbound. The existing read-only
+execution `lead-agent-staging-migrator-mqfd8` supplies the persisted proof in the
+[evidence register](s22-acceptance-evidence.md#first-turn-root-cause-proven-from-the-existing-execution).
+Recorded cost is USD0.001950; one of the three messages and six physical slots is
+consumed. Do not refund, replay or resend it. Historical NULL costs remain NULL.
+
+The focused application fix retains the model denial and uses only the existing
+deterministic policy-blocked staff fallback, with correlated disposition metadata.
+It does not manufacture a grounded answer, request, staff acceptance or customer
+confirmation for this old turn. Further paid customer messages stay paused until
+the new exact rollout is approved/verified and the remaining bounded journey can
+proceed with current authoritative state. Staff acceptance is still not booking
+confirmation. No additional paid allowance is approved by this correction.
+
 The source-approved Commercial V1 profile is Gemini API `gemini-3.8-flash`, paid
 tier, low thinking, stateless `AgentDecision.v1` structured JSON, maximum output
 4,000 tokens. Deterministic policy is authoritative; no generic tools, provider

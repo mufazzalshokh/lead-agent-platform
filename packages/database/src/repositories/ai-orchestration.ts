@@ -588,7 +588,11 @@ const finishAIRun = async (
         nextId,
         finishedAt,
       );
-    outcome = Object.freeze({ ...outcome, salesResult: appointment?.result ?? persisted.result });
+    outcome = Object.freeze({
+      ...outcome,
+      salesResult: appointment?.result ?? persisted.result,
+      replyDisposition: plan.text === null ? "suppressed" : "queued",
+    });
   }
   const usage = input.provider?.usage;
   const resolvedModel = input.provider?.model ?? null;
@@ -711,6 +715,10 @@ const finishAIRun = async (
       JSON.stringify({
         status,
         attempt_no: input.reservation.attemptNo,
+        policy_rejection_code:
+          outcome.kind === "fallback_required" ? (outcome.modelRejection ?? null) : null,
+        sales_result_kind: outcome.salesResult?.kind ?? null,
+        reply_disposition: outcome.replyDisposition ?? "not_planned",
         ...(options.journeyCohort === undefined
           ? {}
           : {

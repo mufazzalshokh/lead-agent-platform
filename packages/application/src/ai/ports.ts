@@ -158,6 +158,14 @@ export type AIFallbackReason =
   | "booking_availability_unapproved"
   | "staff_requested"
   | "stale_context";
+/** Internal policy diagnostics, never model-authored authority or a public contract. */
+export type AIModelPolicyRejection =
+  | "untrusted_extraction"
+  | "unsafe_response"
+  | "untrusted_citation"
+  | "handoff_not_authorized"
+  | "confirmation_not_authorized";
+type AIReplyDisposition = "queued" | "suppressed" | "not_planned";
 export type AIOutcome =
   | Readonly<{
       kind: "decision";
@@ -165,12 +173,15 @@ export type AIOutcome =
       disposition: "candidate" | "suppress";
       applied: false;
       salesResult?: SalesResult;
+      replyDisposition?: AIReplyDisposition;
     }>
   | Readonly<{
       kind: "fallback_required";
       reason: AIFallbackReason;
       applied: false;
       salesResult?: SalesResult;
+      replyDisposition?: AIReplyDisposition;
+      modelRejection?: AIModelPolicyRejection;
     }>;
 export type AIWorkReference = Readonly<{
   organizationId: OrganizationId;
@@ -220,6 +231,17 @@ export type AITelemetry = Readonly<{
       latencyMs: number;
       usage: AIUsage | null;
       repair: boolean;
+      organizationId: OrganizationId;
+      conversationId: ConversationId;
+      messageId: MessageId;
+      correlationId: CorrelationId;
+      runId: string;
+      attemptNo: number;
+      proposedAction: AgentDecisionV1["action"]["type"] | null;
+      schemaValid: boolean | null;
+      modelRejection: AIModelPolicyRejection | null;
+      salesResultKind: SalesResult["kind"] | null;
+      replyDisposition: AIReplyDisposition;
     }>,
   ): void;
 }>;

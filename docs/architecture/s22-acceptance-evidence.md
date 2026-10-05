@@ -1360,6 +1360,82 @@ to the next investigation step, not a completed runtime correction. Further paid
 messages stay paused; a runtime fix/deployment packet must wait for the actual
 terminal result, validation/policy codes and persisted reply/Outbox disposition.
 
+### First-turn root cause proven from the existing execution
+
+The owner supplied the bounded Cloud Logging read of **`lead-agent-staging-migrator-mqfd8`**:
+14 log entries, 12 diagnostic rows, `GCLOUD_EXIT=0`, `SANITIZER_EXIT=0`.
+This closes the scoped result-collection gap above as **owner-supplied persisted
+live evidence**, not an independently authenticated database read by Codex.
+No diagnostic, paid invocation or customer action was repeated.
+
+- Exact AI run **`01a10d17-8eea-745c-b2a0-4097e351f696`**, attempt 1, expected
+  conversation version 13: terminal **`policy_denied`**, `schema_valid=true`,
+  `policy_allowed=false`, output hash present, resolved `gemini-3.8-flash`.
+  Started `2026-10-05T17:23:30.154Z`, finished `17:23:33.528Z`.
+- Proposed action **`request_handoff`**, validation denied, reason `policy_denied`,
+  application `not_applied`. The encrypted proposal/draft was not retrieved.
+  Exact finer rejection branch was not persisted historically; a handoff proposal
+  is independently sufficient for rejection in the deployed evaluator, but other
+  failed output checks cannot be excluded from this metadata alone.
+- Exact inbound is linked to that run and **`suppressed`**, sequence 7. No
+  outbound message or `message.response_queued` intent exists in the bounded read.
+  Conversation remains open/13, AI, no Handoff or AppointmentRequest.
+- Dispatch reservation audit is **801,432 micros**; terminal policy-denial audit
+  records dispatch authorized. Provider usage: input 770, cached input 0, output
+  366, total 1,136; recorded known cost **1,950 micros**. Current cohort: one
+  logical message/physical slot, zero unresolved reserve, `blocked=false`, combined
+  exposure **1,035,346 micros**, original historical NULLs preserved.
+- `message.received` is published with attempt 1/no relay error; terminal
+  `ai_run.policy_denied` intent is pending. There is no outbound delivery attempt
+  to blame. Runtime cannot read private queue/handler tables; retry/DLQ details
+  are not claimed from their absent privilege. They are not needed to identify
+  the earlier, persisted terminal suppression.
+
+**Earliest proven failing stage:** deterministic policy rejected a schema-valid
+model result, then `planSalesFlow` returned `text=null`/no Handoff for that
+fallback; `planAppointmentSubmission` preserved it and `finishAIRun` committed
+suppression without scheduling a response. Policy rejection itself is correct;
+silently consuming a current, eligible customer message is the product defect.
+This is not provider/network timeout, stale-version rejection, a reply INSERT
+failure or an Instagram send error.
+
+The focused correction preserves rejection and all provider usage/provenance.
+Internal finite rejection codes distinguish untrusted extraction/citation,
+unsafe response, unauthorized handoff and confirmation proposals. Only a current,
+trusted contactable sales context with a **model-output** rejection receives the
+application's existing `policy_blocked` Handoff and approved localized template;
+no rejected model text, fact, citation, requested reason or booking action is used.
+Injection/preflight denial, stale state, medical handling, unbound contactability
+and budget dispatch denial cannot enter this fallback. Existing transactional
+Handoff/audit/reply/Outbox persistence remains authoritative and idempotent.
+
+Terminal audits add allowlisted `policy_rejection_code`, `sales_result_kind` and
+`reply_disposition`; structured `worker.ai.outcome` logs bind tenant/conversation/
+message/correlation/run/attempt to schema, proposed action, rejection and queued/
+suppressed disposition. Safe model/token metadata remains internal. `queued`
+means committed response intent, not provider delivery or customer receipt;
+`messages.processing_status` and proposal `not_applied` are not delivery flags.
+
+Local failure-before proof: the exact synthetic price/duration question plus a
+schema-valid handoff proposal reproduced the previous silent plan. It is a
+controlled reproduction of the proven branch, not recovery of the encrypted live
+output. After correction, **200 focused AI/planner tests PASS** and **four new
+structured disposition/telemetry tests PASS**. A new PostgreSQL persistence case
+checks one safe Handoff/reply, unchanged run denial/cost, audit disposition and
+duplicate suppression; it is **registered, not locally executed** because the
+existing Docker Linux engine is unavailable. No Docker/WSL repair or aggregate
+CI was attempted. Root test-source TypeScript and Application/Database declaration
+builds plus Worker production build **PASS**. Scoped production lint and corrected
+test/telemetry lint **PASS**, all 13 touched files' formatting and scoped diff
+checks **PASS**. One incorrectly rooted local compiler invocation emitted 148
+untracked compiler artifacts alongside TypeScript; only those proven generated
+files were removed, preserving source and unrelated edits. The final **204/204**
+focused regressions PASS against tracked TypeScript, not those artifacts; counts
+are unique cases, not added across repeated runs.
+Fresh plan provenance is recorded in the rollout packet. No migration/public schema, IAM, channel
+eligibility, model settings or budget limit changes. No live-fix/booking/S22 PASS
+is asserted before deployment and subsequent authorized evidence.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |

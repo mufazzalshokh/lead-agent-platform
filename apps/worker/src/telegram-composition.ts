@@ -32,6 +32,7 @@ import {
 import { createCustomerDataProtection, createAIProposalProtection } from "@lead-agent/security";
 import { createAppointmentSubmissionAIProvider } from "@lead-agent/ai";
 import { createAIMessageHandler } from "./ai-handler.js";
+import { createStructuredAITelemetry } from "./ai-telemetry.js";
 
 import {
   createOutboxDispatcher,
@@ -134,7 +135,7 @@ export const composeProductionWorkerRuntime = (
               ...(journeyCohort === null ? {} : { journeyCohort }),
             }),
             timeoutMs: aiConfig.requestTimeoutMs,
-            telemetry: { record: (metric) => console.info("AI orchestration outcome", metric) },
+            telemetry: createStructuredAITelemetry(),
           }),
         );
   const confirmation = createCustomerConfirmationStore(tenantRuntime, {

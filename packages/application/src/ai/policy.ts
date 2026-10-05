@@ -1,9 +1,16 @@
 import { AgentDecisionV1Schema, isSchemaValue, type AgentDecisionV1 } from "@lead-agent/contracts";
-import type { AIPolicyContext, AIOutcome } from "./ports.js";
+import type { AIPolicyContext, AIOutcome, AIModelPolicyRejection } from "./ports.js";
 
 export const aiFallback = (
   reason: Extract<AIOutcome, { kind: "fallback_required" }>["reason"],
-): AIOutcome => Object.freeze({ kind: "fallback_required", reason, applied: false });
+  modelRejection?: AIModelPolicyRejection,
+): AIOutcome =>
+  Object.freeze({
+    kind: "fallback_required",
+    reason,
+    applied: false,
+    ...(modelRejection === undefined ? {} : { modelRejection }),
+  });
 export const validateAgentDecision = (value: unknown): value is AgentDecisionV1 =>
   isSchemaValue(AgentDecisionV1Schema, value);
 export const evaluateAIDecision = (
