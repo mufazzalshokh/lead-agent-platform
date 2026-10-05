@@ -552,6 +552,29 @@ tool-access limitation, not evidence that the accepted Auth0 flow broke.
 
 ## Deterministic checks versus live evidence
 
+### Owner-approved activation checkpoint — 2026-10-05
+
+The owner has approved the one-time historical budget reserve and bounded
+allowance (USD1.033396 + USD4.808592, combined USD5.841988), explicitly accepting
+the USD5 target overage without changing USD10. Historical NULLs/exact accounting
+remain unresolved. This supersedes only the earlier pending-approval wording;
+it does not authorize another cohort or optional paid tests.
+
+Exact saved-plan apply **37342528348 PASS**, deployed source
+`f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d`, 0 creates / 4 in-place updates /
+0 destroys; no replacements, migration execution or IAM change. Post-apply
+read-only verification **37342852295 PASS**, whole-runtime convergence exit 0,
+API/Web reviewed provenance and HTTP200 health/reachability. No rebuild or
+replacement deployment plan.
+
+The initial live `booking-evidence` read still needs to prove the deployed gate's
+exact binding, preserved two historical NULLs and no new paid slots/reservations
+or existing synthetic request. Do not ask the friend to send the next message
+until that check passes. Then give only the next single natural Uzbek action,
+observe delivery/accounting before another paid turn, and stop on unknown cost,
+timeout, exhausted allowance or guard failure. A staff acceptance is never the
+actual customer's confirmation.
+
 ### Bounded money-control preparation — 2026-10-05
 
 See the exact [booking-readiness packet](s22-acceptance-evidence.md#bounded-booking-readiness-packet--2026-10-05).

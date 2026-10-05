@@ -1,0 +1,185 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join, resolve } from "node:path";
+import test from "node:test";
+import {
+  moduleBootstrap,
+  reviewed,
+  sanitizeRows,
+  verifyJob,
+  verifyWorker,
+} from "./s22-booking-evidence.mjs";
+
+const project = "lead-agent-stg-739284";
+const network = [
+  {
+    network: `projects/${project}/global/networks/lead-agent-staging-vpc`,
+    subnetwork: `projects/${project}/regions/me-central1/subnetworks/lead-agent-staging-cloud-run`,
+  },
+];
+const worker = () => ({
+  name: `projects/${project}/locations/me-central1/workerPools/lead-agent-staging-worker`,
+  terminalCondition: { state: "CONDITION_SUCCEEDED" },
+  scaling: { scalingMode: "MANUAL", manualInstanceCount: 1 },
+  template: {
+    serviceAccount: `lead-agent-staging-worker@${project}.iam.gserviceaccount.com`,
+    vpcAccess: { egress: "PRIVATE_RANGES_ONLY", networkInterfaces: network },
+    containers: [
+      {
+        image: reviewed.worker,
+        env: Object.entries({
+          DEPLOYMENT_ENVIRONMENT: "staging",
+          AI_JOURNEY_MODE: "booking",
+          DEPLOYMENT_GIT_SHA: reviewed.source,
+          DEPLOYMENT_TIMESTAMP: reviewed.timestamp,
+          DEPLOYMENT_MIGRATION_HEAD: reviewed.head,
+        }).map(([name, value]) => ({ name, value })),
+      },
+    ],
+  },
+});
+const job = () => ({
+  spec: {
+    template: {
+      metadata: {
+        annotations: {
+          "run.googleapis.com/network-interfaces": JSON.stringify(network),
+          "run.googleapis.com/vpc-access-egress": "private-ranges-only",
+        },
+      },
+      spec: {
+        template: {
+          spec: {
+            serviceAccountName: `lead-agent-staging-migrator@${project}.iam.gserviceaccount.com`,
+            maxRetries: 0,
+            containers: [
+              {
+                image: reviewed.migrator,
+                command: ["node"],
+                args: ["dist/index.js"],
+                env: [
+                  {
+                    name: "DATABASE_URL",
+                    valueFrom: {
+                      secretKeyRef: { name: "lead-agent-staging-runtime-database-url" },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    },
+  },
+});
+
+test("matches only reviewed worker/source/cohort gate and immutable diagnostic", () => {
+  assert.equal(verifyWorker(worker()).mode, "booking");
+  assert.equal(verifyJob(job()).explicit_zero_retries, true);
+});
+test("missing/string retry is never implicitly zero", () => {
+  for (const retry of [undefined, "0", 1]) {
+    const value = job();
+    value.spec.template.spec.template.spec.maxRetries = retry;
+    assert.throws(() => verifyJob(value), { code: "EXPLICIT_ZERO_RETRIES_REQUIRED" });
+  }
+});
+test("wrong secret, identity or network fails closed", () => {
+  const secret = job();
+  secret.spec.template.spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name =
+    "migration-database-url";
+  assert.throws(() => verifyJob(secret), { code: "RUNTIME_SECRET_REFERENCE_MISMATCH" });
+  const identity = worker();
+  identity.template.serviceAccount = "other";
+  assert.throws(() => verifyWorker(identity), { code: "WORKER_IDENTITY_MISMATCH" });
+  const publicNetwork = worker();
+  publicNetwork.template.vpcAccess.egress = "ALL_TRAFFIC";
+  assert.throws(() => verifyWorker(publicNetwork), { code: "WORKER_VPC_MISMATCH" });
+});
+test("stale source, paused gate or duplicate settings cannot pass", () => {
+  for (const [name, value, code] of [
+    ["DEPLOYMENT_GIT_SHA", "other", "WORKER_PROVENANCE_MISMATCH"],
+    ["AI_JOURNEY_MODE", "paused", "WORKER_GATE_MISMATCH"],
+  ]) {
+    const metadata = worker();
+    metadata.template.containers[0].env.find((e) => e.name === name).value = value;
+    assert.throws(() => verifyWorker(metadata), { code });
+  }
+  const duplicate = worker();
+  duplicate.template.containers[0].env.push({ name: "AI_JOURNEY_MODE", value: "booking" });
+  assert.throws(() => verifyWorker(duplicate), { code: "DUPLICATE_ENVIRONMENT" });
+});
+test("structured evidence drops credentials, bodies and foreign operations", () => {
+  const result = sanitizeRows([
+    {
+      jsonPayload: {
+        operation: "s22_booking_readonly",
+        assertion: "cohort_reservation_accounting",
+        outcome: "PASS",
+        observed: {
+          knownCostMicros: "0",
+          accountingComplete: false,
+          credentials: "not-allowed",
+          rows: [{ id: "synthetic", body: "not-allowed" }],
+        },
+      },
+    },
+    {
+      jsonPayload: {
+        operation: "other",
+        assertion: "cohort_reservation_accounting",
+        outcome: "PASS",
+        observed: { body: "not-allowed" },
+      },
+    },
+  ]);
+  assert.deepEqual(result, [
+    {
+      assertion: "cohort_reservation_accounting",
+      outcome: "PASS",
+      observed: { knownCostMicros: "0", accountingComplete: false, rows: [{ id: "synthetic" }] },
+    },
+  ]);
+});
+test("exact subprocess bootstrap resolves bare packages and relative runtime module in a controlled application fixture without DB/model calls", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "s22-readonly-module-"));
+  const packages = join(fixture, "node_modules", "@lead-agent");
+  for (const name of ["config", "database"]) {
+    const directory = join(packages, name);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, "package.json"),
+      JSON.stringify({ name: `@lead-agent/${name}`, type: "module", exports: "./index.js" }),
+    );
+    writeFileSync(
+      join(directory, "index.js"),
+      name === "config"
+        ? "export function loadAIJourneyCohortConfig() { throw Error('MUST_NOT_CALL'); }"
+        : "export function createAIJourneyBudgetGuard() { throw Error('MUST_NOT_CALL'); }",
+    );
+  }
+  mkdirSync(join(packages, "database", "runtime"));
+  writeFileSync(
+    join(packages, "database", "runtime", "tenant.js"),
+    "export function executeTenantQuery() { throw Error('MUST_NOT_CALL'); }",
+  );
+  const source =
+    'const c=await import("@lead-agent/config");const d=await import("@lead-agent/database");const t=await import(new URL("./runtime/tenant.js",import.meta.resolve("@lead-agent/database")).href);if(typeof c.loadAIJourneyCohortConfig!=="function"||typeof d.createAIJourneyBudgetGuard!=="function"||typeof t.executeTenantQuery!=="function")throw Error("MODULE_RESOLUTION_FAILED");console.log("MODULE_RESOLUTION_PASS");';
+  try {
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", moduleBootstrap], {
+      cwd: fixture,
+      env: { ...process.env, S22_BOOKING_READ_B64: Buffer.from(source).toString("base64") },
+      encoding: "utf8",
+      timeout: 15000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /MODULE_RESOLUTION_PASS/);
+  } finally {
+    assert.equal(resolve(fixture).startsWith(resolve(tmpdir())), true);
+    assert.equal(basename(fixture).startsWith("s22-readonly-module-"), true);
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});

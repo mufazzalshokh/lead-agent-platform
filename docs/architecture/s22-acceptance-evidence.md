@@ -1174,6 +1174,61 @@ synthetic request; after receiving the actual offer the friend explicitly confir
 Deterministic confirmation itself does not consume a model slot. Never repeat the
 closed Claim/Resolve or OAuth work, impersonate a customer or fabricate attestation.
 
+## Approved bounded booking activation — 2026-10-05
+
+Owner explicitly approved the one-time **USD1.033396** historical budget reserve,
+**USD4.808592** additional six-slot allowance and **USD5.841988** combined bound,
+including the USD5 target overage; USD10 remains unchanged. The two historical
+costs remain NULL and exact accounting/coverage is not waived. Only the named
+synthetic Instagram conversation, three paid messages and at most six physical
+slots are authorized, after live readiness verification. No extra paid tests.
+
+The owner also approved only source `f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d`,
+saved plan **37341267014**, SHA256
+`08aaf4d68fa2c46a7f3130961ddd9c46b83492b7b8b7b32f07d97bcec65503d3`,
+timestamp `2026-10-05T16:28:09Z`. Exact apply **37342528348 PASS**:
+checksum/full-plan approval guards PASS; **0 added / 4 changed / 0 destroyed**,
+no replacements; migration execution SKIPPED. No rebuild, replacement plan,
+OAuth, migrations or IAM change. The prepared packet above is retained as the
+chronological pre-approval checkpoint, not a statement that approval is still
+missing after this section.
+
+Read-only post-apply verification **37342852295 PASS**: API/Web reviewed images,
+source/timestamp/migration provenance, runtime identity/private VPC, readiness
+and **whole-runtime Terraform convergence exit 0**. New ready revisions:
+API `lead-agent-staging-api-00018-zmv`, Web `lead-agent-staging-web-00014-tcz`.
+Independent API `/health` and organization-bound Web reachability both HTTP200;
+this is not a fresh authenticated browser proof or a completed booking.
+
+The remaining live cohort snapshot is not substituted by source/unit tests.
+Read-only `booking-evidence` tooling is prepared in the existing WIF-allowlisted
+staging workflow, not a new identity/trust grant. It checks reviewed Worker/
+Migrator metadata and runs only an ES-module reader override in the existing
+immutable diagnostic image. No job configuration change or migration entrypoint;
+runtime DB role, default read-only transaction, transaction-local tenant/RLS,
+FORCE RLS/not-owner checks, parameterized bounded metadata queries, short timeouts,
+rollback on every transaction exit and pool cleanup. It uses the deployed
+`createAIJourneyBudgetGuard.read`, never its reservation/write methods and never
+constructs a model provider. Original historical NULLs are checked independently.
+
+Only allowlisted state/version, offer/delivery metadata and integer ledger
+counters/totals are retained; no message bodies, provider account identifiers,
+secrets, ciphertext or complete audit blobs. Existing logging permission must
+suffice; failure is BLOCKED and cannot justify IAM broadening. The exact existing
+execution/log read is the recovery path, never a blind diagnostic rerun.
+Initial stage additionally requires zero new paid slots/pending reservations and
+no existing synthetic request; observe stage permits subsequent scoped progress
+reads but still fails on unknown cost, timeout/reservation or exhausted gate.
+
+Local new-tool verification: **6/6 focused Node tests PASS**, including exact
+Node subprocess ES-module/bare-package/relative-runtime resolution with controlled
+application fixtures, fail-closed missing/string retries, identity/secret/network/
+source/gate checks and safe-output projection. No DB or model call in these tests.
+A preliminary all-package Windows import probe exceeded its 15-second host window
+and is not claimed as a PASS; fixture resolution is separate from live validation.
+Prior runtime/PostgreSQL evidence is reused, not rerun. The live cohort result and
+first customer action remain pending until this new read completes.
+
 ## Remaining gates
 
 | Gate | Evidence still required |
