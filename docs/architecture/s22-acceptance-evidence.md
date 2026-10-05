@@ -770,6 +770,194 @@ repeated. Unrelated user edits remain preserved. Historical NULL costs remain
 unchanged; no reconciliation or ledger-ready claim is made. **Paid calls remain
 paused; S22 remains unaccepted; S23 is not started.**
 
+## Finite historical accounting and completion audit — 2026-10-05
+
+This checkpoint closes the investigation, **not** the two NULL-cost records or
+S22 acceptance. Runtime source remains `3b73fdd1c38c98be3f02821902914e1c707d0054`;
+apply **37321048848** and verification **37321407052**, convergence **0**, are
+preserved. No image build, deployment, migration, IAM change, model call, OAuth,
+Claim/Resolve, inventory or accepted verification is repeated.
+
+### Exact accounting versus budget safety
+
+The authoritative [S20 cost policy](24-s20-analytics-observability-cost.md#cost-policy)
+requires complete supported usage and dated exact-model pricing; otherwise cost
+stays NULL and derived unit costs stay unavailable. [NFR-017](01-product-and-journeys.md#9-non-functional-requirements-and-initial-slos)
+requires at least 99% usage/cost coverage before launch. A conservative reservation
+protects a budget; it is not a provider invoice, reconstructed usage, or accounting
+coverage. The approved S22 paid cohort remains **USD 5 target / USD 10 hard ceiling**.
+
+For successful run `01a1067f-dfc8-7e14-9e12-89a0e30fd27e`, the original cache
+field cannot be recovered from the application record. The old parser collapsed
+absent and explicit invalid/NULL cache fields to the same stored NULL. `ai_runs`
+retains parsed counters and hashes, not the original usage object/provider response
+ID. The hashes cannot recover that field. The forward parser rollout does not
+change this historical record. Input **520**, output **217**, total **737** and
+resolved model `gemini-3.8-flash` remain the accepted owner-supplied evidence.
+The adapter derives output from total minus input, including thinking once; missing
+separate reasoning metadata does not justify an extra thinking charge.
+
+Official [Standard Gemini 3.8 Flash pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash),
+checked 2026-10-05, gives USD **0.75 input / 0.075 cached input / 3.75 output** per
+million tokens for this run's effective period. [UsageMetadata](https://ai.google.dev/api/generate-content#UsageMetadata)
+includes cached tokens within prompt tokens. For any valid cache count from 0 to
+520, the recorded token charge is therefore at most **1,204 USD micros
+(USD 0.001204)**, rounded upward. This treats all input as uncached only for the
+bound; it does **not** assert historical cache usage was zero. The bound covers
+this Standard text-only request's recorded token usage, not tax, infrastructure,
+other account traffic or an actual invoice. The request supplies no tools,
+Search/Maps grounding or explicit cache creation/storage.
+
+For run `01a10af4-5126-7ce8-ab52-0424e07ab3d9`, owner-supplied exact live rows
+confirm `staff_requested`, no resolved model/output hash/schema/policy/usage and
+NULL cost. The deployed S16 preflight runs before `provider.decide`; its
+human-request predicate and finish path agree with the same snapshot and the
+accepted zero-provider-invocation test. This is **source-corroborated pre-dispatch
+handling**, not an independently persisted dispatch marker or billing proof of
+zero charge. It is not a provider outage/model-quality failure. No historical row
+is rewritten or classified as exact zero cost.
+
+Read-only recovery availability was checked without exposing credentials:
+authenticated GitHub access exists; local `gcloud`, a GCP access-token/credential
+path and a runtime DB connection are unavailable. Existing deployment WIF workflows
+do not expose an authorized per-request provider billing/usage reader. Google
+[request logs](https://ai.google.dev/gemini-api/docs/logs-datasets) are not stored
+by default; historical recovery requires logging already enabled for the correct
+paid project. Its existence is unverified, not assumed absent. Cloud Billing/
+AI Studio [usage and billing](https://ai.google.dev/gemini-api/docs/billing) can lag
+and account totals alone do not establish this request's cache split or absence of
+another request. No new logging, credential access, permission grant or diagnostic
+execution is justified. **Exact reconstruction is unavailable from current
+evidence/access; application metadata is irreversibly lossy, while external
+historical evidence remains unverified.** Do not continue the same DB diagnostic
+or upload loop to seek data the application did not retain.
+
+### Concrete owner decision — proposed, not approved
+
+Permit a **one-time S22 historical budget-reserve exception** for only the two
+named runs, without changing their original usage, costs or provenance:
+
+- Carry **1,204 micros** for the successful run's conservative token-cost bound.
+- Do not require the second run to be assigned zero. Carry **1,032,192 micros**
+  as an uncertainty reservation for one possible Standard text call, using the
+  official [model limits](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+  of 1,048,576 input / 65,536 output tokens and the dated rates above. This is
+  deliberately looser than the application's 4,000-output-token/context/deadline
+  caps. It is conditional on the reviewed single physical attempt, exact model,
+  Standard text-only path and absence of additional unrecorded cohort traffic;
+  it is neither observed usage nor evidence that dispatch happened.
+- The historical budget envelope is consequently **1,033,396 micros
+  (USD 1.033396)**, not an accounting estimate written to `ai_runs`. Keep both
+  NULL rows visible; retain **accounting completeness FAIL** and unavailable
+  derived unit costs. Do not reset or move the cohort to conceal them.
+- Allow the next synthetic journey only after an accessible, authoritative cohort
+  reader and dynamic per-physical-call reservation/stop mechanism are verified.
+  Proposed initial bound: at most **three new logical AI turns / six physical
+  calls**, counting the existing single schema repair, with no optional calls or
+  new transport retries. At the deliberately loose model cap this projects
+  **USD 7.226548**, below USD 10 but not a promise to meet the USD 5 target.
+  Reserve before each actual physical call, account for all other cohort calls,
+  repairs and unresolved usage, and stop rather than exceed the ceiling. A future
+  missing-cost result retains its reservation and pauses further paid calls.
+- This exception does not approve launch accounting coverage, bypass monetary
+  controls, raise budgets, reconcile an invoice, or establish S22 acceptance.
+  Source inspection currently proves token/time/attempt limits, **not** aggregate
+  monetary enforcement. Owner approval alone does not make that missing gate PASS.
+
+Without this explicit exception or newly available authoritative historical
+evidence, **paid calls remain PAUSED**. Current evidence cannot satisfy the strict
+zero-unknown cohort gate merely by calculating a bound. The proposed exception is
+not automatically applied by this documentation checkpoint.
+
+New local numerical proof used the existing compiled price resolver/estimator,
+integer arithmetic and the run date. All **521** valid cache splits were checked;
+each is bounded by 1,204 micros, NULL cache still prices to NULL, and the full-model
+reservation/projection above was checked. **PASS; zero paid calls/live DB access.**
+Temporary proof/desktop-reader files are not versioned. Accepted parser/fixture
+tests were not rerun.
+
+### Complete remaining-work map
+
+Sources: [P0 scope/roadmap and release gates](11-adrs-roadmap-risks.md),
+[FR/NFR requirements](01-product-and-journeys.md), [release test matrix](09-test-strategy.md),
+[S22 freeze](26-s22-staging-recovery-capacity.md), [S21 controls](25-s21-privacy-security.md)
+and the [prepared booking journey](s22-synthetic-booking-journey.md#prepared-next-live-booking-milestone--2026-10-05).
+Accepted earlier-stage implementation/tests remain valid where unchanged. The
+table identifies missing release evidence or a concrete source finding; it does
+not reopen those stages or require every local case to be repeated live/paid.
+Effort is approximate **active engineering time**, excluding external waiting,
+and overlapping rows share one set of observations/tests rather than add up.
+
+| Requirement / gate | Existing proof | Exact remaining work | Dependency | Active effort | Owner / external action |
+| --- | --- | --- | --- | --- | --- |
+| Historical accounting and small paid cohort; NFR-017 | Two exact live rows; current forward parser deployed; 521-split bound PASS | Approve/reject the narrow reserve exception or obtain actual historical provider evidence; verify cohort reader, per-call reservations and stop rule; retain NULL/coverage FAIL | Before paid journey | 0.5–1 h decision/evidence; control work in row below | One explicit historical-exception decision; billing/logs only if genuinely available |
+| Grounded customer-to-confirmed booking; FR-004–010, 012–017, 021 | Five version-1 synthetic publications; duration/price retrieval PASS; approved Gemini profile; Instagram connected | Actual price reply, qualification, one requested appointment, staff acceptance, delivered current offer, explicit customer reply and persisted confirmed evidence; fresh versions after commands | Accounting/controls, existing eligible thread | 1–3 h | Friend's natural question and chosen future date/time; owner acceptance; friend's actual confirmation |
+| Staff review/handoff/history; FR-018, 020 | Normal Chrome owner access; Claim 1→3/Resolve 4; conversation 10→11→12; six messages preserved; nine persisted assertions PASS | Preserve scoped PASS; exercise request review/acceptance in booking row and collect only its new evidence; no repeat Claim/Resolve | Booking | Shared with journey | Owner reviews only synthetic work |
+| Widget live embedding/customer journey; FR-001–004, 011–017; S19b | S10/S19 security contracts/regressions and existing UI | Real allowed/disallowed cross-origin host; opaque session, host-token isolation, no third-party-cookie dependence; actual response/request/confirmation/degraded UI | Live origin fixture; paid turn only after cohort gate | 2–4 h | Access to approved synthetic embed origin/browser if needed |
+| Telegram Business real DM; S11/S22 | Webhook/onboarding security and connected-bot path implementation | Trusted business connection with can_reply, tenant binding, business_message and same business-DM reply; no standalone bot-chat substitution | Product flow first; may run last | 1–2 h plus provider wait | Owner connected-bot authorization and synthetic sender; unresolved provider/UI constraint requires explicit re-scope, not silent PASS |
+| Routing/eligibility, hostile tenancy and webhook integrity; FR-001–004, 013; NFR-001, 007, 010 | FORCE RLS/runtime roles and accepted S5/S11/S21 hostile suites; scoped synthetic guard PASS | Attach live channel binding/eligibility metadata; final release regressions for signatures, replay/reorder, cross-tenant IDs/cursors/pools; unknown/personal traffic remains disabled | Channel evidence + final gate | 1–2 h, shared | None unless a second approved synthetic tenant is needed |
+| Remaining P0 state/contact/confirmation edges; FR-009, 011, 013–019, 025 | Existing domain/PostgreSQL/idempotency/consent/S18 regression evidence | Map current deterministic E2E evidence for contact consent/normalization, reject/decline/cancel, fixed expiry boundaries, offline attestation, stale/racing offers, disabled channel, duplicate/reordered effects and knowledge changes; fill actual gaps only | Final coherent release matrix | 1–3 h | Synthetic-only contact/attestation inputs when a live case is necessary; no invented attestation |
+| Attendance/revenue/funnel; FR-022, 028 | S17 exact-money commands; S20 canonical analytics implementation | Synthetic manual outcome and recorded revenue/correction reconcile to source and funnel; unknown revenue/allocation remains unavailable; no COGS/margin leakage to tenant | Confirmed synthetic appointment | 1–2 h | Explicit synthetic outcome; no claim that a real visit/revenue occurred |
+| AI grounding/medical/language safety; FR-005–008; NFR-012, 014 | S13 full 560/model and native review; accepted S14–S21 checks; 60 fixture/grounding/medical tests | Retain unchanged evals; current policy/prompt release regression, schema/unsupported-information/injection/medical tests and channel language samples; accepted wording only, no clinical action | Final matrix; bounded live samples | 1–2 h, shared | No new model evaluation/Claude approval required |
+| Meaningful response and staff/ingress SLIs; NFR-003–006, 008 | S20 definitions/instrumentation; provider-only S13 latency | Record counts and p50/p75/p90/p95/p99/max; separate acknowledgment/platform/provider-accepted/render clocks. Test webhook p95≤500 ms, Widget ingress p95≤750 ms, healthy send p50≤4 s/p95≤10 s, staff read p95≤500 ms/p99≤1 s, mutations p95≤800 ms and terminal delivery 99%≤60 s; commercial typical 3–10 s/future meaningful p99≤60 s | Journey + load; raw outage view retained | 2–4 h, shared | No owner timing attestation substitutes for instrumented samples |
+| Alerts/operational observability/privacy; NFR-008, 011 | Live alert prerequisites; content-free telemetry/tenant projection; current deployments healthy | Actual notification/backlog/DLQ/provider metrics and redaction proof. Concrete source finding: api_errors labels a 1% threshold but uses only 5xx ALIGN_RATE>0.01, without a total-request denominator; correct the ratio semantics before claiming that policy PASS | Scoped alert correction, fresh reviewed plan later | 1–3 h correction; 1–2 h proof | Existing notification recipient verifies delivery if required |
+| Outage/degradation/backlog drain | S8/S12/S21 deterministic failure/crash/idempotency suites | Bounded staging provider/channel/DB/worker interruption, no lost/duplicate effects, queue recovery/fairness/pool safety; fake provider for infrastructure stress | Controlled synthetic workload; reviewed changes if needed | 3–6 h | Approved test window; no paid failure calls needed |
+| Deploy interruption/rollback/drain; S22a | Immutable current rollout, health and convergence PASS | Actual compatible previous-digest rollback/return, revision readiness and shutdown/drain evidence; do not reverse migrations or reuse old saved plans | Reviewed exact temporary workload plan(s) | 2–4 h | Exact-plan approval only where repository policy requires it |
+| Backup/isolated restore; NFR-009 | Completed backup/PITR prerequisites and 52-table/RLS manifest | Separate restored target; representative aggregates/encryption/audit/Outbox/eligibility integrity; measure RPO≤5 min and RTO≤60 min; reviewed cleanup | Fresh isolated recovery plan, current synthetic records | 4–8 h | Exact recovery/cleanup plan approval; no shared DB reset |
+| Capacity/fairness/storage; NFR-015 | Approved S22 normal 10 tenants/1 msg/s/15 min and burst 25/5 msg/s/5 min; runbook/stop rules | Executable synthetic fake-AI driver, normal/burst/bounded stress, queue/DB/CPU/memory/duplicate/noisy-tenant data and safe envelope. Separately measure initial-launch 100 organizations/1,000 concurrent conversations/50 msg/s burst and 10M-message/year sizing, or explicitly approve a revised target before launch | Harness + temporary capacity profile/exact plan | 8–16 h | Approved targets/test window; explicit target revision if measurements require it |
+| Monetary/abuse controls; NFR-017 and roadmap budgets | Context/output/deadline/attempt caps; S20 integer cost/NULL handling; staging budget resources | Prove platform/tenant daily/period/velocity and run/conversation monetary warning/hard limits, audited global/tenant kill switches and safe fallback; ≥99% coverage with legitimate preflight accounting semantics. Reviewed execution path lacks a monetary reservation/aggregate check. USD25/50 Terraform budgets currently notify, not enforce a spending cap; evidence must substantiate target≤25/month/hard<50 | Owner budget values + exact scoped control gap; cohort subset before paid work | 4–12 h if implementation missing | Set required production budget/limit values; no budget expansion in S22 |
+| Privacy/provider/legal and subject-right operations; FR-030; NFR-011 | S21 controls/approved UZ-RU-EN medical text; deployed public notices | Retain accepted tests; confirm actual paid Gemini project, processor/DPA/region/health-data suitability, launch law/retention/legal holds and verified audited synthetic subject-request procedure; record whether counsel elevates FR-023 automation | Owner/legal review; synthetic operational drill where not already proven | 2–4 h engineering; external review separate | Product/privacy/legal decisions; no secrets requested or health-data claims inferred |
+| Rotation/revocation/rates/operator security; NFR-010 | Accepted S6/S10/S21 auth/RBAC/security regressions; distinct runtime identities | Current-release secret/dependency/container scans, operational rotation/revocation/break-glass/DLQ controls and shared-instance rate-limit proof; no unresolved critical/high finding; remove temporary logging.viewer only via exact isolated removal when no longer needed | Final scans and bounded operator exercise | 2–6 h, shared | Operator test window; repository-required exact-plan approval if removal needed |
+| Accessibility/localization/current UI; NFR-013, 014 | Accepted S19/S13 tests and live staff history/action feedback | Targeted keyboard/screen-reader/approved-browser EN/RU/UZ staff/Widget journey smoke for changed surface; no client-only authority | Booking/Widget workflows | 1–3 h, shared | Supported test browser/device access |
+| Final authoritative gate/promotion; NFR-016; S22 completion | Earlier-stage CI preserved; current rollout/provenance PASS | One pnpm ci:verify on coherent final tree, real PostgreSQL/builds/contracts/boundaries, affected security/privacy audit; exact verified fast-forward/main equality/local cleanup, remote cleanup best-effort | All actual S22 gates above | 1–2 h plus CI runtime | Repository access; no ceremonial repeat aggregate |
+| Initial-launch go/no-go and claims; S23 review only, NFR-002 | S22 isolated Doha staging freeze and planning SLOs; no production readiness claim | Named release approval/on-call/runbooks, production region/residency/HA/provider/retention decisions, monthly 99.9% availability/error-budget measurement model, defensible cohort/baseline/sample-size ROI and cost evidence. Brief staging samples do not prove monthly availability or commercial ROI | S22 accepted and all P0/NFR evidence; S23 separately authorized | 2–4 h review; external decisions separate | Owner + security/privacy/SRE/product sign-off; S23 is not started |
+
+The older roadmap P2 Instagram wording is superseded by the accepted mandatory
+S11 Instagram decision, not permission to omit its S22 proof. WhatsApp, external
+calendars, subscription billing/invoices, reminders and new configurable booking
+policies are not introduced here. FR-023/024/029 productized extras remain deferred
+unless the already documented legal gate changes that priority. Fixed S18 expiry
+is the accepted P0 policy, not a new configurable-policy request.
+
+### Shortest execution sequence and evidence limits
+
+1. Settle the narrow historical decision and verify the accessible cohort
+   reservation/reader gate. In parallel prepare the fake-provider load/restore
+   work from existing tools; do not manufacture historical accounting or ask for
+   another temporary upload merely to read the same NULLs.
+2. Complete one synthetic Instagram booking using the already published fixture
+   and eligible thread. Collect timing, current versions and funnel metadata
+   during it; consolidate any necessary immutable booking/audit evidence read
+   after completion rather than one diagnostic per transition.
+3. Complete Widget and remaining deterministic P0/language/permission cases,
+   recorded outcome/funnel and operational telemetry. Batch actual discovered
+   runtime defects into one coherent milestone with focused checks and one fresh
+   reviewed rollout, if needed; no repeat Auth0/OAuth/fixture publication/S13 eval.
+4. Reuse one fake-provider workload for latency/capacity/noisy-tenant and bounded
+   failure/drain proof. Complete isolated restore and compatible workload rollback
+   under their actual exact-plan approvals; collect the common metrics once.
+5. Finish real Telegram Business DM last if externally blocked. Then one final
+   authoritative CI/promotion when the complete evidence is ready. S23/launch
+   review requires separate authorization, not automatic progression.
+
+No existing PASS is broadened: source corroboration is not a persisted no-dispatch
+event; a reserve is not exact cost; Web 200 is not owner E2E; provider latency is
+not channel TTFR; queued/published Outbox is not customer delivery; configured
+alerts/backup are not notification/restore proof; convergence is not rollback;
+small-profile capacity is not the initial-launch profile; public notices are not
+legal/processor approval. Scoped Claim/Resolve evidence is already closed and
+must not be repeated. Historical pending headings are chronological checkpoints,
+superseded only by the later explicitly scoped PASS results.
+
+Fresh read-only desktop preparation in this task failed closed before any API
+request because the script's exact workspace/context guard could not match;
+the subsequent metadata-only attempt could not activate the exact existing
+Chrome window. No further desktop retry or authentication diagnosis was performed.
+This is **fresh browser-access BLOCKED**, not a new Auth0 regression or evidence
+that the fixture changed. Existing publication/retrieval/owner-session evidence
+is preserved; the actual next live execution still needs an accessible owner
+workspace and fresh authorized resource reads.
+
 ## Remaining gates
 
 | Gate | Evidence still required |

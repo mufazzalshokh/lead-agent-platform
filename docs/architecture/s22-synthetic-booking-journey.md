@@ -460,6 +460,96 @@ After publication and cost readiness, the first natural Uzbek message is:
 Ask the owner for that one friend-sent message only when preparation is complete;
 do not send it yourself, manufacture webhooks or repeat Instagram authorization.
 
+## Prepared next live booking milestone — 2026-10-05
+
+Preparation only; no paid message or booking mutation executed in this task.
+The finite accounting conclusion, proposed one-time historical reserve decision
+and complete remaining-work map are in the
+[evidence register](s22-acceptance-evidence.md#finite-historical-accounting-and-completion-audit--2026-10-05).
+Both historical costs remain NULL. Exact accounting is not reconstructed by the
+parser deployment, a token-cost bound, or source-corroborated preflight handling.
+Paid calls remain paused until the applicable decision and cohort control gates
+are actually satisfied. No accounting/confirmation attestation is fabricated.
+
+Reused authority is the five existing published version-1 fixture records above,
+service root 4, **30 minutes / UZS 100,000**, Asia/Tashkent Monday–Saturday
+09:00–18:00, and Qualification V1 requiring contactability, service interest,
+supported service/location and positive intent. It does not impose a mandatory
+phone, budget or clinical-eligibility field. Hours are not available slots.
+Existing price/duration retrieval PASS from `lead-agent-staging-migrator-snf6q`
+is preserved; no publication or successful inventory is rerun.
+
+The current API/source contracts support the following bounded path:
+
+1. In the owner's existing organization-bound workspace, read
+   `GET /v1/staff/me` to verify active membership/organization and owner capability.
+   Then read `GET /v2/staff/conversations/01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7`
+   for current authorized state/versions before using that approved synthetic
+   thread. Prior open/12, AI mode and resolved handoff/4 are historical proof,
+   not substitutes for this fresh check. Never re-enable unknown personal DMs.
+2. Read `GET /v1/staff/appointment-requests?view=active&limit=100` through the
+   existing `StaffWorkListQuery` contract. Its supported filters are cursor,
+   limit, view and location_id, **not conversation_id**. Filter returned safe
+   metadata by the exact synthetic conversation locally; honor bounded pagination
+   before claiming absence. Do not alter an unrelated request or create a duplicate
+   booking to sidestep an existing synthetic one.
+3. After the paid-cohort gate, the friend sends only:
+   **“Salom, S22 sinov konsultatsiyasi qancha turadi?”**
+   Verify the real grounded reply, approved resolved model, supported usage/cost,
+   publication references and meaningful-response timing. Do not treat an old
+   handoff message as this new grounding test or send a message on the friend's behalf.
+4. The same synthetic customer supplies actual service interest and a chosen
+   future date/time preference, e.g. the template
+   **“S22 sinov konsultatsiyasiga [mijoz tanlagan kelajak sana] kuni [vaqt]da,
+   Toshkent vaqti bilan yozilmoqchiman.”** The brackets are instructions to fill
+   with the customer's real choice, not test evidence. Verify authoritative Lead
+   qualification and exactly one `requested` AppointmentRequest, including same
+   tenant/service/location and fixed S16/Qualification provenance.
+5. Read `GET /v1/staff/appointment-requests/{exact_returned_id}`. Use the real
+   staff UI's acceptance command, implemented by
+   `POST /v1/staff/appointment-requests/{id}/accept`, with only the actual
+   `start_at`/`end_at` fields. The authorized owner chooses a supported offered
+   time, converts Asia/Tashkent to UTC and preserves the 30-minute duration;
+   never infer guaranteed availability. Existing server tenant authorization,
+   CSRF, a freshly read ETag/If-Match and unique Idempotency-Key remain required.
+   Re-read current request/conversation versions after the command before another
+   action; do not reuse obsolete UI versions on refresh failure.
+6. Verify `staff_accepted`, then durable downstream confirmation preparation and
+   `awaiting_customer_confirmation`, current offer and same-DM delivery. The
+   existing staff-accepted analytics event is preparation intent, not delivery
+   or confirmed status. S18 expires the offer at
+   `min(issued_at + 24 hours, accepted_start_at)` with no implicit renewal.
+7. Only after receiving that actual current offer, the customer explicitly replies
+   **“Ha, shu vaqtni tasdiqlayman.”** if that is their intended synthetic decision.
+   Trusted channel evidence must match tenant/contact/conversation/request and
+   current aggregate/offer versions within `[issued_at, expires_at)`. Verify the
+   persisted `confirmed` state and customer/staff output. Staff acceptance,
+   generic earlier intent, a prompt or a fabricated staff attestation cannot
+   substitute for this reply.
+
+Source: `apps/api/src/staff/plugin.ts`,
+`packages/contracts/src/staff/operations.ts`,
+`packages/application/src/staff/operations.ts`,
+`packages/application/src/appointments/customer-confirmation.ts`,
+`packages/database/src/repositories/appointment-submission.ts`,
+`packages/database/src/repositories/customer-confirmation.ts` and
+`apps/worker/src/customer-confirmation.ts`.
+
+The authorized staff projection reports request state/versions, conversation
+version and offered start/end, but does not expose immutable offer-version,
+issued/expiry, confirmation-source, transition or audit records. Do not invent
+an audit/offer endpoint. Consolidate any necessary narrowly scoped persisted
+booking evidence through an existing authorized reader after the journey;
+public state alone does not prove all immutable confirmation assertions.
+
+A new local desktop reader passed syntax validation but its live attempt stopped
+on the exact workspace/context guard **before API requests**; a subsequent
+metadata-only attempt could not activate the exact Chrome window. No cookies,
+tokens, messages or provider identifiers were exported, and no further browser,
+OAuth or authentication attempt was made. Consequently no fresh session, fixture,
+conversation or appointment state read is claimed from this task. This is a
+tool-access limitation, not evidence that the accepted Auth0 flow broke.
+
 ## Deterministic checks versus live evidence
 
 Focused fixture tests validate the exact configuration payloads against existing
