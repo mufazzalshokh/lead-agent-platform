@@ -1238,6 +1238,31 @@ one and reject unexpected scaling fields; absence, zero, string one and count tw
 remain failures. Original explicit-zero-retry, identity/image/VPC and read-only
 safeguards are unchanged. The actual deployment is not changed or repeated.
 
+Corrected read-only run **37345335247**, tooling source
+`5bb12816f783f6416c7d88276eaffd4cb2720c1b`, verified the deployed Worker image/
+runtime source, `booking` mode, explicit `manualInstanceCount: 1` and private VPC.
+The reviewed Migrator image, runtime-database secret reference, private VPC and
+explicit numeric zero retries also passed. Only the read-only execution override
+ran: **`lead-agent-staging-migrator-vlcsh` SUCCESS**. Reader SHA256:
+`8b3cef6cea0306510eb5ed63737608f59998dda139b100204c0beec1f25d36e7`.
+No paid calls, migration execution, job configuration change or IAM change.
+
+The workflow then stopped with **`EXACT_EXECUTION_LOG_READ_BLOCKED`**. Its
+sanitized artifact contains `execution_succeeded: true` but an empty assertion
+list: individual observed database/gate counters have not been collected. An
+execution exit code is not substituted for those persisted results. The tooling
+does not expose the failed logging command's raw stderr, so no specific permission
+or transport cause is inferred. The only next operation is an owner-authenticated,
+bounded Cloud Logging read for this exact existing execution and operation
+`s22_booking_readonly`; no file upload, diagnostic rerun or permission grant.
+The first paid customer message remains paused until those assertions are read
+and checked. Historical NULL costs and the accounting gap remain visible.
+
+The Worker metadata correction passed two focused Node cases (positive actual
+REST shape and strict invalid/missing scaling cases), scoped lint, formatting
+and diff checks. These overlap the earlier six-case run: seven distinct cases
+are covered, not eight. No broad CI, runtime rebuild or deployment was repeated.
+
 ## Remaining gates
 
 | Gate | Evidence still required |

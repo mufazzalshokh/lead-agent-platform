@@ -575,6 +575,17 @@ observe delivery/accounting before another paid turn, and stop on unknown cost,
 timeout, exhausted allowance or guard failure. A staff acceptance is never the
 actual customer's confirmation.
 
+Read-only run **37345335247** subsequently verified the deployed Worker
+`booking` mode, reviewed source/image, one instance and private networking, plus
+the diagnostic image/runtime-secret/private-network/zero-retry prerequisites.
+Execution **`lead-agent-staging-migrator-vlcsh` SUCCESS** made no provider call
+or database mutation. The workflow could not read its exact result logs
+(`EXACT_EXECUTION_LOG_READ_BLOCKED`); no individual observed cohort counters are
+claimed yet. Recover only the existing execution's `s22_booking_readonly`
+structured rows using owner-authenticated Cloud Logging. No uploads, rerun,
+deployment or IAM change. Do not send a paid message until those rows prove the
+initial readiness assertions. S22 remains unaccepted.
+
 ### Bounded money-control preparation — 2026-10-05
 
 See the exact [booking-readiness packet](s22-acceptance-evidence.md#bounded-booking-readiness-packet--2026-10-05).
