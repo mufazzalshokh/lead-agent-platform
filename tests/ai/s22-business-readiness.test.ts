@@ -12,6 +12,7 @@ import {
   type PublishedBusinessKnowledgeV2,
 } from "../../packages/contracts/src/index.js";
 import { parseGeminiUsage } from "../../packages/ai/src/providers/gemini.js";
+import { createAppointmentSubmissionOrchestrator } from "../../packages/application/src/ai/appointment-submission.js";
 import { estimateAIUsageCost, resolveAIPrice } from "../../packages/observability/src/index.js";
 import fixture from "../fixtures/s22-test-clinic.json" with { type: "json" };
 import { groundingId, groundingKnowledge } from "./grounding-fixtures.js";
@@ -142,14 +143,24 @@ describe("S22 business-readiness evidence regressions", () => {
     }
   });
 
-  it("does not treat a missing cached-token report as zero or a known historical cost", () => {
+  it("prices valid omitted-cache ProtoJSON without rewriting unknown historical usage", () => {
     const price = resolveAIPrice("gemini", "gemini-3.8-flash", new Date("2026-10-05T00:00:00Z"));
     if (price === null) throw new Error("Missing approved catalog entry");
     const usage = parseGeminiUsage({ promptTokenCount: 520, totalTokenCount: 737 });
-    expect(usage).toMatchObject({ input: 520, output: 217, total: 737, cachedInput: null });
-    expect(estimateAIUsageCost(price, usage)).toBeNull();
-    // Controlled complete usage only; NOT a reconciliation of either live run.
-    expect(estimateAIUsageCost(price, { ...usage, cachedInput: 0 })).toBe(1204n);
+    expect(usage).toMatchObject({ input: 520, output: 217, total: 737, cachedInput: 0 });
+    // Controlled raw-response fixture only; NOT a reconciliation of either live run.
+    expect(estimateAIUsageCost(price, usage)).toBe(1204n);
+    expect(estimateAIUsageCost(price, { ...usage, cachedInput: null })).toBeNull();
+    expect(
+      estimateAIUsageCost(
+        price,
+        parseGeminiUsage({
+          promptTokenCount: 520,
+          totalTokenCount: 737,
+          cachedContentTokenCount: null,
+        }),
+      ),
+    ).toBeNull();
     expect(resolveAIPrice("gemini", "unknown-model", new Date("2026-10-05"))).toBeNull();
   });
 
@@ -179,5 +190,26 @@ describe("S22 business-readiness evidence regressions", () => {
     expect(result).toMatchObject({ reason: "context_too_large" });
     expect(decide).not.toHaveBeenCalled();
     expect(finish.mock.calls[0]?.[0]).toMatchObject({ provider: null });
+  });
+
+  it("the supported staff-request preflight also skips the provider, without classifying the live masked run", async () => {
+    const snapshot = { ...AI_SNAPSHOT, message: "Xodim bilan gaplashmoqchiman." };
+    const decide = vi.fn();
+    const finish = vi.fn<AIOrchestrationStore["finish"]>((input) => Promise.resolve(input.outcome));
+    const result = await createAppointmentSubmissionOrchestrator({
+      provider: { decide },
+      store: {
+        load: () => Promise.resolve(snapshot),
+        reserve: () => Promise.resolve({ runId: AI_REFERENCE.messageId, attemptNo: 1 }),
+        finish,
+      },
+      timeoutMs: 1000,
+    }).run(AI_REFERENCE);
+    expect(result).toMatchObject({ reason: "staff_requested" });
+    expect(decide).not.toHaveBeenCalled();
+    expect(finish.mock.calls[0]?.[0]).toMatchObject({
+      provider: null,
+      outcome: { kind: "fallback_required", reason: "staff_requested" },
+    });
   });
 });

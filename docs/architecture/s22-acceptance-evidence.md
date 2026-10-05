@@ -562,6 +562,45 @@ No paid call, SQL write, migration, job/IAM change, build, deployment, OAuth,
 Claim/Resolve or CI run occurred. Unrelated working-tree edits remain untouched.
 S22 remains unaccepted; the booking journey is pending and S23 is not started.
 
+## Exact cost-origin evidence and forward parser fix — 2026-10-05
+
+**Owner-supplied**, existing `snf6q` logs, `GCLOUD_EXIT=0`: the two exact runs are
+`01a1067f-dfc8-7e14-9e12-89a0e30fd27e` (succeeded, input 520/output 217/total 737,
+cache NULL, approved resolved model/profile/catalog) and
+`01a10af4-5126-7ce8-ab52-0424e07ab3d9` (failed, all units NULL, resolved model NULL,
+`not-priced.v1`, masked `unrecognized` category). Both costs remain **unknown**.
+The successful run's exact estimator blocker is cached usage NULL. The failed run's
+60 ms elapsed time is not proof of zero dispatch/spend. No record is overwritten.
+
+The first NULL cannot distinguish absent cache field from explicit invalid/null
+provider data under the old parser. Google's official
+[API proto](https://github.com/googleapis/googleapis/blob/master/google/ai/generativelanguage/v1beta/generative_service.proto)
+and [ProtoJSON rules](https://protobuf.dev/programming-guides/json/#presence-and-default-values)
+prove legitimate omitted implicit-presence zero counts. The narrow runtime parser
+fix handles only **absent** cache with valid reported input/total. Explicit invalid
+cache, missing usage and incomplete counts still produce unknown cost. No model,
+budget, catalog, retry policy, public contract, SQL write or migration changes.
+This fixes future parsing, not historical billing: original allowlisted usage or
+authoritative billing evidence and an audited reconciliation path remain missing.
+The controlled 1,204-micro fixture result is not assigned to a live run.
+
+Source inspection confirms the diagnostic category allowlist missed `staff_requested`
+and two supported incomplete-output categories. A tested, outside-repository packet
+now reads **only the two exact historical runs**, preserving runtime/tenant/RLS,
+read-only/timeouts/bounds/rollback and image/identity/private-VPC/zero-retry guards.
+Paths, SHA256 and provenance are in the companion journey document. It is prepared,
+**not executed**; it performs no cost write or paid call and repeats no knowledge
+retrieval. The new S16 staff-preflight test proves zero mocked provider calls for
+that known source path, **not** that the masked historical run took that path.
+
+Affected local checks: **47 Gemini + 10 readiness tests PASS**, AI typecheck and
+production/declaration build, root TypeScript, scoped ESLint PASS; exact new packet
+bootstrap **7/7 controlled subprocess scenarios PASS** with NULL preservation and
+fail-closed exact-ID/read-only/RLS checks. No live DB, paid call or full CI repeated.
+Runtime rollout must use fresh images and a reviewed exact saved plan; no apply yet.
+Unrelated README/Instagram edits remain preserved. Paid calls remain paused;
+historical ledger/booking/S22 acceptance remain blocked; S23 is not started.
+
 ## Remaining gates
 
 | Gate | Evidence still required |

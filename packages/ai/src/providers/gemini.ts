@@ -32,7 +32,18 @@ export const parseGeminiUsage = (value: unknown): AIUsage => {
     total = count(value["totalTokenCount"]);
   const candidates = count(value["candidatesTokenCount"]),
     reasoning = count(value["thoughtsTokenCount"]);
-  const cachedInput = count(value["cachedContentTokenCount"]);
+  // Gemini's proto3 int32 uses implicit presence: omitted zero values are valid
+  // ProtoJSON. Normalize only an absent cache field in otherwise reported usage;
+  // missing usage or an explicitly malformed/null field is still unknown.
+  // https://github.com/googleapis/googleapis/blob/master/google/ai/generativelanguage/v1beta/generative_service.proto
+  // https://protobuf.dev/programming-guides/json/#presence-and-default-values
+  const cachedInput =
+    !Object.hasOwn(value, "cachedContentTokenCount") &&
+    input !== null &&
+    total !== null &&
+    total >= input
+      ? 0
+      : count(value["cachedContentTokenCount"]);
   // Google's total includes prompt + candidates + thoughts. Bill reasoning ONCE.
   const output = input !== null && total !== null && total >= input ? total - input : null;
   if (

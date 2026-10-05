@@ -314,7 +314,7 @@ diagnostic's nonzero exit; the finite `CONTAINER_EXIT` log tag is not a separate
 proven application failure. Earlier empty reads lacked captured exit status and
 have no proven timeout/payload-format cause. No diagnostic rerun is justified.
 
-The single next action is a bounded **Cloud Logging read of this existing
+At that checkpoint, the next action was a bounded **Cloud Logging read of this existing
 execution**, selecting only `provider_and_cost_metadata` and its reader's allowlisted
 `observed.rows`. Obtain the two exact run IDs/times, failure/status, nullable usage,
 resolved model/catalog and dispatch classification before attributing either unknown
@@ -324,6 +324,76 @@ is needed. Do not invent a zero cost, overwrite historical records, or use the
 run-finishing mutation as reconciliation. The original unknowns and provenance
 remain preserved; no existing audited historical cost-reconciliation interface was
 found. Booking and new paid calls stay blocked pending that evidence and reconciliation.
+
+### Exact historical rows and narrow cache parser correction — 2026-10-05
+
+The owner returned the existing `snf6q` execution's allowlisted per-run records;
+`GCLOUD_EXIT=0`. No new diagnostic/database execution or paid call occurred.
+
+| Exact run | Persisted evidence | Cost conclusion |
+| --- | --- | --- |
+| `01a1067f-dfc8-7e14-9e12-89a0e30fd27e` | Succeeded; 2026-10-04T10:40:06.088Z to 10:40:08.585Z; requested/resolved approved Gemini; schema/policy true; input 520/output 217/total 737; cached/reasoning NULL; approved catalog; cost NULL | Confirmed pricing blocker: cached usage NULL. Provider ran; this is not a pre-dispatch/free result. |
+| `01a10af4-5126-7ce8-ab52-0424e07ab3d9` | Failed; 2026-10-05T07:25:46.150Z to 07:25:46.210Z; resolved model/schema/policy/output hash absent; all usage/cost NULL; `not-priced.v1`; diagnostic failure category `unrecognized` | Dispatch/billing still unproven. 60 ms and NULL usage do not prove no call/no charge. |
+
+Both are attempt 1 for the exact synthetic conversation, with the approved
+`s13-commercial-v1.v1`, `s12-orchestrator.v1` and `s16-appointment-submission.v1`.
+Original records/provenance remain untouched. No historical cost is backfilled.
+
+Confirmed **forward-looking adapter defect**: Google's
+[API proto](https://github.com/googleapis/googleapis/blob/master/google/ai/generativelanguage/v1beta/generative_service.proto)
+declares cached-token count as an implicit-presence `int32`;
+[ProtoJSON](https://protobuf.dev/programming-guides/json/#presence-and-default-values)
+omits default zero scalars. The old parser turned a legitimate omitted cache count
+into NULL, preventing the existing estimator from pricing otherwise valid usage.
+The correction normalizes **only an absent cache field with valid reported input
+and total** to zero. Missing/incomplete usage and explicit null/malformed cache
+values remain unknown; counts, consistency and model/tenant policy checks remain.
+The approved model, thinking/output settings, pricing catalog and S12 retry policy
+are unchanged. Reasoning is not billed twice; total minus input remains output.
+
+This protocol correction does **not** recover the first historical raw field:
+the old parser stored the same NULL for omission and explicit invalid/null values.
+That distinction is lost in the database and the diagnostic. With the existing
+official rates, a controlled valid omitted-cache fixture yields **1,204 USD micros**;
+it is **not** that historical run's reconciled cost or provider invoice. Obtain the
+original allowlisted usage metadata or authoritative billing evidence before
+reconciliation. No existing audited historical cost-reconciliation interface exists.
+
+The diagnostic also masked valid source categories: `staff_requested`,
+`provider_incomplete_content_filter` and `provider_incomplete_unknown` were absent
+from its finite allowlist. A deterministic S16 preflight test proves an explicit
+staff request can finish with zero provider invocations, but does **not** identify
+the masked live failure. A new outside-repository **cost-origin-only** packet reads
+only the two exact run IDs/conversation/tenant, with a complete canonical category
+allowlist, strict row bound, runtime/read-only/FORCE-RLS guards and rollback/cleanup.
+It repeats no knowledge retrieval and performs no reconciliation/migration/write.
+
+Prepared files (not committed):
+
+- `C:/Users/Lenovo/AppData/Local/Temp/s22-cost-origin-readonly-v1.mjs`, SHA256
+  `833fe31500a1e6a930b0ad690826177294be590945e98cb2e26efb16a282192c`.
+- `C:/Users/Lenovo/AppData/Local/Temp/s22-cost-origin-launch-v1.sh`, SHA256
+  `3fc6cf7e692e721200ed0fe81d3fca96e255b28384ccff1140e3f6d6ac3ccf5b`.
+
+The launcher retains the reviewed deployed immutable image/identity/secret reference,
+private network/subnet/egress and explicit zero retries, with actual ESM subprocess
+and bounded execution. Its bounded log read captures exit status; an unavailable
+log read is not permission to rerun the diagnostic. The packet is not yet executed.
+Use it only while its exact image preflight matches; never replace its expected
+digest with an unreviewed image. Upload both files together, then run
+`bash s22-cost-origin-launch-v1.sh` only for the still-masked cost-origin gap.
+
+Local affected verification: Gemini adapter **47/47**, readiness **10/10** PASS;
+AI package typecheck/production declarations, root TypeScript and scoped lint PASS.
+The new packet's exact ESM bootstrap has **7/7 controlled subprocess checks PASS**:
+canonical staff/network categories; unknown category; missing/extra exact IDs;
+read-only/RLS denial; NULL preservation, query scoping, rollback/close. Command:
+`node "C:/Users/Lenovo/AppData/Local/Temp/s22-cost-origin-proof/verify.mjs"`, SHA256
+`01e7cb4b0467d129001077fe6c8391d6c852f8196c2752792c0506a6fd42382b`.
+These are local fixtures, not new live database/provider evidence. Historical costs
+remain unknown; paid calls remain paused, budgets unchanged. The runtime parser
+requires fresh immutable images and an exact reviewed deployment plan before rollout;
+no apply, migration, OAuth, Claim/Resolve or unrelated CI is authorized by this fix.
 
 ## Journey and current checkpoint
 
