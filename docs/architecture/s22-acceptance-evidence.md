@@ -72,8 +72,8 @@ Focused verification on `2026-10-04`:
 
 This milestone adds no migration, dependency, IAM change, provider authorization,
 or personal-DM eligibility change. Local/mock verification is not live staging proof.
-Fresh synthetic Claim/Resolve verification of retained feedback and fresh-version
-sequencing, together with direct transition/audit-row proof, remains pending.
+Live synthetic Claim/Resolve feedback and fresh-version sequencing now pass, as
+recorded below. Direct transition/audit-row proof remains pending.
 
 The milestone is deployed from `a26b28c7da44ae56c32a8d9dc1bac7cc3c06095c` on
 `verify/s22-staging-recovery-capacity`. Image build `37200748224` produced four fresh
@@ -128,8 +128,9 @@ authenticated staff workflow proof.
   transcript preservation for the sole historical Instagram conversation. History
   means no actionable staff work, not deletion or a necessarily terminal conversation:
   the conversation remains `open` in AI mode after the earlier owner Resolve.
-- There is no fresh active handoff suitable for new Claim/Resolve proof. No mutation
-  was performed, message sent, or unrelated record used. Live retained mutation
+- At the time of this read-only check there was no fresh active handoff suitable for
+  new Claim/Resolve proof. No mutation was performed, message sent, or unrelated
+  record used. Live retained mutation
   feedback, assigned/in-progress handoff labels and successive authoritative-version
   sequencing remain pending a clearly identified owner-approved synthetic handoff.
   A friend may send `Salom, operator bilan gaplashmoqchiman. Menga xodim yordam bera
@@ -145,11 +146,76 @@ authenticated staff workflow proof.
   for this verification. No staff-workflow defect was observed in the read-only
   checks. This evidence-only update does not require runtime deployment.
 
+### Owner-approved synthetic Claim/Resolve — 2026-10-05
+
+The owner confirmed sending the requested synthetic staff-request DM and receiving
+an Instagram reply. That received reply is owner-reported delivery evidence, not
+an independently inspected provider receipt. No message content/account identifier
+is included here and no additional message was sent by automation.
+
+Live authorized readers identified exactly one pending handoff, new resource
+`01a10af4-5167-7835-be16-bcd78d90b1e8`, on the already identified Instagram test
+conversation `01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7`. It was distinct from the earlier
+resolved handoff. Private in-browser matching confirmed a new inbound staff-request
+intent; it was not a verbatim match to the suggested test sentence. New inbound
+sequence 4 was followed by outbound sequence 5 and another inbound sequence 6.
+All six message bodies were nonempty; bodies were not exported. Only this explicitly
+owner-approved synthetic work was selected for mutations.
+
+Windows desktop automation used the actual Inbox card and clicked Claim once, then
+Resolve once after successful refresh. It did not submit replacement commands via
+an operator harness or bypass application authorization/CSRF/version handling.
+Existing authorized GET readers independently reported:
+
+| Phase | Handoff status/version | Conversation status/version | Automation | Inbox / History count |
+| --- | --- | --- | --- | --- |
+| Before Claim | requested / 1 | awaiting_staff / 10 | paused | 1 / not sampled |
+| After Claim | in_progress / 3 | awaiting_staff / 11 | staff | 1 / 0 |
+| After Resolve | resolved / 4 | open / 12 | ai | 0 / 1 |
+
+- Claim PASS: opening the Inbox card focused the transcript. After Claim the same
+  transcript remained open, explicit successful Claim feedback was visible, the UI
+  showed `Being handled`, Claim was disabled and Resolve became enabled following
+  the normal authoritative refresh. The reader confirmed assignment to the current
+  owner without exposing the membership identifier. Resource/conversation versions
+  **3/11** were independently read before Resolve; the handoff reader's ETag was
+  the exact resource ID with version 3. Intermediate `assigned` UI state was not
+  separately observed; its label remains supported by preserved local coverage.
+- Resolve PASS: explicit successful Resolve feedback remained visible with the
+  selected transcript. Completed Claim/Resolve controls disappeared. Inbox became
+  0 with its no-pending-work explanation. Reader results showed
+  `active_handoff_id=null`, `actionable=false` for the resolved handoff and matching
+  conversation version **12**, not stale version 11.
+- History PASS: after navigating to History, Resolve feedback and the transcript
+  were still retained. Its sole card reopened the persisted conversation, focused
+  the details region (observed top Y=121), and showed no completed handoff actions
+  or refresh error. The conversation is `open` in AI mode because the real Resolve
+  action uses `resume_ai`; no claim of terminal-conversation resolution is made.
+- Transcript preservation PASS: message count **6**, nonempty count **6**, sequences
+  **1..6** remained unchanged before Claim, after Claim and after Resolve. Mutations
+  did not delete messages or create additional messages in the observed reads.
+- Safe read correlation: baseline conversation/handoff requests
+  `request:req-2r` / `request:req-2t`; post-Claim `request:req-3k` /
+  `request:req-3l`; post-Resolve `request:req-42` / `request:req-43`;
+  post-Resolve messages `request:req-44`, Inbox `request:req-46`, History
+  `request:req-47`. These are read-response IDs, not mutation audit IDs. All were
+  HTTP 200; current handoff ETags reflected versions **1 -> 3 -> 4**.
+- No live staff-workflow defect was observed. Failure/race handling was not forced;
+  accepted local regression evidence remains distinct from these successful live
+  actions. Direct persisted transition/audit rows are still unavailable through
+  current authorized staff readers and are **not** marked PASS from UI feedback,
+  version progression, source inspection or prior tests.
+
+This continuation changes only the evidence register. No runtime/product code,
+schema, migration, IAM, privacy eligibility, credentials or infrastructure changed.
+No CI, deployment, provider OAuth or local suite was repeated. S22 remains
+unaccepted until the remaining gates are proven.
+
 ## Remaining gates
 
 | Gate | Evidence still required |
 | --- | --- |
-| Instagram DM / staff workflow | Deployment and authenticated read-only History/transcript/navigation/current-state proof PASS; earlier Claim/Resolve remains owner-observed; fresh synthetic mutation feedback/version sequencing, direct transition/audit rows and tenant-routing/eligibility proof remain pending |
+| Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; direct transition/audit rows and tenant-routing/eligibility proof remain pending |
 | Website Widget | Real allowed/disallowed cross-origin embed, meaningful response, session and token isolation |
 | Gemini and business journey | Approved live model, bounded cost ledger, grounding/qualification/request/staff acceptance/customer confirmation, deterministic medical safety |
 | Observability | Actual meaningful-response TTFR, queue/provider/channel failures and cost without message content |
