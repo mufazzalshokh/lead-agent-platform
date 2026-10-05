@@ -424,8 +424,14 @@ metadata or authoritative billing evidence. The ledger still contains **two
 NULL-cost rows**, so it is not ready under the current rules; paid calls remain
 paused, USD 5 target / USD 10 hard ceiling unchanged. No diagnostic, OAuth,
 Claim/Resolve or accepted tests need repeating. The forward parser fix has fresh
-build **37313624020 PASS** and saved plan **37314501163 PASS**, not applied;
-[exact review packet](s22-acceptance-evidence.md#cache-parser-rollout-preparation--2026-10-05).
+build **37313624020 PASS** and saved plan **37314501163 PASS**. The owner-approved
+exact plan was subsequently applied in **37321048848 PASS** (0 added / 4 changed /
+0 destroyed / 0 replacements), with **37321407052 PASS** for existing read-only
+deployment checks and whole-runtime convergence exit code 0;
+[applied rollout evidence](s22-acceptance-evidence.md#exact-parser-rollout-applied-and-verified--2026-10-05).
+Runtime source remains `3b73fdd1c38c98be3f02821902914e1c707d0054`, timestamp
+`2026-10-05T13:02:55Z`, migration provenance
+`0031_s22_widget_inbound_route_management`; no migration or new paid call ran.
 Historical accounting reconciliation remains separately blocked. Do not treat
 deployment of the parser as reconciliation of these rows or S22 acceptance.
 

@@ -605,8 +605,9 @@ historical ledger/booking/S22 acceptance remain blocked; S23 is not started.
 
 The runtime correction is committed and remotely preserved as
 `3b73fdd1c38c98be3f02821902914e1c707d0054` on
-`verify/s22-staging-recovery-capacity`. It is **not deployed**. The subsequent
-documentation-only evidence commit does not change this reviewed image source.
+`verify/s22-staging-recovery-capacity`. At this plan-preparation checkpoint it was
+**not deployed**; the subsequent approved apply is recorded below. Documentation-only
+evidence commits do not change this reviewed image source.
 
 One fresh [immutable image build](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37313624020)
 **37313624020 PASS** for that exact source produced the downloaded manifest below.
@@ -653,14 +654,16 @@ Exact subsequent apply inputs are prepared outside Git at
 `C:/Users/Lenovo/AppData/Local/Temp/s22-cost-origin-rollout-37313624020/apply-inputs-without-approval.json`:
 same source, images, timestamp and heads; `action=apply`, `phase=full`,
 `plan_run_id=37314501163`, and the exact SHA256 above. No owner approval token is
-included and the inputs have **not been submitted**. Apply requires the owner's
-approval of this exact reviewed saved plan; never reuse an earlier approval or
+included in that file. At this checkpoint the inputs had **not been submitted**.
+The subsequent apply below used the owner's exact-plan approval, adding the
+workflow's approval token only in memory. Never reuse an earlier approval or
 regenerate and silently apply a replacement.
 
 Historical costs are still **unknown**; no backfill or paid call occurred. The
 cost-origin-only packet was pending when this plan was prepared; its subsequent
-owner-supplied live result is recorded below. The reviewed plan is still **not
-applied**. Never bypass a diagnostic's immutable-image guard. S22 is unaccepted;
+owner-supplied live result is recorded below. The reviewed plan was **not applied
+at this checkpoint**; the subsequent approved apply is recorded below. Never
+bypass a diagnostic's immutable-image guard. S22 is unaccepted;
 no S23 work or final aggregate CI was started.
 
 ## Cost-origin live diagnostic PASS; accounting gap retained — 2026-10-05
@@ -714,8 +717,58 @@ No further diagnostic rerun is needed. Only the two S22 evidence/journey documen
 changed for this result; scoped formatting and diff checks PASS. Existing parser/
 preflight tests and build/plan evidence are unchanged and not repeated. No runtime
 deployment, migration, IAM/job configuration change, OAuth, Claim/Resolve or CI
-occurred. Exact-plan approval is still required before the prepared parser rollout.
+occurred at this diagnostic checkpoint. Exact-plan approval was still required
+then; the subsequent approved rollout is recorded below.
 S22 remains unaccepted; paid calls stay paused and S23 is not started.
+
+## Exact parser rollout applied and verified — 2026-10-05
+
+The owner approved only saved plan **37314501163**, SHA256
+`443c63a7153df607963b7c8101123d1c89209aab5c4001356ce8251be8345f82`,
+runtime source `3b73fdd1c38c98be3f02821902914e1c707d0054`, the four immutable
+images above, deployment timestamp `2026-10-05T13:02:55Z` and migration provenance
+`0031_s22_widget_inbound_route_management`. The owner-supplied pre-apply GCS state
+comparison reported matching lineage and observed/expected serial **54**.
+
+[Exact saved-plan apply](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37321048848)
+**37321048848 PASS** completed at `2026-10-05T13:59:57.879157Z`:
+**0 added / 4 changed / 0 destroyed / 0 replacements**. The four resources are
+exactly those listed in the saved-plan action table above. Saved-plan checksum and
+full-runtime scope safeguards PASS; unexpected actions NONE. The dispatch used the
+prepared inputs with the workflow's `owner_approval_token` supplied only in memory.
+The workflow ran from documentation-only descendant `aa9629ea758e3abd2e40a48390e45a270116cd82`
+and checked out the exact approved runtime source; it did not build new images or
+generate a replacement saved plan. **Execute one-shot migrator SKIPPED**.
+
+One existing [read-only deployment verification](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37321407052)
+**37321407052 PASS** used the same source, all four images and reviewed provenance
+inputs through `api-image-verify`. Its downloaded artifact
+`s22-api-image-live-evidence-37321407052/s22-api-image-live-evidence.txt` has SHA256
+`a35f55fb26f542fa873717f677002b78e904effd8e753de8be4322912d5b350e`.
+
+| Post-apply assertion | Verified result |
+| --- | --- |
+| Live API image and deployment bindings | Exact approved digest, source, timestamp and migration head PASS |
+| API security/readiness metadata | Expected identity, private VPC/subnet/egress, 15 secret references and ready revision `lead-agent-staging-api-00017-n9w` PASS |
+| Live Web image/readiness | Exact approved digest and ready revision `lead-agent-staging-web-00013-bcz` PASS |
+| Whole runtime Terraform convergence | `terraform plan -detailed-exitcode -lock-timeout=5m`, without a saved output plan, returned **0** |
+| API health | Bounded `curl.exe` GET `/health` returned `{"service":"api","status":"ok"}` |
+| Web reachability | Bounded `curl.exe` GET of the organization-bound staff URL returned **HTTP 200** |
+
+API/Web bindings were read directly from authenticated live service metadata;
+Worker/Migrator desired image/provenance bindings are covered by whole-runtime
+Terraform refresh/convergence, not a separately reported live descriptor check.
+The verification run reports **Create reviewed plan SKIPPED**, **Apply exact
+reviewed plan SKIPPED** and **Execute one-shot migrator SKIPPED**. No SQL, IAM,
+network or scaling change occurred; no migration or paid model call was executed.
+Web HTTP 200 proves shell reachability, not a new authenticated owner/channel or
+booking-journey E2E result.
+
+Only this evidence register and the synthetic journey document are updated for
+the rollout. No accepted tests/CI, OAuth, Claim/Resolve or diagnostic execution was
+repeated. Unrelated user edits remain preserved. Historical NULL costs remain
+unchanged; no reconciliation or ledger-ready claim is made. **Paid calls remain
+paused; S22 remains unaccepted; S23 is not started.**
 
 ## Remaining gates
 
