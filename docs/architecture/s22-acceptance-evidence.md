@@ -285,7 +285,7 @@ Diagnostic preparation/provenance:
   `C:/Users/Lenovo/AppData/Local/Temp/s22-handoff-audit-readonly.mjs`, SHA256
   `1cc3ae55e39d7406f5288c4285a6ad0f51b6ede25e4a4339acee7957a8121f8c`.
   Prepared launcher: `C:/Users/Lenovo/AppData/Local/Temp/s22-handoff-audit-launch.sh`,
-  SHA256 `b45668d6799c3d213bd66b58efb375c2b13e6b8ec5b9634d643518a8f94b9208`.
+  SHA256 `ecf309b5a87966c1b5fe0c50d97a20f20be90507d2b36f86a5895b862e3d43dd`.
   These local diagnostic files are not repository files or deployed product changes.
 - Ready execution path is the **existing authenticated Cloud Shell**, using the
   existing `lead-agent-staging-migrator` job only as an execution container. Upload
@@ -320,6 +320,25 @@ Diagnostic preparation/provenance:
   PASS** (expected rows, connection/query failures with cleanup, wrong role, missing
   FORCE RLS, wrong intermediate version, wrong actor and millisecond mismatch).
   These are not live PostgreSQL checks. No existing suites or CI were repeated.
+
+Owner Cloud Shell preflight follow-up: the first launcher stopped **before execution**
+with `private VPC or zero-retry configuration not proven`. The owner's subsequent
+filtered, read-only job description reported explicit numeric `maxRetries=0` at
+`spec.template.spec.template.spec.maxRetries`. Its network/subnetwork were the exact
+approved project/region-qualified resources, encoded inside the JSON annotation
+`spec.template.metadata.annotations[run.googleapis.com/network-interfaces]`;
+`run.googleapis.com/vpc-access-egress` was `private-ranges-only`. The old combined
+guard searched only structured network fields and uppercase egress. This confirms
+a **launcher parsing/schema defect**, not a demonstrated live configuration mismatch.
+The corrected launcher reads those exact v1 paths, strictly parses the single
+network interface, requires an explicitly present numeric retry value of zero,
+and reports network, subnet, egress and retries independently. It uses the existing
+Node CLI for this isolated JSON guard and stops if Node is unavailable; it installs
+nothing. **31/31 focused guard fixtures and `bash -n` PASS**, including the owner
+metadata shape and missing/malformed/mismatched/unsafe values. Only the launcher
+needs re-uploading; the reader's bytes/hash remain unchanged. No diagnostic job,
+migration, deployment or IAM change occurred during this local correction, and
+direct persisted transition/audit proof still awaits the actual read-only execution.
 
 Required next action: execute this exact scoped diagnostic from existing
 authenticated GCP access and preserve its structured results/execution ID. Do not
