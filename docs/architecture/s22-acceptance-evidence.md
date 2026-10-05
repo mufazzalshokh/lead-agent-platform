@@ -204,7 +204,8 @@ Existing authorized GET readers independently reported:
   accepted local regression evidence remains distinct from these successful live
   actions. Direct persisted transition/audit rows are still unavailable through
   current authorized staff readers and are **not** marked PASS from UI feedback,
-  version progression, source inspection or prior tests.
+  version progression, source inspection or prior tests. The later owner-supplied
+  scoped diagnostic below now closes that persisted-row gap independently.
 
 This continuation changes only the evidence register. No runtime/product code,
 schema, migration, IAM, privacy eligibility, credentials or infrastructure changed.
@@ -213,7 +214,10 @@ unaccepted until the remaining gates are proven.
 
 ## Scoped persisted Claim/Resolve evidence checkpoint — 2026-10-05
 
-Status: **BLOCKED for direct persisted-row verification**, not a product failure.
+Status: **PASS for this scoped evidence gap, from owner-supplied live diagnostic
+evidence**. The initial local checkpoint was BLOCKED on diagnostic execution;
+the successful execution reported below supersedes that blocker, not any other
+S22 gate.
 The accepted live actions above were not repeated. Evidence baseline is
 `66405b6e1918b49e148cd8ed9e08aadb90c479ad`; deployed source remains
 `a26b28c7da44ae56c32a8d9dc1bac7cc3c06095c` (only this evidence document differs
@@ -240,7 +244,8 @@ Source review established the actual persistence expectations, not live row proo
   **2**, then `assigned -> in_progress`, version **3**. Resolve produces
   `in_progress -> resolved`, version **4**, reason `staff_resolved`, disposition
   `resume_ai`. The expected intermediate records explain why one Claim can advance
-  **1 -> 3**; their actual persistence remains unverified.
+  **1 -> 3**; their persistence is now supported by the owner-supplied diagnostic
+  below, not by source inspection alone.
 - `mutations.ts::persistTransitions` writes handoff records to
   `handoff_transitions` (`aggregate_version`, status/assignee changes, member actor,
   disposition/reason, correlation and operation time). There is **no separate
@@ -263,13 +268,24 @@ Source review established the actual persistence expectations, not live row proo
 
 | Assertion | Result | Evidence / unresolved requirement |
 | --- | --- | --- |
-| Accepted live current state: handoff resolved/4; conversation open/12, AI mode, no active handoff | PASS, preserved API evidence | No fresh database snapshot was taken |
-| Direct current handoff/conversation database snapshot | BLOCKED | Runtime-role diagnostic has not executed |
-| Persisted Claim intermediates: versions 2 and 3, same owner/time/correlation | BLOCKED | Source expectation only; no transition rows read |
-| Persisted Resolve: version 4, `staff_resolved` / `resume_ai` | BLOCKED | Source expectation only; no transition row read |
-| Persisted conversation events: versions 11 and 12 | BLOCKED | No canonical Outbox event rows read |
-| Claim: two succeeded, owner-attributed target audit rows | BLOCKED | No audit rows read |
-| Resolve: two succeeded, owner-attributed target audit rows | BLOCKED | No audit rows read |
+| Runtime role, read-only transaction and RLS guard | PASS, owner-supplied live diagnostic | First of nine successful assertions |
+| FORCE RLS and runtime-not-owner guard | PASS, owner-supplied live diagnostic | Second assertion |
+| Transaction-local tenant context | PASS, owner-supplied live diagnostic | Third assertion |
+| Direct current handoff/conversation snapshot | PASS, owner-supplied live diagnostic | Handoff resolved/4; conversation open/12, AI mode, no active handoff; agrees with preserved authorized API evidence |
+| Persisted Claim intermediates | PASS, owner-supplied live diagnostic | `requested -> assigned/2 -> in_progress/3`, same owner/time/correlation; `claim_and_start` persists two transitions, explaining the 1 -> 3 jump |
+| Persisted Resolve | PASS, owner-supplied live diagnostic | `in_progress -> resolved/4`, `staff_resolved` / `resume_ai` |
+| Persisted conversation events | PASS, owner-supplied live diagnostic | Canonical events at versions 11 and 12 |
+| Claim target audits | PASS, owner-supplied live diagnostic | Two successful, owner-attributed, correlated audits targeting handoff and conversation |
+| Resolve target audits | PASS, owner-supplied live diagnostic | Two successful, owner-attributed, correlated audits targeting handoff and conversation |
+
+The owner reports execution **`lead-agent-staging-migrator-qdnpn`**, completed
+**`2026-10-05T09:25:48.952290Z`**, **`succeededCount=1`**, with all nine assertions
+PASS. Provenance is the owner's submitted live diagnostic result for the exact
+resource scope above and the prepared read-only reader/launcher below. Codex did
+not independently fetch execution logs or raw database rows in this continuation.
+No Claim, Resolve, diagnostic, migration, deployment or OAuth was repeated.
+This closes only the persisted Claim/Resolve transition/audit gap. It does not
+establish knowledge publication, live grounding, booking or general S22 acceptance.
 
 Diagnostic preparation/provenance:
 
@@ -338,20 +354,79 @@ nothing. **31/31 focused guard fixtures and `bash -n` PASS**, including the owne
 metadata shape and missing/malformed/mismatched/unsafe values. Only the launcher
 needs re-uploading; the reader's bytes/hash remain unchanged. No diagnostic job,
 migration, deployment or IAM change occurred during this local correction, and
-direct persisted transition/audit proof still awaits the actual read-only execution.
+direct persisted transition/audit proof was still pending at that earlier checkpoint.
+The owner-supplied successful execution above now closes that scoped gap.
 
-Required next action: execute this exact scoped diagnostic from existing
-authenticated GCP access and preserve its structured results/execution ID. Do not
-broaden permissions if that access cannot launch the existing job or read its logs.
-After this evidence gap is closed, the next milestone is authoritative synthetic
-business knowledge and the complete customer-to-confirmed-booking journey.
+The diagnostic has executed successfully; do not repeat it. The next milestone
+is authoritative synthetic business knowledge and the complete
+customer-to-confirmed-booking journey.
 S22 remains unaccepted; S23 has not started.
+
+## Synthetic business knowledge and booking preparation — 2026-10-05
+
+The versioned fictional fixture, live publication IDs/versions and authorized
+journey sequence are recorded in
+[s22-synthetic-booking-journey.md](s22-synthetic-booking-journey.md).
+The fixture has one consultation, UZ/RU/EN content, an explicit
+**UZS 100,000** test price (`10000000` integer minor units), **30-minute** duration,
+**Asia/Tashkent**, **Monday–Saturday 09:00–18:00**, and explicit staff
+review/customer confirmation wording. It adds no booking-policy JSON, migration,
+dependency or availability claim. All five configuration records are now
+authoritatively published at **version 1**, with an active Service/Location offering.
+
+The first live read in the existing staging Chrome session was
+`GET /v1/staff/me` with the approved organization context. It returned
+**HTTP 401 `authentication_required`**, request **`request:req-7`**. No configuration
+write was attempted then. After the owner's signed-in workspace screenshot,
+authenticated `/v1/staff/me` proved the exact tenant and **owner** role. Complete
+configuration lists (`has_more=false`, limit 100) initially contained **zero**
+Locations, Services, Prices, FAQs and Business Policies, so no unrelated business
+record was replaced or retired. No auth settings, identity binding, membership,
+cookies or social-thread eligibility were changed.
+
+Live publication used the native authenticated browser session, existing CSRF,
+tenant authorization, stable operation-specific idempotency keys and fresh GET
+ETags. After a browser-result capture failed, read-only reconciliation proved all
+five inventories still empty and no publication context existed; no write was
+blindly repeated. Fixing exact browser-window targeting allowed the authorized
+commands to proceed. This was outside-repository automation, not a runtime change.
+
+Mutation response correlations: Location creation/publication `request:req-2l` /
+`request:req-2n`, Service creation/publication `request:req-2o` / `request:req-2q`,
+offering `request:req-2s`, Price creation/publication `request:req-35` /
+`request:req-37`, Qualification V1 creation/publication `request:req-38` /
+`request:req-3a`, FAQ creation/publication `request:req-3b` / `request:req-3d`.
+Final read-back checks proved exact fixture content, active offering and all five
+publication versions: **7/7 live metadata/content assertions PASS**, correlations
+`request:req-3u` through `request:req-3z`. The Service root advanced to **4** after
+publication/offering/price changes; its immutable content publication remains **1**.
+Price's public contract does not expose a content hash; none is invented.
+
+Focused local proof: **60/60 tests PASS** across the new fixture contract tests
+(7), current grounded-answer tests (41), and S21 privacy/medical safety tests (12).
+Command: `node node_modules/vitest/vitest.mjs run tests/contracts/s22-business-fixture.test.ts tests/ai/grounded-answers.test.ts tests/ai/privacy-security.test.ts`.
+Root test-source TypeScript (`node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit`)
+and focused zero-warning ESLint PASS. These are deterministic/local tests, not
+live Gemini or booking proof. No full aggregate, CI, build, deployment or migration
+was repeated for fixture/evidence-only changes.
+
+Model source/configuration readiness is verified, but current resolved-model and
+complete bounded cost-ledger proof remain **pending**: the tenant staff API has no
+operator COGS/model reader, and this host has no authenticated GCP/database CLI.
+A new, separate read-only readiness packet is prepared for existing authenticated
+Cloud Shell. It invokes the **existing conversation knowledge reader** for two
+synthetic price/duration queries and reads narrowly scoped model/token/cost
+metadata. It does not send a customer message, make a model call, execute the
+migration entrypoint, update the job or repeat the accepted handoff diagnostic.
+Its output must be obtained before claiming live retrieval/model/cost readiness.
+The actual customer-to-confirmed-booking journey remains **PENDING**; no customer
+confirmation or staff attestation was fabricated.
 
 ## Remaining gates
 
 | Gate | Evidence still required |
 | --- | --- |
-| Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; direct transition/audit rows and tenant-routing/eligibility proof remain pending |
+| Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |
 | Website Widget | Real allowed/disallowed cross-origin embed, meaningful response, session and token isolation |
 | Gemini and business journey | Approved live model, bounded cost ledger, grounding/qualification/request/staff acceptance/customer confirmation, deterministic medical safety |
 | Observability | Actual meaningful-response TTFR, queue/provider/channel failures and cost without message content |
