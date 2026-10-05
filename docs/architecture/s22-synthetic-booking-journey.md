@@ -556,9 +556,19 @@ tool-access limitation, not evidence that the accepted Auth0 flow broke.
 
 See the exact [booking-readiness packet](s22-acceptance-evidence.md#bounded-booking-readiness-packet--2026-10-05).
 The live Worker previously had token/time/repair caps but no durable cohort money
-gate. New code remains paused by default and requires real PostgreSQL control
-proof, owner approval of the historical reserve/allowance, and a fresh reviewed
-saved deployment plan before activation. It is not deployed by this document.
+gate. Source `f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d` passed the three
+focused real PostgreSQL 17.11 cases in run **37340223769**. New code remains
+paused by default and still requires owner approval of the historical
+reserve/allowance and a fresh reviewed saved deployment plan before activation.
+It is not deployed by this document.
+
+The fresh [reviewed rollout packet](s22-acceptance-evidence.md#fresh-reviewed-rollout-packet--not-applied)
+records build **37340460397**, plan **37341267014**, the four exact images and
+saved-plan SHA256. The actual plan is 0 creates / 4 in-place workload updates /
+0 destroys / 0 replacements, no SQL/IAM/network/scaling/secret change and no
+migration execution. Historical-reserve/allowance and exact-plan approvals are
+still pending; paid calls stay paused. No rebuild is needed for this later
+evidence-only update.
 
 Future slots reserve **USD0.801432**: the documented input maximum and enforced
 4,000 output tokens including thinking, one candidate and no extra tools/storage.

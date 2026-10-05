@@ -890,7 +890,7 @@ and overlapping rows share one set of observations/tests rather than add up.
 
 | Class / milestone | Exact criterion / repository reference | Requirement / gate | Existing proof | Exact remaining work | Dependency | Active effort | Owner / external action |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| S22 blocker · M1 | 26 small paid cohort; [26 paid/load/recovery gates](26-s22-staging-recovery-capacity.md#recovery-and-capacity-gates); [24 NULL-cost policy](24-s20-analytics-observability-cost.md#cost-policy) | Historical accounting and small paid cohort; NFR-017 | Two exact live rows; current forward parser deployed; 521-split bound PASS | Approve/reject the narrow reserve exception or obtain actual historical provider evidence; verify/deploy the new durable guard and reader (focused PostgreSQL still pending), per-call reservations and stop rule; retain NULL/coverage FAIL | Before paid journey | 0.5–1 h decision/evidence; control work in row below | One explicit historical-exception decision; billing/logs only if genuinely available |
+| S22 blocker · M1 | 26 small paid cohort; [26 paid/load/recovery gates](26-s22-staging-recovery-capacity.md#recovery-and-capacity-gates); [24 NULL-cost policy](24-s20-analytics-observability-cost.md#cost-policy) | Historical accounting and small paid cohort; NFR-017 | Two exact live rows; current forward parser deployed; 521-split bound PASS; new durable guard's three PostgreSQL cases PASS | Approve/reject the narrow reserve exception or obtain actual historical provider evidence; review/apply the new guard's exact deployment plan; retain NULL/coverage FAIL | Before paid journey | 0.5–1 h decision/evidence; control work in row below | One explicit historical-exception/allowance decision and exact-plan approval; billing/logs only if genuinely available |
 | S22 blocker · M1 | FR-004–010/012–017/021; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Grounded customer-to-confirmed booking; FR-004–010, 012–017, 021 | Five version-1 synthetic publications; duration/price retrieval PASS; approved Gemini profile; Instagram connected | Actual price reply, qualification, one requested appointment, staff acceptance, delivered current offer, explicit customer reply and persisted confirmed evidence; fresh versions after commands | Accounting/controls, existing eligible thread | 1–3 h | Friend's natural question and chosen future date/time; owner acceptance; friend's actual confirmation |
 | Retained PASS · M1 request review only | FR-018/020; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Staff review/handoff/history; FR-018, 020 | Normal Chrome owner access; Claim 1→3/Resolve 4; conversation 10→11→12; six messages preserved; nine persisted assertions PASS | Preserve scoped PASS; exercise request review/acceptance in booking row and collect only its new evidence; no repeat Claim/Resolve | Booking | Shared with journey | Owner reviews only synthetic work |
 | S22 blocker · M2 | FR-001–004/011–017; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Widget live embedding/customer journey; FR-001–004, 011–017; S19b | S10/S19 security contracts/regressions and existing UI | Real allowed/disallowed cross-origin host; opaque session, host-token isolation, no third-party-cookie dependence; actual response/request/confirmation/degraded UI | Live origin fixture; M1 allows only the exact Instagram thread; any Widget paid turn needs its own bounded authorization | 2–4 h | Access to approved synthetic embed origin/browser if needed |
@@ -911,10 +911,10 @@ and overlapping rows share one set of observations/tests rather than add up.
 | S22 blocker · M2 | NFR-013/014; [NFR](01-product-and-journeys.md#9-non-functional-requirements-and-initial-slos); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Accessibility/localization/current UI; NFR-013, 014 | Accepted S19/S13 tests and live staff history/action feedback | Targeted keyboard/screen-reader/approved-browser EN/RU/UZ staff/Widget journey smoke for changed surface; no client-only authority | Booking/Widget workflows | 1–3 h, shared | Supported test browser/device access |
 | S22 blocker · M4 | 11 S22a/b gates; [11 S22a/b/S23 criteria](11-adrs-roadmap-risks.md#codex-sized-implementation-roadmap); [09 release gates](09-test-strategy.md#ci-and-release-gates); NFR-016; [NFR](01-product-and-journeys.md#9-non-functional-requirements-and-initial-slos) | Final authoritative gate/promotion; NFR-016; S22 completion | Earlier-stage CI preserved; current rollout/provenance PASS | One pnpm ci:verify on coherent final tree, real PostgreSQL/builds/contracts/boundaries, affected security/privacy audit; exact verified fast-forward/main equality/local cleanup, remote cleanup best-effort | All actual S22 gates above | 1–2 h plus CI runtime | Repository access; no ceremonial repeat aggregate |
 | Initial-launch blocker · S23 (not started) | 11 named S23 go/no-go; [11 S22a/b/S23 criteria](11-adrs-roadmap-risks.md#codex-sized-implementation-roadmap); NFR-002; [NFR](01-product-and-journeys.md#9-non-functional-requirements-and-initial-slos); [11 ROI/cohort/placement decisions](11-adrs-roadmap-risks.md#open-questions-and-decision-deadlines) | Initial-launch go/no-go and claims; S23 review only, NFR-002 | S22 isolated Doha staging freeze and planning SLOs; no production readiness claim | Named release approval/on-call/runbooks, production region/residency/HA/provider/retention decisions, monthly 99.9% availability/error-budget measurement model, defensible cohort/baseline/sample-size ROI and cost evidence. Brief staging samples do not prove monthly availability or commercial ROI | S22 accepted and all P0/NFR evidence; S23 separately authorized | 2–4 h review; external decisions separate | Owner + security/privacy/SRE/product sign-off; S23 is not started |
-| S22 blocker · M2 provider evidence | [25 paid Gemini controls](25-s21-privacy-security.md#gemini-paid-api-data-controls-checked-2026-09-19); [26 real provider evidence](26-s22-staging-recovery-capacity.md#explicit-non-goals-and-pending-evidence) | Actual paid-project/privacy eligibility | Approved model/profile and S21 data controls retained | Verify existing owner approval provenance for the actual paid project/processor where required; absence is not assumed. Synthetic data never establishes clinical-data readiness | Before applicable live use; 0.5–1 h if evidence missing | Only a specific genuinely missing provider/privacy decision |
-| Initial-launch blocker · L1 sizing | NFR-015; [NFR](01-product-and-journeys.md#9-non-functional-requirements-and-initial-slos); [09 performance/load](09-test-strategy.md#performance-load-and-recovery-tests) | Larger launch capacity/storage assumptions | Targets, not measured capacity | Measure 100 organizations / 1,000 concurrent conversations / 50 msg/s burst before production sizing; annual message-growth assumptions remain planning inputs. Explicit owner revision if changed | S22 small profile reused; 4–8 h additional if distinct | Production sizing/target decision; no silent downgrade |
-| S22 blocker · M3 infrastructure cost envelope | [26 cost envelope/OFF procedure](26-s22-staging-recovery-capacity.md#pre-apply-cost-envelope) | USD25 target / below USD50 hard ceiling | Dormant/active estimates, configured alerts | Attributable actual test-window usage, OFF procedure and bounded schedule; Terraform budget alerts only notify, never prove an enforced dollar cap | Shared M3 window; 0.5–1 h | Approved test window, no budget expansion |
-| Later improvements · separately approved P1/P2 | FR-023/024/027/029; [01 priorities](01-product-and-journeys.md#11-priorities-beyond-mvp); [11 future seams](11-adrs-roadmap-risks.md#future-integration-seams) | Productized rights UX, expanded operator tooling, reminders, billing, calendars, configurable booking policies/read receipts | Accepted audited manual rights path and fixed S18 expiry retained | Not S22 blockers and not implemented here; rights automation priority changes only if the documented counsel gate requires it | Future approved scope | None now |
+| S22 blocker · M2 provider evidence | [25 paid Gemini controls](25-s21-privacy-security.md#gemini-paid-api-data-controls-checked-2026-09-19); [26 real provider evidence](26-s22-staging-recovery-capacity.md#explicit-non-goals-and-pending-evidence) | Actual paid-project/privacy eligibility | Approved model/profile and S21 data controls retained | Verify existing owner approval provenance for the actual paid project/processor where required; absence is not assumed. Synthetic data never establishes clinical-data readiness | Before applicable live use | 0.5–1 h if evidence missing | Only a specific genuinely missing provider/privacy decision |
+| Initial-launch blocker · L1 sizing | NFR-015; [NFR](01-product-and-journeys.md#9-non-functional-requirements-and-initial-slos); [09 performance/load](09-test-strategy.md#performance-load-and-recovery-tests) | Larger launch capacity/storage assumptions | Targets, not measured capacity | Measure 100 organizations / 1,000 concurrent conversations / 50 msg/s burst before production sizing; annual message-growth assumptions remain planning inputs. Explicit owner revision if changed | S22 small profile reused | 4–8 h additional if distinct | Production sizing/target decision; no silent downgrade |
+| S22 blocker · M3 infrastructure cost envelope | [26 cost envelope/OFF procedure](26-s22-staging-recovery-capacity.md#pre-apply-cost-envelope) | USD25 target / below USD50 hard ceiling | Dormant/active estimates, configured alerts | Attributable actual test-window usage, OFF procedure and bounded schedule; Terraform budget alerts only notify, never prove an enforced dollar cap | Shared M3 window | 0.5–1 h | Approved test window, no budget expansion |
+| Later improvements · separately approved P1/P2 | FR-023/024/027/029; [01 priorities](01-product-and-journeys.md#11-priorities-beyond-mvp); [11 future seams](11-adrs-roadmap-risks.md#future-integration-seams) | Productized rights UX, expanded operator tooling, reminders, billing, calendars, configurable booking policies/read receipts | Accepted audited manual rights path and fixed S18 expiry retained | Not S22 blockers and not implemented here; rights automation priority changes only if the documented counsel gate requires it | Future approved scope | None now | Separate future authorization |
 
 The older roadmap P2 Instagram wording is superseded by the accepted mandatory
 S11 Instagram decision, not permission to omit its S22 proof. WhatsApp, external
@@ -1075,8 +1075,14 @@ no installation, update, repair or configuration change. Interrupted OOM checks
 are not PASS. The narrow `s22-booking-budget.yml` push job runs only the three new
 cases on a disposable PostgreSQL 17.11 service, no staging environment/WIF/provider
 credentials and no `ci:verify`; database creation/migrations are test-only.
-Focused PostgreSQL/build/lint outcomes must be recorded before declaring this
-control ready for rollout; no final aggregate is consumed here.
+Focused GitHub run **37340223769**, source
+`f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d`, completed successfully. The exact
+`S22 durable synthetic booking budget` group passed **3/3** on PostgreSQL 17.11
+(447 unrelated master-suite cases skipped): independent guards serialize one
+committed reservation; timeout/unknown cost retains the reservation and prevents
+a new-process retry; schema repair reserves its separate slot and cross-tenant
+dispatch/read is denied. This proves the scoped persisted control, not a live
+staging booking or the full PostgreSQL aggregate. No final aggregate is consumed.
 
 Completed local checks: the final three new groups **30/30 PASS** (14 modeled
 ledger, 11 orchestration/request/config, five deployment-state Node subprocess
@@ -1094,16 +1100,70 @@ An explicit mode change is full-runtime-only. The saved-plan checker binds the
 chosen mode and exact Worker environment. Invalid/foreign/duplicate state fails
 closed without dumping state. Planning cannot act as historical approval.
 
-Necessary fresh deployment preparation, after focused money-control proof: build
-new immutable images once from the verified code commit; collect four manifests,
-choose one new UTC timestamp, retain migration head
-`0031_s22_widget_inbound_route_management`, and create **one full reconciliation
-plan**. Intended scope: four in-place workloads (API/Web/Worker/Migrator), Worker
-gate mode/environment only plus new image/provenance bindings; **no creates,
-destroys, replacements, SQL, IAM, network, scaling or secret changes; migrator
-execution disabled**. Counts are expectations until a real saved plan verifies
-them. No new plan/hash/digest is invented or old parser artifact reused. Exact
-saved-plan apply approval is separate; nothing is applied in this task.
+### Fresh reviewed rollout packet — not applied
+
+Source **`f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d`** is pushed to
+`verify/s22-staging-recovery-capacity`. Image build **37340460397 PASS**, scope
+`all`, checked out this exact source and verified four immutable linux/amd64
+references. Later evidence-only commits do not change this runtime source.
+
+All image references use
+`me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/<workload>@sha256:<digest>`:
+
+| Workload | Fresh immutable digest |
+| --- | --- |
+| API | `62f0cce724667068d106ef94e0636b388cec7c63a48acbe7da7e80b52a895359` |
+| Web | `ba4e89f3b73788b91b1768a7db7486386df4b6f69711d590f40eb5802e666b41` |
+| Worker | `ebdd10763876631af48baea838814a37f7cc397088a1810991f4f36b52509669` |
+| Migrator | `612db330f27d25a9b6c92c05d361bee86ba59e6ff03e0e61c646eef4d1b476fd` |
+
+Exactly one fresh **plan-only** full reconciliation run **37341267014 PASS**:
+
+- Timestamp: **`2026-10-05T16:28:09Z`**; migration provenance remains
+  **`0031_s22_widget_inbound_route_management`**.
+- Saved plan SHA256, independently recomputed from the downloaded binary:
+  **`08aaf4d68fa2c46a7f3130961ddd9c46b83492b7b8b7b32f07d97bcec65503d3`**.
+- GCS staging backend; saved-plan state lineage
+  `ad1c3000-d52f-06eb-de1b-53ae4d67f63e`, serial **55**. Native saved-plan
+  staleness/lineage checks still apply at execution; this review does not approve
+  a replacement plan if state changes.
+- Actual **0 creates / 4 in-place updates / 0 destroys / 0 replacements**:
+  `google_cloud_run_v2_job.migrator[0]`,
+  `google_cloud_run_v2_service.api[0]`,
+  `google_cloud_run_v2_service.web[0]`,
+  `google_cloud_run_v2_worker_pool.worker[0]`.
+- Full-runtime safety checker PASS. Independent local JSON review kept raw
+  secret-bearing plan content internal and confirmed the four source/image
+  bindings, timestamp, migration head and proposed `ai_journey_mode=booking`.
+  Every known changed field is an image/provenance label/environment binding
+  or the Worker's new `AI_JOURNEY_MODE`; computed fields were excluded. No SQL,
+  IAM, networking, scaling, secret references/values or security-boundary change.
+- Every apply step and one-shot migrator execution **SKIPPED**. No new migration,
+  runtime deployment, OAuth, paid model call or IAM change occurred.
+
+Prepared subsequent apply inputs, **not dispatched**:
+
+| Input | Exact prepared value |
+| --- | --- |
+| Workflow / ref | `staging-terraform.yml` / `verify/s22-staging-recovery-capacity` |
+| action / phase | `apply` / `full`, only after both decisions below |
+| commit_sha | `f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d` |
+| deployment_timestamp | `2026-10-05T16:28:09Z` |
+| api_image / web_image / worker_image / migrator_image | Exact four references above, from build 37340460397 |
+| api_git_commit_sha / migrator_git_commit_sha / runtime_git_commit_sha | Same exact source `f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d` |
+| api_deployment_timestamp / migrator_deployment_timestamp / runtime_deployment_timestamp | Same preserved timestamp `2026-10-05T16:28:09Z` |
+| api_migration_head / runtime_migration_head | `0031_s22_widget_inbound_route_management` |
+| ai_journey_mode | `booking`, a proposal until the pending historical-reserve/allowance decision is approved |
+| plan_run_id | `37341267014` |
+| approved_plan_sha256 | `08aaf4d68fa2c46a7f3130961ddd9c46b83492b7b8b7b32f07d97bcec65503d3` |
+| owner_approval_token | **Withheld; no approval token supplied** |
+
+Owner must explicitly decide on (1) the USD1.033396 historical uncertainty reserve
+plus USD4.808592 additional six-slot allowance, combined USD5.841988 and disclosed
+USD5 target overage while exact historical accounting stays FAIL/NULL; and
+(2) applying only this exact saved plan/source/hash with booking mode. No
+replacement plan, broader cohort or extra spend is covered. This rollout does
+not reconcile historical costs, satisfy production accounting, or accept S22.
 
 Before enabling booking, verify a single new-image Worker, no legacy in-flight
 paid activity, and a fresh safe cohort snapshot with exactly the reviewed history.
