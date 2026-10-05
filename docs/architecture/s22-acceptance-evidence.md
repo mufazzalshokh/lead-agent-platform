@@ -285,7 +285,7 @@ Diagnostic preparation/provenance:
   `C:/Users/Lenovo/AppData/Local/Temp/s22-handoff-audit-readonly.mjs`, SHA256
   `1cc3ae55e39d7406f5288c4285a6ad0f51b6ede25e4a4339acee7957a8121f8c`.
   Prepared launcher: `C:/Users/Lenovo/AppData/Local/Temp/s22-handoff-audit-launch.sh`,
-  SHA256 `eec9105d80f7b9ac024cb8c10f1837f814234f8853958f9cbfd39f4de7faa6d8`.
+  SHA256 `b45668d6799c3d213bd66b58efb375c2b13e6b8ec5b9634d643518a8f94b9208`.
   These local diagnostic files are not repository files or deployed product changes.
 - Ready execution path is the **existing authenticated Cloud Shell**, using the
   existing `lead-agent-staging-migrator` job only as an execution container. Upload
@@ -314,7 +314,8 @@ Diagnostic preparation/provenance:
   detail, provider account, credential, ciphertext or full JSON blob is selected.
   Errors expose stage plus sanitized code only. Missing structured log evidence
   remains BLOCKED, including ingestion/read-access failures.
-- Local preparation evidence: `node --check` and launcher `bash -n` PASS;
+- Local preparation evidence: `node --check`, launcher `bash -n` and the exact
+  execution-argument async wrapper check PASS (no live imports/credentials/DB);
   **15/15 mocked diagnostic checks
   PASS** (expected rows, connection/query failures with cleanup, wrong role, missing
   FORCE RLS, wrong intermediate version, wrong actor and millisecond mismatch).
