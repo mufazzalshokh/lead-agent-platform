@@ -601,6 +601,68 @@ Runtime rollout must use fresh images and a reviewed exact saved plan; no apply 
 Unrelated README/Instagram edits remain preserved. Paid calls remain paused;
 historical ledger/booking/S22 acceptance remain blocked; S23 is not started.
 
+## Cache parser rollout preparation — 2026-10-05
+
+The runtime correction is committed and remotely preserved as
+`3b73fdd1c38c98be3f02821902914e1c707d0054` on
+`verify/s22-staging-recovery-capacity`. It is **not deployed**. The subsequent
+documentation-only evidence commit does not change this reviewed image source.
+
+One fresh [immutable image build](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37313624020)
+**37313624020 PASS** for that exact source produced the downloaded manifest below.
+All references use `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/`,
+the matching workload name, and `@` followed by the digest:
+
+| Workload | Immutable digest |
+| --- | --- |
+| API | `sha256:e8593c62f0a4299e94fd45a0f17e5105e619466003cb52de4354ffce345e1707` |
+| Web | `sha256:f5850667867a458aea3123ebf6abd2236e1197292b3461a8f92bb3a69a8965b7` |
+| Worker | `sha256:f314397aa6c1f4a7b5bad21814be6cf5cb370fa6f0f1fbccb9a74866526f4d18` |
+| Migrator | `sha256:fed9986bb4c409c8c821bae0b11b20013c9fa4bc9724441adb47b035c0b3f9f5` |
+
+One [plan-only full-runtime reconciliation](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37314501163)
+**37314501163 PASS**, source SHA matching, preserved the chosen deployment timestamp
+`2026-10-05T13:02:55Z` and migration head
+`0031_s22_widget_inbound_route_management`. This is configuration provenance, not
+a new migration execution or new independent database inventory proof.
+
+Downloaded artifact:
+`s22-terraform-plan-full-3b73fdd1c38c98be3f02821902914e1c707d0054`.
+The locally hashed saved binary matches its artifact SHA256:
+`443c63a7153df607963b7c8101123d1c89209aab5c4001356ce8251be8345f82`.
+Only the sanitized reconciliation summary was printed; raw Terraform content and
+secret-bearing state were not dumped.
+
+| Saved-plan action | Exact resource |
+| --- | --- |
+| In-place update | `google_cloud_run_v2_job.migrator[0]` |
+| In-place update | `google_cloud_run_v2_service.api[0]` |
+| In-place update | `google_cloud_run_v2_service.web[0]` |
+| In-place update | `google_cloud_run_v2_worker_pool.worker[0]` |
+
+Actual counts: **0 creates / 4 changes / 0 destroys / 0 replacements**.
+The repository's full-runtime safety gate **PASS**: reconciliation mode, exact
+source/images/profile, unchanged identities/private networking/security/scaling
+boundaries; public IAM changes **NONE**, unexpected actions **NONE**, migrator
+execution **DISABLED**. The exhaustive action allowlist contains no SQL, IAM,
+network or secret resource change. GitHub explicitly reports **Apply exact
+reviewed plan SKIPPED** and **Execute one-shot migrator SKIPPED**. No infrastructure
+was applied and no migration was run.
+
+Exact subsequent apply inputs are prepared outside Git at
+`C:/Users/Lenovo/AppData/Local/Temp/s22-cost-origin-rollout-37313624020/apply-inputs-without-approval.json`:
+same source, images, timestamp and heads; `action=apply`, `phase=full`,
+`plan_run_id=37314501163`, and the exact SHA256 above. No owner approval token is
+included and the inputs have **not been submitted**. Apply requires the owner's
+approval of this exact reviewed saved plan; never reuse an earlier approval or
+regenerate and silently apply a replacement.
+
+Historical costs are still **unknown**; no backfill or paid call occurred. The
+cost-origin-only packet remains pending and matches the **currently deployed**
+old migrator image. Execute that bounded diagnostic before an eventual approved
+rollout, or prepare a newly reviewed packet afterwards; never bypass its immutable
+image guard. S22 is unaccepted; no S23 work or final aggregate CI was started.
+
 ## Remaining gates
 
 | Gate | Evidence still required |
