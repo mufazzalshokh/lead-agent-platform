@@ -1572,6 +1572,36 @@ not a fresh live ledger/conversation observation. The existing `observe` phase
 will collect current synthetic state/requests/delivery and budget metadata;
 paid messages remain paused until those observed values satisfy readiness.
 
+Live read [37362528025](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37362528025),
+tooling commit **`80ee53a0620579b5c3f7d3518d0fbdaea464a8a8`**, `observe` stage:
+Worker's exact new source/image/`booking` mode, single-instance/private-network
+checks **PASS**. Diagnostic immutable image/runtime-secret-reference/private-VPC/
+explicit-zero-retry checks **PASS**. Unchanged main reader SHA256:
+`04a3488a3eaf9e620bbe7e92fa5b618db99c0f4ef50938231bc4906b8fe28941`.
+Execution **`lead-agent-staging-migrator-h6zpt` SUCCESS**. The sanitized artifact
+reports **`EXACT_EXECUTION_LOG_PERMISSION_DENIED`**, assertion list empty; the
+current conversation/request/ledger values are therefore not claimed from this
+identity. Paid calls **0**, migration execution **false**, job configuration
+changed **false** refer to this diagnostic, not the historical paid turn.
+
+The initial dispatch had a transient `api.github.com` connectivity error. A
+successful run-list read proved no run was created, and a bounded credential-free
+API check returned HTTP200 before one dispatch retry created this single run.
+It then waited for an unassigned `ubuntu-latest` runner (`runner_id=0`, no steps,
+no pending environment review); GitHub's official status API contemporaneously
+reported Actions `degraded_performance`. The existing run subsequently started
+and completed; no duplicate diagnostic, code workaround, IAM grant, deployment,
+migration or paid call was used to compensate for that delay.
+
+Only one owner-authenticated Cloud Shell read of this exact execution's existing
+`s22_booking_readonly` structured rows is now needed. Retrieve only assertion,
+outcome, safe observed metadata and stable code. No upload, launcher, new job or
+permission broadening. Do not send the second paid message until those values
+prove current open/AI/no-active-handoff state, no duplicate synthetic request,
+settled known first-turn spend, zero unresolved reservation and remaining
+authorized message/call allowance. Original historical NULLs remain visible;
+execution success alone is not the missing observed readiness evidence.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |
