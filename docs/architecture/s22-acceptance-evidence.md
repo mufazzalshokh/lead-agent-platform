@@ -1265,6 +1265,39 @@ are covered, not eight. No broad CI, runtime rebuild or deployment was repeated.
 
 ## Remaining gates
 
+### First authorized booking turn investigation — 2026-10-05
+
+Owner reports all seven baseline assertions, including `first_turn_readiness`,
+PASS in `lead-agent-staging-migrator-vlcsh`. This closes only the previously
+missing baseline result collection as **owner-supplied live evidence**; it is not
+an independently retrieved snapshot. Original historical NULL costs remain.
+
+The same approved friend sent the synthetic service price/duration question at
+**2026-10-05 22:23 Asia/Tashkent / 17:23 UTC** in the exact cohort conversation
+`01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7`, organization
+`01a0ee39-91a9-7293-82c0-5b7046c10115`. No reply was observed by 17:25 UTC
+(owner-reported observation, not a persisted delivery result). No second message,
+replay, provider test or paid retry is requested.
+
+Existing read-only `booking-evidence`/`observe` run **37348693103**, tooling source
+`dd9ae224af49cf54d19be26ff9c1f03711de8d5c`, verified the reviewed Worker source,
+image, `booking` mode, one instance/private network and diagnostic safeguards.
+Reader SHA256 remains
+`8b3cef6cea0306510eb5ed63737608f59998dda139b100204c0beec1f25d36e7`.
+Read-only execution **`lead-agent-staging-migrator-ncxqw` SUCCESS**; result
+collection **BLOCKED: `EXACT_EXECUTION_LOG_READ_BLOCKED`**, assertion list empty.
+The artifact's `paid_calls: 0` describes the diagnostic, not the customer's turn.
+Webhook persistence, eligibility/queue processing, actual dispatch slots, new
+usage/cost and outbound state/error are therefore not yet independently proven.
+No specific product root cause is asserted and no runtime correction is made.
+
+Next: owner-authenticated, bounded Cloud Logging read for this exact execution's
+`s22_booking_readonly` rows and only relevant webhook/tenant Worker log metadata
+in 17:22–17:27 UTC. Do not print message bodies, raw provider/error payloads,
+headers, account details or credentials. No uploads, rerun, permission expansion,
+deployment, migrations or unrelated tests. Further paid messages remain paused
+until the first-turn accounting/stop conditions and actual delivery are known.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |
