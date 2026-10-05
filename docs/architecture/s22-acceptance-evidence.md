@@ -211,6 +211,122 @@ schema, migration, IAM, privacy eligibility, credentials or infrastructure chang
 No CI, deployment, provider OAuth or local suite was repeated. S22 remains
 unaccepted until the remaining gates are proven.
 
+## Scoped persisted Claim/Resolve evidence checkpoint — 2026-10-05
+
+Status: **BLOCKED for direct persisted-row verification**, not a product failure.
+The accepted live actions above were not repeated. Evidence baseline is
+`66405b6e1918b49e148cd8ed9e08aadb90c479ad`; deployed source remains
+`a26b28c7da44ae56c32a8d9dc1bac7cc3c06095c` (only this evidence document differs
+between those commits).
+
+Exact diagnostic scope:
+
+| Field | Value / provenance |
+| --- | --- |
+| Organization | `01a0ee39-91a9-7293-82c0-5b7046c10115`, existing organization-bound workspace |
+| Synthetic handoff | `01a10af4-5167-7835-be16-bcd78d90b1e8`, sole pending synthetic handoff identified before the accepted Claim |
+| Conversation | `01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7`, existing authorized live readers |
+| Lower bound, inclusive | `2026-10-05T07:25:46.215Z`, creation timestamp encoded in the exact handoff UUIDv7; Claim necessarily followed creation |
+| Upper bound, exclusive | `2026-10-05T07:36:11.000Z`, end of the second containing evidence commit `66405b6` (`2026-10-05T07:36:10Z`), after both actions were recorded |
+
+This is a derived bounded search window, **not** an observed Claim/Resolve timestamp.
+The earlier resolved handoff and any thread-control ID are excluded.
+
+Source review established the actual persistence expectations, not live row proof:
+
+- `staff-domain.ts::persistStaffHandoff` invokes `claim_and_start`, through
+  `takeHandoffStaffOwnershipWorkflow`. `claimAndStartHandoff` emits two member
+  transition records at one operation time: `requested -> assigned`, handoff version
+  **2**, then `assigned -> in_progress`, version **3**. Resolve produces
+  `in_progress -> resolved`, version **4**, reason `staff_resolved`, disposition
+  `resume_ai`. The expected intermediate records explain why one Claim can advance
+  **1 -> 3**; their actual persistence remains unverified.
+- `mutations.ts::persistTransitions` writes handoff records to
+  `handoff_transitions` (`aggregate_version`, status/assignee changes, member actor,
+  disposition/reason, correlation and operation time). There is **no separate
+  conversation-transition/history table** in the deployed schema. Conversation
+  transition evidence is the canonical envelope in `outbox_events`: version **11**,
+  `conversation.automation_mode_changed`, `paused -> staff` while `awaiting_staff`;
+  version **12**, `conversation.status_changed`, `awaiting_staff -> open`.
+- Both commands atomically persist aggregate updates, transition records, audit
+  rows and Outbox events within the existing tenant transaction. Each command writes
+  two `audit_events` rows, targeting the handoff and conversation respectively.
+  `event_type` and `action` are `<target_type>.transition`, result `succeeded`.
+  Allowlisted JSON fields are `staff_operation` and `expected_version`. The latter
+  is the **handoff** expected version for both targets: Claim **1**, Resolve **3**,
+  not conversation versions 10/11.
+- Actor attribution is membership-based: `actor_id` / `actor_membership_id` match
+  the authorized membership, not an Auth0 subject or email. The diagnostic compares
+  actors to the persisted assignee and a currently active owner membership, without
+  exporting membership/user/provider-account identifiers. Paired audit rows must
+  match the corresponding event request ID and handoff transition correlation/time.
+
+| Assertion | Result | Evidence / unresolved requirement |
+| --- | --- | --- |
+| Accepted live current state: handoff resolved/4; conversation open/12, AI mode, no active handoff | PASS, preserved API evidence | No fresh database snapshot was taken |
+| Direct current handoff/conversation database snapshot | BLOCKED | Runtime-role diagnostic has not executed |
+| Persisted Claim intermediates: versions 2 and 3, same owner/time/correlation | BLOCKED | Source expectation only; no transition rows read |
+| Persisted Resolve: version 4, `staff_resolved` / `resume_ai` | BLOCKED | Source expectation only; no transition row read |
+| Persisted conversation events: versions 11 and 12 | BLOCKED | No canonical Outbox event rows read |
+| Claim: two succeeded, owner-attributed target audit rows | BLOCKED | No audit rows read |
+| Resolve: two succeeded, owner-attributed target audit rows | BLOCKED | No audit rows read |
+
+Diagnostic preparation/provenance:
+
+- Existing authorized staff readers expose current resources, Inbox and History,
+  but no direct transition/audit ledger reader. Their accepted read-response IDs
+  above are not substituted for mutation audit correlations.
+- The installed local tools have no `gcloud` command; none exists in the three
+  standard Cloud SDK installation locations checked. Process-local runtime database
+  and GCP credential variables are absent. GitHub authentication is not GCP
+  authentication; existing Staging Terraform inputs expose no scoped handoff-audit
+  execution. No workflow was dispatched or repurposed to bypass that limitation.
+- Prepared outside-repository reader:
+  `C:/Users/Lenovo/AppData/Local/Temp/s22-handoff-audit-readonly.mjs`, SHA256
+  `1cc3ae55e39d7406f5288c4285a6ad0f51b6ede25e4a4339acee7957a8121f8c`.
+  Prepared launcher: `C:/Users/Lenovo/AppData/Local/Temp/s22-handoff-audit-launch.sh`,
+  SHA256 `eec9105d80f7b9ac024cb8c10f1837f814234f8853958f9cbfd39f4de7faa6d8`.
+  These local diagnostic files are not repository files or deployed product changes.
+- Ready execution path is the **existing authenticated Cloud Shell**, using the
+  existing `lead-agent-staging-migrator` job only as an execution container. Upload
+  both files into one directory, then run `bash s22-handoff-audit-launch.sh` there.
+  The launcher checks the reader hash, deployed immutable image, Node command,
+  service identity, runtime secret **reference**, private VPC and zero retries.
+  It overrides execution arguments/environment only, never updates the job or
+  invokes `dist/index.js` / a migration entrypoint. It reads no secret payload
+  through CLI, grants no IAM, and aborts on unavailable access/preflight mismatch.
+- The reader uses only `DATABASE_URL` (the existing runtime-role secret reference),
+  never `MIGRATION_DATABASE_URL`. It starts an explicit repeatable-read **READ ONLY**
+  transaction, requires `lead_agent_runtime`, no SUPERUSER/BYPASSRLS, no inherited
+  tenant context, and ENABLE/FORCE RLS on the six narrowly needed tables. It sets
+  `app.organization_id` transaction-locally with the exact parameterized tenant.
+  Runtime SELECT permissions/RLS derive from `0010_s5_tenant_rls.sql` and current
+  `runtime/tenant.ts`; no privileged `SET ROLE` or definer bypass is used.
+- Connection/statement timeouts are **5 seconds**, query timeout **6 seconds**, lock
+  timeout **1 second**, idle transaction timeout **10 seconds**. All resource reads
+  bind organization/resource/window parameters and cap rows at 2, 4, 3 and 5
+  respectively (expected count plus one, so unexpected extra rows do not pass).
+  Successful and unsuccessful exits attempt rollback and connection cleanup.
+  The launcher bounds execution polling to 90 seconds and cancels only its exact
+  diagnostic execution if necessary; it never automatically retries.
+- Output selects only state/version/time/correlation/request metadata, owner-match
+  booleans and explicitly allowlisted JSON scalars. No message table/body, contact
+  detail, provider account, credential, ciphertext or full JSON blob is selected.
+  Errors expose stage plus sanitized code only. Missing structured log evidence
+  remains BLOCKED, including ingestion/read-access failures.
+- Local preparation evidence: `node --check` and launcher `bash -n` PASS;
+  **15/15 mocked diagnostic checks
+  PASS** (expected rows, connection/query failures with cleanup, wrong role, missing
+  FORCE RLS, wrong intermediate version, wrong actor and millisecond mismatch).
+  These are not live PostgreSQL checks. No existing suites or CI were repeated.
+
+Required next action: execute this exact scoped diagnostic from existing
+authenticated GCP access and preserve its structured results/execution ID. Do not
+broaden permissions if that access cannot launch the existing job or read its logs.
+After this evidence gap is closed, the next milestone is authoritative synthetic
+business knowledge and the complete customer-to-confirmed-booking journey.
+S22 remains unaccepted; S23 has not started.
+
 ## Remaining gates
 
 | Gate | Evidence still required |
