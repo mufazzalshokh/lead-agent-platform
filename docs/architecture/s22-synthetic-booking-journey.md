@@ -378,10 +378,10 @@ Prepared files (not committed):
 The launcher retains the reviewed deployed immutable image/identity/secret reference,
 private network/subnet/egress and explicit zero retries, with actual ESM subprocess
 and bounded execution. Its bounded log read captures exit status; an unavailable
-log read is not permission to rerun the diagnostic. The packet is not yet executed.
-Use it only while its exact image preflight matches; never replace its expected
-digest with an unreviewed image. Upload both files together, then run
-`bash s22-cost-origin-launch-v1.sh` only for the still-masked cost-origin gap.
+log read is not permission to rerun the diagnostic. At preparation the packet had
+not executed; the owner subsequently ran it successfully as recorded below.
+Never replace its expected digest with an unreviewed image. Do not rerun this
+packet now that the scoped masked-category gap is closed.
 
 Local affected verification: Gemini adapter **47/47**, readiness **10/10** PASS;
 AI package typecheck/production declarations, root TypeScript and scoped lint PASS.
@@ -395,6 +395,40 @@ remain unknown; paid calls remain paused, budgets unchanged. The runtime parser
 requires fresh immutable images and an exact reviewed deployment plan before rollout;
 no apply, migration, OAuth, Claim/Resolve or unrelated CI is authorized by this fix.
 
+### Cost-origin live read-back — 2026-10-05
+
+**Owner-supplied** `lead-agent-staging-migrator-dlts6` reports completed condition
+`True` and log-read exit **0**. All private-network/explicit-zero-retry preflight
+guards and all three reader assertions **PASS**: runtime/read-only/tenant guard;
+FORCE-RLS/not-owner guard (12 tables); exact historical rows (two exact IDs,
+unchanged records, paid calls paused). This is live diagnostic evidence supplied
+by the owner, not an independently retrieved execution or billing attestation.
+
+| Exact run | New observed evidence | Current classification |
+| --- | --- | --- |
+| `01a1067f-dfc8-7e14-9e12-89a0e30fd27e` | Input 520/output 217/total 737; cached input NULL, original raw field unavailable; cost NULL | Provider call with incomplete historical accounting; cost unknown |
+| `01a10af4-5126-7ce8-ab52-0424e07ab3d9` | Actual persisted category `staff_requested`; no resolved model/output/schema/policy/usage; cost NULL | Source-corroborated deterministic pre-dispatch staff handoff; not a provider outage/quality failure; stored cost still NULL |
+
+Deployed source `a26b28c7da44ae56c32a8d9dc1bac7cc3c06095c` uses the S16
+appointment-submission orchestrator in the Worker. The human-request predicate
+sets `staff_requested` in preflight **before** provider `decide`; finish checks
+the same snapshot message/predicate. Those files match the reviewed parser-fix
+source, and the accepted zero-invocation focused test covers this path. This
+source-correlated classification does not rewrite the row or pretend to be a
+provider invoice. `finishAIRun` records NULL cost without resolved model/usage,
+even for the legitimate no-provider preflight. No audited historical reconciliation
+interface exists; no ad-hoc write or invented zero cost is performed.
+
+The unresolved provider-call evidence is the original allowlisted cache usage
+metadata or authoritative billing evidence. The ledger still contains **two
+NULL-cost rows**, so it is not ready under the current rules; paid calls remain
+paused, USD 5 target / USD 10 hard ceiling unchanged. No diagnostic, OAuth,
+Claim/Resolve or accepted tests need repeating. The forward parser fix has fresh
+build **37313624020 PASS** and saved plan **37314501163 PASS**, not applied;
+[exact review packet](s22-acceptance-evidence.md#cache-parser-rollout-preparation--2026-10-05).
+Historical accounting reconciliation remains separately blocked. Do not treat
+deployment of the parser as reconciliation of these rows or S22 acceptance.
+
 ## Journey and current checkpoint
 
 No booking action may target unrelated work. All date/time preferences must come
@@ -407,7 +441,7 @@ and fresh resource/conversation versions at each step. No external calendar writ
 | Existing business configuration inspection | Authenticated tenant-bound reads, existing policies/languages and safe resource metadata | PASS: owner context, empty complete initial inventory; initial expired-session 401 superseded after owner sign-in |
 | Authoritative fixture publication | Exact returned IDs, current published versions/hashes and offering | PASS: five published version-1 records and active offering; exact fixture read-back 7/7 |
 | Conversation pipeline retrieval | Real repository reader returns current price/duration references for this exact conversation | PASS (owner-supplied V3): current fixture root 4/publication 1, 30 minutes; two price facts and one duration fact retrieved |
-| Live model/cost readiness | Resolved model and complete internal bounded cohort ledger | Approved resolved model observed once; ledger FAIL, two unknown-cost runs. Paid calls PAUSED; per-run classification/reconciliation evidence required |
+| Live model/cost readiness | Resolved model and complete internal bounded cohort ledger | One provider call with missing historical cache usage; one source-corroborated pre-dispatch staff request. Stored ledger still has two NULL-cost rows; paid calls PAUSED; authoritative accounting/reconciliation remains blocked |
 | Service/price question | Friend sends one natural question in the approved synthetic Instagram DM; grounded reply uses the published fixture price, no availability claim | PENDING cost readiness and actual customer message; authoritative retrieval PASS |
 | Qualification | Published V1 evidence and eligible bound channel; no mandatory phone or invented evidence | PENDING |
 | Booking request | Real customer date/time preference; authoritative `requested` record with S16 profile and Qualification V1 provenance | PENDING |

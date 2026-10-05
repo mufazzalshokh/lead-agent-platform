@@ -658,10 +658,64 @@ approval of this exact reviewed saved plan; never reuse an earlier approval or
 regenerate and silently apply a replacement.
 
 Historical costs are still **unknown**; no backfill or paid call occurred. The
-cost-origin-only packet remains pending and matches the **currently deployed**
-old migrator image. Execute that bounded diagnostic before an eventual approved
-rollout, or prepare a newly reviewed packet afterwards; never bypass its immutable
-image guard. S22 is unaccepted; no S23 work or final aggregate CI was started.
+cost-origin-only packet was pending when this plan was prepared; its subsequent
+owner-supplied live result is recorded below. The reviewed plan is still **not
+applied**. Never bypass a diagnostic's immutable-image guard. S22 is unaccepted;
+no S23 work or final aggregate CI was started.
+
+## Cost-origin live diagnostic PASS; accounting gap retained — 2026-10-05
+
+**Owner-supplied** execution `lead-agent-staging-migrator-dlts6`:
+`DIAGNOSTIC_STATE=True`, `DIAGNOSTIC_LOG_READ_EXIT=0`. The exact reviewed packet
+from the preceding checkpoint passed the image/runtime-secret-reference/identity,
+private VPC/subnet/egress and explicit zero-retry preflight. All three reported
+reader assertions **PASS**:
+
+| Assertion | Safe observed result |
+| --- | --- |
+| Runtime / read-only / tenant guard | Least privilege, read-only, row security, runtime, staging database and tenant match all true |
+| FORCE RLS / runtime not owner | 12 tables; safe true |
+| Exact historical rows | Two exact requested IDs; historical records unchanged; paid calls paused |
+
+The successful run `01a1067f-dfc8-7e14-9e12-89a0e30fd27e` still has input 520,
+output 217, total 737 and **cached input NULL**, approved resolved model/profile/
+catalog, schema/policy true and cost NULL. No original raw cache-field evidence
+was recovered; its cost remains **unknown**. The forward parser correction does
+not authorize assigning the controlled 1,204-micro estimate to this historical run.
+
+The failed run `01a10af4-5126-7ce8-ab52-0424e07ab3d9` has the now-unmasked
+persisted category **`staff_requested`**, not a provider transport/error category.
+Resolved model, schema/policy, output hash and all usage remain absent; cost remains
+NULL and catalog remains `not-priced.v1`. This closes the masked-category gap.
+
+Classification: **source-corroborated deterministic pre-dispatch staff request**,
+not a demonstrated provider outage or quality failure. Inspection of deployed
+source `a26b28c7da44ae56c32a8d9dc1bac7cc3c06095c` confirms Worker uses
+`createAppointmentSubmissionOrchestrator` with the recorded S16 prompt. Its
+`appointmentSubmissionPreflight` obtains `staff_requested` from the deterministic
+human-request predicate; `createAIOrchestrator` evaluates it before `decide` and
+finishes with `provider=null`. The finish-time recheck uses that same snapshot
+message/predicate; it is not a separate model-derived staff-request classification.
+These composition/preflight/orchestrator/persistence files are unchanged between
+the deployed source and reviewed parser-fix source. The accepted focused test also
+observes zero mocked provider calls for this path. This is a source-correlated
+classification of the live record, **not an independent provider billing record**.
+
+The persistence implementation records NULL cost when no resolved model/usage is
+available, including this legitimate preflight. No existing audited reconciliation
+interface can update this historical accounting safely. Neither historical row,
+usage, catalog nor provenance was overwritten. The stored cohort therefore still
+has **two NULL-cost rows**; no ledger-ready claim, zero-cost backfill, budget increase
+or new paid call is justified. Missing evidence for the real provider call is its
+original allowlisted usage metadata or authoritative billing evidence; a historical
+reconciliation capability would require a deliberate separately scoped decision.
+
+No further diagnostic rerun is needed. Only the two S22 evidence/journey documents
+changed for this result; scoped formatting and diff checks PASS. Existing parser/
+preflight tests and build/plan evidence are unchanged and not repeated. No runtime
+deployment, migration, IAM/job configuration change, OAuth, Claim/Resolve or CI
+occurred. Exact-plan approval is still required before the prepared parser rollout.
+S22 remains unaccepted; paid calls stay paused and S23 is not started.
 
 ## Remaining gates
 
