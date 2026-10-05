@@ -422,6 +422,49 @@ Its output must be obtained before claiming live retrieval/model/cost readiness.
 The actual customer-to-confirmed-booking journey remains **PENDING**; no customer
 confirmation or staff attestation was fabricated.
 
+## Business-readiness wrapper correction — 2026-10-05
+
+**Owner-supplied failed execution:** `lead-agent-staging-migrator-7xb69`, exit **1**,
+Node **v24.14.0**, `SyntaxError: Cannot use 'import.meta' outside a module`, at the
+reader's `import.meta.resolve('@lead-agent/database')` statement. No execution logs
+were independently fetched in this continuation. The exact original generated
+container command and unchanged decoded reader reproduced the error locally.
+Classification: **DIAGNOSTIC TOOLING FAILURE**, not a failed database/knowledge
+assertion. The original wrapper passed reader text to `eval`; the outer
+`--input-type=module` did not make eval's Script parse an ES-module parse. Previous
+mocked checks replaced the failing import line and therefore missed the defect.
+
+Prepared uniquely named outside-repository launcher:
+`C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-launch-v2.sh`, SHA256
+`d3efe2a0acb6c8895e05e43531a3a520b1f33a601acf8128d2de71f01779d464`.
+Reader **unchanged**, SHA256
+`70209e45b8dafe2e3e6652cf9daae7c84792288e7f8c4e802f043f551663ae1c`.
+V2 feeds decoded UTF-8 bytes to a real `node --input-type=module` stdin subprocess,
+with the inherited deployed `/app` working directory and package resolution base.
+No eval, temporary `/tmp` module or `data:` module is used. Commas in the bootstrap
+remain inside the third Node argument via gcloud's documented custom list delimiter.
+The child has a 60-second bound and propagates its status/sanitized bootstrap errors.
+All existing image/identity/secret-reference, VPC/subnet/egress, explicit zero-retry,
+execution-poll/log and reader transaction/RLS/query/rollback safeguards are preserved.
+
+**7/7 exact-bootstrap subprocess checks PASS** on the same **Node v24.14.0** as the
+failed container: reproduce the original parse failure; run the **unmodified reader**
+against controlled application packages with actual Node bare/package-relative
+module resolution; verify static/dynamic imports, top-level await, `import.meta.resolve`,
+module base, UTF-8 and native environment assignment; fail read-only guard with
+rollback/close; fail missing-package resolution without fallback; propagate child
+exit 7; propagate a module execution error. V2 shell syntax PASS; exact old/v2 diff
+contains only the new bootstrap and its argument transport/comments. These are
+local controlled subprocess tests, not live database/provider readiness evidence.
+Harness path/hash and the one v2 upload/run instruction are recorded in
+[s22-synthetic-booking-journey.md](s22-synthetic-booking-journey.md).
+
+Only evidence documents changed in the repository. The reader, deployed source,
+images, job configuration, IAM, secrets, migrations and provider settings did not
+change. No old/corrected launcher or live migration was executed, no deployment,
+paid call, unrelated suite or CI was repeated. **Business readiness remains PENDING**
+until the corrected live diagnostic returns results. S22 remains unaccepted.
+
 ## Remaining gates
 
 | Gate | Evidence still required |

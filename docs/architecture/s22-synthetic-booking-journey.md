@@ -116,20 +116,45 @@ message, establish the bounded cohort ledger and account for attempts/repairs an
 unresolved usage; stop if the projected total cannot be shown below the ceiling.
 Do not change billing, budgets, model settings or provider keys.
 
-A separate outside-repository readiness packet is ready for the owner's existing
-authenticated Cloud Shell; local GCP/database authentication is unavailable:
+A separate outside-repository readiness packet is prepared for the owner's existing
+authenticated Cloud Shell; local GCP/database authentication is unavailable. The
+original launcher failed before reader execution; use **v2 only**, as explained below:
 
 - `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-readonly.mjs`, SHA256
   `70209e45b8dafe2e3e6652cf9daae7c84792288e7f8c4e802f043f551663ae1c`.
-- `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-launch.sh`, SHA256
-  `4d936a4af0199bc9ab82efbc9252db5e64a686fa15a5efaea89b5148ca3f8c1f`.
+- **New upload:** `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-launch-v2.sh`,
+  SHA256 `d3efe2a0acb6c8895e05e43531a3a520b1f33a601acf8128d2de71f01779d464`.
 
-Upload these two files together and run `bash s22-business-readiness-launch.sh`.
+The reader is unchanged; reuse its existing exact-named Cloud Shell upload if its
+hash matches. Upload only the uniquely named **v2** launcher into that same directory,
+then run `bash s22-business-readiness-launch-v2.sh`. Its existing hash preflight
+rejects a missing/different reader rather than using a duplicate-upload filename.
 The launcher preserves the proven exact image/identity/runtime-secret-reference,
-private VPC, explicit zero-retry and bounded execution/log safeguards; only four
-diagnostic references differ from the already-verified launcher. It executes a
+private VPC, explicit zero-retry and bounded execution/log safeguards. It executes a
 new read-only payload, **not the old handoff diagnostic or migrator entrypoint**.
 There is no job update, IAM grant, deployment, secret access via CLI or paid call.
+
+The owner reports original execution `lead-agent-staging-migrator-7xb69`, exit 1,
+with `SyntaxError: Cannot use 'import.meta' outside a module` on Node 24.14.0.
+Confirmed tooling cause: the original generated command was
+`node --input-type=module -e 'eval("(async()=>{"+atob(process.env.S22_BUSINESS_READ_B64)+"})()")'`.
+Its outer bootstrap is a module, but the decoded reader is parsed by **eval as
+Script**, before any imports, transaction or database checks can run. The prior
+six mocks replaced the `import.meta.resolve` line and did not cover this path.
+This is a diagnostic-wrapper defect, not a failed business/schema assertion.
+
+V2 keeps the decoded reader bytes intact and passes their UTF-8 Buffer to a Node
+subprocess's stdin with `--input-type=module`. The child inherits the deployed
+application working directory `/app`, native environment and stdout/stderr.
+Its module base therefore supports bare `@lead-agent/*` package imports,
+`import.meta.resolve('@lead-agent/database')`, and the package-relative
+`./runtime/tenant.js` file URL. It writes no temporary module under `/app` or `/tmp`
+and does not use eval or a `data:` module with a different resolution base.
+The child is bounded at 60 seconds and propagates its exit status; bootstrap
+timeout/signal failures emit only a finite sanitized failure code. The existing
+90-second execution poll/cancellation limit is unchanged. The argument list uses
+the [documented gcloud custom delimiter](https://docs.cloud.google.com/sdk/gcloud/reference/topic/escaping)
+`^~^` so commas inside the JavaScript bootstrap remain inside its one `-e` argument.
 
 The payload uses the real `TenantDbSession` runtime with READ ONLY enabled before
 transaction initialization, exact tenant context, 5-second connection/statement
@@ -145,9 +170,23 @@ Zero existing runs is **not** live provider proof; null cost remains unknown.
 Readiness output is scoped to this synthetic tenant, not an invoice, promotional
 credit balance or proof that unrelated/unrecorded paid calls did not occur.
 Obtain and reconcile the result before a bounded customer/provider cohort.
-Local packet checks: `node --check`, `bash -n`, exact launcher-change comparison
-and **6/6 mocked readiness guard/cleanup scenarios PASS**. No live result has yet
-been received for this packet.
+Preserved local packet checks: `node --check`, `bash -n` and six mocked readiness
+guard/cleanup scenarios. Those alone did **not** prove the original bootstrap.
+V2 adds **7/7 exact-bootstrap Node subprocess checks PASS** on **v24.14.0**, using
+controlled application packages outside the repository and the **unmodified reader**:
+original error reproduction; successful complete reader execution with actual
+bare/relative ESM imports; static/dynamic imports, top-level await, module-base
+resolution, UTF-8 and native environment assignment; read-only denial with
+rollback/close; missing-package fail-closed behavior; exact nonzero exit propagation;
+and module-execution failure propagation. No database connection, paid call or
+live job was used. V2 `bash -n` PASS; diff review confirms only bootstrap comments,
+definition and `--args` changed, with all existing safeguards otherwise unchanged.
+
+Reproducible outside-repository test command:
+`node "C:/Users/Lenovo/AppData/Local/Temp/s22 ESM wrapper proof 239acac5c8364e8e971974f96cad5162/verify-bootstrap.mjs"`.
+Harness SHA256 `b63e1a4718bc8da0b00229b63a5aa3bc2718c685fe492be777b6c3e9e5465baa`.
+No corrected live execution has occurred in this continuation. Business readiness
+remains pending until v2 returns its actual diagnostic results; no S22 acceptance.
 
 ## Journey and current checkpoint
 
