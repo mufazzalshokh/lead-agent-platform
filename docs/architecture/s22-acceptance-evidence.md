@@ -1229,6 +1229,15 @@ and is not claimed as a PASS; fixture resolution is separate from live validatio
 Prior runtime/PostgreSQL evidence is reused, not rerun. The live cohort result and
 first customer action remain pending until this new read completes.
 
+Initial read-only run **37344869596** stopped with `WORKER_SCALING_MISMATCH`
+before a diagnostic execution or paid call. Confirmed tooling/REST-schema defect:
+the verifier incorrectly expected the service-only `scalingMode` in Worker Pool
+v2 metadata. Google's [WorkerPoolScaling contract](https://docs.cloud.google.com/run/docs/reference/rest/v2/projects.locations.workerPools#WorkerPoolScaling)
+contains only `manualInstanceCount`. Corrected to require an explicit numeric
+one and reject unexpected scaling fields; absence, zero, string one and count two
+remain failures. Original explicit-zero-retry, identity/image/VPC and read-only
+safeguards are unchanged. The actual deployment is not changed or repeated.
+
 ## Remaining gates
 
 | Gate | Evidence still required |

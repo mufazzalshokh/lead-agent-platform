@@ -55,8 +55,11 @@ export function verifyWorker(worker) {
     template.serviceAccount === `lead-agent-staging-worker@${project}.iam.gserviceaccount.com`,
     "WORKER_IDENTITY_MISMATCH",
   );
+  // WorkerPoolScaling (unlike ServiceScaling) has only manualInstanceCount.
+  // https://docs.cloud.google.com/run/docs/reference/rest/v2/projects.locations.workerPools#WorkerPoolScaling
   requireSafe(
-    worker.scaling?.scalingMode === "MANUAL" && worker.scaling.manualInstanceCount === 1,
+    worker.scaling?.manualInstanceCount === 1 &&
+      Object.keys(worker.scaling).every((key) => key === "manualInstanceCount"),
     "WORKER_SCALING_MISMATCH",
   );
   requireSafe(worker.terminalCondition?.state === "CONDITION_SUCCEEDED", "WORKER_NOT_READY");
@@ -253,7 +256,17 @@ async function main() {
       { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) },
     );
     requireSafe(response.ok, "WORKER_METADATA_UNAVAILABLE");
-    evidence.worker = verifyWorker(await response.json());
+    const workerMetadata = await response.json();
+    evidence.worker_scaling = {
+      manual_instance_count:
+        typeof workerMetadata.scaling?.manualInstanceCount === "number"
+          ? workerMetadata.scaling.manualInstanceCount
+          : null,
+      fields: Object.keys(workerMetadata.scaling ?? {}).filter((name) =>
+        /^[a-zA-Z]{1,50}$/.test(name),
+      ),
+    };
+    evidence.worker = verifyWorker(workerMetadata);
     evidence.diagnostic = verifyJob(
       JSON.parse(
         await cloud([

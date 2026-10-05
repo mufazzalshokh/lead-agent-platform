@@ -22,7 +22,7 @@ const network = [
 const worker = () => ({
   name: `projects/${project}/locations/me-central1/workerPools/lead-agent-staging-worker`,
   terminalCondition: { state: "CONDITION_SUCCEEDED" },
-  scaling: { scalingMode: "MANUAL", manualInstanceCount: 1 },
+  scaling: { manualInstanceCount: 1 },
   template: {
     serviceAccount: `lead-agent-staging-worker@${project}.iam.gserviceaccount.com`,
     vpcAccess: { egress: "PRIVATE_RANGES_ONLY", networkInterfaces: network },
@@ -86,6 +86,16 @@ test("missing/string retry is never implicitly zero", () => {
     value.spec.template.spec.template.spec.maxRetries = retry;
     assert.throws(() => verifyJob(value), { code: "EXPLICIT_ZERO_RETRIES_REQUIRED" });
   }
+});
+test("worker manual-instance REST shape requires an explicit numeric one and rejects service-only fields", () => {
+  for (const count of [undefined, 0, "1", 2]) {
+    const value = worker();
+    value.scaling.manualInstanceCount = count;
+    assert.throws(() => verifyWorker(value), { code: "WORKER_SCALING_MISMATCH" });
+  }
+  const serviceShape = worker();
+  serviceShape.scaling.scalingMode = "MANUAL";
+  assert.throws(() => verifyWorker(serviceShape), { code: "WORKER_SCALING_MISMATCH" });
 });
 test("wrong secret, identity or network fails closed", () => {
   const secret = job();
