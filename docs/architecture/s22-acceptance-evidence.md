@@ -1338,6 +1338,28 @@ runtime source/build/deployment change or broad CI. A dedicated
 not an installed dependency. The underlying runtime path is unchanged from
 deployed `f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d`.
 
+Combined read **37351929187**, tooling source
+`25b1e66e42fbe44e4d96f1e2d9896a3b19ec03f2`: reviewed Worker/job prerequisites
+PASS; execution **`lead-agent-staging-migrator-mqfd8` SUCCESS**. Main reader
+SHA256 `04a3488a3eaf9e620bbe7e92fa5b618db99c0f4ef50938231bc4906b8fe28941`,
+trace module SHA256
+`adc5a1c2aad930cd75d120480718b5a6c721ca8f094c445cf1197fdaa2079529`.
+The saved sanitized artifact proves **`EXACT_EXECUTION_LOG_PERMISSION_DENIED`**,
+not merely an inferred transport/permission failure. All scoped metadata reads
+completed, but their observed values remain unavailable to this deployment
+identity; the assertion list in the retrieved artifact is empty. No persisted
+run/action/outbound value or earliest product failure is guessed from execution
+success. No extra paid call, refund, replay, job configuration change, migration,
+runtime build/deployment or IAM change occurred.
+
+Recover the already-produced structured rows from this exact execution with the
+owner's existing Cloud Shell log-read access, together with exact
+organization/correlation Worker span/failure metadata in the same bounded window.
+One command, no file upload or diagnostic rerun. This is a genuine access blocker
+to the next investigation step, not a completed runtime correction. Further paid
+messages stay paused; a runtime fix/deployment packet must wait for the actual
+terminal result, validation/policy codes and persisted reply/Outbox disposition.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |
