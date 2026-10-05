@@ -92,13 +92,14 @@ on:
           - paused
           - booking
       booking_evidence_stage:
-        description: Read-only cohort evidence; initial requires zero new paid slots, observe reads progress
+        description: Read-only cohort evidence; initial checks baseline, observe progress, first-turn traces the exact authorized message
         required: false
         default: initial
         type: choice
         options:
           - initial
           - observe
+          - first-turn
       migrator_image:
         description: Immutable migrator image reference by digest (migration and later phases)
         required: false

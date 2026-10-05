@@ -149,7 +149,22 @@ const assertions = new Set([
   "deployed_cohort_binding",
   "cohort_reservation_accounting",
 ]);
-const optionalAssertions = new Set(["first_turn_readiness", "initialize", "pool_error", "cleanup"]);
+const traceAssertions = new Set([
+  "first_turn_runs",
+  "first_turn_actions",
+  "first_turn_messages",
+  "first_turn_audits",
+  "first_turn_outbox",
+  "first_turn_queue_access",
+]);
+const optionalAssertions = new Set([
+  "first_turn_readiness",
+  "first_turn_trace",
+  "initialize",
+  "pool_error",
+  "cleanup",
+  ...traceAssertions,
+]);
 const fields = new Set([
   "runtime_read_only_tenant_guard",
   "force_rls",
@@ -194,6 +209,61 @@ const fields = new Set([
   "reason",
   "no_pending_paid_calls",
   "no_existing_synthetic_request",
+  "collection_only",
+  "run_id",
+  "trigger_message_id",
+  "correlation_id",
+  "attempt_no",
+  "expected_conversation_version",
+  "provider_id",
+  "requested_model_id",
+  "provider_resolved_model_id",
+  "schema_valid",
+  "policy_allowed",
+  "failure_category",
+  "input_units",
+  "output_units",
+  "cached_input_units",
+  "reasoning_units",
+  "total_units",
+  "estimated_cost_micros",
+  "cost_catalog_version",
+  "latency_ms",
+  "has_output_hash",
+  "started_at",
+  "finished_at",
+  "ai_run_id",
+  "action_name",
+  "validation_status",
+  "policy_reason_code",
+  "application_status",
+  "sequence_no",
+  "processing_status",
+  "reply_to_message_id",
+  "event_type",
+  "target_type",
+  "target_id",
+  "action",
+  "result",
+  "reason_code",
+  "occurred_at",
+  "recorded_status",
+  "recorded_attempt_no",
+  "dispatch_authorized",
+  "reservation_micros",
+  "aggregate_type",
+  "aggregate_id",
+  "aggregate_version",
+  "attempt_count",
+  "last_error_category",
+  "available_at",
+  "published_at",
+  "causation_id",
+  "ai_run_outcome",
+  "proposed_action",
+  "handler_read",
+  "job_read",
+  "queue_record_proof",
 ]);
 const redact = (value) => {
   if (Array.isArray(value)) return value.slice(0, 21).map(redact);
@@ -232,6 +302,11 @@ export const sanitizeRows = (entries) =>
   });
 const cloud = async (args, timeout = 15000) =>
   (await execute("gcloud", args, { timeout, maxBuffer: 1024 * 1024 })).stdout;
+export const logReadFailureCode = (error) =>
+  typeof error?.stderr === "string" &&
+  /PERMISSION_DENIED|does not have permission|permission denied|403 Forbidden/iu.test(error.stderr)
+    ? "EXACT_EXECUTION_LOG_PERMISSION_DENIED"
+    : "EXACT_EXECUTION_LOG_READ_BLOCKED";
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const moduleBootstrap =
   'import{spawnSync}from"node:child_process";const r=spawnSync(process.execPath,["--input-type=module"],{input:Buffer.from(process.env.S22_BOOKING_READ_B64,"base64"),cwd:process.cwd(),env:process.env,stdio:["pipe","inherit","inherit"],timeout:60000,killSignal:"SIGTERM"});process.exitCode=r.error||r.signal?1:Number.isInteger(r.status)?r.status:1;';
@@ -249,7 +324,7 @@ async function main() {
   let execution,
     terminal = false;
   try {
-    requireSafe(stage === "initial" || stage === "observe", "READ_STAGE_INVALID");
+    requireSafe(["initial", "observe", "first-turn"].includes(stage), "READ_STAGE_INVALID");
     const token = (await cloud(["auth", "print-access-token"])).trim();
     const response = await fetch(
       `https://run.googleapis.com/v2/projects/${project}/locations/${region}/workerPools/lead-agent-staging-worker`,
@@ -281,6 +356,12 @@ async function main() {
       ),
     );
     const reader = await readFile(new URL("./s22-booking-evidence-readonly.mjs", import.meta.url));
+    const traceReader =
+      stage === "first-turn"
+        ? await readFile(new URL("./s22-booking-first-turn-readonly.mjs", import.meta.url))
+        : null;
+    if (traceReader !== null)
+      evidence.trace_reader_sha256 = createHash("sha256").update(traceReader).digest("hex");
     evidence.reader_sha256 = createHash("sha256").update(reader).digest("hex");
     // Same actual-ES-module stdin bootstrap already proven in the prior diagnostic.
     execution = (
@@ -293,7 +374,7 @@ async function main() {
           `--project=${project}`,
           `--region=${region}`,
           `--args=^~^--input-type=module~-e~${moduleBootstrap}`,
-          `--update-env-vars=S22_BOOKING_READ_B64=${reader.toString("base64")}`,
+          `--update-env-vars=^~^S22_BOOKING_READ_B64=${reader.toString("base64")}~S22_BOOKING_READ_STAGE=${stage}${traceReader === null ? "" : `~S22_BOOKING_TRACE_B64=${traceReader.toString("base64")}`}`,
           "--format=value(metadata.name)",
         ],
         30000,
@@ -356,8 +437,8 @@ async function main() {
             20000,
           ),
         );
-      } catch {
-        throw Object.assign(new Error(), { code: "EXACT_EXECUTION_LOG_READ_BLOCKED" });
+      } catch (error) {
+        throw Object.assign(new Error(), { code: logReadFailureCode(error) });
       }
       evidence.assertions = sanitizeRows(entries);
       if (evidence.assertions.length >= assertions.size) break;
@@ -376,6 +457,13 @@ async function main() {
           (r) => r.assertion === "first_turn_readiness" && r.outcome === "PASS",
         ),
         "FIRST_TURN_NOT_READY",
+      );
+    if (stage === "first-turn")
+      requireSafe(
+        [...traceAssertions].every((name) =>
+          evidence.assertions.some((r) => r.assertion === name && r.outcome === "PASS"),
+        ),
+        "FIRST_TURN_TRACE_INCOMPLETE",
       );
     evidence.outcome = "PASS";
   } catch (error) {

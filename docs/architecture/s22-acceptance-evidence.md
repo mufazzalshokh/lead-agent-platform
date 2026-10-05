@@ -1298,6 +1298,46 @@ headers, account details or credentials. No uploads, rerun, permission expansion
 deployment, migrations or unrelated tests. Further paid messages remain paused
 until the first-turn accounting/stop conditions and actual delivery are known.
 
+Owner subsequently supplied the live observer/worker results: inbound persisted
+`2026-10-05T17:23:28.698Z`, message
+`01a10d17-89b6-7c09-8d19-8bbaacec8979`, correlation
+`01a10d17-89b6-7d26-a4c5-cd14151eaeb4`, outbox/physical job
+`01a10d17-89b6-77b6-8365-99f28ec3c2b1`; dispatch 103 ms / AI handler 3,677 ms.
+Conversation open/13, AI mode, no active handoff. Ledger: one logical message,
+one physical slot, known cost **1,950 micros / USD0.001950**, zero unresolved
+reserve, `blocked=false`. Delivery metadata at 17:29 UTC had only the inbound
+message. These are **owner-supplied live results**, not newly retrieved raw rows;
+timing/priced usage do not prove schema validity, permitted output or reply
+persistence. The first paid turn remains counted, not refunded/replayed.
+
+The repository-backed `first-turn` reader now collects the exact run terminal
+status/schema/policy/error/usage fields, action name/validation/application codes,
+message processing and outbound linkage, allowlisted AI/reply audits and Outbox
+disposition together. All reads bind the authorized organization, exact
+conversation/message/correlation and 17:22–17:37 UTC; strict row/time limits,
+runtime/read-only/tenant/FORCE-RLS checks, rollback/cleanup and immutable-job
+prerequisites remain. No arguments ciphertext, bodies, raw provider output,
+account IDs or whole audit/event payload is selected. Metadata collection PASS
+does not mean the underlying AI result/delivery passed.
+
+Private `app.worker_handler_executions`/`pgboss.job` access is explicitly revoked
+from `lead_agent_runtime` by migration 0024. Only catalog privilege flags are
+read; retry/DLQ records are not fabricated or obtained through a permission
+bypass. Exact tenant/correlation worker logs are the existing authorized proof
+path for that gap. Logging permission errors now get a distinct stable sanitized
+tag without printing stderr/credentials or broadening IAM.
+
+Local preparation: six new focused Node cases PASS, plus the directly affected
+existing redaction case PASS. Controlled Node subprocess executes the complete
+actual bootstrap/main reader/helper with bare-package and relative runtime
+resolution, all twelve metadata assertions, read-only guards, rollback and pool
+cleanup; no DB/provider call. This fixture result is not a live AI result or
+production defect reproduction. Scoped ESLint/Prettier/diff checks PASS; no
+runtime source/build/deployment change or broad CI. A dedicated
+`yaml` import was unavailable locally; Prettier's existing YAML parser is used,
+not an installed dependency. The underlying runtime path is unchanged from
+deployed `f523ba330c7b1dcffe8a18d22a65d0dea6d7b40d`.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |

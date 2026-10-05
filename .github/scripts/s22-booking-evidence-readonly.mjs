@@ -80,7 +80,15 @@ try {
     const read = async (text, extra = []) =>
       (await internal.executeTenantQuery(session, (org) => ({ text, values: [org, ...extra] })))
         .rows;
-    const tables = ["ai_runs", "audit_events", "conversations", "appointment_requests", "messages"];
+    const tables = [
+      "ai_runs",
+      "ai_action_evaluations",
+      "audit_events",
+      "conversations",
+      "appointment_requests",
+      "messages",
+      "outbox_events",
+    ];
     const [rls] = await read(
       `select count(*)::int as count,
       bool_and(c.relrowsecurity and c.relforcerowsecurity and c.relowner<>(select oid from pg_catalog.pg_roles where rolname=current_user)) as safe
@@ -139,6 +147,20 @@ try {
       [conversation, "2026-10-05T16:28:09Z"],
     );
     report("synthetic_delivery_metadata", sends.length < 21, { rows: sends });
+    if (process.env.S22_BOOKING_READ_STAGE === "first-turn") {
+      stage = "first_turn_trace";
+      if (!process.env.S22_BOOKING_TRACE_B64)
+        throw Object.assign(new Error(), { code: "FIRST_TURN_MODULE_MISSING" });
+      const { firstTurnScope, collectFirstTurnEvidence } = await import(
+        `data:text/javascript;base64,${process.env.S22_BOOKING_TRACE_B64}`
+      );
+      if (
+        organization !== firstTurnScope.organization ||
+        conversation !== firstTurnScope.conversation
+      )
+        throw Object.assign(new Error(), { code: "FIRST_TURN_SCOPE_MISMATCH" });
+      await collectFirstTurnEvidence(read, report);
+    }
   });
   stage = "deployed_cohort_binding";
   const cohort = config.loadAIJourneyCohortConfig({
