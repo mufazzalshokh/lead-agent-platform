@@ -117,8 +117,9 @@ unresolved usage; stop if the projected total cannot be shown below the ceiling.
 Do not change billing, budgets, model settings or provider keys.
 
 Historical wrapper-correction packet for the owner's existing authenticated Cloud
-Shell (local GCP/database authentication is unavailable). V2 has now executed as
-`lead-agent-staging-migrator-xz9mz`; **the next packet is v3 below**, not another v2 run.
+Shell (local GCP/database authentication is unavailable). V2 executed as
+`lead-agent-staging-migrator-xz9mz`; V3 subsequently executed as
+`lead-agent-staging-migrator-snf6q`. **Do not rerun either packet** to retrieve logs.
 The following preserves the earlier wrapper correction and its provenance:
 
 - `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-readonly.mjs`, SHA256
@@ -256,10 +257,10 @@ such a run a zero historical cost. Provider response/billing evidence is require
 where usage cannot be recovered. The two costs remain **unknown**, and all new paid
 calls remain **PAUSED**, target USD 5 / hard USD 10 unchanged.
 
-### One next diagnostic action
+### Historical V3 packet (executed; do not rerun)
 
-Upload these **two new uniquely named files** together to the existing authenticated
-Cloud Shell and run `bash s22-business-readiness-launch-v3.sh`:
+The owner uploaded these **two uniquely named files** to authenticated Cloud Shell
+and ran `bash s22-business-readiness-launch-v3.sh`:
 
 - `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-readonly-v3.mjs`, SHA256
   `14fcdc1dd39e464ab926184e3e0e08d10014edb93eeba502cd98eb707df15f73`.
@@ -293,6 +294,37 @@ harness SHA256 `27c154af75877fddb710b4090d6d7bf48fbba576c5ffa6dcf567603c44627c9d
 No runtime source changed, so no image build/deployment plan or unrelated CI is
 required. S22 readiness/booking remain pending, not accepted.
 
+### V3 live read-back and remaining cost evidence — 2026-10-05
+
+**Owner-supplied** log read-back for `lead-agent-staging-migrator-snf6q`:
+`GCLOUD_EXIT=0`, `SANITIZER_EXIT=0`, eight entries, six structured payloads and six
+diagnostic assertions. Runtime/read-only/tenant guards and FORCE-RLS/not-owner
+**PASS**, manifest **12 tables**. Current published fixture **PASS**: one row,
+Service root **4**, publication **1**, duration **30 minutes**, compatible selectors
+and active offering. The real conversation reader's combined knowledge assertion
+**PASS**: price retrieved **true**, two price facts; duration retrieved **true**, one
+duration fact. This closes the scoped duration/provenance gap without any runtime
+retrieval, publication or selector change. It is not a live model/customer reply.
+
+Provider/model consistency **PASS**, bounded **two runs**; the sanitizer did not
+return their individual rows. Cohort ledger remains **FAIL**: known-cost subset
+**0 USD micros**, **two unknown-cost runs**, **zero unfinished runs**, paid calls
+**PAUSED**. Unknown spend is not zero. The returned reader assertions explain the
+diagnostic's nonzero exit; the finite `CONTAINER_EXIT` log tag is not a separate
+proven application failure. Earlier empty reads lacked captured exit status and
+have no proven timeout/payload-format cause. No diagnostic rerun is justified.
+
+The single next action is a bounded **Cloud Logging read of this existing
+execution**, selecting only `provider_and_cost_metadata` and its reader's allowlisted
+`observed.rows`. Obtain the two exact run IDs/times, failure/status, nullable usage,
+resolved model/catalog and dispatch classification before attributing either unknown
+cost. These fields contain no message/contact text, provider account identifier,
+credential or payload. No new job, database transaction, migration or provider call
+is needed. Do not invent a zero cost, overwrite historical records, or use the
+run-finishing mutation as reconciliation. The original unknowns and provenance
+remain preserved; no existing audited historical cost-reconciliation interface was
+found. Booking and new paid calls stay blocked pending that evidence and reconciliation.
+
 ## Journey and current checkpoint
 
 No booking action may target unrelated work. All date/time preferences must come
@@ -304,9 +336,9 @@ and fresh resource/conversation versions at each step. No external calendar writ
 | --- | --- | --- |
 | Existing business configuration inspection | Authenticated tenant-bound reads, existing policies/languages and safe resource metadata | PASS: owner context, empty complete initial inventory; initial expired-session 401 superseded after owner sign-in |
 | Authoritative fixture publication | Exact returned IDs, current published versions/hashes and offering | PASS: five published version-1 records and active offering; exact fixture read-back 7/7 |
-| Conversation pipeline retrieval | Real repository reader returns current price/duration references for this exact conversation | Price PASS (owner-supplied); duration diagnostic version mismatch corrected/tested; expanded live V3 evidence pending |
+| Conversation pipeline retrieval | Real repository reader returns current price/duration references for this exact conversation | PASS (owner-supplied V3): current fixture root 4/publication 1, 30 minutes; two price facts and one duration fact retrieved |
 | Live model/cost readiness | Resolved model and complete internal bounded cohort ledger | Approved resolved model observed once; ledger FAIL, two unknown-cost runs. Paid calls PAUSED; per-run classification/reconciliation evidence required |
-| Service/price question | Friend sends one natural question in the approved synthetic Instagram DM; grounded reply uses the published fixture price, no availability claim | PENDING retrieval/cost readiness and actual customer message |
+| Service/price question | Friend sends one natural question in the approved synthetic Instagram DM; grounded reply uses the published fixture price, no availability claim | PENDING cost readiness and actual customer message; authoritative retrieval PASS |
 | Qualification | Published V1 evidence and eligible bound channel; no mandatory phone or invented evidence | PENDING |
 | Booking request | Real customer date/time preference; authoritative `requested` record with S16 profile and Qualification V1 provenance | PENDING |
 | Staff acceptance | Synthetic request only; fresh versions; `staff_accepted`, then durable preparation and current confirmation offer | PENDING; never count as confirmed |

@@ -526,6 +526,42 @@ tests/evidence changed in the repository; temporary packets/fixtures are untrack
 outside it. No unrelated tests, inventory, Claim/Resolve, OAuth or CI were repeated.
 S22 remains unaccepted; S23 not started.
 
+## V3 live knowledge PASS; cost ledger remains blocked — 2026-10-05
+
+**Owner-supplied** existing-execution log read-back:
+`lead-agent-staging-migrator-snf6q`, `GCLOUD_EXIT=0`, `SANITIZER_EXIT=0`.
+Eight log entries contained six structured payloads and six reader assertions:
+
+| Assertion | Result | Safe observed metadata |
+| --- | --- | --- |
+| Runtime / read-only / tenant guard | PASS | All six booleans true |
+| FORCE RLS / runtime not owner | PASS | 12 tables; safe true |
+| Current published fixture | PASS | One row; Service root 4/publication 1; duration 30 minutes; selectors/offering true |
+| Published conversation knowledge | PASS | Price retrieved true, two facts; duration retrieved true, one fact; root 4/publication 1 |
+| Provider/model consistency | PASS | Bounded two runs; individual rows not included in this sanitized read-back |
+| Cohort ledger readiness | FAIL | Known-cost subset 0 USD micros; unknown runs 2; unfinished runs 0; paid calls paused |
+
+This closes **only** the scoped live duration/provenance evidence gap. The original
+V2 failure remains recorded above; V3 proves the actual reader retrieves the current
+authoritative 30-minute Service fact. No runtime, publication, selector or tenant
+boundary changed. Provider/model consistency does not prove complete usage, pricing
+or invoice/account evidence for both runs.
+
+The failed ledger assertion explains this diagnostic's nonzero exit; the returned
+`CONTAINER_EXIT` tag alone is not another proven wrapper/database failure. Earlier
+empty queries did not capture their exit status, so their precise cause remains
+unproven. Do **not** rerun the reader, migrator or deployment. The next narrowly scoped
+read selects only the existing execution's `provider_and_cost_metadata` allowlisted
+rows from Cloud Logging, not a new database execution. Exact per-run evidence and
+any authoritative reconciliation remain pending; neither cost is assigned zero.
+
+Only these two evidence documents changed. Scoped Prettier and `git diff --check`
+PASS; accepted behavioral tests remain unchanged and are not repeated.
+No message/contact data, provider account identifier, secret or raw log is recorded.
+No paid call, SQL write, migration, job/IAM change, build, deployment, OAuth,
+Claim/Resolve or CI run occurred. Unrelated working-tree edits remain untouched.
+S22 remains unaccepted; the booking journey is pending and S23 is not started.
+
 ## Remaining gates
 
 | Gate | Evidence still required |
