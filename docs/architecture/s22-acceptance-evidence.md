@@ -465,6 +465,67 @@ change. No old/corrected launcher or live migration was executed, no deployment,
 paid call, unrelated suite or CI was repeated. **Business readiness remains PENDING**
 until the corrected live diagnostic returns results. S22 remains unaccepted.
 
+## Business-readiness result and provenance correction — 2026-10-05
+
+**Owner-supplied** execution **`lead-agent-staging-migrator-xz9mz`** successfully
+ran the corrected ESM reader. Runtime/read-only/tenant/RLS and FORCE-RLS/not-owner
+guards **PASS**, manifest **12 tables**. Knowledge assertion **FAIL**: price facts
+**2**, price retrieved **true**; duration facts **1**, duration retrieved **false**.
+Ledger assertion **FAIL**: known subset **0** USD micros, unknown-cost runs **2**,
+unfinished runs **0**. The diagnostic itself made **no model calls**. The failed
+assertions are not erased; execution logs/raw records were not independently read.
+
+Source and focused reproduction confirm a **diagnostic provenance mismatch**:
+Service grounding references use the current **root version**, while the assertion
+used publication version **1**. Preserved live fixture metadata records root **4**,
+publication **1**, duration **30 minutes**. V3 checks the exact current tenant-bound
+publication/hash, duration, offering and Lead selectors independently, then requires
+the actual retrieved duration fact to cite that same current Service/root, locale,
+need, subject and 30-minute value. No publisher, selector, retrieval, tenant or RLS
+boundary was relaxed; no runtime/product code was changed. Expanded live retrieval
+proof remains **PENDING** until V3 executes.
+
+One reported run has resolved **`gemini-3.8-flash`**, profile
+**`s13-commercial-v1.v1`**, catalog **`ai-provider-prices.2026-09-17.v1`**, input
+**520**, output **217**, cost **unknown**. Another has requested model approved,
+resolved model **NULL**, catalog **`not-priced.v1`**, grouped units **0**, cost
+**unknown**. Grouped COALESCE zero does not prove zero usage, zero cost or no dispatch.
+Google's [official model](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+and [standard paid rates](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash)
+were checked on **2026-10-05**: USD **0.75 input / 0.075 cached input / 3.75 output**
+per million tokens through **2026-12-31**. Existing catalog interval/rates match.
+No model, rates, paid tier or budget changes; promotional credits are not spend.
+
+The adapter/parser, `finishAIRun`, catalog and estimator trace is recorded in
+[s22-synthetic-booking-journey.md](s22-synthetic-booking-journey.md). Missing cache
+usage can reproduce the first unknown cost, but grouped evidence does not expose
+its actual cache/total/nulls or individual IDs/time/failure. The second run's dispatch
+is **UNPROVEN**, not free. No existing audited historical cost-reconciliation
+interface was found; no units, provenance or cost record was overwritten/backfilled.
+Both costs remain **unknown**; the cohort is **BLOCKED**, paid calls **PAUSED** under
+unchanged USD 5 target / USD 10 hard ceiling.
+
+Prepared outside-repository **V3 reader + launcher**, exact paths/hashes and one
+Cloud Shell instruction in the companion document. Reader adds bounded, parameterized
+fixture/provenance and per-physical-run nullable metadata reads only. The exact V2
+ESM bootstrap and image/identity/secret-reference, VPC/subnet/egress/zero-retry,
+tenant/RLS/read-only/timeouts/rollback/cleanup safeguards remain. No migration,
+deployment, IAM, job update, secret access via CLI or paid call occurred. Local GCP/
+DB access is unavailable; the existing authenticated Cloud Shell is the next
+evidence mechanism. No new diagnostic was executed in this continuation.
+
+Local verification: **9/9 new repository regressions PASS**, including UZ/RU/EN
+30-minute retrieval with root-version citations, cross-service fail-closed behavior,
+symmetrically rejected foreign/stale citations and unknown-usage/pre-dispatch proof.
+These are deterministic projection/citation checks, not live RLS/paid-provider proof.
+**13/13 exact V3-bootstrap controlled subprocess scenarios PASS**, including incorrect
+published/retrieved values, stale/foreign references/selectors, preserved NULL costs,
+timeout versus pre-dispatch distinction, unfinished/bound failures and rollback/close.
+Root TypeScript, scoped ESLint, formatting, syntax and diff checks PASS. Only focused
+tests/evidence changed in the repository; temporary packets/fixtures are untracked
+outside it. No unrelated tests, inventory, Claim/Resolve, OAuth or CI were repeated.
+S22 remains unaccepted; S23 not started.
+
 ## Remaining gates
 
 | Gate | Evidence still required |

@@ -116,9 +116,10 @@ message, establish the bounded cohort ledger and account for attempts/repairs an
 unresolved usage; stop if the projected total cannot be shown below the ceiling.
 Do not change billing, budgets, model settings or provider keys.
 
-A separate outside-repository readiness packet is prepared for the owner's existing
-authenticated Cloud Shell; local GCP/database authentication is unavailable. The
-original launcher failed before reader execution; use **v2 only**, as explained below:
+Historical wrapper-correction packet for the owner's existing authenticated Cloud
+Shell (local GCP/database authentication is unavailable). V2 has now executed as
+`lead-agent-staging-migrator-xz9mz`; **the next packet is v3 below**, not another v2 run.
+The following preserves the earlier wrapper correction and its provenance:
 
 - `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-readonly.mjs`, SHA256
   `70209e45b8dafe2e3e6652cf9daae7c84792288e7f8c4e802f043f551663ae1c`.
@@ -185,8 +186,112 @@ definition and `--args` changed, with all existing safeguards otherwise unchange
 Reproducible outside-repository test command:
 `node "C:/Users/Lenovo/AppData/Local/Temp/s22 ESM wrapper proof 239acac5c8364e8e971974f96cad5162/verify-bootstrap.mjs"`.
 Harness SHA256 `b63e1a4718bc8da0b00229b63a5aa3bc2718c685fe492be777b6c3e9e5465baa`.
-No corrected live execution has occurred in this continuation. Business readiness
-remains pending until v2 returns its actual diagnostic results; no S22 acceptance.
+At that wrapper-correction checkpoint no corrected live execution had occurred.
+The owner-supplied V2 result below now supersedes that pending diagnostic status;
+business readiness is still blocked, and S22 is not accepted.
+
+## Readiness failures and scoped follow-up — 2026-10-05
+
+Owner-supplied execution **`lead-agent-staging-migrator-xz9mz`** reached the reader.
+Read-only/runtime/tenant/RLS and FORCE-RLS/not-owner guards **PASS** (12 tables).
+Price retrieval **PASS** (two facts), but the combined knowledge assertion **FAIL**:
+one duration fact was returned, yet `duration_retrieved=false`. Cohort ledger
+**FAIL**: known subset `0` USD micros, two unknown-cost runs, zero unfinished runs.
+This is not evidence of zero spend. No provider call was made by the diagnostic.
+No raw logs or per-run records were independently retrieved in this continuation.
+
+### Duration: diagnostic provenance mismatch, not a demonstrated retrieval defect
+
+`grounding-facts.ts` creates a Service citation using **`service.root_version`**;
+the knowledge SQL separately supplies **`provenance.version_no`** from the current
+Service publication. The original diagnostic incorrectly required source version
+**1**. Preserved live publication/read-back records root **4**, publication **1**,
+duration **30 minutes**. A publication number is not the citation's root version.
+The exact query already selects a duration need (`davom`) and Uzbek output uses
+`daqiqa`; local retrieval returns the correct service/root and `30 daqiqa`.
+There is no proven publication, language/unit or service-selector defect.
+
+V3 does not simply replace 1 with 4. A bounded, parameterized tenant read verifies
+the exact current Service/ServiceVersion join, original publication **1/hash**,
+**30 minutes**, active location offering and compatible Lead service/location
+selectors. The real conversation reader must then return exactly one duration
+fact, with the same service ID, **current root version**, `claim_kind=service`,
+`need=duration`, `locale=uz`, matching subject and `30 daqiqa`. It prints references
+and numeric/boolean metadata, never fact or customer text. Live confirmation of
+these expanded checks is still pending; the original returned fact's exact
+reference was not included in the owner's output.
+
+### Costs: rates verified; historical usage/classification still incomplete
+
+Official [Google model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+confirms the exact approved model and low thinking. Official
+[standard paid pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash)
+checked on **2026-10-05** confirms **USD 0.75 input / 0.075 cached input / 3.75 output
+per million tokens through 2026-12-31**, including thinking in output. The existing
+`ai-provider-prices.2026-09-17.v1` effective interval/rates match; no catalog or
+production model change is justified. These are list-price estimates, not billing
+or account-entitlement evidence; no free/promotion credit is deducted.
+
+| Historical group | Proven evidence | Classification / missing evidence |
+| --- | --- | --- |
+| Resolved `gemini-3.8-flash`, approved profile/catalog, input 520 / output 217 | Provider usage was recorded; estimated cost is NULL | Provider-response evidence, not pre-dispatch/free. Exact run ID/time, cached input and total units/validation are absent from the grouped report. Source reproduction shows missing cache usage prevents pricing despite a matched catalog; the actual per-run cause needs read-back. |
+| Requested model approved; resolved model NULL; `not-priced.v1`; grouped recorded units zero | Run finished, but no resolved-model or known-cost proof | Dispatch/billing **UNPROVEN**. Old `coalesce(sum(...),0)` conceals NULL usage. Require actual nullable units, run/failure/status/time/correlation and dispatch evidence. Timeout/network/missing units do not prove no charge. |
+
+Adapter path: `parseGeminiUsage` validates reported counts and derives billable
+output from total minus input; omitted cached usage remains NULL. The
+[usage reference](https://ai.google.dev/api/generate-content#UsageMetadata) distinguishes
+prompt, cached, candidate, thinking and total counts. `finishAIRun` resolves the
+exact **resolved** model and started-at catalog, then `estimateAIUsageCost` rejects
+missing/invalid input/output/cache or inconsistent totals. Missing resolved model
+becomes `not-priced.v1`; neither path invents cost. A finished run is not necessarily
+a successful provider call. No original units/catalog/provenance were modified.
+
+There is **no existing audited historical AI-cost reconciliation interface** in
+the inspected application/database implementation. Do not use the run-finishing
+path as a backfill or write ad-hoc SQL. The source's `context_too_large` branch
+uniquely precedes `decide`; V3 only marks that path proven when the exact failure,
+orchestrator/status and absent provider/usage/output evidence agree. It does **not**
+apply that classification to either live run without their records, or assign even
+such a run a zero historical cost. Provider response/billing evidence is required
+where usage cannot be recovered. The two costs remain **unknown**, and all new paid
+calls remain **PAUSED**, target USD 5 / hard USD 10 unchanged.
+
+### One next diagnostic action
+
+Upload these **two new uniquely named files** together to the existing authenticated
+Cloud Shell and run `bash s22-business-readiness-launch-v3.sh`:
+
+- `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-readonly-v3.mjs`, SHA256
+  `14fcdc1dd39e464ab926184e3e0e08d10014edb93eeba502cd98eb707df15f73`.
+- `C:/Users/Lenovo/AppData/Local/Temp/s22-business-readiness-launch-v3.sh`, SHA256
+  `f3e36b3379dd7ccdae1142f03a8263593ed3b59f2855f10a108c192c4a692b4a`.
+
+V3 keeps V2's actual ESM bootstrap, reviewed immutable image, runtime secret
+reference, identity, private VPC/subnet/egress, explicit zero retries, hash
+preflight, 60-second child / 90-second polling bounds and rollback/close safeguards.
+The launcher diff changes only reader filename/hash. No job configuration/IAM or
+deployment changes. Per-run metadata is tenant-qualified, capped at **21 rows**
+(more than 20 fails closed), retains NULL counts, and selects no message/contact
+data, provider account/credential, payload, ciphertext or whole audit blob.
+Both unknown and unfinished attempts block the cohort. This packet is read-only,
+does not execute the migrator, and cannot reconcile/write historical costs.
+
+Verification: **9/9 focused repository tests PASS** in
+`tests/ai/s22-business-readiness.test.ts`: exact fixture duration UZ/RU/EN,
+root-versus-publication provenance, cross-service missing-duration/nonexistent
+facts, symmetric disjoint tenant-qualified citations/stale rejection, missing
+usage remains unknown, and zero provider calls on a real pre-dispatch code path.
+These are local projection/citation tests, **not new live cross-tenant RLS proof**.
+Root TypeScript, scoped zero-warning ESLint, formatting and diff checks PASS.
+**13/13 exact V3 ESM-bootstrap subprocess scenarios PASS** with controlled packages:
+current fixture; preserved unknown runs; stale/foreign service reference; wrong
+published/retrieved duration; wrong publication/selector; timeout remains ambiguous;
+unique pre-dispatch path; read-only denial; row bound; unfinished run; rollback/close.
+No live database or paid call. Command:
+`node "C:/Users/Lenovo/AppData/Local/Temp/s22 readiness v3 proof 1791202675466/verify-v3.mjs"`,
+harness SHA256 `27c154af75877fddb710b4090d6d7bf48fbba576c5ffa6dcf567603c44627c9d`.
+No runtime source changed, so no image build/deployment plan or unrelated CI is
+required. S22 readiness/booking remain pending, not accepted.
 
 ## Journey and current checkpoint
 
@@ -199,8 +304,8 @@ and fresh resource/conversation versions at each step. No external calendar writ
 | --- | --- | --- |
 | Existing business configuration inspection | Authenticated tenant-bound reads, existing policies/languages and safe resource metadata | PASS: owner context, empty complete initial inventory; initial expired-session 401 superseded after owner sign-in |
 | Authoritative fixture publication | Exact returned IDs, current published versions/hashes and offering | PASS: five published version-1 records and active offering; exact fixture read-back 7/7 |
-| Conversation pipeline retrieval | Real repository reader returns current price/duration references for this exact conversation | PENDING read-only readiness packet; API publication alone is not sufficient |
-| Live model/cost readiness | Resolved model and complete internal bounded cohort ledger | PENDING read-only readiness packet; source pin/limits verified |
+| Conversation pipeline retrieval | Real repository reader returns current price/duration references for this exact conversation | Price PASS (owner-supplied); duration diagnostic version mismatch corrected/tested; expanded live V3 evidence pending |
+| Live model/cost readiness | Resolved model and complete internal bounded cohort ledger | Approved resolved model observed once; ledger FAIL, two unknown-cost runs. Paid calls PAUSED; per-run classification/reconciliation evidence required |
 | Service/price question | Friend sends one natural question in the approved synthetic Instagram DM; grounded reply uses the published fixture price, no availability claim | PENDING retrieval/cost readiness and actual customer message |
 | Qualification | Published V1 evidence and eligible bound channel; no mandatory phone or invented evidence | PENDING |
 | Booking request | Real customer date/time preference; authoritative `requested` record with S16 profile and Qualification V1 provenance | PENDING |
