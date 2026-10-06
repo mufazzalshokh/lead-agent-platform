@@ -55,6 +55,33 @@ const publishedFixture = (otherTenant = false): PublishedBusinessKnowledgeV2 => 
 };
 
 describe("S22 business-readiness evidence regressions", () => {
+  it("retrieves the exact synthetic fixture's price and duration without borrowing another service", () => {
+    const base = publishedFixture(),
+      source = groundingKnowledge().services[1];
+    if (source === undefined) throw new Error("Missing price projection fixture");
+    const knowledge: PublishedBusinessKnowledgeV2 = {
+      ...base,
+      services: base.services.map((service, index) =>
+        index === 0 ? { ...service, price_resolutions: source.price_resolutions } : service,
+      ),
+    };
+    const question = "Salom, S22 sinov konsultatsiyasi narxi qancha va qancha davom etadi?";
+    const facts = selectGroundingFacts(knowledge, { message: question, locale: "uz" });
+    expect(facts.find((fact) => fact.grounding?.need === "price")?.text).toContain("100 000 UZS");
+    expect(facts.find((fact) => fact.grounding?.need === "duration")?.text).toContain("30 daqiqa");
+    expect(facts.map((fact) => fact.text).join(" ")).not.toMatch(/90|Massaj|250 000/u);
+    expect(
+      facts.every((fact) =>
+        fact.grounding?.subject?.startsWith(base.services[0]?.service_id ?? "MISSING"),
+      ),
+    ).toBe(true);
+    expect(
+      selectGroundingFacts(
+        { ...knowledge, services: knowledge.services.slice(1) },
+        { message: question, locale: "uz" },
+      ),
+    ).toEqual([]);
+  });
   it.each([
     ["uz", message, "30 daqiqa"],
     ["ru", "Сколько минут длится S22 тестовая консультация?", "30 минут"],

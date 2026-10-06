@@ -165,6 +165,15 @@ export type AIModelPolicyRejection =
   | "untrusted_citation"
   | "handoff_not_authorized"
   | "confirmation_not_authorized";
+/** Finite field names only: never extraction values, IDs, or customer content. */
+export const AI_EXTRACTION_REJECTION_FIELDS = Object.freeze([
+  "service_id",
+  "location_id",
+  "display_name",
+  "phone_raw",
+  "email_raw",
+] as const);
+export type AIExtractionRejectionField = (typeof AI_EXTRACTION_REJECTION_FIELDS)[number];
 type AIReplyDisposition = "queued" | "suppressed" | "not_planned";
 export type AIOutcome =
   | Readonly<{
@@ -182,6 +191,7 @@ export type AIOutcome =
       salesResult?: SalesResult;
       replyDisposition?: AIReplyDisposition;
       modelRejection?: AIModelPolicyRejection;
+      extractionRejectionFields?: readonly AIExtractionRejectionField[];
     }>;
 export type AIWorkReference = Readonly<{
   organizationId: OrganizationId;
@@ -240,6 +250,7 @@ export type AITelemetry = Readonly<{
       proposedAction: AgentDecisionV1["action"]["type"] | null;
       schemaValid: boolean | null;
       modelRejection: AIModelPolicyRejection | null;
+      extractionRejectionFields?: readonly AIExtractionRejectionField[];
       salesResultKind: SalesResult["kind"] | null;
       replyDisposition: AIReplyDisposition;
     }>,

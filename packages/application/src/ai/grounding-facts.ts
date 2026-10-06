@@ -14,7 +14,7 @@ import type { AIFact, GroundingNeed } from "./ports.js";
 import { AI_CONTEXT_LIMITS } from "./context.js";
 import {
   groundingLocale,
-  groundingNeed,
+  groundingNeeds,
   groundingPreflight,
   lexicalScore,
   normalizeGroundingQuery,
@@ -124,13 +124,13 @@ const selectExactLocaleFacts = (
   knowledge: PublishedBusinessKnowledgeV2,
   query: GroundingQuery,
   locale: Locale,
+  need: GroundingNeed,
 ): readonly AIFact[] => {
   if (
     !isSchemaValue(PublishedBusinessKnowledgeV2Schema, knowledge) ||
     groundingPreflight(query.message) !== null
   )
     return [];
-  const need = groundingNeed(query.message);
   const candidates = knowledge.services.map((service) => ({
     service,
     score: lexicalScore(
@@ -338,15 +338,36 @@ const selectExactLocaleFacts = (
   return Object.freeze(result);
 };
 
+const completeLocaleFacts = (
+  knowledge: PublishedBusinessKnowledgeV2,
+  query: GroundingQuery,
+  locale: Locale,
+): readonly AIFact[] => {
+  const groups = groundingNeeds(query.message).map((need) =>
+    selectExactLocaleFacts(knowledge, query, locale, need),
+  );
+  if (groups.some((facts) => facts.length === 0)) return [];
+  const facts = groups.flat();
+  if (
+    facts.length > Math.min(12, AI_CONTEXT_LIMITS.facts) ||
+    facts.reduce(
+      (sum, entry) => sum + entry.text.length + JSON.stringify(entry.reference).length,
+      0,
+    ) > 12_000
+  )
+    return [];
+  return Object.freeze(facts);
+};
+
 export const selectGroundingFacts = (
   knowledge: PublishedBusinessKnowledgeV2,
   query: GroundingQuery,
 ): readonly AIFact[] => {
   const locale = groundingLocale(query.message, query.locale);
-  const exact = selectExactLocaleFacts(knowledge, query, locale);
+  const exact = completeLocaleFacts(knowledge, query, locale);
   if (exact.length > 0 || query.defaultLocale === undefined || query.defaultLocale === locale)
     return exact;
-  const fallback = selectExactLocaleFacts(knowledge, query, query.defaultLocale);
+  const fallback = completeLocaleFacts(knowledge, query, query.defaultLocale);
   const notice = {
     uz: "Tasdiqlangan ma'lumot boshqa tilda",
     ru: "Подтверждённая информация на другом языке",

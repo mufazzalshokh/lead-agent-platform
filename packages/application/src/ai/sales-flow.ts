@@ -13,6 +13,7 @@ import type {
   AIContextSnapshot,
   AIFallbackReason,
   AIOutcome,
+  AIExtractionRejectionField,
   SalesEvidence,
   SalesResult,
 } from "./ports.js";
@@ -241,28 +242,32 @@ export const evaluateSalesDecision = (
     return aiFallback("medical_safety_response");
   const evidence = resolveSalesEvidence(snapshot);
   // A model cannot manufacture customer facts, tenant identity, or escalation authority.
+  const rejected: AIExtractionRejectionField[] = [];
   if (
-    (decision.extracted_facts.service_id !== null &&
-      decision.extracted_facts.service_id !== evidence.serviceId &&
-      !snapshot.sales?.services.some(
-        (service) =>
-          service.id === decision.extracted_facts.service_id &&
-          namesMatch(snapshot.message, service.names),
-      )) ||
-    (decision.extracted_facts.location_id !== null &&
-      decision.extracted_facts.location_id !== evidence.locationId &&
-      !snapshot.sales?.locations.some(
-        (location) =>
-          location.id === decision.extracted_facts.location_id &&
-          namesMatch(snapshot.message, location.names),
-      )) ||
-    [
-      decision.extracted_facts.display_name,
-      decision.extracted_facts.phone_raw,
-      decision.extracted_facts.email_raw,
-    ].some((value) => value !== null && !snapshot.message.includes(value))
+    decision.extracted_facts.service_id !== null &&
+    decision.extracted_facts.service_id !== evidence.serviceId &&
+    !snapshot.sales?.services.some(
+      (service) =>
+        service.id === decision.extracted_facts.service_id &&
+        namesMatch(snapshot.message, service.names),
+    )
   )
-    return aiFallback("policy_denied", "untrusted_extraction");
+    rejected.push("service_id");
+  if (
+    decision.extracted_facts.location_id !== null &&
+    decision.extracted_facts.location_id !== evidence.locationId &&
+    !snapshot.sales?.locations.some(
+      (location) =>
+        location.id === decision.extracted_facts.location_id &&
+        namesMatch(snapshot.message, location.names),
+    )
+  )
+    rejected.push("location_id");
+  for (const field of ["display_name", "phone_raw", "email_raw"] as const) {
+    const value = decision.extracted_facts[field];
+    if (value !== null && !snapshot.message.includes(value)) rejected.push(field);
+  }
+  if (rejected.length > 0) return aiFallback("policy_denied", "untrusted_extraction", rejected);
   if (
     decision.safety.risk_flags.some(
       (flag) => !["price_missing", "service_missing", "location_missing"].includes(flag),

@@ -36,7 +36,7 @@ const snapshot = {
 };
 
 describe("S22 rejected-proposal disposition and safe structured telemetry", () => {
-  const setup = (mode: "rejected" | "budget" | "stale" = "rejected") => {
+  const setup = (mode: "rejected" | "budget" | "stale" | "extraction" = "rejected") => {
     const write = vi.fn<(record: Readonly<Record<string, unknown>>) => void>(),
       record = vi.fn<(plan: ReturnType<typeof planAppointmentSubmission>) => void>(),
       safeTelemetry = createStructuredAITelemetry(write);
@@ -46,7 +46,19 @@ describe("S22 rejected-proposal disposition and safe structured telemetry", () =
         kind: "completed",
         value: validDecision({
           language: "uz",
-          action: { type: "request_handoff", reason: "customer_requested" },
+          action:
+            mode === "extraction"
+              ? { type: "none" }
+              : { type: "request_handoff", reason: "customer_requested" },
+          ...(mode === "extraction"
+            ? {
+                extracted_facts: {
+                  ...validDecision().extracted_facts,
+                  display_name: "PRIVATE_CUSTOMER_NAME",
+                  phone_raw: "+998900000000",
+                },
+              }
+            : {}),
           message: { mode: "send_candidate", draft_text: "SENSITIVE_UNTRUSTED_PROVIDER_BODY" },
         }),
       }),
@@ -82,6 +94,25 @@ describe("S22 rejected-proposal disposition and safe structured telemetry", () =
     });
     return { flow, decide, write, record };
   };
+  it("reports rejected field names through the complete controlled path, never values", async () => {
+    const test = setup("extraction");
+    expect(await test.flow.run(AI_REFERENCE)).toMatchObject({
+      kind: "handoff_requested",
+      reason: "policy_blocked",
+    });
+    expect(test.decide).toHaveBeenCalledOnce();
+    expect(test.record.mock.calls[0]?.[0].submission).toBeNull();
+    expect(test.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        policyRejectionCode: "untrusted_extraction",
+        extractionRejectionFields: ["display_name", "phone_raw"],
+        replyDisposition: "queued",
+      }),
+    );
+    expect(JSON.stringify(test.write.mock.calls)).not.toMatch(
+      /PRIVATE_CUSTOMER_NAME|998900000000|SENSITIVE|draft_text/u,
+    );
+  });
   it("one rejected physical call has a safe terminal plan and correlated disposition", async () => {
     const test = setup();
     expect(await test.flow.run(AI_REFERENCE)).toMatchObject({

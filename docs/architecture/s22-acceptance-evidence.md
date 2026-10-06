@@ -1652,4 +1652,78 @@ using existing WIF permissions. It reads no secret values, does not initialize o
 apply Terraform, does not redeploy services or execute the migrator. Its allowlisted
 artifact is prerequisite evidence only: it never claims restore or capacity PASS.
 
+### Second paid turn: extraction rejection and bounded correction — 2026-10-06
+
+Owner-supplied Cloud Logging result, `LOG_READ_EXIT=0`: at
+`2026-10-06T11:37:09.563965Z`, message
+`01a11100-ba01-7c22-8e2f-6c55c2f4760b`, correlation
+`01a11100-ba01-72ec-b8fc-509a1edec5da`, in the approved synthetic cohort:
+`fallback_required`, `policy_denied`, `untrusted_extraction`,
+`handoff_requested`, reply disposition `queued`. The owner separately reports
+receiving the deterministic staff-escalation reply. These establish application
+rejection and fallback receipt, not a grounded price answer or booking creation.
+The earlier readiness snapshot is not current post-turn accounting or state.
+
+The earliest proven failure is sales extraction validation. Its five predicates
+check service/location IDs against trusted customer selection and require name,
+phone and email candidates to appear verbatim in the current message. The old
+code collapsed all five into one rejection code. It persisted an output hash
+and encrypted action arguments, **not extracted-fact values**. Therefore the
+exact historical offending field/value cannot be reconstructed from these
+records; a claim that it was specifically the service or location would be a
+guess. No raw provider response, customer content or ciphertext is requested.
+
+Source inspection confirms a prompt/policy contract mismatch: the S16 prompt
+encouraged reuse/extraction from history although that model extraction is not
+the qualification/booking authority. The corrected product prompt is
+`s16-appointment-submission.v2`: all extracted fields remain null and action
+is `none`; application-owned customer evidence still selects entities,
+qualifies, parses preferences and authorizes any request. The immutable
+`s16_appointment_submission.v1` submission profile, Qualification V1 provenance,
+AgentDecision V1 schema and S13 model/configuration are unchanged. This is a
+locally verified contract correction, **not proof that the historical model
+followed this path or that a new live response will pass**.
+
+Rejection diagnostics now carry only finite field names through evaluation,
+post-commit Worker telemetry and the existing redacted audit metadata. Every
+previous rejection predicate remains enforced; policy-denied proposals still
+receive only the safe application fallback. No extracted values are logged.
+
+A separate deterministic reproduction found that an explicit price-and-duration
+question selected only duration. The bounded correction retrieves both from the
+same already tenant-authorized published projection and renders both approved
+facts. Missing either fact fails closed; unrelated services, stale/foreign
+citations, locale restrictions and context/transport limits are preserved.
+Duration-only questions do not acquire a pricing requirement. This related
+defect is not claimed as the cause of the live `untrusted_extraction` event.
+
+Focused regression tests failed before these corrections and passed afterwards.
+Verification uses installed tools directly; no dependency installation or host
+repair. `node node_modules/vitest/vitest.mjs run` for sales-flow,
+appointment-submission, grounded-answers, grounded-provider, production-config
+and policy-fallback-telemetry: **226/226 PASS**. The additional
+s22-business-readiness group: **11/11 PASS** (237 distinct focused tests total).
+The production-config rerun after replacing an unsafe test matcher: **28/28
+PASS**, not another distinct test group. Root `node
+node_modules/typescript/bin/tsc -p tsconfig.json --noEmit` **PASS**. Production/
+declaration builds for Application, AI and Database, and the Worker production
+build **PASS**; Database build and root TypeScript were rechecked after the
+final metadata/test changes. No local full aggregate or paid evaluation.
+Scoped ESLint for all 17 touched TypeScript files **PASS**, zero warnings.
+Prettier checks **PASS** for the 19-file milestone after correcting the DB test's
+formatting. Scoped `git diff --check` and added-line secret-pattern screening
+are required before staging; fresh image/plan provenance remains pending.
+The PostgreSQL audit/fallback case now
+covers extraction rejection as well as handoff rejection; it is registered,
+not claimed executed locally. No full CI, provider call, event replay, OAuth,
+migration, IAM change or runtime apply is performed by this correction.
+
+Paid customer turns remain paused operationally. Before resumption, obtain
+post-turn authoritative handoff/conversation/request state and settled cohort
+accounting through existing readers. Do not reuse the old remaining-slot
+numbers, replay either consumed message, resolve a handoff automatically,
+expand the approved allowance or overwrite historical NULL costs. Runtime
+deployment requires fresh immutable images and a newly reviewed exact plan;
+previous hashes/approvals cannot authorize this correction. S22 is unaccepted.
+
 Keep Cloud SQL running during active DB-dependent S22 work. S23 remains out of scope.

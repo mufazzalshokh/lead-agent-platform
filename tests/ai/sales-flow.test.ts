@@ -93,6 +93,58 @@ const knownService = {
 };
 
 describe("S15 shared deterministic sales flow", () => {
+  it("identifies every rejected extraction field without retaining its value", () => {
+    const snapshot = context("Salom");
+    const outcome = evaluateSalesDecision(
+      decision(snapshot, {
+        extracted_facts: {
+          ...validDecision().extracted_facts,
+          service_id: fixtureId(41901),
+          location_id: fixtureId(41902),
+          display_name: "PRIVATE_NAME",
+          phone_raw: "+998900000000",
+          email_raw: "private@example.invalid",
+        },
+      }),
+      snapshot,
+    );
+    expect(outcome).toMatchObject({
+      reason: "policy_denied",
+      modelRejection: "untrusted_extraction",
+      extractionRejectionFields: [
+        "service_id",
+        "location_id",
+        "display_name",
+        "phone_raw",
+        "email_raw",
+      ],
+    });
+    expect(JSON.stringify(outcome)).not.toMatch(/PRIVATE_NAME|998900000000|private@example/u);
+    expect(planSalesFlow(snapshot, outcome)).toMatchObject({
+      sources: [],
+      handoffReason: "policy_blocked",
+    });
+  });
+  it.each(["display_name", "phone_raw", "email_raw"] as const)(
+    "history-only %s stays rejected; verbatim current-message extraction remains valid",
+    (field) => {
+      const value = "SYNTHETIC_CUSTOMER_VALUE";
+      const snapshot = {
+        ...context("Salom"),
+        history: [{ role: "customer" as const, sequence: 1, text: value, messageId: earlierId }],
+      };
+      const proposed = decision(snapshot, {
+        extracted_facts: { ...validDecision().extracted_facts, [field]: value },
+      });
+      expect(evaluateSalesDecision(proposed, snapshot)).toMatchObject({
+        modelRejection: "untrusted_extraction",
+        extractionRejectionFields: [field],
+      });
+      expect(evaluateSalesDecision(proposed, { ...snapshot, message: value }).kind).toBe(
+        "decision",
+      );
+    },
+  );
   it.each([
     "oka lazer nechi pul",
     "Лазер нархи қанча?",

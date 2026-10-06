@@ -1195,68 +1195,88 @@ const registerSalesFlowTests = (harness: Harness): void => {
         appointments: 0,
       });
     });
-    it("S22 rejected model handoff atomically queues a safe policy fallback and preserves run denial", async () => {
-      await seedSales(harness);
-      const receipt = await accept(harness, {
-        text: "Salom, konsultatsiya narxi qancha va qancha davom etadi?",
-      });
-      await bindWidget(harness, receipt, GROUNDING_NOW);
-      const provider = salesProvider({
-        action: { type: "request_handoff", reason: "customer_requested" },
-      });
-      const flow = createSalesFlowOrchestrator({
-        provider,
-        store: salesStore(harness),
-        timeoutMs: 5000,
-      });
-      expect(await flow.run(referenceFor(receipt))).toMatchObject({
-        kind: "handoff_requested",
-        reason: "policy_blocked",
-      });
-      expect(await salesCounts(harness)).toMatchObject({
-        handoffs: 1,
-        outbound: 1,
-        handoff_outbox: 1,
-        qualified: 0,
-        qualifications: 0,
-        appointments: 0,
-      });
-      const run = (
-        await harness.privilegedPool().query<{
-          status: string;
-          schema_valid: boolean;
-          policy_allowed: boolean;
-          estimated_cost_micros: string | null;
-        }>(`select status,schema_valid,policy_allowed,estimated_cost_micros from ai_runs where trigger_message_id=$1`, [receipt.messageId])
-      ).rows[0];
-      expect(run).toMatchObject({
-        status: "policy_denied",
-        schema_valid: true,
-        policy_allowed: false,
-      });
-      expect(run?.["estimated_cost_micros"]).not.toBeNull();
-      const audit = (
-        await harness
-          .privilegedPool()
-          .query<{ rejection: string | null; reply: string | null; result: string | null }>(
+    it.each(["handoff", "extraction"] as const)(
+      "S22 rejected model %s atomically queues a safe policy fallback and preserves run denial",
+      async (proposal) => {
+        await seedSales(harness);
+        const receipt = await accept(harness, {
+          text: "Salom, konsultatsiya narxi qancha va qancha davom etadi?",
+        });
+        await bindWidget(harness, receipt, GROUNDING_NOW);
+        const provider = salesProvider({
+          action:
+            proposal === "handoff"
+              ? { type: "request_handoff", reason: "customer_requested" }
+              : { type: "none" },
+          ...(proposal === "extraction"
+            ? {
+                extracted_facts: {
+                  ...validDecision().extracted_facts,
+                  display_name: "PRIVATE_NAME",
+                  phone_raw: "+998900000000",
+                },
+              }
+            : {}),
+        });
+        const flow = createSalesFlowOrchestrator({
+          provider,
+          store: salesStore(harness),
+          timeoutMs: 5000,
+        });
+        expect(await flow.run(referenceFor(receipt))).toMatchObject({
+          kind: "handoff_requested",
+          reason: "policy_blocked",
+        });
+        expect(await salesCounts(harness)).toMatchObject({
+          handoffs: 1,
+          outbound: 1,
+          handoff_outbox: 1,
+          qualified: 0,
+          qualifications: 0,
+          appointments: 0,
+        });
+        const run = (
+          await harness.privilegedPool().query<{
+            status: string;
+            schema_valid: boolean;
+            policy_allowed: boolean;
+            estimated_cost_micros: string | null;
+          }>(`select status,schema_valid,policy_allowed,estimated_cost_micros from ai_runs where trigger_message_id=$1`, [receipt.messageId])
+        ).rows[0];
+        expect(run).toMatchObject({
+          status: "policy_denied",
+          schema_valid: true,
+          policy_allowed: false,
+        });
+        expect(run?.["estimated_cost_micros"]).not.toBeNull();
+        const audit = (
+          await harness.privilegedPool().query<{
+            rejection: string | null;
+            fields: string[];
+            reply: string | null;
+            result: string | null;
+          }>(
             `select metadata_redacted_jsonb->>'policy_rejection_code' as rejection,
+        metadata_redacted_jsonb->'extraction_rejection_fields' as fields,
         metadata_redacted_jsonb->>'reply_disposition' as reply,
         metadata_redacted_jsonb->>'sales_result_kind' as result
         from audit_events where event_type='ai_run.policy_denied' and correlation_id=$1`,
             [referenceFor(receipt).correlationId],
           )
-      ).rows[0];
-      expect(audit).toEqual({
-        rejection: "handoff_not_authorized",
-        reply: "queued",
-        result: "handoff_requested",
-      });
-      expect(await lastReply(harness)).toContain("xodimga so'rov yuborildi");
-      expect(await lastReply(harness)).not.toMatch(/Hello|reserved|confirmed/u);
-      await flow.run(referenceFor(receipt));
-      expect(provider.decide).toHaveBeenCalledOnce();
-      expect(await salesCounts(harness)).toMatchObject({ handoffs: 1, outbound: 1 });
-    });
+        ).rows[0];
+        expect(audit).toEqual({
+          rejection: proposal === "handoff" ? "handoff_not_authorized" : "untrusted_extraction",
+          fields: proposal === "handoff" ? [] : ["display_name", "phone_raw"],
+          reply: "queued",
+          result: "handoff_requested",
+        });
+        expect(await lastReply(harness)).toContain("xodimga so'rov yuborildi");
+        expect(await lastReply(harness)).not.toMatch(/Hello|reserved|confirmed/u);
+        await flow.run(referenceFor(receipt));
+        expect(provider.decide).toHaveBeenCalledOnce();
+        expect(await salesCounts(harness)).toMatchObject({ handoffs: 1, outbound: 1 });
+      },
+    );
     it("foreign-tenant facts and conversation references fail closed", async () => {
       await seedSales(harness);
       await seedGrounding(harness, "b");

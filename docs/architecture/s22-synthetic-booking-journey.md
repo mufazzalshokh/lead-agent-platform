@@ -616,6 +616,30 @@ No new grounded reply or booking state has yet been observed; S22 is unaccepted.
 
 ## Deterministic checks versus live evidence
 
+### Second-turn stop: observed extraction rejection — 2026-10-06
+
+The owner reports the synthetic DM was sent at 16:36 Asia/Tashkent
+(11:36 UTC). The exact correlated Worker outcome at
+`2026-10-06T11:37:09.563965Z` records `untrusted_extraction`, policy denial and
+a queued deterministic staff handoff. The owner reports receipt of the fallback.
+This is **not** the price/duration or booking-journey PASS. No further DM or
+event replay is requested. See the scoped
+[diagnosis and correction](s22-acceptance-evidence.md#second-paid-turn-extraction-rejection-and-bounded-correction--2026-10-06).
+
+The historical rejected field is not retained; it cannot honestly be named from
+the combined rejection code. The local correction aligns the versioned S16
+prompt with application-owned extraction/booking authority, adds finite
+field-name-only rejection diagnostics, and fixes independently reproduced
+price-plus-duration omission. Existing validation/tenant/publication boundaries
+are not relaxed. These changes still require a fresh reviewed runtime plan.
+
+The readiness numbers earlier in this document describe the pre-turn snapshot,
+not current remaining spend/slots or handoff state. Keep further paid turns
+paused until the deployed correction and current authorized state/accounting
+are proven. The final customer confirmation must refer to a real delivered
+current offer; neither fallback delivery nor staff acceptance is confirmation.
+The exact budget limits, historical NULLs and S22 acceptance gaps remain.
+
 ### Owner-approved activation checkpoint — 2026-10-05
 
 The owner has approved the one-time historical budget reserve and bounded

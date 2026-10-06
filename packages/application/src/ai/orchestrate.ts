@@ -154,6 +154,8 @@ export const createAIOrchestrator = (
             provider?.kind === "completed" ? validateAgentDecision(provider.value) : null,
           modelRejection:
             resolved.kind === "fallback_required" ? (resolved.modelRejection ?? null) : null,
+          extractionRejectionFields:
+            resolved.kind === "fallback_required" ? (resolved.extractionRejectionFields ?? []) : [],
           salesResultKind: resolved.salesResult?.kind ?? null,
           replyDisposition: resolved.replyDisposition ?? "not_planned",
         });

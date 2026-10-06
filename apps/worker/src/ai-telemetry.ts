@@ -1,4 +1,5 @@
 import type { AITelemetry } from "@lead-agent/application";
+import { AI_EXTRACTION_REJECTION_FIELDS } from "@lead-agent/application";
 
 /** Explicit metadata projection: never spread provider/store objects into logs. */
 export const createStructuredAITelemetry = (
@@ -36,6 +37,11 @@ export const createStructuredAITelemetry = (
         proposedAction: metric.proposedAction,
         schemaValid: metric.schemaValid,
         policyRejectionCode: metric.modelRejection,
+        extractionRejectionFields: AI_EXTRACTION_REJECTION_FIELDS.filter(
+          (field) =>
+            metric.modelRejection === "untrusted_extraction" &&
+            metric.extractionRejectionFields?.includes(field),
+        ),
         salesResultKind: metric.salesResultKind,
         replyDisposition: metric.replyDisposition,
         latencyMs: metric.latencyMs,

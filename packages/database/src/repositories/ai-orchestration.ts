@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   AI_CONTEXT_LIMITS,
+  AI_EXTRACTION_REJECTION_FIELDS,
   aiFallback,
   validateAgentDecision,
   type AIContextSnapshot,
@@ -717,6 +718,12 @@ const finishAIRun = async (
         attempt_no: input.reservation.attemptNo,
         policy_rejection_code:
           outcome.kind === "fallback_required" ? (outcome.modelRejection ?? null) : null,
+        extraction_rejection_fields: AI_EXTRACTION_REJECTION_FIELDS.filter(
+          (field) =>
+            outcome.kind === "fallback_required" &&
+            outcome.modelRejection === "untrusted_extraction" &&
+            outcome.extractionRejectionFields?.includes(field),
+        ),
         sales_result_kind: outcome.salesResult?.kind ?? null,
         reply_disposition: outcome.replyDisposition ?? "not_planned",
         ...(options.journeyCohort === undefined

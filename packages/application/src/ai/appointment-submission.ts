@@ -18,7 +18,7 @@ import {
 } from "./appointment-time.js";
 
 export const APPOINTMENT_SUBMISSION_PROFILE = "s16_appointment_submission.v1";
-export const APPOINTMENT_SUBMISSION_PROMPT = "s16-appointment-submission.v1";
+export const APPOINTMENT_SUBMISSION_PROMPT = "s16-appointment-submission.v2";
 export const appointmentSubmissionPreflight = (
   snapshot: AIContextSnapshot,
 ): AIFallbackReason | null => {
