@@ -727,3 +727,23 @@ S21 privacy/medical safety 12. Root test-source TypeScript and scoped ESLint PAS
 No migration, infrastructure, IAM, social eligibility, runtime deployment
 or CI rerun is needed for this fixture/evidence preparation. Any later necessary
 runtime change requires fresh reviewed images/plans and exact-plan approval.
+
+### Extraction-correction rollout checkpoint — 2026-10-06
+
+The owner-approved exact saved-plan apply **37480351865 PASS** deployed runtime
+source `3f6dee297bbae03be46ec2a418c6adec329a698f` at
+`2026-10-06T14:07:45Z`: only four in-place workload updates, no migration or IAM
+change. Read-only verification **37484607889 PASS** confirms exact API/Web
+provenance/readiness and whole-runtime convergence exit 0; API health and the
+organization-bound Web shell are reachable. Authoritative CI **37478331777
+PASS** is reused, not repeated. See the corresponding evidence-register entry.
+
+The S16 prompt/application contract and combined price-duration grounding fixes
+are deployed, but no new live answer is proven yet. The old zero-call/one-call
+snapshots above are historical, not the current remaining allowance. The next
+step is the existing read-only `booking-evidence` **observe** stage, pinned to
+these exact deployed images, to obtain current state and reservation accounting.
+Do not send/replay a customer message, silently resolve any new Handoff, reset
+the cohort or assume a remaining paid slot. Historical NULL costs remain visible.
+Actual offer delivery and customer confirmation, not staff acceptance alone,
+remain required. S22 is unaccepted.

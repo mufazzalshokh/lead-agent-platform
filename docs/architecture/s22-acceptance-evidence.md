@@ -1778,3 +1778,50 @@ the test incorrectly expected one. All three cases are corrected to require
 zero appointment tasks and separately require exactly one Handoff/event/reply,
 the persisted denial audit and no foreign-tenant effects. The previous runtime
 images and saved plan remain unchanged. This failure is not recorded as PASS.
+
+### Extraction correction: approved rollout and post-apply proof — 2026-10-06
+
+The final test-only follow-up `d37897a54ef63fa78efb91e4c2cdc0e419abb07e`
+passed authoritative CI
+[`37478331777`](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37478331777):
+3,223 ordinary tests, all five real PostgreSQL groups (452 + 9 + 21 + 12 + 14 =
+508 tests), and formatting/lint/boundaries/contracts/typechecks/production builds.
+Seven intentional ordinary skips are not counted as PASS. The separate focused
+budget proof `37478323819` also passed. These completed checks are reused; no new
+aggregate or paid evaluation was dispatched for rollout verification.
+
+The owner approved only saved plan `37476369479`, SHA256
+`ef479d3ec09ca493e18ad462f52cd46db6bdf825c3796f3590c35d15bc8c88b4`.
+Exact-plan apply
+[`37480351865`](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37480351865)
+**PASS**: 0 creates / 4 in-place changes / 0 destroys / 0 replacements. The
+changed resources were only API, Web, Worker and Migrator; no SQL, IAM, network,
+scaling, secret-resource or public-security-boundary change. Migrator execution
+was disabled. Runtime source remains
+`3f6dee297bbae03be46ec2a418c6adec329a698f`, built by `37475611241`, deployment
+timestamp `2026-10-06T14:07:45Z`, migration provenance
+`0031_s22_widget_inbound_route_management`. Later test/documentation commits did
+not rebuild or change those images.
+
+Read-only post-apply verification
+[`37484607889`](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37484607889)
+**PASS**: exact API image/source/timestamp/migration head, API runtime identity,
+private networking, 15 secret references (metadata only), ready API/Web images
+and revisions; whole-runtime Terraform convergence exit **0**. API `/health`
+returned `service=api,status=ok`; the organization-bound staff shell returned
+HTTP **200**. These are provenance/readiness/reachability checks, not a new
+authenticated browser or customer-answer test.
+
+Only the existing booking reader's reviewed source/timestamp/Worker/Migrator
+pins and corresponding regression expectations are updated for this completed
+rollout. All read-only/runtime/RLS/private-VPC/explicit-zero-retry safeguards
+remain unchanged. Its focused Node tests **9/9 PASS**, including rejection of
+previous images and exact ES-module subprocess/package resolution without DB or
+provider calls; scoped ESLint, Prettier and diff checks PASS. This tooling-only
+update needs no runtime deployment.
+
+Current post-turn conversation/handoff/request state and settled cohort counters
+must still be read before another customer turn. No historical NULL cost is
+rewritten, no allowance is reset, and neither previous message is replayed.
+Paid turns remain paused operationally until those results are known. No new
+grounded-answer, booking, recovery/capacity or S22 acceptance PASS is claimed.
