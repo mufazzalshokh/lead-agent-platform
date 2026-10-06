@@ -92,7 +92,7 @@ on:
           - paused
           - booking
       booking_evidence_stage:
-        description: Read-only cohort evidence; initial checks baseline, observe progress, first-turn traces the exact authorized message
+        description: Read-only cohort evidence; initial baseline, observe progress, first-turn or final-turn exact metadata trace
         required: false
         default: initial
         type: choice
@@ -100,6 +100,7 @@ on:
           - initial
           - observe
           - first-turn
+          - final-turn
       migrator_image:
         description: Immutable migrator image reference by digest (migration and later phases)
         required: false

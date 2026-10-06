@@ -812,3 +812,26 @@ fourth paid message. Stop on any unknown cost/timeout/guard failure.
 This preparation changes only the test/evidence; no new runtime deployment is
 needed to exercise unchanged deployed submission semantics. The cancellation
 fix remains undeployed and is not falsely marked live. S22 remains unaccepted.
+
+### Final paid turn awaiting persisted trace — 2026-10-07
+
+Owner screenshots show the current synthetic handoff was claimed and resolved
+through the UI, with feedback/transcript retention and Inbox 0. These screenshots
+do not supply new persisted resource versions or audit rows. The friend then sent
+the combined question/preference once at **2026-10-06 23:00 Asia/Tashkent**;
+the owner reports no reply. A bounded log read found webhook HTTP 200 at
+**18:00:15.987873Z UTC**, not proof that the exact DM reached persistence or AI.
+
+The new `booking-evidence` **final-turn** mode collects the exact conversation's
+**17:58–18:15 UTC** persisted chain and current ledger in one read-only execution.
+It discovers rather than guesses the message ID and correlation, distinguishes
+missing/ambiguous records, and cannot call a provider, replay a message, migrate
+or modify the job. Current channel/eligibility context is not historical receipt
+proof. Private queue records remain unavailable unless existing readers/logs
+provide them; no IAM grant is authorized. Local tooling/bootstrap tests pass,
+but results from the new live execution are still pending at this checkpoint.
+
+Do not send a fourth paid DM, reset counters, repeat Claim/Resolve or assume the
+old two-call snapshot describes the latest ledger. The final turn must be traced
+before any further action. Historical NULL costs, the approved reserve and all
+privacy/safety/booking boundaries remain intact. S22 remains unaccepted.

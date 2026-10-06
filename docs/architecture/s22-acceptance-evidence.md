@@ -1979,3 +1979,58 @@ No production change, deployment, migration, IAM change, new diagnostic,
 OAuth, event replay, broad CI or paid test is needed for this preparation. S22
 remains unaccepted. The single next owner interaction is to load and Claim/Start
 handling only the identified synthetic Instagram conversation in the staff UI.
+
+### Final authorized turn: bounded persisted trace preparation — 2026-10-07
+
+Owner-supplied screenshots subsequently show Claim feedback with the transcript
+retained, then Resolve feedback, Inbox 0 and the selected transcript still open.
+These are UI observations, not a new persisted transition/audit assertion. Do not
+repeat either mutation or substitute an earlier handoff ID/version.
+
+The friend sent the final authorized combined service/price/duration/preference
+DM at **2026-10-06 23:00 Asia/Tashkent (18:00 UTC)**. The owner reports no reply.
+One bounded owner-authenticated log read found an Instagram webhook HTTP **200**
+at **18:00:15.987873Z**, but no correlated Worker/AI outcome. This does not prove
+that this particular DM was normalized, accepted, persisted or processed. Source
+`apps/api/src/instagram/plugin.ts` returns 200 for ignored/empty events and
+`channel_unavailable`; application ingress also suppresses ineligible threads.
+Those are possible paths, not the proven cause. No OAuth/provider/eligibility
+configuration change, replay or further paid DM is justified by this result.
+
+The existing `booking-evidence` workflow gains only a **final-turn** read mode.
+Its self-contained reader binds the exact staging organization/conversation and
+**17:58–18:15 UTC on October 6**. One guarded execution collects current channel/
+thread status, safe message metadata, exact scoped AI usage/outcome/action rows,
+Outbox scheduling, allowlisted audits, legacy receipt metadata and current cohort
+accounting. Missing/ambiguous inbound discovery and row-cap saturation fail
+closed without choosing a different message. Current context is not falsely
+presented as the historical state at receipt. The canonical Instagram store does
+not currently write `webhook_receipts`; no rows there is not proof of rejection.
+Queue-table privileges are inspected but private queue/handler records are not
+read or new permissions granted; any remaining queue proof must use the discovered
+exact correlation in already-authorized logs.
+
+The existing immutable Worker/Migrator, identities, runtime-secret reference,
+private network and explicit zero retries remain pinned to the approved rollout.
+The reader adds FORCE-RLS/not-owner checks for its three additional public tables.
+Every transaction is runtime-role, tenant-context, read-only, query-bounded and
+rolled back, with connection cleanup. No provider construction, message bodies,
+provider account IDs, credentials, snapshots or full audit payloads are selected.
+No job configuration, migration entrypoint, infrastructure or runtime code changes.
+Historical NULL costs and existing spend/slot ceilings remain unchanged. Collection
+PASS never means generation/delivery PASS or authorization for another paid turn.
+
+Local verification: **30/30 Node tooling tests PASS**, including the actual
+generated final-turn ES-module bootstrap with controlled application-package and
+relative-module resolution, rollback/cleanup, absent/ambiguous/capped discovery,
+NULL-cost preservation and redaction. Scoped ESLint (zero warnings), formatting
+and diff checks pass. These mocks are not live PostgreSQL/Instagram proof.
+The new read has not executed at this preparation checkpoint. Existing CI and
+runtime rollout proof are reused; no full suite/build/deployment is repeated.
+
+Owner result recovery uses one bounded Logging REST read with an exact execution
+filter, strict output allowlist and readable text. The recovery path cannot start
+a job. Authentication/permission/timeout, truncated/duplicate/missing assertions
+and failed diagnostic assertions remain explicit; no raw error payload or token
+is printed. Existing WIF Logging denial is not grounds for IAM broadening. S22
+and the booking journey remain unaccepted pending the actual persisted trace.

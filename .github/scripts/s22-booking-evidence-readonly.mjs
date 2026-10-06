@@ -88,6 +88,9 @@ try {
       "appointment_requests",
       "messages",
       "outbox_events",
+      ...(process.env.S22_BOOKING_READ_STAGE === "final-turn"
+        ? ["channel_connections", "thread_automation_controls", "webhook_receipts"]
+        : []),
     ];
     const [rls] = await read(
       `select count(*)::int as count,
@@ -160,6 +163,20 @@ try {
       )
         throw Object.assign(new Error(), { code: "FIRST_TURN_SCOPE_MISMATCH" });
       await collectFirstTurnEvidence(read, report);
+    }
+    if (process.env.S22_BOOKING_READ_STAGE === "final-turn") {
+      stage = "final_turn_trace";
+      if (!process.env.S22_BOOKING_TRACE_B64)
+        throw Object.assign(new Error(), { code: "FINAL_TURN_MODULE_MISSING" });
+      const { finalTurnScope, collectFinalTurnEvidence } = await import(
+        `data:text/javascript;base64,${process.env.S22_BOOKING_TRACE_B64}`
+      );
+      if (
+        organization !== finalTurnScope.organization ||
+        conversation !== finalTurnScope.conversation
+      )
+        throw Object.assign(new Error(), { code: "FINAL_TURN_SCOPE_MISMATCH" });
+      await collectFinalTurnEvidence(read, report);
     }
   });
   stage = "deployed_cohort_binding";

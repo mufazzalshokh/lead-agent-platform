@@ -159,6 +159,17 @@ const traceAssertions = new Set([
   "first_turn_outbox",
   "first_turn_queue_access",
 ]);
+export const finalTraceAssertions = new Set([
+  "final_turn_context",
+  "final_turn_messages",
+  "final_turn_discovery",
+  "final_turn_runs",
+  "final_turn_actions",
+  "final_turn_outbox",
+  "final_turn_audits",
+  "final_turn_receipts",
+  "final_turn_queue_access",
+]);
 const optionalAssertions = new Set([
   "first_turn_readiness",
   "first_turn_trace",
@@ -166,6 +177,8 @@ const optionalAssertions = new Set([
   "pool_error",
   "cleanup",
   ...traceAssertions,
+  "final_turn_trace",
+  ...finalTraceAssertions,
 ]);
 const fields = new Set([
   "runtime_read_only_tenant_guard",
@@ -266,6 +279,23 @@ const fields = new Set([
   "handler_read",
   "job_read",
   "queue_record_proof",
+  "channel_connection_id",
+  "channel_type",
+  "connection_status",
+  "connection_version",
+  "has_credential",
+  "token_expires_at",
+  "thread_control_id",
+  "eligibility_state",
+  "eligibility_version",
+  "eligibility_reason",
+  "eligibility_updated_at",
+  "last_activity_at",
+  "message_id",
+  "inbound_count",
+  "processed_message_id",
+  "first_received_at",
+  "last_received_at",
 ]);
 const redact = (value) => {
   if (Array.isArray(value)) return value.slice(0, 21).map(redact);
@@ -402,6 +432,119 @@ async function recoverMain() {
   console.log(JSON.stringify(result, null, 2));
   if (result.outcome !== "PASS") process.exitCode = 1;
 }
+// Narrow result recovery for the one new final-turn read, using owner auth only.
+// This path cannot execute a job. No retry, unbounded query or raw error output.
+export async function recoverFinalTurnLogs(execution, token, request = fetch) {
+  if (!/^lead-agent-staging-migrator-[a-z0-9]{5}$/.test(execution))
+    return { outcome: "BLOCKED", code: "EXECUTION_SCOPE_INVALID" };
+  try {
+    const response = await request("https://logging.googleapis.com/v2/entries:list", {
+      method: "POST",
+      redirect: "error",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({
+        resourceNames: [`projects/${project}`],
+        filter: `resource.type="cloud_run_job" AND resource.labels.job_name="${job}" AND labels."run.googleapis.com/execution_name"="${execution}" AND timestamp>="2026-10-06T00:00:00Z" AND timestamp<"2026-10-08T00:00:00Z" AND jsonPayload.operation="s22_booking_readonly"`,
+        orderBy: "timestamp desc",
+        pageSize: 30,
+      }),
+    });
+    if (!response.ok)
+      return {
+        outcome: "BLOCKED",
+        code:
+          response.status === 403
+            ? "EXACT_EXECUTION_LOG_PERMISSION_DENIED"
+            : response.status === 401
+              ? "LOG_AUTHENTICATION_DENIED"
+              : "LOG_API_UNAVAILABLE",
+      };
+    const payload = await response.json();
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      (payload.entries !== undefined &&
+        (!Array.isArray(payload.entries) || payload.entries.length > 30)) ||
+      (payload.entries ?? []).some((entry) => !entry || typeof entry !== "object")
+    )
+      return { outcome: "BLOCKED", code: "LOG_RESPONSE_INVALID" };
+    const rows = sanitizeRows(payload.entries ?? []);
+    const expected = [...assertions, ...finalTraceAssertions];
+    const counts = new Map();
+    for (const row of rows) counts.set(row.assertion, (counts.get(row.assertion) ?? 0) + 1);
+    const code = payload.nextPageToken
+      ? "LOG_RESULT_TRUNCATED"
+      : [...counts.values()].some((count) => count > 1)
+        ? "LOG_ASSERTIONS_DUPLICATED"
+        : expected.some((name) => !counts.has(name))
+          ? "LOG_ASSERTIONS_INCOMPLETE"
+          : rows.some((row) => row.outcome !== "PASS")
+            ? "LOG_ASSERTION_NOT_PASS"
+            : null;
+    return {
+      execution,
+      outcome: code === null ? "PASS" : "BLOCKED",
+      ...(code ? { code } : {}),
+      assertions: rows,
+    };
+  } catch (error) {
+    return {
+      outcome: "BLOCKED",
+      code:
+        error?.name === "TimeoutError" || error?.name === "AbortError"
+          ? "LOG_API_TIMEOUT"
+          : "LOG_RESPONSE_OR_TRANSPORT_BLOCKED",
+    };
+  }
+}
+export function formatFinalTurnReport(result) {
+  const lines = [`23:00 message trace: ${result.outcome}${result.code ? ` (${result.code})` : ""}`];
+  if (result.execution) lines.push(`Read-only execution: ${result.execution}`);
+  for (const item of result.assertions ?? []) {
+    const label = item.assertion.replaceAll("_", " ");
+    lines.push(`\n${label}: ${item.outcome}${item.code ? ` (${item.code})` : ""}`);
+    const observed = item.observed ?? {};
+    const show = (row) =>
+      Object.entries(row)
+        .filter(([key]) => key !== "collection_only")
+        .map(
+          ([key, value]) =>
+            `${key.replaceAll("_", " ")}: ${value === null ? "unknown" : String(value)}`,
+        )
+        .join("; ");
+    const scalar = Object.fromEntries(Object.entries(observed).filter(([key]) => key !== "rows"));
+    if (Object.keys(scalar).some((key) => key !== "collection_only")) lines.push(show(scalar));
+    if (Array.isArray(observed.rows)) {
+      if (observed.rows.length === 0) lines.push("No records in this exact scope.");
+      else for (const row of observed.rows) lines.push(`- ${show(row)}`);
+    }
+  }
+  lines.push(
+    "\nCollection PASS is not a claim of successful AI generation or delivery. No new message/call was sent.",
+  );
+  return lines.join("\n");
+}
+async function recoverFinalMain(execution) {
+  // Validate before even accessing authentication; malformed args never run main.
+  if (!/^lead-agent-staging-migrator-[a-z0-9]{5}$/.test(execution)) {
+    console.log("BLOCKED: EXECUTION_SCOPE_INVALID");
+    process.exitCode = 1;
+    return;
+  }
+  let token;
+  try {
+    token = (await cloud(["auth", "print-access-token", "--quiet"], 10000)).trim();
+    requireSafe(token.length > 0 && !/\s/u.test(token), "LOG_AUTHENTICATION_UNAVAILABLE");
+  } catch {
+    console.log("BLOCKED: LOG_AUTHENTICATION_UNAVAILABLE");
+    process.exitCode = 1;
+    return;
+  }
+  const result = await recoverFinalTurnLogs(execution, token);
+  console.log(formatFinalTurnReport(result));
+  if (result.outcome !== "PASS") process.exitCode = 1;
+}
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const moduleBootstrap =
   'import{spawnSync}from"node:child_process";const r=spawnSync(process.execPath,["--input-type=module"],{input:Buffer.from(process.env.S22_BOOKING_READ_B64,"base64"),cwd:process.cwd(),env:process.env,stdio:["pipe","inherit","inherit"],timeout:60000,killSignal:"SIGTERM"});process.exitCode=r.error||r.signal?1:Number.isInteger(r.status)?r.status:1;';
@@ -419,7 +562,10 @@ async function main() {
   let execution,
     terminal = false;
   try {
-    requireSafe(["initial", "observe", "first-turn"].includes(stage), "READ_STAGE_INVALID");
+    requireSafe(
+      ["initial", "observe", "first-turn", "final-turn"].includes(stage),
+      "READ_STAGE_INVALID",
+    );
     const token = (await cloud(["auth", "print-access-token"])).trim();
     const response = await fetch(
       `https://run.googleapis.com/v2/projects/${project}/locations/${region}/workerPools/lead-agent-staging-worker`,
@@ -454,7 +600,9 @@ async function main() {
     const traceReader =
       stage === "first-turn"
         ? await readFile(new URL("./s22-booking-first-turn-readonly.mjs", import.meta.url))
-        : null;
+        : stage === "final-turn"
+          ? await readFile(new URL("./s22-booking-final-turn-readonly.mjs", import.meta.url))
+          : null;
     if (traceReader !== null)
       evidence.trace_reader_sha256 = createHash("sha256").update(traceReader).digest("hex");
     evidence.reader_sha256 = createHash("sha256").update(reader).digest("hex");
@@ -560,6 +708,13 @@ async function main() {
         ),
         "FIRST_TURN_TRACE_INCOMPLETE",
       );
+    if (stage === "final-turn")
+      requireSafe(
+        [...finalTraceAssertions].every((name) =>
+          evidence.assertions.some((r) => r.assertion === name && r.outcome === "PASS"),
+        ),
+        "FINAL_TURN_TRACE_INCOMPLETE",
+      );
     evidence.outcome = "PASS";
   } catch (error) {
     evidence.outcome = "BLOCKED";
@@ -592,6 +747,8 @@ async function main() {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.length === 3 && process.argv[2] === "--recover-logs") await recoverMain();
+  else if (process.argv.length === 4 && process.argv[2] === "--recover-final-turn")
+    await recoverFinalMain(process.argv[3]);
   else if (process.argv.length === 2) await main();
   else {
     console.log(JSON.stringify({ outcome: "BLOCKED", code: "READ_MODE_INVALID" }));

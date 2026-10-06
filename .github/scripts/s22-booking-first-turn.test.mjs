@@ -150,49 +150,50 @@ test("main reader remains an ES module; self-contained trace module resolves and
   assert.equal(Buffer.byteLength(Buffer.from(helper).toString("base64")) < 32000, true);
 });
 
-test("exact bootstrap executes the complete first-turn reader with controlled package/relative modules, rollback and cleanup", () => {
-  const fixture = mkdtempSync(join(tmpdir(), "s22-first-turn-bootstrap-"));
-  const packages = join(fixture, "node_modules", "@lead-agent");
-  const historical = [
-    "01a1067f-dfc8-7e14-9e12-89a0e30fd27e",
-    "01a10af4-5126-7ce8-ab52-0424e07ab3d9",
-  ];
-  const cohort = {
-    profile: "s22-synthetic-booking.v1",
-    organizationId: firstTurnScope.organization,
-    conversationId: firstTurnScope.conversation,
-    historicalReserveMicros: "1033396",
-    hardCeilingMicros: "10000000",
-    maximumCalls: 6,
-    maximumMessages: 3,
-    maximumCallsPerMessage: 2,
-    inputTokenLimit: 1048576,
-    outputTokenLimit: 4000,
-  };
-  for (const name of ["config", "database"]) {
-    mkdirSync(join(packages, name), { recursive: true });
+for (const readStage of ["first-turn", "final-turn"])
+  test(`exact bootstrap executes the complete ${readStage} reader with controlled package/relative modules, rollback and cleanup`, () => {
+    const fixture = mkdtempSync(join(tmpdir(), "s22-first-turn-bootstrap-"));
+    const packages = join(fixture, "node_modules", "@lead-agent");
+    const historical = [
+      "01a1067f-dfc8-7e14-9e12-89a0e30fd27e",
+      "01a10af4-5126-7ce8-ab52-0424e07ab3d9",
+    ];
+    const cohort = {
+      profile: "s22-synthetic-booking.v1",
+      organizationId: firstTurnScope.organization,
+      conversationId: firstTurnScope.conversation,
+      historicalReserveMicros: "1033396",
+      hardCeilingMicros: "10000000",
+      maximumCalls: 6,
+      maximumMessages: 3,
+      maximumCallsPerMessage: 2,
+      inputTokenLimit: 1048576,
+      outputTokenLimit: 4000,
+    };
+    for (const name of ["config", "database"]) {
+      mkdirSync(join(packages, name), { recursive: true });
+      writeFileSync(
+        join(packages, name, "package.json"),
+        JSON.stringify({
+          name: `@lead-agent/${name}`,
+          type: "module",
+          exports: "./index.js",
+        }),
+      );
+    }
     writeFileSync(
-      join(packages, name, "package.json"),
-      JSON.stringify({
-        name: `@lead-agent/${name}`,
-        type: "module",
-        exports: "./index.js",
-      }),
-    );
-  }
-  writeFileSync(
-    join(packages, "config", "index.js"),
-    `
+      join(packages, "config", "index.js"),
+      `
     export const S22_BOOKING_COHORT={historicalRunIds:${JSON.stringify(historical)}};
     export const withLibpqCompatibleRequireSsl=v=>v;
     export const createTenantDatabaseRuntimeConfig=v=>v;
     export const loadAIJourneyCohortConfig=()=>{const v=${JSON.stringify(cohort)};
       v.historicalReserveMicros=BigInt(v.historicalReserveMicros);v.hardCeilingMicros=BigInt(v.hardCeilingMicros);return v;};
   `,
-  );
-  writeFileSync(
-    join(packages, "database", "index.js"),
-    `
+    );
+    writeFileSync(
+      join(packages, "database", "index.js"),
+      `
     export const createTenantDatabaseRuntime=()=>({verifyReady:async()=>{},
       withTenantTransaction:async(org,fn)=>{if(org!==${JSON.stringify(firstTurnScope.organization)})throw Error('WRONG_TENANT');
         try{await fn({organizationId:org});throw Error('COMMIT_NOT_ALLOWED');}
@@ -204,16 +205,16 @@ test("exact bootstrap executes the complete first-turn reader with controlled pa
         historicalReserveMicros:'1033396',combinedExposureMicros:'1035346',perCallReserveMicros:'801432',
         blocked:false,accountingComplete:false};}});
   `,
-  );
-  mkdirSync(join(packages, "database", "runtime"));
-  writeFileSync(
-    join(packages, "database", "runtime", "tenant.js"),
-    `
+    );
+    mkdirSync(join(packages, "database", "runtime"));
+    writeFileSync(
+      join(packages, "database", "runtime", "tenant.js"),
+      `
     export const executeTenantQuery=async(session,build)=>{const q=build(session.organizationId), t=q.text;
       if(q.values[0]!==${JSON.stringify(firstTurnScope.organization)}||!t.trimStart().startsWith('select '))throw Error('UNSAFE_QUERY');
       let rows;
-      if(t.includes("current_user='lead_agent_runtime'"))rows=[{runtime:true,staging_database:true,least_privilege:true,read_only:true,row_security:true,tenant_matches:true}];
-      else if(t.includes('pg_catalog.pg_class'))rows=[{count:7,safe:true}];
+        if(t.includes("current_user='lead_agent_runtime'"))rows=[{runtime:process.env.S22_FIXTURE_BAD_GUARD!=='true',staging_database:true,least_privilege:true,read_only:true,row_security:true,tenant_matches:true}];
+      else if(t.includes('pg_catalog.pg_class'))rows=[{count:${readStage === "final-turn" ? 10 : 7},safe:true}];
       else if(t.includes('as cost_unknown'))rows=${JSON.stringify(historical.map((run_id) => ({ run_id, cost_unknown: true, finished: true })))};
       else if(t.includes('status,version,automation_mode'))rows=[{id:${JSON.stringify(firstTurnScope.conversation)},status:'open',version:'13',automation_mode:'ai',no_active_handoff:true}];
       else if(t.includes('from appointment_requests'))rows=[];
@@ -224,44 +225,75 @@ test("exact bootstrap executes the complete first-turn reader with controlled pa
       else if(t.includes('select a.id::text'))rows=[{event_type:'ai_run.failed',reason_code:'policy_denied',dispatch_authorized:'true'}];
       else if(t.includes('select o.id::text'))rows=[{event_type:'ai_run.failed',status:'published'}];
       else if(t.includes('has_table_privilege'))rows=[{handler_read:false,job_read:false}];
+      else if(t.includes('cc.status as connection_status'))rows=[{id:${JSON.stringify(firstTurnScope.conversation)},connection_status:'active',eligibility_state:'business_eligible'}];
+      else if(t.includes('select r.id::text as run_id'))rows=[{run_id:'synthetic',status:'failed',failure_category:'timeout',estimated_cost_micros:null}];
+      else if(t.includes('select w.id::text'))rows=[];
       else throw Error('UNEXPECTED_QUERY');
       return {rows};};
   `,
-  );
-  try {
-    const result = spawnSync(process.execPath, ["--input-type=module", "-e", moduleBootstrap], {
-      cwd: fixture,
-      env: {
-        ...process.env,
-        DATABASE_URL: "postgresql://invalid.invalid/test",
-        S22_BOOKING_READ_STAGE: "first-turn",
-        S22_BOOKING_READ_B64: readFileSync(
-          new URL("./s22-booking-evidence-readonly.mjs", import.meta.url),
-        ).toString("base64"),
-        S22_BOOKING_TRACE_B64: readFileSync(
-          new URL("./s22-booking-first-turn-readonly.mjs", import.meta.url),
-        ).toString("base64"),
-      },
-      encoding: "utf8",
-      timeout: 15000,
-    });
-    assert.equal(result.status, 0, result.stderr + result.stdout);
-    const assertions = result.stdout
-      .split(/\r?\n/u)
-      .filter((line) => line.startsWith("{"))
-      .map((line) => JSON.parse(line));
-    assert.equal(assertions.length, 12);
-    assert.equal(
-      assertions.every((a) => a.outcome === "PASS"),
-      true,
     );
-    assert.equal(assertions.filter((a) => a.assertion.startsWith("first_turn_")).length, 6);
-    assert.match(result.stdout, /FIXTURE_RUNTIME_CLOSED/);
-    assert.equal((result.stdout.match(/FIXTURE_ROLLBACK/gu) || []).length, 2);
-    assert.doesNotMatch(result.stdout, /postgresql:\/\/|invalid\.invalid/);
-  } finally {
-    assert.equal(resolve(fixture).startsWith(resolve(tmpdir())), true);
-    assert.equal(basename(fixture).startsWith("s22-first-turn-bootstrap-"), true);
-    rmSync(fixture, { recursive: true, force: true });
-  }
-});
+    try {
+      const result = spawnSync(process.execPath, ["--input-type=module", "-e", moduleBootstrap], {
+        cwd: fixture,
+        env: {
+          ...process.env,
+          DATABASE_URL: "postgresql://invalid.invalid/test",
+          S22_BOOKING_READ_STAGE: readStage,
+          S22_BOOKING_READ_B64: readFileSync(
+            new URL("./s22-booking-evidence-readonly.mjs", import.meta.url),
+          ).toString("base64"),
+          S22_BOOKING_TRACE_B64: readFileSync(
+            new URL(`./s22-booking-${readStage}-readonly.mjs`, import.meta.url),
+          ).toString("base64"),
+        },
+        encoding: "utf8",
+        timeout: 15000,
+      });
+      assert.equal(result.status, 0, result.stderr + result.stdout);
+      const assertions = result.stdout
+        .split(/\r?\n/u)
+        .filter((line) => line.startsWith("{"))
+        .map((line) => JSON.parse(line));
+      assert.equal(assertions.length, readStage === "final-turn" ? 15 : 12);
+      assert.equal(
+        assertions.every((a) => a.outcome === "PASS"),
+        true,
+      );
+      assert.equal(
+        assertions.filter((a) =>
+          a.assertion.startsWith(readStage === "final-turn" ? "final_turn_" : "first_turn_"),
+        ).length,
+        readStage === "final-turn" ? 9 : 6,
+      );
+      assert.match(result.stdout, /FIXTURE_RUNTIME_CLOSED/);
+      assert.equal((result.stdout.match(/FIXTURE_ROLLBACK/gu) || []).length, 2);
+      assert.doesNotMatch(result.stdout, /postgresql:\/\/|invalid\.invalid/);
+      if (readStage === "final-turn") {
+        const denied = spawnSync(process.execPath, ["--input-type=module", "-e", moduleBootstrap], {
+          cwd: fixture,
+          env: {
+            ...process.env,
+            DATABASE_URL: "postgresql://invalid.invalid/test",
+            S22_FIXTURE_BAD_GUARD: "true",
+            S22_BOOKING_READ_STAGE: readStage,
+            S22_BOOKING_READ_B64: readFileSync(
+              new URL("./s22-booking-evidence-readonly.mjs", import.meta.url),
+            ).toString("base64"),
+            S22_BOOKING_TRACE_B64: readFileSync(
+              new URL("./s22-booking-final-turn-readonly.mjs", import.meta.url),
+            ).toString("base64"),
+          },
+          encoding: "utf8",
+          timeout: 15000,
+        });
+        assert.equal(denied.status, 1);
+        assert.match(denied.stdout, /READ_ONLY_RUNTIME_TENANT_GUARD_FAILED/);
+        assert.match(denied.stdout, /FIXTURE_RUNTIME_CLOSED/);
+        assert.doesNotMatch(denied.stdout, /final_turn_messages|postgresql:\/\/|invalid\.invalid/);
+      }
+    } finally {
+      assert.equal(resolve(fixture).startsWith(resolve(tmpdir())), true);
+      assert.equal(basename(fixture).startsWith("s22-first-turn-bootstrap-"), true);
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
