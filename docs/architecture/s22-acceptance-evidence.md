@@ -1825,3 +1825,26 @@ must still be read before another customer turn. No historical NULL cost is
 rewritten, no allowance is reset, and neither previous message is replayed.
 Paid turns remain paused operationally until those results are known. No new
 grounded-answer, booking, recovery/capacity or S22 acceptance PASS is claimed.
+
+### Post-rollout bounded observation: result-log access blocked — 2026-10-06
+
+Tooling/evidence commit `38262834a7af6d8141488484133c691258c56218` was pushed
+and its remote branch SHA verified. Existing **observe** workflow
+[`37485119569`](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37485119569)
+verified the live Worker image/source/timestamp/head, `booking` mode, one instance
+and private networking. It also verified the exact Migrator diagnostic image,
+runtime database secret reference (no payload read), private networking and
+explicit numeric zero retries. The read-only execution
+**`lead-agent-staging-migrator-n2vs5` SUCCESS** used reader SHA256
+`04a3488a3eaf9e620bbe7e92fa5b618db99c0f4ef50938231bc4906b8fe28941`.
+No paid call, migration execution or job configuration change occurred.
+
+The workflow's exact remaining failure is
+**`EXACT_EXECUTION_LOG_PERMISSION_DENIED`**, not a runtime rollout or provider
+failure. The sanitized artifact contains no assertion rows; execution success
+alone is not substituted for the missing observed state/counters. The current
+handoff/request state, remaining paid allowance and preserved historical NULLs
+still need the existing execution's structured result rows. No rerun, upload,
+IAM broadening, message replay or paid turn is justified. Recover only this
+execution's `s22_booking_readonly` logs through the owner's existing authenticated
+Cloud Shell. Paid customer turns remain paused until the actual results are read.

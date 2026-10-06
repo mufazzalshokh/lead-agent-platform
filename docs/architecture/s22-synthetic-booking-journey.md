@@ -747,3 +747,11 @@ Do not send/replay a customer message, silently resolve any new Handoff, reset
 the cohort or assume a remaining paid slot. Historical NULL costs remain visible.
 Actual offer delivery and customer confirmation, not staff acceptance alone,
 remain required. S22 is unaccepted.
+
+The post-rollout **observe** run `37485119569` verified the live Worker/Migrator
+bindings and diagnostic safeguards. Its existing read-only execution
+`lead-agent-staging-migrator-n2vs5` completed successfully, but the workflow
+cannot read Cloud Logging (`EXACT_EXECUTION_LOG_PERMISSION_DENIED`). No assertion
+rows or current remaining-slot numbers are claimed. Retrieve only this existing
+execution's `s22_booking_readonly` result rows with owner-authenticated Cloud
+Shell; no upload, rerun, deployment, new IAM permission or paid customer message.
