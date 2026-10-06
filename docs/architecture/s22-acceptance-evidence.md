@@ -1727,3 +1727,44 @@ deployment requires fresh immutable images and a newly reviewed exact plan;
 previous hashes/approvals cannot authorize this correction. S22 is unaccepted.
 
 Keep Cloud SQL running during active DB-dependent S22 work. S23 remains out of scope.
+
+### Extraction correction: immutable build, plan and test expectations — 2026-10-06
+
+Runtime source `3f6dee297bbae03be46ec2a418c6adec329a698f` is preserved on the
+S22 verification branch. Image build
+[`37475611241`](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37475611241)
+passed for all four Linux/amd64 images. Full reconciliation **plan only**
+[`37476369479`](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37476369479)
+passed: zero creates, four in-place workload updates, zero destroys/replacements;
+migrator execution disabled. Deployment timestamp `2026-10-06T14:07:45Z`,
+migration provenance `0031_s22_widget_inbound_route_management`. The downloaded
+saved-plan SHA256 independently matches
+`ef479d3ec09ca493e18ad462f52cd46db6bdf825c3796f3590c35d15bc8c88b4`.
+No apply or paid call occurred.
+
+The push automatically triggered CI
+[`37475505872`](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37475505872):
+3,223 ordinary tests passed; the primary PostgreSQL suite reached 449/452 PASS.
+Both S22 persisted fallback/audit cases passed. Three older S16 assertions failed
+because they expected `grounding_insufficient/policy_denied` and no outbound,
+where the approved fallback introduced by deployed commit `da9d609` returns
+`handoff_requested/policy_blocked`. Git history confirms these stale assertions
+already existed in that earlier source; no production change is justified by
+this test failure.
+
+The three test expectations are corrected together. They now also verify the
+exact persisted denial/rejection audit, no AppointmentRequest/preference/booking
+transition or booking event, and no foreign-tenant handoff, reply, qualification
+or appointment. This does not permit the rejected model proposal: only the
+already-approved application-owned fallback is expected. Runtime source and
+the built images/saved plan are unchanged by this test-only follow-up.
+
+Focused root TypeScript, changed-file ESLint/formatting and diff checks passed.
+Local PostgreSQL execution is unavailable: the existing Docker Linux-engine
+pipe is absent. Docker was not started, repaired or reconfigured; no host
+maintenance or local aggregate was attempted. The corrected PostgreSQL
+assertions still require remote execution before claiming their PASS. The
+existing push-triggered budget proof `37475496694` passed; it is not evidence
+that these three corrected assertions executed. No manual aggregate rerun is
+dispatched. Keep paid turns paused and do not apply this plan until the exact
+plan is approved and outstanding verification concerns are resolved.

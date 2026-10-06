@@ -465,6 +465,41 @@ const submissionCounts = async (harness: Harness) =>
   ).rows[0];
 
 const registerAppointmentSubmissionTests = (harness: Harness): void => {
+  const expectRejectedProposalAudit = async (
+    reference: AIWorkReference,
+    rejection: string,
+    fields: readonly string[],
+  ): Promise<void> => {
+    const audit = await harness.privilegedPool().query<{
+      status: string;
+      policy_allowed: boolean;
+      rejection: string;
+      fields: string[];
+      reply: string;
+      result: string;
+    }>(
+      `select r.status,r.policy_allowed,
+        a.metadata_redacted_jsonb->>'policy_rejection_code' as rejection,
+        a.metadata_redacted_jsonb->'extraction_rejection_fields' as fields,
+        a.metadata_redacted_jsonb->>'reply_disposition' as reply,
+        a.metadata_redacted_jsonb->>'sales_result_kind' as result
+      from ai_runs r join audit_events a
+        on a.organization_id=r.organization_id and a.target_id=r.id
+      where r.organization_id=$1 and r.trigger_message_id=$2
+        and a.event_type='ai_run.policy_denied' and a.correlation_id=$3`,
+      [reference.organizationId, reference.messageId, reference.correlationId],
+    );
+    expect(audit.rows).toEqual([
+      {
+        status: "policy_denied",
+        policy_allowed: false,
+        rejection,
+        fields,
+        reply: "queued",
+        result: "handoff_requested",
+      },
+    ]);
+  };
   describe("S16 fixed-profile appointment request persistence", () => {
     it("price → ertaga → 5larda atomically creates requested + provenance + durable staff task, without a phone", async () => {
       await seedSales(harness);
@@ -714,8 +749,24 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
         await submissionFlow(harness, {
           action: { type: "confirm_appointment", appointment_request_id: fixtureId(44000) },
         }).run(referenceFor(receipt)),
-      ).toMatchObject({ kind: "grounding_insufficient", reason: "policy_denied" });
-      expect(await submissionCounts(harness)).toMatchObject({ requests: 0, outbound: 0 });
+      ).toMatchObject({ kind: "handoff_requested", reason: "policy_blocked" });
+      expect(await submissionCounts(harness)).toMatchObject({
+        requests: 0,
+        preferences: 0,
+        transitions: 0,
+        request_outbox: 0,
+        lead_outbox: 0,
+        request_audits: 0,
+        outbound: 1,
+        staff_tasks: 1,
+      });
+      expect(await salesCounts(harness)).toMatchObject({
+        handoffs: 1,
+        handoff_outbox: 1,
+        qualifications: 0,
+        appointments: 0,
+      });
+      await expectRejectedProposalAudit(referenceFor(receipt), "confirmation_not_authorized", []);
     });
     it.each(["telegram", "instagram"] as const)(
       "trusted bound %s identity uses the same path without phone or Widget session",
@@ -856,7 +907,7 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
               service_id: groundingId(tenant === "a" ? 110 : 10),
             },
           }).run(reference),
-        ).toMatchObject({ kind: "grounding_insufficient", reason: "policy_denied" });
+        ).toMatchObject({ kind: "handoff_requested", reason: "policy_blocked" });
         expect(
           await submissionStore(harness).load({
             ...reference,
@@ -865,9 +916,28 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
         ).toBeNull();
         expect(await submissionCounts(harness)).toMatchObject({
           requests: 0,
-          outbound: 0,
-          staff_tasks: 0,
+          preferences: 0,
+          transitions: 0,
+          request_outbox: 0,
+          lead_outbox: 0,
+          request_audits: 0,
+          outbound: 1,
+          staff_tasks: 1,
         });
+        await expectRejectedProposalAudit(reference, "untrusted_extraction", ["service_id"]);
+        const foreignOrganization = tenant === "a" ? tenantB : AI_REFERENCE.organizationId;
+        expect(
+          (
+            await harness.privilegedPool().query<Record<string, number>>(
+              `select
+                (select count(*)::int from handoffs where organization_id=$1) as handoffs,
+                (select count(*)::int from messages where organization_id=$1 and direction='outbound') as outbound,
+                (select count(*)::int from lead_qualification_evaluations where organization_id=$1) as qualifications,
+                (select count(*)::int from appointment_requests where organization_id=$1) as appointments`,
+              [foreignOrganization],
+            )
+          ).rows[0],
+        ).toEqual({ handoffs: 0, outbound: 0, qualifications: 0, appointments: 0 });
       },
     );
     it("a legitimate later request is distinct after a prior terminal request and trusted Lead retry", async () => {
