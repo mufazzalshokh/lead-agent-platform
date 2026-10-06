@@ -67,33 +67,36 @@ export const createAIOrchestrator = (
           else if (deadline.aborted) outcome = aiFallback("timeout");
           else {
             dispatchAuthorized = true;
+            // Subscribe BEFORE invoking an adapter: it may synchronously abort
+            // during startup and then return a non-settling promise. An already
+            // aborted signal will never emit another abort event.
+            let removeAbortListener = (): void => {};
+            const timeout = new Promise<AIProviderResult>((resolve) => {
+              const onAbort = (): void =>
+                resolve({
+                  kind: "timeout",
+                  model: null,
+                  responseId: null,
+                  latencyMs: options.timeoutMs,
+                  usage: {
+                    input: null,
+                    output: null,
+                    total: null,
+                    cachedInput: null,
+                    reasoning: null,
+                  },
+                });
+              deadline.addEventListener("abort", onAbort, { once: true });
+              removeAbortListener = () => deadline.removeEventListener("abort", onAbort);
+              if (deadline.aborted) onAbort();
+            });
             try {
-              provider = await Promise.race([
-                options.provider.decide(input),
-                new Promise<AIProviderResult>((resolve) =>
-                  deadline.addEventListener(
-                    "abort",
-                    () =>
-                      resolve({
-                        kind: "timeout",
-                        model: null,
-                        responseId: null,
-                        latencyMs: options.timeoutMs,
-                        usage: {
-                          input: null,
-                          output: null,
-                          total: null,
-                          cachedInput: null,
-                          reasoning: null,
-                        },
-                      }),
-                    { once: true },
-                  ),
-                ),
-              ]);
+              provider = await Promise.race([timeout, options.provider.decide(input)]);
             } catch {
               // Provider exceptions are never propagated as raw diagnostics or customer text.
               outcome = aiFallback("provider_unavailable");
+            } finally {
+              removeAbortListener();
             }
             if (provider !== null) {
               if (deadline.aborted) outcome = aiFallback("timeout");

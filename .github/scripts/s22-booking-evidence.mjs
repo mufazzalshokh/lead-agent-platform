@@ -309,6 +309,99 @@ export const logReadFailureCode = (error) =>
   /PERMISSION_DENIED|does not have permission|permission denied|403 Forbidden/iu.test(error.stderr)
     ? "EXACT_EXECUTION_LOG_PERMISSION_DENIED"
     : "EXACT_EXECUTION_LOG_READ_BLOCKED";
+// Recovery reads ONLY the completed observation whose result collection failed.
+// It never enters main(), executes a job, changes IAM or retries an API call.
+export const recoveryExecution = "lead-agent-staging-migrator-n2vs5";
+export async function recoverExistingBookingLogs(token, request = fetch) {
+  let stage = "logging_api";
+  try {
+    const response = await request("https://logging.googleapis.com/v2/entries:list", {
+      method: "POST",
+      redirect: "error",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({
+        resourceNames: [`projects/${project}`],
+        filter: `resource.type="cloud_run_job" AND resource.labels.job_name="${job}" AND labels."run.googleapis.com/execution_name"="${recoveryExecution}" AND timestamp>="2026-10-06T00:00:00Z" AND timestamp<"2026-10-07T00:00:00Z" AND jsonPayload.operation="s22_booking_readonly"`,
+        orderBy: "timestamp desc",
+        pageSize: 20,
+      }),
+    });
+    if (!response.ok)
+      return {
+        outcome: "BLOCKED",
+        stage,
+        code:
+          response.status === 403
+            ? "EXACT_EXECUTION_LOG_PERMISSION_DENIED"
+            : response.status === 401
+              ? "LOG_AUTHENTICATION_DENIED"
+              : "LOG_API_UNAVAILABLE",
+        http_status: response.status,
+      };
+    stage = "logging_response";
+    const payload = await response.json();
+    if (
+      payload === null ||
+      typeof payload !== "object" ||
+      (payload.entries !== undefined &&
+        (!Array.isArray(payload.entries) || payload.entries.length > 20)) ||
+      (payload.entries ?? []).some((entry) => entry === null || typeof entry !== "object")
+    )
+      return { outcome: "BLOCKED", stage, code: "LOG_RESPONSE_INVALID" };
+    const rows = sanitizeRows(payload.entries ?? []);
+    const counts = new Map();
+    for (const row of rows) counts.set(row.assertion, (counts.get(row.assertion) ?? 0) + 1);
+    const code = payload.nextPageToken
+      ? "LOG_RESULT_TRUNCATED"
+      : [...counts.values()].some((count) => count > 1)
+        ? "LOG_ASSERTIONS_DUPLICATED"
+        : [...assertions].some((name) => !counts.has(name))
+          ? "LOG_ASSERTIONS_INCOMPLETE"
+          : rows.some((row) => row.outcome !== "PASS")
+            ? "LOG_ASSERTION_NOT_PASS"
+            : null;
+    return {
+      execution: recoveryExecution,
+      outcome: code === null ? "PASS" : "BLOCKED",
+      stage,
+      ...(code === null ? {} : { code }),
+      assertions: rows,
+    };
+  } catch (error) {
+    return {
+      outcome: "BLOCKED",
+      stage,
+      code:
+        error?.name === "TimeoutError" || error?.name === "AbortError"
+          ? "LOG_API_TIMEOUT"
+          : stage === "logging_response"
+            ? "LOG_RESPONSE_INVALID"
+            : "LOG_API_TRANSPORT_BLOCKED",
+    };
+  }
+}
+async function recoverMain() {
+  let token;
+  try {
+    token = (await cloud(["auth", "print-access-token", "--quiet"], 10000)).trim();
+    requireSafe(token.length > 0 && !/\s/u.test(token), "LOG_AUTHENTICATION_UNAVAILABLE");
+  } catch {
+    console.log(
+      JSON.stringify({
+        outcome: "BLOCKED",
+        stage: "authentication",
+        code: "LOG_AUTHENTICATION_UNAVAILABLE",
+      }),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log(JSON.stringify({ stage: "authentication", outcome: "PASS" }));
+  const result = await recoverExistingBookingLogs(token);
+  console.log(JSON.stringify(result, null, 2));
+  if (result.outcome !== "PASS") process.exitCode = 1;
+}
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const moduleBootstrap =
   'import{spawnSync}from"node:child_process";const r=spawnSync(process.execPath,["--input-type=module"],{input:Buffer.from(process.env.S22_BOOKING_READ_B64,"base64"),cwd:process.cwd(),env:process.env,stdio:["pipe","inherit","inherit"],timeout:60000,killSignal:"SIGTERM"});process.exitCode=r.error||r.signal?1:Number.isInteger(r.status)?r.status:1;';
@@ -497,4 +590,11 @@ async function main() {
     console.log(JSON.stringify(evidence));
   }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv.length === 3 && process.argv[2] === "--recover-logs") await recoverMain();
+  else if (process.argv.length === 2) await main();
+  else {
+    console.log(JSON.stringify({ outcome: "BLOCKED", code: "READ_MODE_INVALID" }));
+    process.exitCode = 1;
+  }
+}

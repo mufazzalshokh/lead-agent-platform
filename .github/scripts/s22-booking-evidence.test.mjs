@@ -3,9 +3,12 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   moduleBootstrap,
+  recoverExistingBookingLogs,
+  recoveryExecution,
   reviewed,
   sanitizeRows,
   verifyJob,
@@ -178,6 +181,122 @@ test("structured evidence drops credentials, bodies and foreign operations", () 
       observed: { knownCostMicros: "0", accountingComplete: false, rows: [{ id: "synthetic" }] },
     },
   ]);
+});
+const recoveryEntries = () =>
+  [
+    "runtime_rls_and_baseline",
+    "synthetic_conversation",
+    "synthetic_requests",
+    "synthetic_delivery_metadata",
+    "deployed_cohort_binding",
+    "cohort_reservation_accounting",
+  ].map((assertion) => ({
+    jsonPayload: {
+      operation: "s22_booking_readonly",
+      assertion,
+      outcome: "PASS",
+      observed: {
+        knownCostMicros: "1950",
+        accountingComplete: false,
+        body: "SENSITIVE_BODY",
+        token: "SENSITIVE_TOKEN",
+      },
+    },
+  }));
+test("existing-log recovery makes one bounded read, pins scope and preserves unknown accounting", async () => {
+  let calls = 0;
+  const result = await recoverExistingBookingLogs("SENSITIVE_AUTH", async (url, options) => {
+    calls++;
+    assert.equal(url, "https://logging.googleapis.com/v2/entries:list");
+    assert.equal(options.method, "POST");
+    assert.equal(options.redirect, "error");
+    assert.equal(options.signal.aborted, false);
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.resourceNames, ["projects/lead-agent-stg-739284"]);
+    assert.equal(body.pageSize, 20);
+    assert.equal(body.orderBy, "timestamp desc");
+    assert.ok(body.filter.includes(`execution_name"="${recoveryExecution}"`));
+    assert.ok(body.filter.includes('timestamp<"2026-10-07T00:00:00Z"'));
+    assert.ok(body.filter.includes('jsonPayload.operation="s22_booking_readonly"'));
+    return Response.json({ entries: recoveryEntries() });
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.assertions.length, 6);
+  assert.equal(result.assertions[5].observed.accountingComplete, false);
+  assert.equal(JSON.stringify(result).includes("SENSITIVE"), false);
+});
+test("existing-log recovery distinguishes HTTP failures without printing provider error bodies", async () => {
+  for (const [status, code] of [
+    [401, "LOG_AUTHENTICATION_DENIED"],
+    [403, "EXACT_EXECUTION_LOG_PERMISSION_DENIED"],
+    [500, "LOG_API_UNAVAILABLE"],
+  ]) {
+    let calls = 0;
+    const result = await recoverExistingBookingLogs("SENSITIVE_AUTH", () => {
+      calls++;
+      return Promise.resolve(new Response("SENSITIVE_ERROR", { status }));
+    });
+    assert.equal(calls, 1);
+    assert.equal(result.code, code);
+    assert.equal(JSON.stringify(result).includes("SENSITIVE"), false);
+  }
+});
+test("existing-log recovery distinguishes transport failure, timeout and invalid JSON", async () => {
+  for (const [name, code] of [
+    ["TimeoutError", "LOG_API_TIMEOUT"],
+    ["TypeError", "LOG_API_TRANSPORT_BLOCKED"],
+  ]) {
+    const result = await recoverExistingBookingLogs("SENSITIVE_AUTH", () =>
+      Promise.reject(Object.assign(new Error("SENSITIVE"), { name })),
+    );
+    assert.equal(result.code, code);
+    assert.equal(JSON.stringify(result).includes("SENSITIVE"), false);
+  }
+  assert.equal(
+    (
+      await recoverExistingBookingLogs("SENSITIVE_AUTH", () =>
+        Promise.resolve(new Response("invalid")),
+      )
+    ).code,
+    "LOG_RESPONSE_INVALID",
+  );
+});
+test("recovery fails closed on absent, truncated, duplicate, malformed or failed assertions", async () => {
+  for (const [payload, code] of [
+    [{}, "LOG_ASSERTIONS_INCOMPLETE"],
+    [{ entries: recoveryEntries(), nextPageToken: "SENSITIVE_PAGE_TOKEN" }, "LOG_RESULT_TRUNCATED"],
+    [{ entries: [...recoveryEntries(), recoveryEntries()[0]] }, "LOG_ASSERTIONS_DUPLICATED"],
+    [{ entries: [null] }, "LOG_RESPONSE_INVALID"],
+    [{ entries: {} }, "LOG_RESPONSE_INVALID"],
+    [
+      {
+        entries: recoveryEntries().map((entry, index) =>
+          index === 0 ? { jsonPayload: { ...entry.jsonPayload, outcome: "FAIL" } } : entry,
+        ),
+      },
+      "LOG_ASSERTION_NOT_PASS",
+    ],
+  ]) {
+    const result = await recoverExistingBookingLogs("SENSITIVE_AUTH", () =>
+      Promise.resolve(Response.json(payload)),
+    );
+    assert.equal(result.outcome, "BLOCKED");
+    assert.equal(result.code, code);
+    assert.equal(JSON.stringify(result).includes("SENSITIVE"), false);
+  }
+});
+test("a mistyped recovery flag cannot enter the diagnostic execution path", () => {
+  for (const args of [["--recover-log"], ["--recover-logs", "unexpected"]]) {
+    const result = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("./s22-booking-evidence.mjs", import.meta.url)), ...args],
+      { encoding: "utf8", timeout: 5000 },
+    );
+    assert.equal(result.status, 1);
+    assert.deepEqual(JSON.parse(result.stdout), { outcome: "BLOCKED", code: "READ_MODE_INVALID" });
+    assert.equal(result.stderr, "");
+  }
 });
 test("exact subprocess bootstrap resolves bare packages and relative runtime module in a controlled application fixture without DB/model calls", () => {
   const fixture = mkdtempSync(join(tmpdir(), "s22-readonly-module-"));

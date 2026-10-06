@@ -1848,3 +1848,68 @@ still need the existing execution's structured result rows. No rerun, upload,
 IAM broadening, message replay or paid turn is justified. Recover only this
 execution's `s22_booking_readonly` logs through the owner's existing authenticated
 Cloud Shell. Paid customer turns remain paused until the actual results are read.
+
+### Bounded booking-chain review and result recovery — 2026-10-06
+
+Owner-approved offline review reused the completed CI `37478331777` and rollout
+`37480351865`/verification `37484607889`. It did not repeat paid calls, OAuth,
+Claim/Resolve, migrations, diagnostic executions or deployment. This is a scoped
+review of the booking chain, not proof that every product defect is eliminated.
+
+| Boundary | Evidence inspected / added | Remaining live gap |
+| --- | --- | --- |
+| Published facts and selectors | `tests/ai/s22-business-readiness.test.ts`; existing price/duration publication readback; the connected rehearsal uses the contract-validated S22 clinic fixture | No fresh grounded Instagram answer is claimed |
+| Dispatch, repairs and accounting | `tests/ai/s22-journey-dispatch.test.ts`, `tests/ai/s22-budget-ledger.test.ts`; three real-PG budget cases in `tests/database/ai-orchestration.test-suite.ts` already passed in the reused gate | Current post-turn counters and handoff state remain unread |
+| Provider cancellation/finalization | New deterministic regressions in `tests/ai/orchestration.test.ts` | New reliability correction is local, not deployed |
+| Qualification/request and atomic side effects | Actual application planner/domain commands in new `tests/ai/s22-booking-chain.test.ts`; reused S16 real-PG CAS/idempotency/rollback proof | New request creation/delivery still requires the bounded live journey |
+| Staff acceptance and customer confirmation | New connected rehearsal traverses actual domain transitions and Instagram confirmation evidence; existing customer-confirmation handler and real-PG S18 proofs reused | No actual delivered offer/customer confirmation is fabricated |
+| Safety/fallback and social eligibility | Existing policy/medical tests and Worker confirmation-before-AI composition inspected; these boundaries are unchanged | No broader live channel or clinical readiness claim |
+
+One new reliability defect was reproduced: `provider.decide()` could synchronously
+abort the caller signal before the orchestration race installed its listener,
+then return a non-settling promise. The regression returned `MISSED_ABORT` before
+the correction. Subscribing before invoking the adapter fixes that race; the
+listener is removed on success/throw/timeout. A late provider result cannot
+finalize twice or overwrite unknown usage. Timeout remains a typed fallback,
+with NULL usage and no repair; durable budget/tenant policy is unchanged. This
+is **not** asserted to be the cause of either earlier paid-turn failure.
+
+The connected synthetic rehearsal runs the actual Gemini adapter with mocked
+HTTP, the S16 orchestrator/planner, qualification and booking domain commands:
+100,000 UZS / 30 minutes → date/time clarification → request → staff acceptance
+→ confirmation preparation → explicit synthetic Instagram confirmation. Staff
+acceptance stays `staff_accepted`; conversion occurs only after confirmation.
+Duplicate source processing does not make another provider call. Persistence is
+simulated: this is not SQL/RLS, real provider, outbound delivery or owner evidence.
+
+The existing observation execution `lead-agent-staging-migrator-n2vs5` remains
+the sole live result source. Owner-reported `LOG_READ_EXIT=124` proves only that
+the Cloud Shell CLI read timed out; the cause of that timeout is not known.
+New `--recover-logs` mode in `.github/scripts/s22-booking-evidence.mjs` obtains an
+owner token without printing it (10-second bound), then makes exactly one
+15-second direct Cloud Logging `entries.list` read. Invalid/mistyped CLI arguments
+cannot enter the diagnostic-execution path. It pins the existing
+execution, project, operation and UTC day, requests at most 20 rows, and uses the
+existing output allowlist. Missing/duplicate/truncated/failed assertions fail
+closed. Authentication, HTTP 401/403, transport, timeout and malformed response
+have distinct safe tags. There is no job execution, migration, IAM grant, paid
+call, API retry or secret/error-payload output. Google documents this read API
+and recommends descending order and selective time bounds:
+[Cloud Logging entries.list](https://docs.cloud.google.com/logging/docs/reference/v2/rest/v2/entries/list).
+
+Recovery can be fetched from the public repository at the verified correction
+commit, checksum-checked and run in Cloud Shell without uploading another file.
+Local controlled HTTP tests are not successful live result retrieval. No new
+remaining-slot number or exact-accounting PASS is claimed; historical NULL costs
+and the owner-approved reserve stay visible. Paid calls remain paused.
+
+Focused verification: 60/60 Vitest cases (orchestration 24, connected chain 1,
+dispatch 11, ledger 14, confirmation handler 10), 20/20 Node tooling tests;
+root TypeScript, scoped ESLint, Application declaration build, Worker production
+build and scoped formatting passed. A mis-scoped initial compiler invocation
+failed with TS6059 and generated untracked outputs; only those outputs were
+removed, and the correctly scoped builds passed. The unrelated existing
+Instagram-document trailing whitespace is preserved and excluded from scoped
+diff verification. No migration, dependency, IAM, budget, social eligibility or
+public-contract change. A fresh reviewed runtime plan would be required to
+deploy the cancellation fix; old images/plans/approval hashes are not reusable.

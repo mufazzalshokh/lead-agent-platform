@@ -755,3 +755,28 @@ cannot read Cloud Logging (`EXACT_EXECUTION_LOG_PERMISSION_DENIED`). No assertio
 rows or current remaining-slot numbers are claimed. Retrieve only this existing
 execution's `s22_booking_readonly` result rows with owner-authenticated Cloud
 Shell; no upload, rerun, deployment, new IAM permission or paid customer message.
+
+### Offline connected rehearsal and finite result-recovery path — 2026-10-06
+
+`tests/ai/s22-booking-chain.test.ts` joins the contract-validated clinic projection,
+actual Gemini adapter (mocked HTTP), S16 orchestrator/planner and booking domain
+commands. Three synthetic turns retrieve 100,000 UZS / 30 minutes, select a future
+date and 17:00 Asia/Tashkent preference, qualify the Lead and create a request.
+Staff acceptance does not confirm it. Only a subsequent explicit synthetic
+customer confirmation converts the Lead and confirms the current offered slot.
+Source deduplication makes no extra provider call. The simulated persistence and
+HTTP boundaries mean this is **local connected proof**, not live journey proof.
+
+The bounded review also reproduced and corrected a synchronous cancellation
+listener race; late completion retains unknown usage and cannot finalize twice.
+This new reliability correction is not deployed and does not explain historical
+paid failures without evidence. Existing durable reservation, RLS, medical and
+social-thread boundaries remain unchanged.
+
+Before another paid turn, read the already-completed `n2vs5` observation using the
+new checksum-pinned `--recover-logs` mode. It does not start a new diagnostic or
+require uploads/IAM. It emits either sanitized existing assertion rows or a
+specific bounded authentication/logging blocker. Its local tests do not close
+the live evidence gap. Current handoff/request state and allowance must still
+be interpreted from those rows; do not assume counters or automatically resolve
+work. Historical NULL costs, existing authorization and operational pause remain.
