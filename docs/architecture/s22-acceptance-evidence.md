@@ -1768,3 +1768,13 @@ existing push-triggered budget proof `37475496694` passed; it is not evidence
 that these three corrected assertions executed. No manual aggregate rerun is
 dispatched. Keep paid turns paused and do not apply this plan until the exact
 plan is approved and outstanding verification concerns are resolved.
+
+The test-only follow-up `de8139279a11ee2320d9d9f65d589065d1a5421a`
+triggered CI `37477320572`. Its first failure was an incorrect **new test
+expectation**, not a production defect: `submissionCounts.staff_tasks` counts
+appointment notifications, whereas a safe Handoff fallback creates no
+AppointmentRequest or appointment notification. Actual count zero is correct;
+the test incorrectly expected one. All three cases are corrected to require
+zero appointment tasks and separately require exactly one Handoff/event/reply,
+the persisted denial audit and no foreign-tenant effects. The previous runtime
+images and saved plan remain unchanged. This failure is not recorded as PASS.

@@ -450,6 +450,7 @@ const submissionFlow = (
   });
 const acceptSubmission = (harness: Harness, text: string, sequence = 1, tenant: "a" | "b" = "a") =>
   accept(harness, { text, sequence, tenant, receivedAt: GROUNDING_NOW });
+// staff_tasks counts appointment notifications; Handoff persistence is checked separately.
 const submissionCounts = async (harness: Harness) =>
   (
     await harness.privilegedPool().query<Record<string, number>>(`select
@@ -758,7 +759,7 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
         lead_outbox: 0,
         request_audits: 0,
         outbound: 1,
-        staff_tasks: 1,
+        staff_tasks: 0,
       });
       expect(await salesCounts(harness)).toMatchObject({
         handoffs: 1,
@@ -922,7 +923,13 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
           lead_outbox: 0,
           request_audits: 0,
           outbound: 1,
-          staff_tasks: 1,
+          staff_tasks: 0,
+        });
+        expect(await salesCounts(harness)).toMatchObject({
+          handoffs: 1,
+          handoff_outbox: 1,
+          qualifications: 0,
+          appointments: 0,
         });
         await expectRejectedProposalAudit(reference, "untrusted_extraction", ["service_id"]);
         const foreignOrganization = tenant === "a" ? tenantB : AI_REFERENCE.organizationId;
