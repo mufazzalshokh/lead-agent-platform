@@ -780,3 +780,35 @@ specific bounded authentication/logging blocker. Its local tests do not close
 the live evidence gap. Current handoff/request state and allowance must still
 be interpreted from those rows; do not assume counters or automatically resolve
 work. Historical NULL costs, existing authorization and operational pause remain.
+
+### Recovered checkpoint and remaining authorized turn — 2026-10-06
+
+The owner recovered all six PASS assertions from existing observation `n2vs5`.
+At that observation the synthetic conversation was **awaiting_staff / paused**,
+version **16**, with an active Handoff and no AppointmentRequest. Two logical
+paid messages/two physical calls were counted, known new-call cost USD0.003742,
+unresolved reserve zero, combined reserved/known exposure USD1.037138. Historical
+NULLs and `accountingComplete=false` remain preserved. This is owner-supplied
+persisted diagnostic evidence, not a fresh state read or a completed journey.
+
+Only one logical paid message remains under the existing authorization, with at
+most two physical calls. Do not reset counters or send another simple price
+question followed by an extra paid preference message. The extended connected
+rehearsal **2/2 PASS** verifies this single-turn preparation without paid calls:
+
+> Salom, S22 sinov konsultatsiyasi narxi qancha va qancha davom etadi? Ertaga soat 17:00 ga yozilmoqchiman.
+
+That is a future preference, not guaranteed availability. Send nothing yet: first
+use the authorized staff UI to identify this exact synthetic conversation's
+current active Handoff, Claim/Start handling as needed, then separately Resolve
+with `resume_ai`. Do not reuse an old resolved Handoff ID, mutate unrelated work
+or claim a fresh version from the historical snapshot. Source requires
+`in_progress` before resolution. After AI resumes, the complete message can
+exercise grounded facts and request creation together within the last logical
+slot. Staff acceptance/offer delivery and actual customer confirmation still
+follow; supported confirmation handling precedes AI and does not authorize a
+fourth paid message. Stop on any unknown cost/timeout/guard failure.
+
+This preparation changes only the test/evidence; no new runtime deployment is
+needed to exercise unchanged deployed submission semantics. The cancellation
+fix remains undeployed and is not falsely marked live. S22 remains unaccepted.

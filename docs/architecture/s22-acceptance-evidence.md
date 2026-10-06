@@ -1913,3 +1913,69 @@ Instagram-document trailing whitespace is preserved and excluded from scoped
 diff verification. No migration, dependency, IAM, budget, social eligibility or
 public-contract change. A fresh reviewed runtime plan would be required to
 deploy the cancellation fix; old images/plans/approval hashes are not reusable.
+
+### Existing observation recovered and one-message preparation — 2026-10-06
+
+Owner-supplied live output from the checksum-pinned `--recover-logs` command at
+correction commit `f5b26c699695f8e48e5d445cb553ad6650bbb68e` reports authentication
+**PASS**, `logging_response` **PASS**, and all six required assertions **PASS**
+for existing execution `lead-agent-staging-migrator-n2vs5`. This closes only its
+result-retrieval gap: no diagnostic rerun, provider call or database mutation was
+performed. The rows describe that completed observation, not a new current-state
+database read at the time the owner pasted them.
+
+| Observed item | Persisted diagnostic output |
+| --- | --- |
+| Synthetic conversation | `01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7`, version **16**, `awaiting_staff`, automation **paused**, active handoff present |
+| Booking requests | **0**; neither confirmation nor request creation is proven |
+| Delivery | Two inbound paid-turn messages; one outbound recorded **sent**, corresponding to the earlier safe Handoff fallback, not a grounded booking answer |
+| Cohort usage | **2 logical messages / 2 physical calls**, maximum 3 / 6 and at most 2 calls per message |
+| New-call ledger | **3,742 micros (USD0.003742)** recorded known cost; unresolved reservation **0**; `blocked=false` |
+| Historical accounting | Historical NULLs preserved; **1,033,396 micros** approved budget-only reserve; `accountingComplete=false` remains visible |
+| Combined exposure | **1,037,138 micros (USD1.037138)**, not a claim of exact historical/billed cost |
+| Security | Runtime read-only tenant/FORCE-RLS/baseline assertions **PASS** |
+
+One logical paid message remains at this observation, allowing at most **two**
+additional physical calls, not all four otherwise unused physical slots. The
+maximum additional reserve is `2 * 801432 = 1602864` micros; maximum combined
+AI exposure from this checkpoint would be **2,640,002 micros (USD2.640002)**.
+No limit/reservation reset or additional spend is authorized. Timeout, unknown
+new-call cost, exhausted allowance or guard failure still stops paid work.
+
+The active handoff ID/status is not present in these rows. Do not substitute the
+old resolved handoff or a thread-control ID. The supported live staff UI must
+load this exact synthetic conversation's authoritative current resource and
+versions. Source `resolveHandoff` permits resolution only from `in_progress`;
+the first owner action is Claim/Start handling when appropriate, followed by
+separately verified Resolve with the existing `resume_ai` disposition. No
+automatic resolution or unrelated staff-work mutation occurred. Source also
+shows the UI currently exposes Resolve before that domain precondition; this is
+a UI availability discrepancy, not permission to skip Claim or weaken policy.
+It is recorded for the next relevant UI change, not patched in this evidence
+preparation milestone. Fresh UI state remains necessary before requesting a DM.
+
+The connected rehearsal now covers both three-turn clarification and a complete
+one-turn Uzbek preference. The latter includes the service, price/duration
+question, `ertaga` and `17:00`, produces the grounded 100,000 UZS / 30-minute
+answer plus a staff-reviewed request, and uses exactly one mocked provider call.
+Actual booking domain transitions still require explicit subsequent customer
+confirmation; no live confirmation is fabricated. This extends only tests, not
+runtime behavior. The deployed extraction/grounding correction remains in use;
+the separate cancellation correction is still undeployed.
+
+Verification for this test/evidence-only update:
+
+```text
+node node_modules/vitest/vitest.mjs run tests/ai/s22-booking-chain.test.ts
+  PASS: 2/2 connected rehearsals, mocked HTTP/persistence, no paid call
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+  PASS
+node node_modules/eslint/bin/eslint.js tests/ai/s22-booking-chain.test.ts --max-warnings=0
+  PASS
+```
+
+Scoped Prettier and `git diff --check` **PASS** for these three files.
+No production change, deployment, migration, IAM change, new diagnostic,
+OAuth, event replay, broad CI or paid test is needed for this preparation. S22
+remains unaccepted. The single next owner interaction is to load and Claim/Start
+handling only the identified synthetic Instagram conversation in the staff UI.

@@ -94,7 +94,7 @@ const knowledge = (() => {
 })();
 
 describe("S22 connected synthetic booking rehearsal", () => {
-  it("joins the actual Gemini adapter and application planner to staff acceptance and explicit Instagram confirmation", async () => {
+  const rehearse = async (mode: "clarified" | "complete") => {
     const service = knowledge.services[0],
       locationRecord = knowledge.locations[0];
     const leadId = fixtureId(51001),
@@ -277,20 +277,27 @@ describe("S22 connected synthetic booking rehearsal", () => {
       history.push({ role: "customer", text, sequence, messageId, receivedAt: now });
       return { result, reference };
     };
-    await send("Salom, S22 sinov konsultatsiyasi narxi qancha va qancha davom etadi?", 1);
+    const question = "Salom, S22 sinov konsultatsiyasi narxi qancha va qancha davom etadi?";
+    const first = await send(
+      mode === "complete" ? `${question} Ertaga soat 17:00 ga yozilmoqchiman.` : question,
+      1,
+    );
     expect(replies[0]).toContain("100 000 UZS");
     expect(replies[0]).toContain("30 daqiqa");
-    expect(lead.status).toBe("engaged");
-    expect((await send("Ertaga yozilmoqchiman", 2)).result).toMatchObject({
-      kind: "appointment_incomplete",
-      missing: ["time"],
-    });
+    let last = first;
+    if (mode === "clarified") {
+      expect(lead.status).toBe("engaged");
+      expect((await send("Ertaga yozilmoqchiman", 2)).result).toMatchObject({
+        kind: "appointment_incomplete",
+        missing: ["time"],
+      });
+      last = await send("Soat 17:00", 3);
+    }
     expect(lead.status).toBe("qualified");
-    const last = await send("Soat 17:00", 3);
     expect(last.result.kind).toBe("appointment_requested");
     const planned = planAppointmentSubmission(
       current,
-      finishes[2]?.outcome ??
+      finishes.at(-1)?.outcome ??
         (() => {
           throw new Error("Missing outcome");
         })(),
@@ -404,8 +411,12 @@ describe("S22 connected synthetic booking rehearsal", () => {
       confirmed.events.some((event) => event.event_type === "appointment_request.confirmed"),
     ).toBe(true);
     expect((await flow.run(last.reference)).reason).toBe("stale_context");
-    expect(request).toHaveBeenCalledTimes(3);
-    expect(authorize).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenCalledTimes(mode === "complete" ? 1 : 3);
+    expect(authorize).toHaveBeenCalledTimes(mode === "complete" ? 1 : 3);
     expect(finishes.every((input) => input.provider?.usage.cachedInput === 0)).toBe(true);
-  });
+  };
+  it.each(["clarified", "complete"] as const)(
+    "joins the actual adapter/planner to explicit confirmation using a %s customer preference",
+    rehearse,
+  );
 });
