@@ -589,6 +589,31 @@ OAuth or authentication attempt was made. Consequently no fresh session, fixture
 conversation or appointment state read is claimed from this task. This is a
 tool-access limitation, not evidence that the accepted Auth0 flow broke.
 
+## Second authorized turn ready — owner-supplied observation received 2026-10-06
+
+The existing post-rollout observation `lead-agent-staging-migrator-h6zpt` has
+now been read through the owner's authenticated Cloud Shell; final log-read exit
+**0**. Exact synthetic conversation: **open / version 13 / AI mode / no active
+handoff**. Its appointment-request list is empty. The approved cohort binding
+and reservation accounting both PASS: **1 logical message / 1 physical call**,
+known **USD0.001950**, historical reserve **USD1.033396**, unresolved reserve **0**,
+combined exposure **USD1.035346**, budget not blocked. This records the existing
+diagnostic's observed state, not an additional current-time database read.
+
+Historical costs remain NULL and `accountingComplete=false`; the owner-approved
+budget-only exception, maximum exposure USD5.841988 and USD10 hard ceiling remain
+in force. No prior customer event, diagnostic, deployment or passed check is
+repeated. There are two remaining logical-message slots and five overall
+physical-call slots, with at most two calls per message and existing stop rules.
+
+The next friend-sent message should combine the price/duration question and a
+future date/time preference chosen by that synthetic customer. Use the same
+approved Instagram DM; do not manufacture inbound evidence. Business hours do
+not guarantee appointment availability. Read the actual response, request state
+and settled accounting before a subsequent step. Staff acceptance and actual
+customer confirmation of the delivered current offer are still separate gates.
+No new grounded reply or booking state has yet been observed; S22 is unaccepted.
+
 ## Deterministic checks versus live evidence
 
 ### Owner-approved activation checkpoint — 2026-10-05

@@ -1602,6 +1602,39 @@ settled known first-turn spend, zero unresolved reservation and remaining
 authorized message/call allowance. Original historical NULLs remain visible;
 execution success alone is not the missing observed readiness evidence.
 
+### Second-turn readiness: owner-supplied results received 2026-10-06
+
+The owner retrieved the existing `lead-agent-staging-migrator-h6zpt` structured
+logs through authenticated Cloud Shell; the final bounded read returned
+`LOG_READ_EXIT=0`. These are owner-supplied live diagnostic results from the
+completed observation above, not a new database execution or a new current-time
+snapshot. They supersede the pending-result-access wording for this checkpoint.
+
+| Assertion | Observed result |
+| --- | --- |
+| `synthetic_conversation` | PASS: exact approved conversation, `open`, version **13**, automation `ai`, no active handoff |
+| `synthetic_requests` | PASS: empty bounded request list for that exact tenant/conversation |
+| `synthetic_delivery_metadata` | PASS: only the previously counted inbound message at `2026-10-05T17:23:28.698Z`; no delivered assistant reply is claimed |
+| `deployed_cohort_binding` | PASS: exact approved organization/conversation, `s22-synthetic-booking.v1`, 3 logical messages, 6 physical calls, at most 2 calls per message, USD10 hard ceiling |
+| `cohort_reservation_accounting` | PASS under the approved budget-only exception: 1 logical message / 1 physical call, known cost **USD0.001950**, historical reserve **USD1.033396**, combined exposure **USD1.035346**, unresolved reservation **0**, `blocked=false`, per-call reserve **USD0.801432** |
+
+`accountingComplete=false` remains explicit: neither the historical NULL costs
+nor the exact-accounting gap are reconciled by this budget check. Original
+USD5.841988 maximum approved exposure and the owner's target-overage exception
+remain unchanged. No diagnostic retry, migration, runtime deployment, CI, paid
+call, historical rewrite or permission grant was performed to obtain these logs.
+
+The second already-authorized customer turn may now proceed in this same
+synthetic Instagram conversation. Two logical-message slots and five overall
+physical-call slots remain, still subject to the per-message cap and all
+timeout/unknown-cost/allowance guards. Combine the price/duration question with
+the synthetic customer's own future date/time preference rather than replaying
+the first event or consuming an extra exploratory message. Observe actual reply,
+request state and settled cost before requesting any subsequent customer action.
+Actual delivered-offer confirmation remains mandatory; staff acceptance alone
+is not confirmation. Grounded answer, booking journey and S22 acceptance remain
+pending. The readiness diagnostic does not need to be repeated.
+
 | Gate | Evidence still required |
 | --- | --- |
 | Instagram DM / staff workflow | Deployment, authenticated History/transcript/navigation/current-state and fresh synthetic Claim/Resolve feedback/version sequencing PASS; scoped persisted transition/audit diagnostic PASS (owner-supplied); tenant-routing/eligibility proof remains pending |
