@@ -2085,7 +2085,9 @@ AI run `01a112ac-27b2-7589-b4b2-644ad9599946`, correlation
 proposed action **none**, extraction rejection fields **empty**, policy rejection
 **untrusted_citation**, final fallback **policy_denied / handoff_requested**,
 reply disposition **queued**. The earliest proven failing stage is citation policy,
-not provider dispatch, missing price/duration, Instagram transport or queue timeout.
+after provider completion/schema validation, not a provider timeout. Previously
+proven price/duration retrieval does not establish the exact facts supplied to this
+run; the safe outcome log alone cannot exclude a missing/inapplicable reference.
 The persisted outbound is the fallback, not a successful grounded booking answer.
 Current state is **awaiting_staff / paused**, conversation version **21**, active
 handoff, **zero AppointmentRequests**. No current handoff ID is inferred from a
@@ -2147,3 +2149,69 @@ This correction and the already-committed cancellation-listener correction remai
 IAM change or broad CI occurred. S22 remains unaccepted. A fresh immutable build
 and reviewed runtime-only saved plan precede any exact-plan apply approval; a new
 paid journey allowance would require a separate explicit owner decision.
+
+### Citation correction rollout approval packet — NOT APPLIED
+
+Runtime source: **`cde3f6580f7625c02196539ca18c6aa4b3c408fe`**, preserved on
+`verify/s22-staging-recovery-capacity`. Focused correction commit was pushed and
+the remote branch SHA matched. Later evidence-only updates require no rebuild.
+The source also includes the previously tested, undeployed cancellation-listener
+fix; neither runtime correction is claimed live before apply/verification.
+
+One fresh immutable build **[37579659374](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37579659374) PASS**;
+the downloaded manifest independently matches this exact source and build ID.
+All four images are `linux/amd64`, with build provenance/SBOM enabled:
+
+| Workload | Exact immutable reference |
+| --- | --- |
+| API | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:0a3c38dbc9c7ed7f5d3d029b4191351c2d0dae3ec73f6149d06c7ad50afa355a` |
+| Web | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:98971efcb7c969d05476a0ce9a29a7aad3370e59a3c45595133f675c066a8c93` |
+| Worker | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:6befbf18bb01eb0d7870fb41698407e91456dd55237134427ca7ee026af0b694` |
+| Migrator | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:7baa11d11a31a93c0c2910e9209a453d176fd39df0fc4d5dea3e8ce7d5016f24` |
+
+One fresh plan-only run **[37580236686](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37580236686) PASS**, `phase=full`:
+
+- Deployment timestamp: **`2026-10-07T06:11:53Z`**.
+- Migration provenance: **`0031_s22_widget_inbound_route_management`**, unchanged.
+- Saved-plan SHA256 (downloaded binary independently hashed):
+  **`708dad4be348271228c9aa829f54e853f9266605729cddc8a621d5edf10971bb`**.
+- **0 creates / 4 in-place changes / 0 destroys / 0 replacements**.
+- Exactly `google_cloud_run_v2_job.migrator[0]`,
+  `google_cloud_run_v2_service.api[0]`, `google_cloud_run_v2_service.web[0]`,
+  `google_cloud_run_v2_worker_pool.worker[0]`.
+- No SQL/IAM/network/scaling/resource-limit/secret-reference change. No migration
+  execution. The workflow's apply and one-shot migrator steps are **SKIPPED**.
+
+The repository full-runtime plan safety guard passed. An independent local
+`terraform -chdir=infra/deploy/gcp/staging show -json <downloaded-plan>` inspection
+kept JSON private and projected only allowlisted metadata. It confirmed all four
+manifest image bindings, exact source/timestamp on all workloads, unchanged
+identities/VPC/scaling/resource limits/secret references, and changes limited to
+images, `git-sha` labels and `DEPLOYMENT_GIT_SHA`/`DEPLOYMENT_IMAGE_DIGEST`/
+`DEPLOYMENT_TIMESTAMP`. Root-directory `terraform show` initially lacked the
+existing provider-schema context; using the already-initialized staging directory
+resolved the read without installation, initialization, infrastructure change or
+another plan. The recorded and independently computed binary checksums match.
+
+Prepared subsequent apply inputs (not dispatched; approval token withheld):
+
+| Input | Exact value |
+| --- | --- |
+| `action` | `apply` |
+| `phase` | `full` |
+| `commit_sha` | `cde3f6580f7625c02196539ca18c6aa4b3c408fe` |
+| `deployment_timestamp` | `2026-10-07T06:11:53Z` |
+| `api_image`, `web_image`, `worker_image`, `migrator_image` | Exact references above; no tags/substitutions |
+| `api_migration_head`, `runtime_migration_head` | `0031_s22_widget_inbound_route_management` |
+| `ai_journey_mode` | `preserve` (saved plan retains existing `booking` mode) |
+| `plan_run_id` | `37580236686` |
+| `approved_plan_sha256` | `708dad4be348271228c9aa829f54e853f9266605729cddc8a621d5edf10971bb` |
+
+Existing cohort binding/reservations and exhausted three-message allowance remain
+unchanged. Retaining the configuration is not new paid-call authorization.
+Artifacts have seven-day retention; the saved plan's stale-state protection must
+still pass at apply. No assumption that future state cannot change is made.
+Exact saved-plan owner approval is required before apply; any stale/safeguard
+rejection stops rather than generating an unapproved replacement. Historical NULL
+costs, the live booking gap and S22 pending status remain visible. No broad CI,
+paid call, message replay, OAuth, migration or apply was performed for this packet.
