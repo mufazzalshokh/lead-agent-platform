@@ -2312,7 +2312,78 @@ Afterward, **29/29 local ledger/dispatch tests PASS**, with modeled pg transport
   build — **PASS**. Scoped Prettier and diff checks — **PASS**.
 
 No migrations, IAM, schema, RLS, social eligibility, contracts, confirmation policy
-or unrelated owner edits changed. Only focused verification is required; no broad
-CI or prior parser/citation test round is repeated. A fresh immutable image build
+or unrelated owner edits changed. No extra aggregate or prior parser/citation
+test round is manually dispatched. A fresh immutable image build
 and one reviewed runtime-only saved plan follow verified source. Do not reuse the
 previous rollout's image digests or plan hash. **Not deployed; no paid calls.**
+
+### One-message continuation rollout packet — NOT APPLIED
+
+Source **`191a9cdbb4187ad0006a5dbab04882b4f44d0e64`** was committed and pushed
+to `verify/s22-staging-recovery-capacity`; the remote SHA matched. The focused
+PostgreSQL push check **[37583343644](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37583343644) PASS**
+ran the existing three budget cases on PostgreSQL 17.11: **3 passed / 449 skipped**.
+Existing pull-request CI automatically ran on this push:
+**[37583346883](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37583346883) PASS**.
+No extra aggregate was manually dispatched. The 50 focused local checks above
+and unchanged SQL/transaction implementation remain the scoped correction proof.
+
+One fresh image build **[37583383103](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37583383103) PASS**.
+Downloaded manifest source/build ID and all four immutable references independently
+match this exact source; architecture `linux/amd64`, provenance/SBOM enabled:
+
+| Workload | Exact immutable reference |
+| --- | --- |
+| api | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:e2b3ac2b91b792bb74d3d7d14e8e30dc72fbe7f243badde3d1158be147eed657` |
+| web | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:a6f2169b232a8357e804a923eddb774dd8a1cbfdda109810a007a13754a107a1` |
+| worker | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:f654f252f802488f5ef08d3a9a8a99dbe4ccc09ca01b59c1adff88b71c124506` |
+| migrator | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:e66cba1a63b620863e30eeea210ff4169daef559dfc4c2b9eae4daba32bafb16` |
+
+One plan-only full-runtime reconciliation
+**[37583839262](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37583839262) PASS**.
+Deployment timestamp **`2026-10-07T06:50:40Z`**; migration head
+**`0031_s22_widget_inbound_route_management`**, unchanged.
+The downloaded saved binary's independently computed SHA256 matches its artifact:
+**`3b086e086bee0ed60a0eb418727a5d6189cb4f56a1f3fe0423c9a82b6367d72f`**.
+
+Actual reviewed actions: **0 creates / 4 in-place updates / 0 destroys /
+0 replacements**:
+
+- `google_cloud_run_v2_job.migrator[0]` — update image/provenance only.
+- `google_cloud_run_v2_service.api[0]` — update image/provenance only.
+- `google_cloud_run_v2_service.web[0]` — update image/provenance only.
+- `google_cloud_run_v2_worker_pool.worker[0]` — update image/provenance only.
+
+The workflow safety guard passed. Independent local inspection using the existing
+Terraform 1.14.7 staging provider context kept the full JSON private and checked
+every known changed field against image/source-label/deployment-metadata paths.
+All four images, source/time/migration bindings match; runtime identities, network,
+scaling/resources and non-provenance environment/secret references are unchanged.
+API/Migrator include an explicit image-digest environment field; Web/Worker bind
+their digest through the actual container image, matching existing `runtime.tf`.
+No SQL, IAM, network, scaling, secret or unexpected resource action is present.
+Apply and one-shot migrator steps are **SKIPPED**. Plan generation refreshed the
+authoritative remote state; future stale-state rejection must stop, not replan.
+
+Prepared exact subsequent apply inputs (NOT dispatched; no approval token supplied):
+
+| Input | Value |
+| --- | --- |
+| `action` | `apply` |
+| `phase` | `full` |
+| `commit_sha` | `191a9cdbb4187ad0006a5dbab04882b4f44d0e64` |
+| `deployment_timestamp` | `2026-10-07T06:50:40Z` |
+| `api_migration_head` | `0031_s22_widget_inbound_route_management` |
+| `runtime_migration_head` | `0031_s22_widget_inbound_route_management` |
+| `ai_journey_mode` | `preserve` |
+| `plan_run_id` | `37583839262` |
+| `approved_plan_sha256` | `3b086e086bee0ed60a0eb418727a5d6189cb4f56a1f3fe0423c9a82b6367d72f` |
+| `api_image`, `web_image`, `worker_image`, `migrator_image` | Exact immutable references above |
+
+`preserve` resolves to existing `booking` mode; the new source enforces the revised
+four-message/five-attempt cumulative caps. Current approval covers implementation,
+testing and plan preparation only. Deployment/paid execution remain paused pending
+the exact owner decision and post-apply readiness. No counter/ledger mutation or
+new database diagnostic occurred. Historical unknown accounting, the unconfirmed
+live booking journey and S22 pending status remain explicit. Later evidence-only
+commits do not change runtime source or justify rebuilding these images.
