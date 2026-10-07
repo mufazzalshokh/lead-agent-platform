@@ -17,9 +17,13 @@ unknown under the approved budget-only exception; further paid dispatch is
 blocked. Do not repeat this journey or its completed diagnostic reads.
 
 The next prepared milestone is non-paid Website Chat embedding/session proof.
-The live Website Chat status and a real controlled HTTPS embed origin have not
-yet been collected. Inspect the existing authenticated card first; do not
-replace setup or send a Widget message under the exhausted Instagram allowance.
+The owner's live card screenshot now proves Website Chat is **Not connected**;
+the input is empty with an example-origin placeholder. A real controlled HTTPS
+embed origin has not yet been configured. The verified local
+[Cloud Shell synthetic host preparation](s22-widget-embedding-proof.md) supplies
+the shortest non-paid next step without a domain or infrastructure deployment.
+Do not replace unrelated setup or send a Widget message under the exhausted
+Instagram allowance.
 
 ## Preserved evidence
 
@@ -2997,3 +3001,36 @@ Local authenticated browser access is unavailable. One necessary owner action
 is to open the existing **Website Chat** card and report only its status and
 configured business website origin, if present. Do not request installation
 code, cookies, grants or secret values; do not replace setup or send a message.
+
+## 2026-10-07 — Website Chat starting state and non-paid host preparation
+
+Owner-supplied current Integrations screenshot: **Website Chat: Not connected**,
+empty Business website input, disabled Set up, placeholder
+`https://clinic.example`. Source confirms this is the supported unconfigured
+state, not a hidden fetch failure. The screenshot also shows recorded one
+lead/request/confirmed appointment, but does not independently reconcile those
+analytics or their latency values.
+
+Added the [synthetic embedding proof runbook](s22-widget-embedding-proof.md) and
+a dependency-free temporary Cloud Shell host. It uses the normal owner/tenant/
+CSRF setup and canonical public installation snippet; no bypass, credential
+entry, same-origin iframe substitute or untrusted HTML execution. Live public
+loader metadata confirms HTTP 200 and the existing Web gateway API origin.
+The distinct HTTPS preview address must come from the actual owner's Cloud
+Shell preview page. Nothing was configured through the live staff UI yet.
+
+Verification: **12/12 focused host tests PASS** (real local HTTP plus controlled
+exact generated browser-bootstrap execution), scoped ESLint zero warnings,
+Prettier/diff checks and independent security review PASS. These are host-tooling
+checks, not live Widget acceptance. The host makes no API requests itself;
+installing the real loader is owner-triggered, and opening the genuine Widget
+creates a session only. **Do not Send** remains essential because the host cannot
+disable controls across the real isolated iframe. Temporary hosting stops after
+one hour/Ctrl+C; its persisted allowed origin remains tracked until the existing
+supported replacement flow rotates the key.
+
+Next required owner action is to start the reviewed fixture in existing Cloud
+Shell and open Web Preview on port 8080. No upload, provider call, model change,
+migration, IAM change, image build or staging deployment is needed. Approved
+origin/session/blocked-cookie/disallowed-origin live assertions remain pending;
+Widget paid customer/booking proof requires separate bounded authorization.
