@@ -190,8 +190,8 @@ try {
     cohort.conversationId === conversation &&
     cohort.historicalReserveMicros === 1033396n &&
     cohort.hardCeilingMicros === 10000000n &&
-    cohort.maximumCalls === 6 &&
-    cohort.maximumMessages === 3 &&
+    cohort.maximumCalls === 5 &&
+    cohort.maximumMessages === 4 &&
     cohort.maximumCallsPerMessage === 2 &&
     cohort.inputTokenLimit === 1048576 &&
     cohort.outputTokenLimit === 4000;

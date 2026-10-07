@@ -133,6 +133,13 @@ describe("S22 synthetic booking dispatch boundary", () => {
       body.contents[0]?.parts.every((part) => Object.keys(part).every((key) => key === "text")),
     ).toBe(true);
     expect((1_048_576n * 750_000n) / 1_000_000n + (4000n * 3_750_000n) / 1_000_000n).toBe(801_432n);
-    expect(S22_BOOKING_COHORT.historicalReserveMicros + 6n * 801_432n).toBe(5_841_988n);
+    expect(S22_BOOKING_COHORT.maximumMessages).toBe(4);
+    expect(S22_BOOKING_COHORT.maximumCalls).toBe(5);
+    expect(S22_BOOKING_COHORT.maximumCallsPerMessage).toBe(2);
+    const remainingAttempts = BigInt(S22_BOOKING_COHORT.maximumCalls - 3);
+    expect(remainingAttempts * 801_432n).toBe(1_602_864n);
+    expect(S22_BOOKING_COHORT.historicalReserveMicros + 6_207n + remainingAttempts * 801_432n).toBe(
+      2_642_467n,
+    );
   });
 });

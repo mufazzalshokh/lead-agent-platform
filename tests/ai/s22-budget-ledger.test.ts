@@ -293,23 +293,29 @@ describe("S22 durable budget ledger — modelled pg transport", () => {
     );
     await db.close();
   });
-  it("enforces three logical messages even when cheaper successful calls free monetary headroom", async () => {
+  it("reports four-message exhaustion even when cheaper calls leave money and one attempt", async () => {
     transport.rows = [
       settled(row(fixtureId(19001), message(19101))),
       settled(row(fixtureId(19002), message(19102))),
       settled(row(fixtureId(19003), message(19103))),
-      row(fixtureId(19004), message(19104)),
+      settled(row(fixtureId(19004), message(19104))),
+      row(fixtureId(19005), message(19105)),
     ];
     const db = runtime();
-    expect(
-      await createAIJourneyBudgetGuard(db, config(), now).authorizeDispatch(
-        call(fixtureId(19004), message(19104)),
-      ),
-    ).toBe(false);
+    const guard = createAIJourneyBudgetGuard(db, config(), now);
+    expect(await guard.authorizeDispatch(call(fixtureId(19005), message(19105)))).toBe(false);
+    expect(await guard.read(reference.organizationId)).toMatchObject({
+      blocked: true,
+      reason: "message_limit",
+      logicalMessages: 4,
+      physicalCalls: 4,
+      knownCostMicros: "4000",
+      unresolvedReserveMicros: "0",
+    });
     await db.close();
   });
-  it("six physical attempts remain a hard counter across worker instances", async () => {
-    transport.rows = Array.from({ length: 6 }, (_, i) =>
+  it("five physical attempts remain a hard counter across worker instances", async () => {
+    transport.rows = Array.from({ length: 5 }, (_, i) =>
       settled(row(fixtureId(19001 + i), message(19101 + Math.floor(i / 2)), (i % 2) + 1)),
     );
     transport.rows.push(row(fixtureId(19007), message(19104)));
@@ -322,6 +328,80 @@ describe("S22 durable budget ledger — modelled pg transport", () => {
     });
     await db.close();
   });
+  it("extends the existing ledger by one message/two slots without resetting history or blocking its repair", async () => {
+    const historical = [row(fixtureId(19301)), row(fixtureId(19302))];
+    const past = [
+      settled(row(fixtureId(19001), message(19101)), "1950"),
+      settled(row(fixtureId(19002), message(19102)), "1792"),
+      settled(row(fixtureId(19003), message(19103)), "2465"),
+    ];
+    const before = structuredClone([...historical, ...past]);
+    const fourth = row(fixtureId(19004), message(19104));
+    transport.rows = [...historical, ...past, fourth];
+    const db = runtime();
+    const settings = { ...config(), historicalRunIds: [fixtureId(19301), fixtureId(19302)] };
+    const guard = () => createAIJourneyBudgetGuard(db, settings, now);
+    expect(await guard().read(reference.organizationId)).toMatchObject({
+      blocked: false,
+      logicalMessages: 3,
+      physicalCalls: 3,
+      knownCostMicros: "6207",
+      combinedExposureMicros: "1039603",
+      historicalReserveMicros: "1033396",
+      accountingComplete: false,
+    });
+    expect(await guard().authorizeDispatch(call(fixtureId(19004), message(19104)))).toBe(true);
+    expect(await guard().read(reference.organizationId)).toMatchObject({
+      blocked: true,
+      reason: "dispatch_in_flight",
+      physicalCalls: 4,
+      unresolvedReserveMicros: "801432",
+      combinedExposureMicros: "1841035",
+    });
+    settled(fourth, "801432");
+    Object.assign(fourth, { input_units: "1048576", output_units: "4000" });
+    expect(await guard().read(reference.organizationId)).toMatchObject({
+      blocked: true,
+      reason: "message_limit",
+      logicalMessages: 4,
+      physicalCalls: 4,
+    });
+    transport.rows.push(row(fixtureId(19005), message(19105)));
+    expect(await guard().authorizeDispatch(call(fixtureId(19005), message(19105)))).toBe(false);
+    const repair = row(fixtureId(19006), message(19104), 2);
+    transport.rows.push(repair);
+    expect(await guard().authorizeDispatch(call(fixtureId(19006), message(19104), 2))).toBe(true);
+    expect(await guard().read(reference.organizationId)).toMatchObject({
+      physicalCalls: 5,
+      logicalMessages: 4,
+      combinedExposureMicros: "2642467",
+      unresolvedReserveMicros: "801432",
+      accountingComplete: false,
+    });
+    settled(repair, "801432");
+    Object.assign(repair, { input_units: "1048576", output_units: "4000" });
+    expect(await guard().read(reference.organizationId)).toMatchObject({
+      blocked: true,
+      reason: "attempt_limit",
+      physicalCalls: 5,
+      logicalMessages: 4,
+      combinedExposureMicros: "2642467",
+      unresolvedReserveMicros: "0",
+    });
+    transport.rows.push(row(fixtureId(19007), message(19104), 3));
+    expect(await guard().authorizeDispatch(call(fixtureId(19007), message(19104), 3))).toBe(false);
+    expect([...historical, ...past]).toEqual(before);
+    expect(historical.every((item) => item["estimated_cost_micros"] === null)).toBe(true);
+    await db.close();
+  });
+  it.each([{ maximumCalls: 6 }, { maximumMessages: 5 }, { maximumCallsPerMessage: 3 }])(
+    "rejects widening the approved extension: %o",
+    (widening) => {
+      expect(() =>
+        createAIJourneyBudgetGuard(runtime(), { ...config(), ...widening }, now),
+      ).toThrow("Invalid internal AI journey profile");
+    },
+  );
   it("checks current exposure + next reservation strictly below the hard ceiling", async () => {
     transport.rows = [row()];
     const db = runtime(),

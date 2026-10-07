@@ -32,6 +32,8 @@ export type AIJourneyBudgetSnapshot = Readonly<{
   combinedExposureMicros: string;
   perCallReserveMicros: string | null;
   accountingComplete: false;
+  /** Blocks a new logical message. A current message's separately reserved
+   * repair is decided by authorizeDispatch, never by this read-only snapshot. */
   blocked: boolean;
   reason: string | null;
 }>;
@@ -58,8 +60,8 @@ export const createAIJourneyBudgetGuard = (
     config.historicalReserveMicros < 0n ||
     config.hardCeilingMicros > 10_000_000n ||
     config.hardCeilingMicros <= config.historicalReserveMicros ||
-    config.maximumCalls !== 6 ||
-    config.maximumMessages !== 3 ||
+    config.maximumCalls !== 5 ||
+    config.maximumMessages !== 4 ||
     config.maximumCallsPerMessage !== 2 ||
     config.inputTokenLimit !== 1_048_576 ||
     config.outputTokenLimit !== COMMERCIAL_V1_AI_PROFILE.maxOutputTokens ||
@@ -289,16 +291,16 @@ export const createAIJourneyBudgetGuard = (
       if (tenant !== organizationId) throw new RepositoryDataIntegrityError();
       return runtime.withTenantTransaction(tenant, async (session) => {
         const state = await inspect(session);
-        const reason =
-          config.mode === "paused"
-            ? "paused"
-            : (state.reason ??
-              (state.calls >= config.maximumCalls
-                ? "attempt_limit"
-                : state.reserve !== null &&
-                    state.exposure + state.reserve >= config.hardCeilingMicros
-                  ? "hard_ceiling"
-                  : null));
+        let reason = config.mode === "paused" ? "paused" : state.reason;
+        if (reason === null) {
+          if (state.calls >= config.maximumCalls) reason = "attempt_limit";
+          else if (state.messages.size >= config.maximumMessages) reason = "message_limit";
+          else if (
+            state.reserve !== null &&
+            state.exposure + state.reserve >= config.hardCeilingMicros
+          )
+            reason = "hard_ceiling";
+        }
         return Object.freeze({
           profile: config.profile,
           mode: config.mode,

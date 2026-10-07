@@ -13,8 +13,10 @@ export const S22_BOOKING_COHORT = Object.freeze({
   // and exact-plan approval; this value never replaces ai_runs NULL costs.
   historicalReserveMicros: 1_033_396n,
   hardCeilingMicros: 10_000_000n,
-  maximumCalls: 6,
-  maximumMessages: 3,
+  // Owner-approved continuation: retain the three consumed messages/calls and
+  // allow one additional message with at most two physical attempts. Same ledger.
+  maximumCalls: 5,
+  maximumMessages: 4,
   maximumCallsPerMessage: 2,
   inputTokenLimit: 1_048_576,
   outputTokenLimit: 4_000,

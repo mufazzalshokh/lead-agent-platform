@@ -896,3 +896,30 @@ conversation is paused with an active handoff; a current authorized readiness
 check must precede any newly authorized turn. Staff acceptance alone cannot
 confirm a booking: delivered offer and actual customer confirmation remain
 required. **S22 remains unaccepted.**
+
+### One-message continuation approved for preparation — 2026-10-07
+
+The owner approved one additional logical paid message with at most two physical
+attempts, **USD1.602864** maximum additional reserve. The same ledger is retained:
+cumulative caps become **four messages / five physical attempts / two per message**.
+No counter reset, new cohort, historical NULL-cost rewrite, model change or budget
+ceiling increase. Projected combined exposure from the last accepted ledger is
+**USD2.642467**, including the unchanged historical reserve and USD0.006207 known
+new cost. This is a bound, not exact historical accounting or fresh live evidence.
+
+The implementation/status correction has local regression proof; see the evidence
+register for commands/results. Preparation authorization does **not** authorize
+deployment or a paid DM. Fresh reviewed immutable images/saved plan, exact-plan
+approval, and current synthetic handoff/request/ledger readiness must precede use.
+The read-only diagnostic's image/provenance pins must match the newly approved
+deployed images before execution; do not weaken those pins or run an old launcher.
+
+Once explicitly enabled and ready, one natural combined message can request facts
+and a future preference: "Salom, S22 sinov konsultatsiyasi narxi qancha va qancha
+davom etadi? Ertaga soat 17:00 ga yozilmoqchiman." The date remains the customer's
+real test choice, interpreted in Asia/Tashkent; it is not guaranteed availability.
+Do not send now. If a clarification, guard failure, timeout or unknown cost
+prevents completion, stop rather than consuming another distinct paid message.
+After an authoritative request, staff acceptance and real delivered-offer customer
+confirmation remain mandatory. The existing confirmation handler runs before AI
+and does not grant another paid slot. No live booking success is claimed.

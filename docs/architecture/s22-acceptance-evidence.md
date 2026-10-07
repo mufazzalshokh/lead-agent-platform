@@ -2264,3 +2264,55 @@ diff checks apply to that documentation checkpoint, with no runtime redeployment
 The next journey requires a separately authorized bounded paid allowance and
 current synthetic handoff readiness. Do not send another DM yet. Live grounded
 answer/request/offer/customer-confirmation proof remains open; **S22 is unaccepted**.
+
+### Approved one-message continuation preparation — 2026-10-07
+
+The owner approved preparation of **one additional synthetic paid message**, at
+most **two physical attempts**, reserving at most **USD1.602864** more. This is
+not permission to apply a deployment or make paid calls now. Exact-plan approval
+and post-deployment readiness remain required. The citation rollout above is not
+repeated and its live outcome is not reclassified as a completed booking.
+
+The private profile remains `s22-synthetic-booking.v1`, bound to the same exact
+organization/conversation. Cumulative limits become **four messages / five
+physical calls / two calls per message**; existing audit markers, three consumed
+messages/calls, known costs and the two historical NULL costs are not reset,
+reclassified or written. The hard ceiling remains USD10. Per-call reservation is
+unchanged at USD0.801432. From the last accepted ledger, the maximum projected
+combined exposure is **1.033396 + 0.006207 + 1.602864 = USD2.642467**, not an exact
+accounting reconstruction or a fresh state observation. Unknown-cost/timeout,
+in-flight, stale-version, wrong-tenant/thread, expired-price and integrity stops
+remain enforced before provider dispatch. No model, pricing or billable extras
+changed.
+
+The read-only status previously omitted logical-message exhaustion even though
+dispatch correctly denied a fourth message. It now returns `blocked=true` and
+`reason=message_limit` at the new four-message cap. This describes permission for
+a **new logical message**, not the current message's allowed schema repair;
+`authorizeDispatch` independently reserves and verifies that repair. The fifth
+cumulative physical slot ends further attempts. The diagnostic's strict expected
+cohort counts and its controlled bootstrap fixture are aligned with the approved
+profile; historical documentation/count evidence is not globally rewritten.
+
+Before the implementation, **five focused assertions failed**, including the
+fourth-message continuation, revised physical limit and logical-limit reporting.
+Afterward, **29/29 local ledger/dispatch tests PASS**, with modeled pg transport:
+
+- `node node_modules/vitest/vitest.mjs run tests/ai/s22-budget-ledger.test.ts tests/ai/s22-journey-dispatch.test.ts`.
+- Continuation coverage preserves two NULL-cost records plus all three prior
+  reservations/costs, uses independent guard instances, reserves both new slots,
+  proves the USD2.642467 worst case, rejects a fifth message/third same-message
+  attempt and rejects config widening. Existing concurrency/unknown-cost/commit
+  uncertainty/cross-tenant tests remain green; these are not fresh PostgreSQL proof.
+- `node --test .github/scripts/s22-booking-first-turn.test.mjs .github/scripts/s22-booking-evidence.test.mjs` — **21/21 PASS**, including real Node subprocess
+  ES-module/package resolution, rollback/cleanup and redaction with controlled
+  fixtures; no live database/provider access.
+- Root `tsc -p tsconfig.json --noEmit` and scoped six-file ESLint with zero
+  warnings — **PASS**. Config/database production/declaration builds and Worker
+  build — **PASS**. Scoped Prettier and diff checks — **PASS**.
+
+No migrations, IAM, schema, RLS, social eligibility, contracts, confirmation policy
+or unrelated owner edits changed. Only focused verification is required; no broad
+CI or prior parser/citation test round is repeated. A fresh immutable image build
+and one reviewed runtime-only saved plan follow verified source. Do not reuse the
+previous rollout's image digests or plan hash. **Not deployed; no paid calls.**
