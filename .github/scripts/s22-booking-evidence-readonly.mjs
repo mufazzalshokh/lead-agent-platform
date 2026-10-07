@@ -7,6 +7,8 @@ const rollback = new Error("EXPECTED_READ_ONLY_ROLLBACK");
 let runtime,
   currentState,
   requestStates,
+  completionModule,
+  completionResults,
   failures = 0,
   stage = "initialize";
 const report = (assertion, pass, observed) => {
@@ -90,6 +92,15 @@ try {
       "outbox_events",
       ...(process.env.S22_BOOKING_READ_STAGE === "final-turn"
         ? ["channel_connections", "thread_automation_controls", "webhook_receipts"]
+        : []),
+      ...(process.env.S22_BOOKING_READ_STAGE === "completion"
+        ? [
+            "appointment_request_transitions",
+            "appointment_confirmation_evidence",
+            "leads",
+            "channel_connections",
+            "memberships",
+          ]
         : []),
     ];
     const [rls] = await read(
@@ -178,6 +189,26 @@ try {
         throw Object.assign(new Error(), { code: "FINAL_TURN_SCOPE_MISMATCH" });
       await collectFinalTurnEvidence(read, report);
     }
+    if (process.env.S22_BOOKING_READ_STAGE === "completion") {
+      stage = "completion_trace";
+      if (!process.env.S22_BOOKING_TRACE_GZIP_B64)
+        throw Object.assign(new Error(), { code: "COMPLETION_MODULE_MISSING" });
+      try {
+        const { gunzipSync } = await import("node:zlib");
+        const source = gunzipSync(Buffer.from(process.env.S22_BOOKING_TRACE_GZIP_B64, "base64"), {
+          maxOutputLength: 65536,
+        });
+        completionModule = await import(`data:text/javascript;base64,${source.toString("base64")}`);
+      } catch {
+        throw Object.assign(new Error(), { code: "COMPLETION_MODULE_INVALID" });
+      }
+      if (
+        organization !== completionModule.completionScope.organization ||
+        conversation !== completionModule.completionScope.conversation
+      )
+        throw Object.assign(new Error(), { code: "COMPLETION_SCOPE_MISMATCH" });
+      completionResults = await completionModule.collectCompletionEvidence(read, report);
+    }
   });
   stage = "deployed_cohort_binding";
   const cohort = config.loadAIJourneyCohortConfig({
@@ -218,11 +249,13 @@ try {
   const snapshot = await guard.read(organization);
   report(
     stage,
-    !snapshot.blocked &&
-      snapshot.accountingComplete === false &&
-      snapshot.historicalReserveMicros === "1033396" &&
-      snapshot.perCallReserveMicros === "801432" &&
-      BigInt(snapshot.combinedExposureMicros) < 10000000n,
+    process.env.S22_BOOKING_READ_STAGE === "completion"
+      ? completionModule.completionAccountingPass(snapshot, completionResults)
+      : !snapshot.blocked &&
+          snapshot.accountingComplete === false &&
+          snapshot.historicalReserveMicros === "1033396" &&
+          snapshot.perCallReserveMicros === "801432" &&
+          BigInt(snapshot.combinedExposureMicros) < 10000000n,
     snapshot,
   );
   if (snapshot.physicalCalls === 0)

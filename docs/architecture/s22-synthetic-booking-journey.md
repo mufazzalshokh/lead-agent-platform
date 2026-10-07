@@ -1053,3 +1053,36 @@ procedure above now uses **Ha, tasdiqlayman.**, supported by
 `confirmationReplyIntent`; its older suggested longer phrase falls through to
 clarification and must not be used as a scripted happy-path assumption. No
 runtime parser or security policy changed. **S22 remains unaccepted.**
+
+### Original-friend offer and confirmation received — 2026-10-07
+
+The owner reports receipt of the staff-accepted offer for **08 October 2026
+17:00 Asia/Tashkent**, explicitly asking the original friend to confirm. After
+the actual customer confirmation, the friend received the final acknowledgment
+for that same time. The customer-visible journey is **owner-reported live PASS**;
+staff acceptance is not substituted for customer confirmation. No precise
+confirmation timestamp, message ID, persisted version or cost is invented.
+
+No more customer messages are needed or authorized. The remaining scoped step
+is one persisted completion check: request lifecycle, direct confirmation,
+sent offer/acknowledgment, actor/correlation audits, converted lead and settled
+continuation usage/reservations. The tooling-only `--complete-booking` mode and
+checksum-pinned `.github/scripts/s22-booking-completion-launch-v1.sh` retain the
+reviewed image, private network, zero retries and read-only tenant/RLS guards.
+No uploads, deployment, migration, paid call or IAM change is required.
+
+Expected lifecycle is requested/1 → staff_accepted/2 →
+awaiting_customer_confirmation/3 → confirmed/4; offer **October 8 12:00–12:30
+UTC**, Asia/Tashkent. These are source-derived expectations, not live DB results.
+Four logical/four-or-five physical calls should stop further paid dispatch via
+`message_limit`/`attempt_limit`; expected exhaustion is not accounting failure.
+Complete new-run costs must reconcile to the prior **6207 USD micros** baseline,
+with zero unresolved reserve. Historical NULL costs remain unknown under the
+approved **USD1.033396 budget-only reserve** and **USD2.642467 maximum exposure**.
+No exact historical accounting or S22 acceptance is claimed.
+
+Local diagnostic checks: **94/94 PASS**, scoped lint/format/diff PASS, including
+actual ES-module/package resolution, fail-closed guards, rollback/cleanup,
+metadata projection and download-tamper rejection. Live persisted proof remains
+**PENDING** on one owner Cloud Shell run. Keep those local/mocked checks separate
+from the future owner-supplied live result. **S22 unaccepted; no S23 work.**

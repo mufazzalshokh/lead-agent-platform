@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
+import { gzipSync } from "node:zlib";
 
 const execute = promisify(execFile);
 const project = "lead-agent-stg-739284",
@@ -170,6 +171,16 @@ export const finalTraceAssertions = new Set([
   "final_turn_receipts",
   "final_turn_queue_access",
 ]);
+export const completionTraceAssertions = new Set([
+  "completion_request",
+  "completion_transitions",
+  "completion_customer_evidence",
+  "completion_offer_delivery",
+  "completion_confirmation_delivery",
+  "completion_audits",
+  "completion_lead",
+  "completion_provider_runs",
+]);
 const optionalAssertions = new Set([
   "first_turn_readiness",
   "first_turn_trace",
@@ -179,6 +190,8 @@ const optionalAssertions = new Set([
   ...traceAssertions,
   "final_turn_trace",
   ...finalTraceAssertions,
+  "completion_trace",
+  ...completionTraceAssertions,
 ]);
 const fields = new Set([
   "runtime_read_only_tenant_guard",
@@ -243,6 +256,7 @@ const fields = new Set([
   "total_units",
   "estimated_cost_micros",
   "cost_catalog_version",
+  "cost_currency",
   "latency_ms",
   "has_output_hash",
   "started_at",
@@ -296,6 +310,42 @@ const fields = new Set([
   "processed_message_id",
   "first_received_at",
   "last_received_at",
+  "offered_time_zone",
+  "staff_decided_at",
+  "from_status",
+  "to_status",
+  "command",
+  "actor_type",
+  "source_message_id",
+  "actor_binding",
+  "outcome",
+  "source",
+  "customer_acted_at",
+  "recorded_at",
+  "customer_bound",
+  "channel_bound",
+  "source_bound",
+  "offer_bound",
+  "within_window",
+  "customer_after_prompt",
+  "confirmation_kind",
+  "staff_operation",
+  "expected_version",
+  "transition_bound",
+  "owner_active",
+  "owner_unique",
+  "converted_at",
+  "appointment_bound",
+  "reservations",
+  "journey_starts",
+  "reserved_micros",
+  "approved_limits",
+  "confirmation_run_count",
+  "request_count",
+  "continuation_cost_micros",
+  "confirmation_calls",
+  "total_runs",
+  "booking_trigger",
 ]);
 const redact = (value) => {
   if (Array.isArray(value)) return value.slice(0, 21).map(redact);
@@ -311,7 +361,11 @@ const redact = (value) => {
     (typeof value === "number" && Number.isSafeInteger(value))
   )
     return value;
-  if (typeof value === "string" && /^[a-zA-Z0-9_.:+-]{1,100}$/.test(value)) return value;
+  if (
+    typeof value === "string" &&
+    (value === "Asia/Tashkent" || /^[a-zA-Z0-9_.:+-]{1,100}$/.test(value))
+  )
+    return value;
   return "REDACTED";
 };
 export const sanitizeRows = (entries) =>
@@ -364,7 +418,7 @@ export async function readRecoveryToken(authenticate = cloud) {
 // It never enters main(), executes a job, changes IAM or retries an API call.
 export const recoveryExecution = "lead-agent-staging-migrator-n2vs5";
 export const readinessRecoveryExecution = "lead-agent-staging-migrator-q2z8g";
-async function recoverExecutionLogs(execution, from, until, token, request) {
+async function recoverExecutionLogs(execution, from, until, token, request, required = assertions) {
   let stage = "logging_api";
   try {
     const response = await request("https://logging.googleapis.com/v2/entries:list", {
@@ -408,7 +462,7 @@ async function recoverExecutionLogs(execution, from, until, token, request) {
       ? "LOG_RESULT_TRUNCATED"
       : [...counts.values()].some((count) => count > 1)
         ? "LOG_ASSERTIONS_DUPLICATED"
-        : [...assertions].some((name) => !counts.has(name))
+        : [...required].some((name) => !counts.has(name))
           ? "LOG_ASSERTIONS_INCOMPLETE"
           : rows.some((row) => row.outcome !== "PASS")
             ? "LOG_ASSERTION_NOT_PASS"
@@ -449,6 +503,52 @@ export const recoverReadinessLogs = (token, request = fetch) =>
     token,
     request,
   );
+export const recoverCompletionLogs = (execution, token, request = fetch) => {
+  requireSafe(
+    typeof execution === "string" && /^lead-agent-staging-migrator-[a-z0-9]+$/.test(execution),
+    "COMPLETION_EXECUTION_INVALID",
+  );
+  return recoverExecutionLogs(
+    execution,
+    "2026-10-07T00:00:00Z",
+    "2026-10-10T00:00:00Z",
+    token,
+    request,
+    new Set([...assertions, ...completionTraceAssertions]),
+  );
+};
+export function formatCompletionReport(result) {
+  const observation = (name) =>
+    result.assertions?.find((item) => item.assertion === name)?.observed ?? {};
+  const request = observation("completion_request").rows?.[0];
+  const budget = observation("cohort_reservation_accounting");
+  const provider = observation("completion_provider_runs");
+  const lines = [
+    `Persisted booking collection: ${result.outcome === "PASS" ? "PASS" : "BLOCKED"}${result.code ? ` (${result.code})` : ""}`,
+    ...(result.execution ? [`Read-only execution: ${result.execution}`] : []),
+    ...[...assertions, ...completionTraceAssertions].map((name) => {
+      const row = result.assertions?.find((item) => item.assertion === name);
+      return `${name.replaceAll("_", " ")}: ${row?.outcome ?? "NOT COLLECTED"}${row?.code ? ` (${row.code})` : ""}`;
+    }),
+    `Booking state / version / offer: ${request?.status ?? "unknown"} / ${request?.version ?? "unknown"} / ${request?.offer_version ?? "unknown"}`,
+    `Customer confirmation source: ${request?.confirmation_source ?? "unknown"}`,
+    `Offered start / end (UTC): ${request?.start_at ?? "unknown"} / ${request?.end_at ?? "unknown"}`,
+    `Paid messages / physical attempts: ${budget.logicalMessages ?? "unknown"} / ${budget.physicalCalls ?? "unknown"}`,
+    `Continuation cost (USD micros): ${provider.continuation_cost_micros ?? "unknown"}`,
+    `Known total cost / reserved exposure (USD micros): ${budget.knownCostMicros ?? "unknown"} / ${budget.combinedExposureMicros ?? "unknown"}`,
+    `Unresolved reserve (USD micros): ${budget.unresolvedReserveMicros ?? "unknown"}`,
+    `Further paid dispatch: ${budget.blocked === true ? `BLOCKED (${budget.reason ?? "unknown"})` : "NOT PROVEN BLOCKED"}`,
+    "Historical NULL costs remain unknown; the budget exception is not exact accounting.",
+    "No customer message, model call, migration, IAM or job-configuration change was performed by this check.",
+    "This completed-check snapshot is not S22 acceptance or new paid-call authorization.",
+  ];
+  for (const row of result.assertions ?? [])
+    if (row.outcome !== "PASS")
+      lines.push(
+        `Failed check: ${row.assertion}${row.code ? ` (${row.code})` : ""}; safe metadata: ${JSON.stringify(row.observed ?? {})}`,
+      );
+  return lines.join("\n");
+}
 function readinessChecks(result) {
   const observed = (name) =>
     result.assertions?.find((item) => item.assertion === name)?.observed ?? {};
@@ -662,8 +762,7 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const moduleBootstrap =
   'import{spawnSync}from"node:child_process";const r=spawnSync(process.execPath,["--input-type=module"],{input:Buffer.from(process.env.S22_BOOKING_READ_B64,"base64"),cwd:process.cwd(),env:process.env,stdio:["pipe","inherit","inherit"],timeout:60000,killSignal:"SIGTERM"});process.exitCode=r.error||r.signal?1:Number.isInteger(r.status)?r.status:1;';
 
-async function main() {
-  const stage = process.env.BOOKING_EVIDENCE_STAGE ?? "initial";
+async function main(stage = process.env.BOOKING_EVIDENCE_STAGE ?? "initial") {
   const evidence = {
     runtime_source: reviewed.source,
     paid_calls: 0,
@@ -676,10 +775,13 @@ async function main() {
     terminal = false;
   try {
     requireSafe(
-      ["initial", "observe", "first-turn", "final-turn"].includes(stage),
+      ["initial", "observe", "first-turn", "final-turn", "completion"].includes(stage),
       "READ_STAGE_INVALID",
     );
-    const token = (await cloud(["auth", "print-access-token"])).trim();
+    const token =
+      stage === "completion"
+        ? await readRecoveryToken()
+        : (await cloud(["auth", "print-access-token"])).trim();
     const response = await fetch(
       `https://run.googleapis.com/v2/projects/${project}/locations/${region}/workerPools/lead-agent-staging-worker`,
       { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) },
@@ -709,16 +811,33 @@ async function main() {
         ]),
       ),
     );
+    if (stage === "completion")
+      console.log(
+        "Preflight: PASS (reviewed image/source, runtime role reference, private VPC, zero retries)",
+      );
     const reader = await readFile(new URL("./s22-booking-evidence-readonly.mjs", import.meta.url));
     const traceReader =
       stage === "first-turn"
         ? await readFile(new URL("./s22-booking-first-turn-readonly.mjs", import.meta.url))
         : stage === "final-turn"
           ? await readFile(new URL("./s22-booking-final-turn-readonly.mjs", import.meta.url))
-          : null;
+          : stage === "completion"
+            ? await readFile(new URL("./s22-booking-completion-readonly.mjs", import.meta.url))
+            : null;
     if (traceReader !== null)
       evidence.trace_reader_sha256 = createHash("sha256").update(traceReader).digest("hex");
     evidence.reader_sha256 = createHash("sha256").update(reader).digest("hex");
+    const readerPayload = reader.toString("base64");
+    const tracePayload =
+      traceReader === null
+        ? null
+        : (stage === "completion" ? gzipSync(traceReader) : traceReader).toString("base64");
+    requireSafe(
+      readerPayload.length < 32000 && (tracePayload === null || tracePayload.length < 32000),
+      "DIAGNOSTIC_PAYLOAD_TOO_LARGE",
+    );
+    const traceVariable =
+      stage === "completion" ? "S22_BOOKING_TRACE_GZIP_B64" : "S22_BOOKING_TRACE_B64";
     // Same actual-ES-module stdin bootstrap already proven in the prior diagnostic.
     execution = (
       await cloud(
@@ -730,7 +849,7 @@ async function main() {
           `--project=${project}`,
           `--region=${region}`,
           `--args=^~^--input-type=module~-e~${moduleBootstrap}`,
-          `--update-env-vars=^~^S22_BOOKING_READ_B64=${reader.toString("base64")}~S22_BOOKING_READ_STAGE=${stage}${traceReader === null ? "" : `~S22_BOOKING_TRACE_B64=${traceReader.toString("base64")}`}`,
+          `--update-env-vars=^~^S22_BOOKING_READ_B64=${readerPayload}~S22_BOOKING_READ_STAGE=${stage}${tracePayload === null ? "" : `~${traceVariable}=${tracePayload}`}`,
           "--format=value(metadata.name)",
         ],
         30000,
@@ -741,6 +860,7 @@ async function main() {
       "EXECUTION_ID_UNAVAILABLE_NO_RERUN",
     );
     evidence.execution = execution;
+    if (stage === "completion") console.log(`Read-only execution started: ${execution}`);
     const deadline = Date.now() + 90000;
     while (Date.now() < deadline) {
       const state = JSON.parse(
@@ -775,31 +895,39 @@ async function main() {
     requireSafe(terminal, "DIAGNOSTIC_WINDOW_ELAPSED");
     // A missing logging permission is a real blocker, never a reason to grant IAM.
     const filter = `resource.type="cloud_run_job" AND resource.labels.job_name="${job}" AND labels."run.googleapis.com/execution_name"="${execution}" AND jsonPayload.operation="s22_booking_readonly"`;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let entries;
-      try {
-        entries = JSON.parse(
-          await cloud(
-            [
-              "logging",
-              "read",
-              filter,
-              `--project=${project}`,
-              "--freshness=1h",
-              "--limit=20",
-              "--order=asc",
-              "--format=json",
-            ],
-            20000,
-          ),
-        );
-      } catch (error) {
-        throw Object.assign(new Error(), { code: logReadFailureCode(error) });
+    if (stage === "completion") {
+      // The owner's Logging REST path is already proven. No hanging CLI log
+      // polling, retry, IAM change or automatic diagnostic rerun is justified.
+      await pause(2000); // Bounded ingestion allowance; still exactly one read.
+      const collected = await recoverCompletionLogs(execution, token);
+      evidence.assertions = collected.assertions ?? [];
+      requireSafe(collected.outcome === "PASS", collected.code ?? "COMPLETION_LOG_READ_BLOCKED");
+    } else
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let entries;
+        try {
+          entries = JSON.parse(
+            await cloud(
+              [
+                "logging",
+                "read",
+                filter,
+                `--project=${project}`,
+                "--freshness=1h",
+                "--limit=20",
+                "--order=asc",
+                "--format=json",
+              ],
+              20000,
+            ),
+          );
+        } catch (error) {
+          throw Object.assign(new Error(), { code: logReadFailureCode(error) });
+        }
+        evidence.assertions = sanitizeRows(entries);
+        if (evidence.assertions.length >= assertions.size) break;
+        await pause(3000);
       }
-      evidence.assertions = sanitizeRows(entries);
-      if (evidence.assertions.length >= assertions.size) break;
-      await pause(3000);
-    }
     requireSafe(evidence.execution_succeeded, "READ_ONLY_DIAGNOSTIC_FAILED");
     requireSafe(
       [...assertions].every((name) =>
@@ -828,6 +956,13 @@ async function main() {
         ),
         "FINAL_TURN_TRACE_INCOMPLETE",
       );
+    if (stage === "completion")
+      requireSafe(
+        [...completionTraceAssertions].every((name) =>
+          evidence.assertions.some((row) => row.assertion === name && row.outcome === "PASS"),
+        ),
+        "COMPLETION_TRACE_INCOMPLETE",
+      );
     evidence.outcome = "PASS";
   } catch (error) {
     evidence.outcome = "BLOCKED";
@@ -855,7 +990,9 @@ async function main() {
       }
     }
     await writeFile("s22-booking-evidence.json", JSON.stringify(evidence, null, 2));
-    console.log(JSON.stringify(evidence));
+    console.log(
+      stage === "completion" ? formatCompletionReport(evidence) : JSON.stringify(evidence),
+    );
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -867,7 +1004,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     });
   else if (process.argv.length === 4 && process.argv[2] === "--recover-final-turn")
     await recoverFinalMain(process.argv[3]);
-  else if (process.argv.length === 2) await main();
+  else if (process.argv.length === 3 && process.argv[2] === "--complete-booking")
+    await main("completion");
+  else if (process.argv.length === 4 && process.argv[2] === "--recover-completion") {
+    const execution = process.argv[3];
+    if (/^lead-agent-staging-migrator-[a-z0-9]+$/.test(execution))
+      await recoverMain((token) => recoverCompletionLogs(execution, token), formatCompletionReport);
+    else {
+      console.log("BLOCKED: COMPLETION_EXECUTION_INVALID");
+      process.exitCode = 1;
+    }
+  } else if (process.argv.length === 2) await main();
   else {
     console.log(JSON.stringify({ outcome: "BLOCKED", code: "READ_MODE_INVALID" }));
     process.exitCode = 1;

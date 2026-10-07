@@ -7,6 +7,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import {
   moduleBootstrap,
+  completionTraceAssertions,
+  formatCompletionReport,
+  recoverCompletionLogs,
   formatReadinessReport,
   recoverExistingBookingLogs,
   recoverReadinessLogs,
@@ -523,6 +526,9 @@ test("a mistyped recovery flag cannot enter the diagnostic execution path", () =
     ["--recover-logs", "unexpected"],
     ["--recover-readines"],
     ["--recover-readiness", "unexpected"],
+    ["--complete-booking", "unexpected"],
+    ["--complete-bookin"],
+    ["--recover-completion"],
   ]) {
     const result = spawnSync(
       process.execPath,
@@ -570,6 +576,172 @@ test("exact subprocess bootstrap resolves bare packages and relative runtime mod
   } finally {
     assert.equal(resolve(fixture).startsWith(resolve(tmpdir())), true);
     assert.equal(basename(fixture).startsWith("s22-readonly-module-"), true);
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+const completionEntries = () => {
+  const entries = readinessEntries();
+  const accounting = entries.find(
+    (entry) => entry.jsonPayload.assertion === "cohort_reservation_accounting",
+  ).jsonPayload.observed;
+  Object.assign(accounting, {
+    logicalMessages: 4,
+    physicalCalls: 4,
+    blocked: true,
+    reason: "message_limit",
+    knownCostMicros: "8207",
+    combinedExposureMicros: "1041603",
+  });
+  for (const assertion of completionTraceAssertions)
+    entries.push({
+      jsonPayload: {
+        operation: "s22_booking_readonly",
+        assertion,
+        outcome: "PASS",
+        observed:
+          assertion === "completion_request"
+            ? {
+                rows: [
+                  {
+                    id: "01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc8",
+                    status: "confirmed",
+                    version: "4",
+                    offer_version: 1,
+                    start_at: "2026-10-08T12:00:00.000Z",
+                    end_at: "2026-10-08T12:30:00.000Z",
+                    offered_time_zone: "Asia/Tashkent",
+                    confirmation_source: "instagram",
+                  },
+                ],
+              }
+            : assertion === "completion_provider_runs"
+              ? { continuation_cost_micros: "2000", confirmation_calls: 0 }
+              : { rows: [], body: "SENSITIVE_BODY", contact_id: "SENSITIVE_CONTACT" },
+      },
+    });
+  return entries;
+};
+
+test("completion recovery is one exact-execution bounded REST read and requires all completion assertions", async () => {
+  const execution = "lead-agent-staging-migrator-controlled";
+  let reads = 0;
+  const result = await recoverCompletionLogs(execution, "SENSITIVE_AUTH", async (url, options) => {
+    reads++;
+    assert.equal(url, "https://logging.googleapis.com/v2/entries:list");
+    assert.equal(options.method, "POST");
+    assert.equal(options.redirect, "error");
+    assert.equal(options.headers.Authorization, "Bearer SENSITIVE_AUTH");
+    const body = JSON.parse(options.body);
+    assert.equal(body.pageSize, 20);
+    assert.ok(body.filter.includes(`execution_name"="${execution}"`));
+    return Response.json({ entries: completionEntries() });
+  });
+  assert.equal(reads, 1);
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.assertions.length, 14);
+  const report = formatCompletionReport(result);
+  assert.match(report, /Booking state \/ version \/ offer: confirmed \/ 4 \/ 1/);
+  assert.match(report, /Further paid dispatch: BLOCKED \(message_limit\)/);
+  assert.match(report, /Historical NULL costs remain unknown/);
+  assert.doesNotMatch(JSON.stringify(result) + report, /SENSITIVE|contact_id/);
+  for (const mutation of [
+    (entries) => entries.pop(),
+    (entries) => {
+      entries.at(-1).jsonPayload.outcome = "FAIL";
+    },
+    (entries) => entries.push(entries[0]),
+  ]) {
+    const entries = completionEntries();
+    mutation(entries);
+    const blocked = await recoverCompletionLogs(execution, "SENSITIVE_AUTH", async () =>
+      Response.json({ entries }),
+    );
+    assert.equal(blocked.outcome, "BLOCKED");
+    assert.match(formatCompletionReport(blocked), /BLOCKED/);
+  }
+  let invoked = false;
+  assert.throws(
+    () =>
+      recoverCompletionLogs("wrong*scope", "SENSITIVE_AUTH", () => {
+        invoked = true;
+      }),
+    { code: "COMPLETION_EXECUTION_INVALID" },
+  );
+  assert.equal(invoked, false);
+  const queryFailure = formatCompletionReport({
+    outcome: "BLOCKED",
+    code: "LOG_ASSERTIONS_INCOMPLETE",
+    assertions: [
+      { assertion: "completion_trace", outcome: "BLOCKED", code: "COMPLETION_AUDITS_42703" },
+    ],
+  });
+  assert.match(queryFailure, /Failed check: completion_trace \(COMPLETION_AUDITS_42703\)/);
+});
+
+test("completion CLI executes only one guarded read-only job and prints a finite sanitized report", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "s22-completion-cli-"));
+  const preload = join(fixture, "controlled-preload.mjs");
+  try {
+    writeFileSync(
+      preload,
+      `
+      import assert from "node:assert/strict";
+      import childProcess from "node:child_process";
+      import {syncBuiltinESMExports} from "node:module";
+      import {promisify} from "node:util";
+      let executed=0, auth=0, logs=0, polls=0, metadata=0;
+      const controlledExec=()=>{throw Error("UNEXPECTED_PROCESS");};
+      controlledExec[promisify.custom]=async(file,args,options)=>{
+        assert.equal(file,"gcloud");assert.ok(options.timeout<=30000);
+        if(args[0]==="auth"){auth++;assert.deepEqual(args,["auth","print-access-token","--quiet"]);return {stdout:"SENSITIVE_AUTH\\n"};}
+        if(args.slice(0,3).join(" ")==="run jobs describe"){metadata++;return {stdout:JSON.stringify(${JSON.stringify(job())})};}
+        if(args.slice(0,3).join(" ")==="run jobs execute"){
+          executed++;assert.equal(args[3],"lead-agent-staging-migrator");
+          assert.ok(args.includes("--project=lead-agent-stg-739284"));
+          assert.ok(args.includes("--region=me-central1"));
+          assert.equal(args.find(a=>a.startsWith("--args=")),${JSON.stringify(`--args=^~^--input-type=module~-e~${moduleBootstrap}`)});
+          const override=args.find(a=>a.startsWith("--update-env-vars="));
+          assert.ok(override.includes("~S22_BOOKING_READ_STAGE=completion~S22_BOOKING_TRACE_GZIP_B64="));
+          return {stdout:"lead-agent-staging-migrator-controlled\\n"};
+        }
+        if(args.slice(0,4).join(" ")==="run jobs executions describe"){
+          polls++;return {stdout:JSON.stringify({status:{conditions:[{type:"Completed",status:"True"}]}})};
+        }
+        throw Error("UNEXPECTED_PROCESS");
+      };
+      childProcess.execFile=controlledExec;syncBuiltinESMExports();
+      globalThis.fetch=async(url,options)=>{
+        assert.ok(options.signal);assert.equal(options.headers.Authorization,"Bearer SENSITIVE_AUTH");
+        if(url.includes("/workerPools/"))return Response.json(${JSON.stringify(worker())});
+        assert.equal(url,"https://logging.googleapis.com/v2/entries:list");logs++;
+        assert.ok(JSON.parse(options.body).filter.includes("lead-agent-staging-migrator-controlled"));
+        return Response.json({entries:${JSON.stringify(completionEntries())}});
+      };
+      process.on("exit",()=>{assert.equal(executed,1);assert.equal(auth,1);assert.equal(logs,1);assert.equal(polls,1);assert.equal(metadata,1);});
+    `,
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        pathToFileURL(preload).href,
+        fileURLToPath(new URL("./s22-booking-evidence.mjs", import.meta.url)),
+        "--complete-booking",
+      ],
+      { cwd: fixture, encoding: "utf8", timeout: 10000 },
+    );
+    assert.equal(result.status, 0, result.stderr + result.stdout);
+    assert.match(result.stdout, /Preflight: PASS/);
+    assert.match(result.stdout, /Persisted booking collection: PASS/);
+    assert.match(result.stdout, /Continuation cost \(USD micros\): 2000/);
+    assert.doesNotMatch(
+      result.stdout + result.stderr,
+      /SENSITIVE|body_ciphertext|DATABASE_URL|contact_id/,
+    );
+  } finally {
+    assert.equal(resolve(fixture).startsWith(resolve(tmpdir())), true);
+    assert.equal(basename(fixture).startsWith("s22-completion-cli-"), true);
     rmSync(fixture, { recursive: true, force: true });
   }
 });

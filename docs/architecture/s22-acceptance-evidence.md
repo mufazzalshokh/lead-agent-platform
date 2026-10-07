@@ -2765,3 +2765,74 @@ raw provider payloads, runtime code, ledger, SQL, migration or IAM were changed.
 Grounded reply is owner-reported PASS; request persistence/accounting remain
 pending; staff acceptance, offer delivery and actual confirmation are unproven.
 **S22 remains unaccepted; no S23 work.**
+
+### Owner-reported confirmed booking; persisted completion collection prepared — 2026-10-07
+
+The owner subsequently reported that the original friend received the
+staff-accepted offer for **08 October 2026 17:00 Asia/Tashkent**, explicitly
+asking for confirmation. After the instructed actual customer confirmation,
+the owner reported receipt of the final confirmation acknowledgment for the
+same time. The **owner-reported live customer-visible** journey is PASS:
+grounded facts → request → staff acceptance → delivered offer → customer
+confirmation → received acknowledgment. This is not independent persisted
+request/version, confirmation, audit, delivery, converted-lead or cost evidence.
+No exact confirmation timestamp, inbound ID or cost is inferred from wording.
+No additional paid message is requested or authorized.
+
+The existing readiness predicate correctly rejects an exhausted cohort; applying
+it to completion would falsely fail a settled fourth-message journey. Tooling now
+has a separate `--complete-booking` assertion: four logical messages, four/five
+physical attempts, expected `message_limit`/`attempt_limit` stop, no pending
+reserve, and exact reconciliation of collected continuation cost against the
+prior **6207 USD micros** known baseline. Historical costs remain NULL and
+`accountingComplete=false`. This verifies approved reservation accounting, not
+exact historical costs. Production budget/booking/privacy policies are unchanged.
+
+Eight bounded, parameterized completion reads supplement six baseline assertions.
+The reader discovers exactly one request in the original authorized conversation
+between **2026-10-07T13:35:00Z and 2026-10-08T00:00:00Z**, then scopes every
+subsequent query to the organization/conversation/discovered request. It checks:
+
+- Requested/1 → staff_accepted/2 → awaiting_customer_confirmation/3 → confirmed/4,
+  including intermediate preparation, actual actor/correlation bindings and the
+  **October 8 12:00–12:30 UTC** offer. These are source-derived expectations, not
+  newly observed live versions.
+- Immutable direct Instagram customer confirmation for the current offer/window,
+  no substituted staff attestation, and no provider call on confirmation.
+- Sent/delivered offer and acknowledgment with exact reply/outbox correlation;
+  generic delivery-list PASS remains collection only, not send proof.
+- Successful owner acceptance/customer confirmation audits, converted lead and
+  one/two priced continuation runs with reservations/limits. Ambiguity, NULL cost,
+  unknown usage, extra run or an unrelated request cannot pass.
+
+Execution reuses only the reviewed immutable diagnostic job/image at runtime
+source `191a9cdbb4187ad0006a5dbab04882b4f44d0e64`, with runtime-role secret
+reference, private VPC/subnet/egress and explicit zero retries. Read-only
+transactions, transaction-local tenant context, runtime-not-owner/FORCE-RLS on
+**12 queried tables**, timeouts, strict row caps, rollback and connection cleanup
+remain mandatory. No content/customer identifiers/credentials/whole metadata
+blobs are output. Actual ES-module/application-relative resolution is retained;
+gzip and decoded-size limits bound the completion payload. Query failures carry
+an exact sanitized stage/SQLSTATE. No migration entrypoint or job-template change.
+
+Local verification (controlled fixtures, no live DB/network/paid calls):
+
+- `node --test .github/scripts/s22-booking-evidence.test.mjs .github/scripts/s22-booking-first-turn.test.mjs .github/scripts/s22-booking-final-turn.test.mjs .github/scripts/s22-booking-completion.test.mjs .github/scripts/s22-booking-completion-launch.test.mjs`: **94/94 PASS**.
+- Exact generated bootstrap executes real reader modules with controlled bare
+  package/relative-module resolution, 14 assertions, rollback/closure, failed
+  guards and expected exhaustion. Real Bash tests verify pinned download hashes,
+  one invocation and tamper rejection before authentication/execution.
+- Scoped ESLint zero warnings, Prettier and `git diff --check`: **PASS**.
+  Independent source/SQL/safeguard review found no blocking discrepancy. No broad
+  CI, production build or already-passed runtime check was repeated.
+
+**Persisted completion remains PENDING.** Local gcloud/browser access is
+unavailable; the prior GitHub logging-permission gap is not widened. One owner
+Cloud Shell action runs checksum-pinned `s22-booking-completion-launch-v1.sh`:
+download/verify three modules, launch one guarded read-only execution, collect
+once through bounded Logging REST and print readable results. No uploads,
+deployment, provider call, migration, IAM or secret changes. A failure preserves
+the exact execution and sanitized JSON; recover its logs only, never blindly
+rerun. Historical reservation **USD1.033396**, maximum combined exposure
+**USD2.642467** and USD10 ceiling remain unchanged. The different friend's
+unproven DM is outside this cohort. **S22 unaccepted; no S23 work.**
