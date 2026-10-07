@@ -948,3 +948,21 @@ friend to send another DM yet. The next action is a current, authorized read-onl
 synthetic handoff/request/ledger readiness check using existing tooling. The
 remaining journey still requires an authoritative request, staff acceptance,
 delivered offer and actual customer confirmation. **S22 remains unaccepted.**
+
+### Owner Resolve reported; current readiness awaiting result collection — 2026-10-07
+
+The owner reports Claim and Resolve on the original synthetic chat; this is UI
+evidence only. Diagnostic tooling **`829f1c46b493d7b9a57e7708c60bb9a22071e0b4`**
+now matches the already verified continuation deployment; it changes no runtime
+code, images, database, permissions or paid allowance. Focused checker tests
+**21/21 PASS** plus scoped lint/format/diff checks are local tooling proof.
+
+The single observe workflow **37621701908** verified Worker/diagnostic deployment
+safeguards and launched **`lead-agent-staging-migrator-q2z8g` SUCCESS**. Result
+collection was blocked by **`EXACT_EXECUTION_LOG_PERMISSION_DENIED`** for the
+GitHub identity. This is a log-access blocker, not a demonstrated product failure.
+No diagnostic, migration, provider call, deployment or customer event was repeated.
+Recover only that execution's existing assertion logs through authenticated owner
+Cloud Shell; no upload or IAM change. Until its actual state/request/ledger rows
+are read, current readiness remains unproven and paid execution stays paused.
+The different friend's chat is not substituted into this fixed cohort.

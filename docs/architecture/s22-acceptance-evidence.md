@@ -2460,3 +2460,31 @@ tooling commit; it is not another first-turn test or deployment. Collection PASS
 alone will not be called readiness: independently check current open/AI/no-handoff
 state, appointment requests and the settled remaining message/call allowance.
 Paid execution remains paused pending that result and applicable authorization.
+
+### Post-Resolve diagnostic executed; result-log access blocked — 2026-10-07
+
+Tooling commit **`829f1c46b493d7b9a57e7708c60bb9a22071e0b4`** was pushed and the
+remote SHA verified. One **observe** run
+**[37621701908](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37621701908)**
+produced sanitized artifact `s22-booking-evidence-37621701908`.
+The artifact confirms live Worker image/source/time/migration, booking mode,
+one manual instance and private VPC passed the exact guards. The diagnostic's
+immutable image, runtime database-secret reference, identity, private VPC and
+explicit zero retries also passed. Runtime deployment remains source `191a9cd`;
+the tooling commit is not deployed runtime code.
+
+Exactly one read-only execution **`lead-agent-staging-migrator-q2z8g`** succeeded,
+using reader SHA256
+**`d4b87ff17d8609dca0f871c5cef7571cddc57de469fcb34c5f7297bbcdee9109`**.
+The workflow then stopped with **`EXACT_EXECUTION_LOG_PERMISSION_DENIED`**, empty
+collected assertions, not a database/provider failure. No migration entrypoint,
+job configuration change, paid call, replay, IAM grant or new diagnostic followed.
+Execution success alone is not published as current conversation/budget readiness.
+
+Current state/versions, active-handoff clearance, appointment requests and settled
+remaining allowance are **BLOCKED pending collection**. Recover only this existing
+execution's `s22_booking_readonly` assertion logs through the owner's existing
+authenticated Cloud Shell, with a bounded exact-execution filter and projected
+assertion/outcome/observed fields. No file upload or execution rerun is needed.
+Historical NULLs remain unknown; no accounting reconciliation or S22 acceptance
+is claimed. Paid execution remains paused.
