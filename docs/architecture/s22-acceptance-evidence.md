@@ -2528,3 +2528,130 @@ the complete booking journey remain **BLOCKED/PENDING**, not PASS. No upload,
 diagnostic rerun, provider call, message replay, runtime build/deployment, IAM,
 SQL or migration change is needed for this result-recovery correction. Unrelated
 owner edits are preserved. **S22 remains unaccepted; no S23 work.**
+
+### Current blocker investigation — 2026-10-07, 13:08 UTC checkpoint
+
+**Status: BLOCKED on private result collection, not a newly proven application
+defect.** Repository instructions, current journey/evidence, actual message flow
+and existing diagnostic/workflow safeguards were inspected. Investigation base
+is `8e09859bcdd519f87c171d26b27b52e5900b06a9` on
+`verify/s22-staging-recovery-capacity`. Unrelated owner edits to `README.md`,
+`s11-instagram-business.md` and the untracked public-notices patch remain excluded.
+No runtime changes are made from hypotheses.
+
+#### Observations and current deployment
+
+- Authenticated GitHub reads now confirm **37621701908 FAILED** at **Read exact
+  cohort with the runtime role**, with preserved artifact proving
+  `lead-agent-staging-migrator-q2z8g` succeeded and collection failed
+  `EXACT_EXECUTION_LOG_PERMISSION_DENIED`. The six assertions are absent from the
+  artifact. The owner's subsequent CLI exit 124 proves only a timeout; its
+  internal auth/transport/API cause is not known. No result from the corrected
+  recovery-only command has been supplied yet.
+- Existing IAM code grants the deployer no permanent `roles/logging.viewer`;
+  that role is a separate temporary binding defaulting to false
+  (`infra/deploy/gcp/bootstrap/main.tf`, `variables.tf`). This is consistent with
+  the observed denial, not permission to restore the temporary grant. The safe
+  correction is owner-authenticated result recovery, already committed in
+  `8e09859`, not another database execution or IAM change.
+- Completed **CI 37624137550 PASS** is associated with `8e09859`; it was read,
+  not rerun. Reuse the prior **30/30 focused recovery tests**, including real Node
+  subprocess invocation with controlled auth/REST, HTTP/auth/timeout separation,
+  failed readiness exits, strict scope and redaction. These are local/mocked
+  tooling evidence, not real-provider or database readiness results.
+- To meet this task's explicit current-state requirement, exactly one existing
+  **read-only api-image-verify** run
+  **[37626128214](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37626128214)
+  PASS** was dispatched. Observation window: **13:08:02–13:08:51 UTC**. Tooling
+  source is `8e09859`; expected/runtime source remains
+  `191a9cdbb4187ad0006a5dbab04882b4f44d0e64`. No saved deployment plan, build,
+  apply, migration, database diagnostic, OAuth or paid test was repeated.
+- Downloaded sanitized artifact `s22-api-image-live-evidence-37626128214`, file
+  `s22-api-image-live-evidence.txt`, SHA256
+  `00a5797108a802712f5556375b5a9b6f6c43465a17bf1293fe7a6a8f0a8fc983`,
+  reports **PASS / 0 failures**. Current API ready revision is
+  `lead-agent-staging-api-00022-fdp`; Web is `lead-agent-staging-web-00018-mw8`.
+  API/Web digest references exactly match the continuation packet above. API
+  runtime identity, private VPC/subnet/egress, 15 secret **references**, source and
+  `2026-10-07T06:50:40Z` deployment timestamp match. Whole-runtime refreshed
+  Terraform convergence is **exit 0**; Worker/Migrator are corroborated through
+  convergence, not newly asserted as direct REST ready-revision observations.
+- Configured API migration provenance is
+  `0031_s22_widget_inbound_route_management`. The workflow does **not** query the
+  database migration journal, current conversation or budget ledger; their
+  present values are not inferred from deployment metadata. No new HTTP 200 or
+  deployment success is promoted to end-to-end proof.
+
+#### Last failed eligible journey: observed trace versus implementation
+
+The last proven eligible journey failure is the **original** synthetic chat, not
+the different friend's 18:00 UTC DM. Exact tenant/conversation remain
+`01a0ee39-91a9-7293-82c0-5b7046c10115` /
+`01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7`. These are internal synthetic resource IDs;
+no customer/account identifiers or content are collected.
+
+| Boundary | Evidence and limit |
+| --- | --- |
+| Provider receipt/normalization/routing | An 18:00:15.987873 UTC webhook HTTP 200 exists, but no exact event/message identity connects it to either the new friend or the 19:23 synthetic turn. HTTP 200 can include empty normalization, ignored routing or privacy suppression. |
+| Synthetic inbound persistence | Owner-supplied `kn9mf` metadata: message `01a112ac-2131-7760-a642-53cff85fa955`, persisted `2026-10-06T19:23:52.883Z`. This receipt time must not be replaced with the reported 23:00 local time. |
+| Outbox/physical job | Exact third-turn relay/job/retry/DLQ records were not collected. Do not substitute the first turn's job ID. Source inspection proves routing and ownership checks, not those missing persisted records. Runtime DB role cannot read the private queue tables. |
+| Worker/provider/schema | Owner-supplied structured outcome at 19:23:59.451707 UTC: correlation `01a112ac-2131-74b5-9f58-9a6b8d9de6fd`, run `01a112ac-27b2-7589-b4b2-644ad9599946`, provider completed, schema valid, proposed action none. |
+| Policy and fallback | `untrusted_citation`, `policy_denied`, `handoff_requested`, reply disposition queued. This is the first recorded failing business boundary, not provider timeout or successful grounded booking generation. The historical rejected citation payload was not retained. |
+| Outbound send | Same-conversation fallback message `01a112ac-3a40-7646-bb0c-7fe07adfc2bf`, created 19:23:59.374 UTC, delivery status sent. This proves persisted provider-send status, not delivered/read/customer confirmation. |
+| Staff/inbox state | Historical state awaiting_staff/paused, version 21, active handoff, no AppointmentRequests. Later Claim/Resolve reports are owner UI evidence; the new persisted state is awaiting q2 result recovery. |
+| Accounting | Last accepted ledger: 3 logical / 3 physical, USD0.006207 known cost, zero unresolved reserve, USD1.033396 historical budget-only reserve, exact historical accounting incomplete. Current values are uncollected. |
+
+Actual flow inspected at the runtime source (no application/infra diff against
+`191a9cd`): signature-before-parse and normalization in
+`apps/api/src/instagram/plugin.ts` and
+`packages/integrations/src/instagram/webhook.ts`; trusted channel routing in
+`packages/application/src/instagram/use-cases.ts`; pre-persistence social
+eligibility in `conversations/inbound-use-cases.ts`, repeated transactionally in
+`packages/database/src/repositories/inbound-conversations.ts`. Unseen social
+threads stay uncertain. The repository uses tenant-scoped receipt/MID locks and
+atomic domain/message/audit/outbox persistence, not a direct provider-send chain.
+
+Worker `event-routing.ts`, `outbox-dispatcher.ts`, `job-executor.ts` and
+`ai-handler.ts` bind canonical tenant/event/version and reliability ownership.
+`ai-orchestration.ts` rejects non-open/non-AI/owned/stale sources and revalidates
+versions/knowledge at commit. `ai-journey-budget.ts` serializes reservations under
+the conversation lock before provider I/O and rejects foreign cohorts, unknown
+or pending usage, exhausted attempts/messages and ceiling breaches. Deterministic
+confirmation is attempted before AI. Current policy compares citation identity's
+four fields, not JSON key order; rejected model material never authorizes state.
+`customer-replies.ts` commits reply/audit/outbox atomically. `instagram-outbound.ts`
+rechecks tenant/recipient/thread/credential/window, no-ops already-sent messages,
+and reconciles ambiguous effects instead of blindly retrying. Staff History uses
+the real tenant-authorized non-actionable view; Inbox 0 does not delete messages.
+
+#### Ranked hypotheses and distinguishing evidence
+
+| Rank / hypothesis | Predicted evidence / bounded experiment | Disposition |
+| --- | --- | --- |
+| 1. Result collection lacks log authority | Successful execution but permission-denied collector, no assertion rows. Recover the existing q2 logs once with owner authentication, not another job. | Confirmed immediate blocker for the GitHub identity; owner CLI timeout cause remains unknown. |
+| 2. Original chat remains paused or a request already exists | q2 state/request rows show active handoff, non-open/non-AI, or an existing request. | Unknown. Owner Resolve alone does not rule this out. |
+| 3. Remaining allowance is unsettled/exhausted or differently bound | q2 accounting/binding shows pending/unknown reserve, wrong cohort/caps or changed consumed counts. | Unknown. Historical 3/3 cannot establish current dispatch readiness. |
+| 4. Different friend's DM was privacy-suppressed | Non-business-eligible thread before canonical persistence; no message/outbox/provider run. | Source-consistent, not observed for that exact event. Never globally enable personal DMs or substitute it into the paid cohort. |
+| 5. Different friend's event was ignored before eligibility | Empty normalization, ignored subtype, or missing/inactive route; HTTP 200 but no canonical message. | Competes with rank 4; absent exact event/route metadata prevents distinction. |
+| 6. Citation rejection repeats despite correction | Fresh exact-run outcome with supplied/proposed/unmatched citation counts and current snapshot provenance. | No post-correction paid turn is recorded. Historical key-order defect is locally proven, not a reconstruction of the exact historical model payload. |
+| Current workload configuration drift | Fresh runtime metadata mismatch or nonzero convergence. | Rejected at this checkpoint by run 37626128214; this does not exclude a future deployment or live logic defect. |
+| Provider timeout or Instagram send failure explains the original third turn | Failed provider/absent schema or failed outbound-send status. | Rejected for that turn by completed/schema-valid outcome and persisted sent fallback; no generalized future claim. |
+
+No new application patch/instrumentation is justified by these unknowns. Existing
+correlated outcome telemetry and bounded citation counts will distinguish a new
+eligible rejection without provider payload capture. Existing accepted regression
+coverage for privacy/routing, duplicate MID, ownership/stale context, reservations,
+ambiguous sends and citation property-order permutations is reused, not rerun.
+The original recorded event is not replayed. A fresh real-provider reproduction
+on the exact eligible chat remains blocked on collected readiness and applicable
+paid authorization; no new friend/message is requested.
+
+**One external action:** run the already-published checksum-pinned
+`--recover-readiness` command in the owner's existing Cloud Shell and return its
+short safe output. It collects only q2's six existing assertions and will name
+authentication/permission/timeout failures independently. The output is a
+completed-check snapshot, not a fresh DB journal check or paid-call authorization.
+If this new path fails, stop at that specific access failure; do not blindly
+repeat it or start another diagnostic. Next S22 journey item after readiness and
+authorization is the bounded grounded answer/AppointmentRequest, then staff
+acceptance, delivered offer and actual customer confirmation. **S22 unaccepted.**
