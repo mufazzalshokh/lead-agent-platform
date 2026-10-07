@@ -2725,3 +2725,43 @@ No new message/provider call or journey result has been observed at this entry.
 Grounded output, authoritative request, staff acceptance, delivered offer and
 actual customer confirmation remain pending; staff acceptance alone is not a
 confirmed booking. **S22 remains unaccepted; no S23 work.**
+
+### Authorized continuation: grounded Instagram reply — 2026-10-07
+
+The owner reports the original friend sent the single approved continuation at
+**18:40 Asia/Tashkent (approximately 13:40 UTC)**. The received Instagram reply
+states **UZS100000**, **30 minutes**, and a request for **08 October 2026 17:00**
+pending staff review. This is **owner-reported live customer-visible grounding
+and receipt evidence**. It is not yet a persisted AppointmentRequest, fresh
+version/audit, exact AI-run usage/cost, attempt-count or independent delivery
+assertion. The wording does not claim guaranteed availability or confirmation.
+Redundant price wording is noted as non-blocking presentation polish; no runtime
+patch or additional paid test is justified solely by that wording.
+
+Authenticated GitHub read confirms no newer staging workflow than read-only
+verification **37626128214**; no workflow was dispatched here. Local gcloud and
+a Chrome DevTools listener on port 9222 are unavailable. The existing GitHub
+collector's log-permission failure remains recorded; it is not bypassed by IAM
+changes or another execution of the pre-turn diagnostic. Direct post-turn
+request/run/accounting evidence is still pending. A message-limit dispatch stop
+after the fourth allowed message must not be mislabeled as accounting failure.
+
+Read-only source inspection confirms staff acceptance exists in the authenticated
+workspace: **Inbox → Refresh → original synthetic conversation → Review
+appointment request → Start / End → Accept request**. It is shown only for a
+requested AppointmentRequest with current action identity, and mutations retain
+tenant authorization, CSRF, fresh versions and idempotency. The owner must verify
+the intended request before that authorized synthetic staff action. Local Windows
+timezone is **UTC+05:00, no DST**; Oct 8 17:00–17:30 on this device corresponds
+to 12:00–12:30 UTC. No acceptance was executed by this investigation.
+
+The next customer action is withheld until the real current confirmation offer
+is received. Ongoing journey wording is corrected to **Ha, tasdiqlayman.**:
+source `packages/application/src/appointments/customer-confirmation.ts` accepts
+these tokens deterministically; the previously suggested longer phrase contains
+unrecognized tokens and clarifies instead. This is a documentation correction,
+not weakening confirmation recognition. No credentials, customer identifiers,
+raw provider payloads, runtime code, ledger, SQL, migration or IAM were changed.
+Grounded reply is owner-reported PASS; request persistence/accounting remain
+pending; staff acceptance, offer delivery and actual confirmation are unproven.
+**S22 remains unaccepted; no S23 work.**

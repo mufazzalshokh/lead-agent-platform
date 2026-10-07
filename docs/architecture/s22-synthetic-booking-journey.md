@@ -559,7 +559,9 @@ The current API/source contracts support the following bounded path:
    or confirmed status. S18 expires the offer at
    `min(issued_at + 24 hours, accepted_start_at)` with no implicit renewal.
 7. Only after receiving that actual current offer, the customer explicitly replies
-   **“Ha, shu vaqtni tasdiqlayman.”** if that is their intended synthetic decision.
+   **“Ha, tasdiqlayman.”** if that is their intended synthetic decision. This
+   matches the current conservative deterministic confirmation parser; do not
+   add a new date/preference or send before the current offer is received.
    Trusted channel evidence must match tenant/contact/conversation/request and
    current aggregate/offer versions within `[issued_at, expires_at)`. Verify the
    persisted `confirmed` state and customer/staff output. Staff acceptance,
@@ -1016,3 +1018,38 @@ resend or send a clarification if the turn fails or needs more information;
 investigate that outcome without another paid turn. Staff acceptance, offer
 delivery and actual customer confirmation are separate subsequent steps, not
 claims made by this instruction. **S22 remains unaccepted.**
+
+### Grounded continuation reply received — owner report, 2026-10-07
+
+The owner reports the original friend's authorized message at **18:40
+Asia/Tashkent (approximately 13:40 UTC)** and a customer-visible Instagram reply
+with the published **UZS100000 / 30-minute** facts and **08-10-2026 17:00** as a
+booking request pending staff review. Record grounded facts and customer-visible
+reply receipt as **owner-reported live evidence**, not a new provider payload,
+database timestamp, request ID or independent delivery/accounting observation.
+The duplicate price wording is presentation polish, not a false price or promise.
+
+Authoritative request state/versions, actual physical-attempt count and settled
+cost/reserve for this turn remain uncollected. No further paid turn, resend,
+deployment or unchanged checks are authorized or needed. Do not rerun the prior
+readiness recovery: it reads the pre-turn snapshot. The current observe reader's
+dispatch-readiness assertion rejects the intentionally exhausted message limit;
+that is not itself proof of an accounting failure after the final allowed turn.
+
+The existing UI next step is **Inbox → Refresh → original synthetic conversation
+→ Review appointment request**. Before acceptance, verify Appointment shows
+**Needs staff review** (the authoritative `requested` state) and Requested time
+is 08 October 17:00, Asia/Tashkent. If those controls
+are absent or a different request is selected, stop without another mutation.
+For this synthetic staff decision, enter **08 October 2026 17:00–17:30** and
+use **Accept request** once. The local Windows timezone was read as
+`West Asia Standard Time`, UTC+05:00 with no DST; current `datetime-local` fields
+use the browser/device zone. These entries therefore map to **12:00–12:30 UTC**
+on this device. A different device/zone must not reuse that assumption.
+
+Acceptance is not confirmation. Observe the actual same-DM confirmation offer
+first; only then obtain the real customer's explicit decision. The ongoing
+procedure above now uses **Ha, tasdiqlayman.**, supported by
+`confirmationReplyIntent`; its older suggested longer phrase falls through to
+clarification and must not be used as a scripted happy-path assumption. No
+runtime parser or security policy changed. **S22 remains unaccepted.**
