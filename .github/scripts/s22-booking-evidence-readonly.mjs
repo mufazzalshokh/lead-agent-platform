@@ -15,6 +15,26 @@ const report = (assertion, pass, observed) => {
   if (!pass) failures++;
   console.log(JSON.stringify({ operation, assertion, outcome: pass ? "PASS" : "FAIL", observed }));
 };
+const loadCompletionModule = async () => {
+  if (!process.env.S22_BOOKING_TRACE_GZIP_B64)
+    throw Object.assign(new Error(), { code: "COMPLETION_MODULE_MISSING" });
+  let module;
+  try {
+    const { gunzipSync } = await import("node:zlib");
+    const source = gunzipSync(Buffer.from(process.env.S22_BOOKING_TRACE_GZIP_B64, "base64"), {
+      maxOutputLength: 65536,
+    });
+    module = await import(`data:text/javascript;base64,${source.toString("base64")}`);
+  } catch {
+    throw Object.assign(new Error(), { code: "COMPLETION_MODULE_INVALID" });
+  }
+  if (
+    organization !== module.completionScope.organization ||
+    conversation !== module.completionScope.conversation
+  )
+    throw Object.assign(new Error(), { code: "COMPLETION_SCOPE_MISMATCH" });
+  return module;
+};
 try {
   const config = await import("@lead-agent/config");
   const db = await import("@lead-agent/database");
@@ -102,6 +122,9 @@ try {
             "memberships",
           ]
         : []),
+      ...(process.env.S22_BOOKING_READ_STAGE === "completion-accounting"
+        ? ["appointment_confirmation_evidence"]
+        : []),
     ];
     const [rls] = await read(
       `select count(*)::int as count,
@@ -135,6 +158,12 @@ try {
       historical_null_costs_preserved: historyOk,
     });
     if (!historyOk) throw Object.assign(new Error(), { code: "HISTORICAL_BASELINE_FAILED" });
+    if (process.env.S22_BOOKING_READ_STAGE === "completion-accounting") {
+      stage = "completion_trace";
+      completionModule = await loadCompletionModule();
+      completionResults = await completionModule.collectCompletionAccountingEvidence(read, report);
+      return; // Do not repeat the seven already-proven booking assertions.
+    }
     const current = await read(
       `select id::text,status,version,automation_mode,(active_handoff_id is null) as no_active_handoff
       from conversations where organization_id=$1 and id=$2 limit 2`,
@@ -191,22 +220,7 @@ try {
     }
     if (process.env.S22_BOOKING_READ_STAGE === "completion") {
       stage = "completion_trace";
-      if (!process.env.S22_BOOKING_TRACE_GZIP_B64)
-        throw Object.assign(new Error(), { code: "COMPLETION_MODULE_MISSING" });
-      try {
-        const { gunzipSync } = await import("node:zlib");
-        const source = gunzipSync(Buffer.from(process.env.S22_BOOKING_TRACE_GZIP_B64, "base64"), {
-          maxOutputLength: 65536,
-        });
-        completionModule = await import(`data:text/javascript;base64,${source.toString("base64")}`);
-      } catch {
-        throw Object.assign(new Error(), { code: "COMPLETION_MODULE_INVALID" });
-      }
-      if (
-        organization !== completionModule.completionScope.organization ||
-        conversation !== completionModule.completionScope.conversation
-      )
-        throw Object.assign(new Error(), { code: "COMPLETION_SCOPE_MISMATCH" });
+      completionModule = await loadCompletionModule();
       completionResults = await completionModule.collectCompletionEvidence(read, report);
     }
   });
@@ -249,7 +263,7 @@ try {
   const snapshot = await guard.read(organization);
   report(
     stage,
-    process.env.S22_BOOKING_READ_STAGE === "completion"
+    ["completion", "completion-accounting"].includes(process.env.S22_BOOKING_READ_STAGE)
       ? completionModule.completionAccountingPass(snapshot, completionResults)
       : !snapshot.blocked &&
           snapshot.accountingComplete === false &&

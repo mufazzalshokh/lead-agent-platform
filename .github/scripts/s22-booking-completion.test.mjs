@@ -8,6 +8,8 @@ import test from "node:test";
 import { moduleBootstrap } from "./s22-booking-evidence.mjs";
 import {
   collectCompletionEvidence,
+  collectCompletionAccountingEvidence,
+  completionAccountingScope,
   completionAccountingPass,
   completionAssertions,
   completionScope,
@@ -240,6 +242,16 @@ const fixture = () => ({
       finished_at: created,
       correlation_id: sourceCorrelation,
       booking_trigger: true,
+      confirmation_trigger: false,
+      request_unique: true,
+      source_correlation_bound: true,
+      expected_run: true,
+      failure_category: null,
+      has_output_hash: true,
+      reasoning_units: null,
+      terminal_audit_count: "0",
+      terminal_audit_bound: false,
+      dispatch_authorized: null,
       reservations: "1",
       journey_starts: "1",
       reserved_micros: "801432",
@@ -297,7 +309,7 @@ test("all eight reads are parameterized, tenant/conversation/request/window scop
     assert.match(text.trim(), /^select /iu);
     assert.match(text, /r\.organization_id=\$1 and r\.conversation_id=\$2/u);
     assert.match(text, /r\.created_at >= \$3::timestamptz and r\.created_at < \$4::timestamptz/u);
-    assert.match(text, /limit (2|3|4|5)$/u);
+    assert.match(text, /limit (2|3|4|5|8)$/u);
     assert.doesNotMatch(
       text,
       /\b(insert|update|delete|truncate|alter|drop|grant|revoke|ciphertext|external_message_id|external_event_id|account_id|body_hash)\b/iu,
@@ -469,11 +481,169 @@ test("one known retry remains bounded; a confirmation-triggered run is detected 
     providerPass: true,
   });
   data.runs[1].booking_trigger = false;
+  data.runs[1].confirmation_trigger = true;
   data.runs[1].trigger_message_id = confirmationId;
   const result = await collect(data);
   assert.equal(assertion(result, "completion_provider_runs").pass, false);
   assert.equal(assertion(result, "completion_provider_runs").observed.confirmation_calls, 1);
   assert.equal(result.summary.continuationCostMicros, null);
+});
+
+const observedAccountingRows = () => {
+  const paid = {
+    ...fixture().runs[0],
+    id: completionAccountingScope.runIds[0],
+    trigger_message_id: completionAccountingScope.bookingMessage,
+    estimated_cost_micros: "2507",
+    input_units: "1222",
+    output_units: "424",
+    cached_input_units: "0",
+    total_units: "1646",
+  };
+  const nondispatched = {
+    ...paid,
+    id: completionAccountingScope.runIds[1],
+    trigger_message_id: "01a1169a-4501-73ce-9ef6-dc1c48451b3f",
+    status: "failed",
+    provider_resolved_model_id: null,
+    estimated_cost_micros: null,
+    input_units: null,
+    output_units: null,
+    cached_input_units: null,
+    reasoning_units: null,
+    total_units: null,
+    schema_valid: null,
+    policy_allowed: null,
+    has_output_hash: false,
+    cost_catalog_version: "not-priced.v1",
+    booking_trigger: false,
+    confirmation_trigger: true,
+    reservations: "0",
+    journey_starts: "1",
+    reserved_micros: null,
+    approved_limits: false,
+    terminal_audit_count: "1",
+    terminal_audit_bound: true,
+    dispatch_authorized: "false",
+    failure_category: "policy_denied",
+  };
+  // Run IDs/paid usage mirror owner evidence. Terminal audit proof is controlled
+  // here: it remains a live-read requirement, not a claim the owner supplied it.
+  return [paid, nondispatched];
+};
+const collectAccounting = async (rows = observedAccountingRows(), onRead = () => {}) => {
+  const records = [];
+  const summary = await collectCompletionAccountingEvidence(
+    async (text, args) => {
+      onRead(text, args);
+      return rows;
+    },
+    (name, pass, observed) => records.push({ name, pass, observed }),
+  );
+  return { records, summary };
+};
+test("the observed paid+NULL bookkeeping shape is classified using persisted terminal non-dispatch proof, not run-count or zero-usage guesses", async () => {
+  const result = await collectAccounting();
+  assert.deepEqual(result.summary, {
+    continuationCostMicros: "2507",
+    continuationCalls: 1,
+    providerPass: true,
+  });
+  const observed = result.records[0].observed;
+  assert.equal(result.records[0].name, "completion_provider_runs");
+  assert.equal(observed.provider_calls, 1);
+  assert.equal(observed.non_dispatch_runs, 1);
+  assert.equal(observed.confirmation_calls, 0);
+  assert.equal(observed.confirmation_orchestration_runs, 1);
+  assert.equal(observed.rows[1].dispatch_classification, "NONDISPATCHED_AUDITED");
+  assert.equal(observed.rows[1].estimated_cost_micros, null);
+  assert.equal(observed.rows[1].input_units, null);
+  assert.equal(completionAccountingPass(snapshot(1, "2507"), result.summary), true);
+});
+test("accounting-only performs one exact bounded read with real audit fields and includes unexpected rows instead of filtering them away", async () => {
+  let count = 0;
+  await collectAccounting(observedAccountingRows(), (text, args) => {
+    count++;
+    assert.deepEqual(args, [
+      completionScope.conversation,
+      completionScope.from,
+      completionScope.until,
+      null,
+      completionAccountingScope.bookingMessage,
+      completionAccountingScope.runIds,
+    ]);
+    assert.match(text, /r\.source_message_id=\$6::uuid/u);
+    assert.match(
+      text,
+      /run\.started_at >= \$3::timestamptz and run\.started_at < \$4::timestamptz/u,
+    );
+    assert.match(text, /order by run\.started_at,run\.id limit 8$/u);
+    assert.match(text, /e\.source_message_id=run\.trigger_message_id/u);
+    assert.match(text, /o\.correlation_id=run\.correlation_id/u);
+    for (const field of [
+      "a.occurred_at=run.finished_at",
+      "a.reason_code=run.failure_category",
+      "a.metadata_redacted_jsonb->>'status'=run.status",
+      "a.metadata_redacted_jsonb->>'attempt_no'=run.attempt_no::text",
+      "a.metadata_redacted_jsonb->>'journey_profile'='s22-synthetic-booking.v1'",
+      "a.metadata_redacted_jsonb->>'dispatch_authorized'='false'",
+    ])
+      assert.equal(text.includes(field), true, field);
+    assert.doesNotMatch(text.slice(text.indexOf("where r.organization_id=$1")), /run\.id=any\(/iu);
+    assert.doesNotMatch(
+      text,
+      /\b(update|delete|insert|ciphertext|external_message_id|body_hash)\b/iu,
+    );
+    assert.doesNotMatch(text, /select\s+(?:\w+\.)?\*/iu);
+  });
+  assert.equal(count, 1);
+});
+test("NULL paid costs and missing/ambiguous/contradictory terminal non-dispatch proof fail closed; no unknown cost becomes zero", async () => {
+  for (const mutation of [
+    { terminal_audit_count: "0" },
+    { terminal_audit_count: "2" },
+    { terminal_audit_bound: false },
+    { dispatch_authorized: null },
+    { dispatch_authorized: "true" },
+    { has_output_hash: true },
+    { reservations: "1" },
+    { journey_starts: "0" },
+    { source_correlation_bound: false },
+    { failure_category: "invented" },
+    { input_units: "0" },
+    { provider_resolved_model_id: "gemini-3.8-flash" },
+  ]) {
+    const rows = observedAccountingRows();
+    Object.assign(rows[1], mutation);
+    const result = await collectAccounting(rows);
+    assert.equal(result.summary.providerPass, false, JSON.stringify(mutation));
+    assert.equal(result.summary.continuationCostMicros, null);
+    assert.equal(result.records[0].observed.unproven_runs, 1);
+    assert.equal(result.records[0].observed.rows[1].estimated_cost_micros, null);
+  }
+  const nullPaid = observedAccountingRows();
+  nullPaid[0].estimated_cost_micros = null;
+  assert.equal((await collectAccounting(nullPaid)).summary.providerPass, false);
+});
+test("actual confirmation identity is independent of another trigger; missing known rows, extra paid or capped rows stay blocked", async () => {
+  const distinct = observedAccountingRows();
+  distinct[1].confirmation_trigger = false;
+  const result = await collectAccounting(distinct);
+  assert.equal(result.summary.providerPass, true);
+  assert.equal(result.records[0].observed.confirmation_orchestration_runs, 0);
+  assert.equal(result.records[0].observed.confirmation_calls, 0);
+  const missing = observedAccountingRows().slice(0, 1);
+  assert.equal((await collectAccounting(missing)).records[0].observed.expected_runs_present, false);
+  const extra = observedAccountingRows();
+  extra.push({ ...extra[0], id: resource("90"), attempt_no: 2 });
+  const unexpected = await collectAccounting(extra);
+  assert.equal(unexpected.summary.providerPass, false);
+  assert.equal(unexpected.records[0].observed.unexpected_runs, 1);
+  assert.equal(
+    (await collectAccounting(Array.from({ length: 8 }, () => observedAccountingRows()[0]))).summary
+      .providerPass,
+    false,
+  );
 });
 
 const snapshot = (calls = 1, cost = "2100") => ({
@@ -646,14 +816,15 @@ test("exact deployed bootstrap executes actual base+completion readers with bare
           }
         },close:async()=>{globalThis.probe.closed++;console.log(JSON.stringify({probe:globalThis.probe}));}};
       }
-      export function createAIJourneyBudgetGuard(runtime){return {read:async tenant=>runtime.withTenantTransaction(tenant,async()=>(${JSON.stringify(snapshot())}))};}
+      export function createAIJourneyBudgetGuard(runtime){return {read:async tenant=>runtime.withTenantTransaction(tenant,async()=>
+        (process.env.S22_BOOKING_READ_STAGE==='completion-accounting'?${JSON.stringify(snapshot(1, "2507"))}:${JSON.stringify(snapshot())}))};}
     `,
     );
     mkdirSync(join(packages, "database", "runtime"));
     writeFileSync(
       join(packages, "database", "runtime", "tenant.js"),
       `
-      const fixture=${JSON.stringify(data)},scope=${JSON.stringify(scope)};
+      const fixture=process.env.S22_BOOKING_READ_STAGE==='completion-accounting'?{runs:${JSON.stringify(observedAccountingRows())}}:${JSON.stringify(data)},scope=${JSON.stringify(scope)};
       const family=${queryFamily};
       export async function executeTenantQuery(session,make){
         const query=make(session.organizationId),text=query.text;
@@ -706,6 +877,30 @@ test("exact deployed bootstrap executes actual base+completion readers with bare
       closed: 1,
       completionQueries: 8,
     });
+    const accounting = run("completion-accounting");
+    assert.equal(accounting.status, 0, accounting.stderr + accounting.stdout);
+    const accountingProof = lines(accounting);
+    assert.equal(
+      accountingProof.filter((row) => row.operation === "s22_booking_readonly").length,
+      4,
+    );
+    assert.equal(
+      accountingProof
+        .filter((row) => row.operation === "s22_booking_readonly")
+        .every((row) => row.outcome === "PASS"),
+      true,
+    );
+    assert.deepEqual(accountingProof.find((row) => row.probe)?.probe, {
+      transactions: 2,
+      rollbacks: 2,
+      closed: 1,
+      completionQueries: 1,
+    });
+    assert.equal(
+      accountingProof.find((row) => row.assertion === "completion_provider_runs").observed
+        .non_dispatch_runs,
+      1,
+    );
     const observe = run("observe");
     assert.equal(observe.status, 1, observe.stderr);
     assert.equal(

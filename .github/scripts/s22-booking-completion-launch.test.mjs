@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const directory = fileURLToPath(new URL(".", import.meta.url)).replaceAll("\\", "/");
-const launcher = `${directory}s22-booking-completion-launch-v1.sh`;
+const launcher = `${directory}s22-booking-completion-launch-v2.sh`;
 const source = readFileSync(launcher, "utf8");
 const bash = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "bash";
 const commit = "a".repeat(40);
@@ -60,7 +60,7 @@ const controlled = String.raw`
   }
   node() {
     if [[ $* == --version ]]; then printf 'v24.14.0\n'; return; fi
-    [[ $* == 's22-booking-evidence.mjs --complete-booking' ]]
+    [[ $* == 's22-booking-evidence.mjs --complete-booking-accounting' ]]
     [[ $PWD == "$task_directory" ]]
     [[ -f s22-booking-evidence-readonly.mjs && -f s22-booking-completion-readonly.mjs ]]
     printf 'CONTROLLED_NODE_INVOCATION_ONCE\n'

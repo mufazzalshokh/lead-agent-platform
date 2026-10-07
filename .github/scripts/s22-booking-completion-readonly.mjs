@@ -38,6 +38,272 @@ const project = (rows, keys) =>
   rows.map((row) => Object.fromEntries(keys.map((key) => [key, row[key] ?? null])));
 const scopeWhere = `r.organization_id=$1 and r.conversation_id=$2 and r.id=$5
   and r.created_at >= $3::timestamptz and r.created_at < $4::timestamptz`;
+export const completionAccountingScope = Object.freeze({
+  bookingMessage: "01a11698-bb8a-7b29-b3a9-2b3b5b9a3839",
+  runIds: Object.freeze([
+    "01a11698-c4a3-7f88-a76d-1c4a7a4bd677",
+    "01a1169a-49a5-79e9-94c6-03c3d91e248c",
+  ]),
+});
+const failedReasons = new Set([
+  "provider_unavailable",
+  "timeout",
+  "refusal",
+  "invalid_output",
+  "context_too_large",
+  "policy_denied",
+  "outside_business_scope",
+  "grounding_insufficient",
+  "medical_safety_response",
+  "booking_availability_unapproved",
+  "staff_requested",
+  "stale_context",
+]);
+const readProviderRows = async (read, requestId = null, exact = false) => {
+  const s = completionScope;
+  try {
+    return await read(
+      `select run.id::text,run.status,run.attempt_no,run.trigger_message_id::text,run.provider_id,run.cost_currency,
+        run.schema_valid,run.policy_allowed,run.cost_catalog_version,run.requested_model_id,
+        run.provider_resolved_model_id,run.estimated_cost_micros::text,run.input_units::text,
+        run.output_units::text,run.cached_input_units::text,run.reasoning_units::text,run.total_units::text,
+        run.finished_at,run.failure_category,(run.output_hash is not null) as has_output_hash,
+        run.correlation_id::text,(run.trigger_message_id=r.source_message_id) as booking_trigger,
+        exists(select 1 from appointment_confirmation_evidence e where e.organization_id=$1
+          and e.appointment_request_id=r.id and e.source_message_id=run.trigger_message_id
+          and e.source='instagram' and e.outcome='confirmed' and e.offer_version=r.offer_version limit 1) as confirmation_trigger,
+        (select count(*)=1 from (select other.id from appointment_requests other where other.organization_id=$1
+          and other.conversation_id=$2 and other.created_at >= $3::timestamptz
+          and other.created_at < $4::timestamptz limit 2) requests) as request_unique,
+        exists(select 1 from outbox_events o where o.organization_id=$1 and o.aggregate_id=$2
+          and o.aggregate_type='conversation' and o.event_type='message.received'
+          and o.payload_jsonb->'payload'->>'message_id'=run.trigger_message_id::text
+          and o.correlation_id=run.correlation_id and o.occurred_at >= $3::timestamptz
+          and o.occurred_at < $4::timestamptz limit 1) as source_correlation_bound,
+        ($7::uuid[] is null or run.id=any($7::uuid[])) as expected_run,
+        (select count(*) from (select a.id from audit_events a where a.organization_id=$1
+          and a.target_type='ai_run' and a.target_id=run.id and a.action='ai_run.dispatch_reserved' limit 3) slots) as reservations,
+        (select count(*) from (select a.id from audit_events a where a.organization_id=$1
+          and a.target_type='ai_run' and a.target_id=run.id and a.action='ai_run.journey_started' limit 3) starts) as journey_starts,
+        (select a.metadata_redacted_jsonb->>'reservation_micros' from audit_events a
+          where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=run.id
+          and a.action='ai_run.dispatch_reserved' order by a.occurred_at,a.id limit 1) as reserved_micros,
+        (select count(*) from (select a.id from audit_events a where a.organization_id=$1
+          and a.target_type='ai_run' and a.target_id=run.id and a.action='ai_run.failed' limit 3) failures) as terminal_audit_count,
+        (select a.metadata_redacted_jsonb->>'dispatch_authorized' from audit_events a
+          where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=run.id and a.action='ai_run.failed'
+          order by a.occurred_at,a.id limit 1) as dispatch_authorized,
+        exists(select 1 from audit_events a where a.organization_id=$1 and a.target_type='ai_run'
+          and a.target_id=run.id and a.event_type='ai_run.failed' and a.action='ai_run.failed'
+          and a.result='succeeded' and a.actor_type='system' and a.correlation_id=run.correlation_id
+          and a.occurred_at=run.finished_at and a.reason_code=run.failure_category
+          and a.metadata_redacted_jsonb->>'status'=run.status
+          and a.metadata_redacted_jsonb->>'attempt_no'=run.attempt_no::text
+          and a.metadata_redacted_jsonb->>'journey_profile'='s22-synthetic-booking.v1'
+          and a.metadata_redacted_jsonb->>'dispatch_authorized'='false' limit 1) as terminal_audit_bound,
+        exists(select 1 from audit_events a where a.organization_id=$1 and a.target_type='ai_run'
+          and a.target_id=run.id and a.action='ai_run.dispatch_reserved'
+          and a.metadata_redacted_jsonb->>'profile'='s22-synthetic-booking.v1'
+          and a.metadata_redacted_jsonb->>'historical_reserve_micros'='1033396'
+          and a.metadata_redacted_jsonb->>'input_token_limit'='1048576'
+          and a.metadata_redacted_jsonb->>'output_token_limit'='4000'
+          and run.provider_id='gemini' and run.cost_currency='USD'
+          and run.input_units between 0 and 1048576 and run.output_units between 0 and 4000
+          limit 1) as approved_limits
+        from ai_runs run join appointment_requests r on r.organization_id=run.organization_id
+          and r.conversation_id=run.conversation_id
+        where r.organization_id=$1 and r.conversation_id=$2
+          and (($5::uuid is not null and r.id=$5) or ($5::uuid is null and r.source_message_id=$6::uuid))
+          and r.created_at >= $3::timestamptz and r.created_at < $4::timestamptz
+          and run.organization_id=$1 and run.started_at >= $3::timestamptz and run.started_at < $4::timestamptz
+        order by run.started_at,run.id limit 8`,
+      [
+        s.conversation,
+        s.from,
+        s.until,
+        requestId,
+        exact ? completionAccountingScope.bookingMessage : null,
+        exact ? completionAccountingScope.runIds : null,
+      ],
+    );
+  } catch (error) {
+    const state =
+      typeof error?.code === "string" && /^[0-9A-Z]{5}$/u.test(error.code)
+        ? error.code
+        : "READ_FAILED";
+    throw Object.assign(new Error(), { code: `COMPLETION_PROVIDER_RUNS_${state}` });
+  }
+};
+const classifyProviderRows = (runs, expectedIds = null, request = null, correlation = null) => {
+  const classified = runs.map((row) => {
+    const common =
+      uuid(row.id) &&
+      uuid(row.trigger_message_id) &&
+      uuid(row.correlation_id) &&
+      row.request_unique === true &&
+      row.source_correlation_bound === true &&
+      integer(row.journey_starts) === 1n &&
+      integer(row.attempt_no) !== null &&
+      integer(row.attempt_no) > 0n &&
+      instant(row.finished_at) !== null &&
+      row.provider_id === "gemini" &&
+      row.requested_model_id === "gemini-3.8-flash" &&
+      row.cost_currency === "USD";
+    const cost = integer(row.estimated_cost_micros);
+    const dispatched =
+      common &&
+      integer(row.reservations) === 1n &&
+      row.booking_trigger === true &&
+      row.confirmation_trigger === false &&
+      row.approved_limits === true &&
+      row.reserved_micros === "801432" &&
+      row.provider_resolved_model_id === "gemini-3.8-flash" &&
+      row.cost_catalog_version === "ai-provider-prices.2026-09-17.v1" &&
+      row.status !== "started" &&
+      cost !== null &&
+      cost <= 801432n &&
+      integer(row.input_units) !== null &&
+      integer(row.input_units) <= 1048576n &&
+      integer(row.output_units) !== null &&
+      integer(row.output_units) <= 4000n &&
+      integer(row.cached_input_units) !== null &&
+      integer(row.cached_input_units) <= integer(row.input_units) &&
+      integer(row.total_units) !== null &&
+      integer(row.total_units) === integer(row.input_units) + integer(row.output_units) &&
+      (request === null || row.trigger_message_id === request.source_message_id) &&
+      (correlation === null || row.correlation_id === correlation);
+    const nondispatched =
+      common &&
+      row.status === "failed" &&
+      integer(row.reservations) === 0n &&
+      row.reserved_micros === null &&
+      row.provider_resolved_model_id === null &&
+      row.estimated_cost_micros === null &&
+      row.has_output_hash === false &&
+      row.schema_valid === null &&
+      row.policy_allowed === null &&
+      [
+        row.input_units,
+        row.output_units,
+        row.cached_input_units,
+        row.reasoning_units,
+        row.total_units,
+      ].every((value) => value === null) &&
+      integer(row.terminal_audit_count) === 1n &&
+      row.terminal_audit_bound === true &&
+      row.dispatch_authorized === "false" &&
+      failedReasons.has(row.failure_category);
+    return {
+      ...row,
+      dispatch_classification: dispatched
+        ? "DISPATCHED_PRICED"
+        : nondispatched
+          ? "NONDISPATCHED_AUDITED"
+          : "UNPROVEN",
+    };
+  });
+  const paid = classified.filter((row) => row.dispatch_classification === "DISPATCHED_PRICED");
+  const expectedRunsPresent =
+    expectedIds === null ||
+    expectedIds.every((id) => classified.filter((row) => row.id === id).length === 1);
+  const providerPass =
+    (expectedIds !== null || request !== null) &&
+    runs.length > 0 &&
+    runs.length < 8 &&
+    new Set(runs.map((row) => row.id)).size === runs.length &&
+    expectedRunsPresent &&
+    classified.every(
+      (row) =>
+        row.dispatch_classification !== "UNPROVEN" &&
+        (expectedIds === null || (expectedIds.includes(row.id) && row.expected_run === true)),
+    ) &&
+    paid.length >= 1 &&
+    paid.length <= 2 &&
+    paid.some(
+      (row) =>
+        row.status === "succeeded" && row.schema_valid === true && row.policy_allowed === true,
+    ) &&
+    new Set(paid.map((row) => row.attempt_no)).size === paid.length &&
+    paid.every((row, index) => integer(row.attempt_no) === BigInt(index + 1));
+  const continuationCostMicros = providerPass
+    ? paid.reduce((sum, row) => sum + integer(row.estimated_cost_micros), 0n).toString()
+    : null;
+  return {
+    summary: Object.freeze({
+      continuationCostMicros,
+      continuationCalls: providerPass ? paid.length : null,
+      providerPass,
+    }),
+    observed: {
+      continuation_cost_micros: continuationCostMicros,
+      total_runs: runs.length,
+      provider_calls: classified.filter(
+        (row) => integer(row.reservations) !== null && integer(row.reservations) > 0n,
+      ).length,
+      non_dispatch_runs: classified.filter(
+        (row) => row.dispatch_classification === "NONDISPATCHED_AUDITED",
+      ).length,
+      unproven_runs: classified.filter((row) => row.dispatch_classification === "UNPROVEN").length,
+      confirmation_calls: classified.filter(
+        (row) =>
+          row.confirmation_trigger === true &&
+          integer(row.reservations) !== null &&
+          integer(row.reservations) > 0n,
+      ).length,
+      confirmation_orchestration_runs: classified.filter((row) => row.confirmation_trigger === true)
+        .length,
+      expected_runs_present: expectedRunsPresent,
+      unexpected_runs:
+        expectedIds === null ? 0 : classified.filter((row) => !expectedIds.includes(row.id)).length,
+      rows: project(classified, [
+        "id",
+        "status",
+        "attempt_no",
+        "trigger_message_id",
+        "provider_id",
+        "cost_currency",
+        "schema_valid",
+        "policy_allowed",
+        "cost_catalog_version",
+        "requested_model_id",
+        "provider_resolved_model_id",
+        "estimated_cost_micros",
+        "input_units",
+        "output_units",
+        "cached_input_units",
+        "reasoning_units",
+        "total_units",
+        "finished_at",
+        "correlation_id",
+        "booking_trigger",
+        "confirmation_trigger",
+        "request_unique",
+        "source_correlation_bound",
+        "reservations",
+        "journey_starts",
+        "reserved_micros",
+        "approved_limits",
+        "failure_category",
+        "has_output_hash",
+        "terminal_audit_count",
+        "terminal_audit_bound",
+        "dispatch_authorized",
+        "expected_run",
+        "dispatch_classification",
+      ]),
+    },
+  };
+};
+
+/** Recheck only the unresolved dispatch/cost classification. Seven already-passed
+ * booking assertions are not queried again. Every observed window run remains
+ * visible; a third/unrecognized row is never hidden by an ID-only filter. */
+export const collectCompletionAccountingEvidence = async (read, report) => {
+  const runs = await readProviderRows(read, null, true);
+  const result = classifyProviderRows(runs, completionAccountingScope.runIds);
+  report("completion_provider_runs", result.summary.providerPass, result.observed);
+  return result.summary;
+};
 
 /** Expected exhaustion closes this cohort; it is not a failure to account for it.
  * Historical NULL costs stay unknown; this proves the approved budget reserve,
@@ -230,36 +496,7 @@ export const collectCompletionEvidence = async (read, report) => {
       where ${scopeWhere} and l.organization_id=$1 order by o.occurred_at,o.id limit 2`,
     args,
   );
-  const runs = await namedRead(
-    "PROVIDER_RUNS",
-    `select run.id::text,run.status,run.attempt_no,run.trigger_message_id::text,run.provider_id,run.cost_currency,
-      run.schema_valid,run.policy_allowed,run.cost_catalog_version,run.requested_model_id,
-      run.provider_resolved_model_id,run.estimated_cost_micros::text,run.input_units::text,
-      run.output_units::text,run.cached_input_units::text,run.total_units::text,run.finished_at,
-      run.correlation_id::text,(run.trigger_message_id=r.source_message_id) as booking_trigger,
-      (select count(*) from (select a.id from audit_events a where a.organization_id=$1
-        and a.target_type='ai_run' and a.target_id=run.id and a.action='ai_run.dispatch_reserved' limit 3) slots) as reservations,
-      (select count(*) from (select a.id from audit_events a where a.organization_id=$1
-        and a.target_type='ai_run' and a.target_id=run.id and a.action='ai_run.journey_started' limit 3) starts) as journey_starts,
-      (select a.metadata_redacted_jsonb->>'reservation_micros' from audit_events a
-        where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=run.id
-        and a.action='ai_run.dispatch_reserved' order by a.occurred_at,a.id limit 1) as reserved_micros,
-      exists(select 1 from audit_events a where a.organization_id=$1 and a.target_type='ai_run'
-        and a.target_id=run.id and a.action='ai_run.dispatch_reserved'
-        and a.metadata_redacted_jsonb->>'profile'='s22-synthetic-booking.v1'
-        and a.metadata_redacted_jsonb->>'historical_reserve_micros'='1033396'
-        and a.metadata_redacted_jsonb->>'input_token_limit'='1048576'
-        and a.metadata_redacted_jsonb->>'output_token_limit'='4000'
-        and run.provider_id='gemini' and run.cost_currency='USD'
-        and run.input_units between 0 and 1048576 and run.output_units between 0 and 4000
-        limit 1) as approved_limits
-      from ai_runs run join appointment_requests r on r.organization_id=run.organization_id
-        and r.conversation_id=run.conversation_id
-      where ${scopeWhere} and run.organization_id=$1
-        and run.started_at >= $3::timestamptz and run.started_at < $4::timestamptz
-      order by run.started_at,run.id limit 3`,
-    args,
-  );
+  const runs = await readProviderRows(read, request?.id ?? null);
   const requestPass =
     request !== null &&
     request.status === "confirmed" &&
@@ -388,48 +625,13 @@ export const collectCompletionEvidence = async (read, report) => {
     integer(lead.aggregate_version) === integer(lead.version) &&
     lead.correlation_id === customer?.correlation_id &&
     equalTime(lead.converted_at, request?.confirmed_at);
-  const costs = runs.map((row) => integer(row.estimated_cost_micros));
-  const providerPass =
-    runs.length >= 1 &&
-    runs.length <= 2 &&
-    new Set(runs.map((row) => row.id)).size === runs.length &&
-    new Set(runs.map((row) => row.attempt_no)).size === runs.length &&
-    runs.some(
-      (row) =>
-        row.status === "succeeded" && row.schema_valid === true && row.policy_allowed === true,
-    ) &&
-    runs.every(
-      (row, index) =>
-        uuid(row.id) &&
-        row.booking_trigger === true &&
-        row.trigger_message_id === request?.source_message_id &&
-        integer(row.attempt_no) === BigInt(index + 1) &&
-        row.requested_model_id === "gemini-3.8-flash" &&
-        row.provider_resolved_model_id === "gemini-3.8-flash" &&
-        row.provider_id === "gemini" &&
-        row.cost_currency === "USD" &&
-        row.cost_catalog_version === "ai-provider-prices.2026-09-17.v1" &&
-        integer(row.input_units) !== null &&
-        integer(row.input_units) <= 1048576n &&
-        integer(row.output_units) !== null &&
-        integer(row.output_units) <= 4000n &&
-        integer(row.cached_input_units) !== null &&
-        integer(row.cached_input_units) <= integer(row.input_units) &&
-        integer(row.total_units) !== null &&
-        integer(row.total_units) === integer(row.input_units) + integer(row.output_units) &&
-        row.status !== "started" &&
-        instant(row.finished_at) !== null &&
-        costs[index] !== null &&
-        costs[index] <= 801432n &&
-        integer(row.reservations) === 1n &&
-        integer(row.journey_starts) === 1n &&
-        row.reserved_micros === "801432" &&
-        row.approved_limits === true &&
-        row.correlation_id === transitions[0]?.correlation_id,
-    );
-  const continuationCostMicros = providerPass
-    ? costs.reduce((sum, cost) => sum + cost, 0n).toString()
-    : null;
+  const providerResult = classifyProviderRows(
+    runs,
+    null,
+    request,
+    transitions[0]?.correlation_id ?? null,
+  );
+  const { providerPass } = providerResult.summary;
   const observations = [
     [
       requestPass,
@@ -563,46 +765,10 @@ export const collectCompletionEvidence = async (read, report) => {
         ]),
       },
     ],
-    [
-      providerPass,
-      {
-        continuation_cost_micros: continuationCostMicros,
-        total_runs: runs.length,
-        confirmation_calls: runs.filter((row) => row.booking_trigger !== true).length,
-        rows: project(runs, [
-          "id",
-          "status",
-          "attempt_no",
-          "trigger_message_id",
-          "provider_id",
-          "cost_currency",
-          "schema_valid",
-          "policy_allowed",
-          "cost_catalog_version",
-          "requested_model_id",
-          "provider_resolved_model_id",
-          "estimated_cost_micros",
-          "input_units",
-          "output_units",
-          "cached_input_units",
-          "total_units",
-          "finished_at",
-          "correlation_id",
-          "booking_trigger",
-          "reservations",
-          "journey_starts",
-          "reserved_micros",
-          "approved_limits",
-        ]),
-      },
-    ],
+    [providerPass, providerResult.observed],
   ];
   observations.forEach(([pass, observed], index) =>
     report(completionAssertions[index], pass, observed),
   );
-  return Object.freeze({
-    continuationCostMicros,
-    continuationCalls: providerPass ? runs.length : null,
-    providerPass,
-  });
+  return providerResult.summary;
 };

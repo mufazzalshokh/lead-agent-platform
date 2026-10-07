@@ -8,8 +8,11 @@ import test from "node:test";
 import {
   moduleBootstrap,
   completionTraceAssertions,
+  completionAccountingAssertions,
   formatCompletionReport,
+  formatCompletionAccountingReport,
   recoverCompletionLogs,
+  recoverCompletionAccountingLogs,
   formatReadinessReport,
   recoverExistingBookingLogs,
   recoverReadinessLogs,
@@ -529,6 +532,9 @@ test("a mistyped recovery flag cannot enter the diagnostic execution path", () =
     ["--complete-booking", "unexpected"],
     ["--complete-bookin"],
     ["--recover-completion"],
+    ["--complete-booking-accounting", "unexpected"],
+    ["--complete-booking-accountin"],
+    ["--recover-booking-accounting"],
   ]) {
     const result = spawnSync(
       process.execPath,
@@ -679,13 +685,73 @@ test("completion recovery is one exact-execution bounded REST read and requires 
   assert.match(queryFailure, /Failed check: completion_trace \(COMPLETION_AUDITS_42703\)/);
 });
 
-test("completion CLI executes only one guarded read-only job and prints a finite sanitized report", () => {
-  const fixture = mkdtempSync(join(tmpdir(), "s22-completion-cli-"));
-  const preload = join(fixture, "controlled-preload.mjs");
-  try {
-    writeFileSync(
-      preload,
-      `
+test("accounting-only recovery requires four exact assertions, preserves dispatch proof, and never demands already-passed booking queries", async () => {
+  const entries = completionEntries().filter((entry) =>
+    completionAccountingAssertions.has(entry.jsonPayload.assertion),
+  );
+  const provider = entries.find(
+    (entry) => entry.jsonPayload.assertion === "completion_provider_runs",
+  );
+  Object.assign(provider.jsonPayload.observed, {
+    provider_calls: 1,
+    non_dispatch_runs: 1,
+    unproven_runs: 0,
+    rows: [
+      {
+        id: "01a1169a-49a5-79e9-94c6-03c3d91e248c",
+        status: "failed",
+        dispatch_authorized: "false",
+        dispatch_classification: "NONDISPATCHED_AUDITED",
+        terminal_audit_count: "1",
+        terminal_audit_bound: true,
+        failure_category: "policy_denied",
+        confirmation_trigger: false,
+        has_output_hash: false,
+        reservations: "0",
+        estimated_cost_micros: null,
+        secret: "SENSITIVE",
+      },
+    ],
+  });
+  let reads = 0;
+  const result = await recoverCompletionAccountingLogs(
+    "lead-agent-staging-migrator-controlled",
+    "SENSITIVE_AUTH",
+    async () => {
+      reads++;
+      return Response.json({ entries });
+    },
+  );
+  assert.equal(reads, 1);
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.assertions.length, 4);
+  const report = formatCompletionAccountingReport(result);
+  assert.match(report, /Booking accounting collection: PASS/);
+  assert.match(report, /provider calls \/ audited non-dispatch records: 1 \/ 1/);
+  assert.match(report, /audited stop before provider dispatch, reason policy_denied/);
+  assert.match(report, /Historical NULL costs stay unknown/);
+  const unknownReport = formatCompletionAccountingReport({ outcome: "BLOCKED", assertions: [] });
+  assert.match(unknownReport, /Booking turn paid cost: unknown/);
+  assert.doesNotMatch(unknownReport, /USD0\.000000/);
+  assert.doesNotMatch(report + JSON.stringify(result), /SENSITIVE/);
+  for (const modified of [entries.slice(1), [...entries, entries[0]]]) {
+    const blocked = await recoverCompletionAccountingLogs(
+      "lead-agent-staging-migrator-controlled",
+      "SENSITIVE_AUTH",
+      async () => Response.json({ entries: modified }),
+    );
+    assert.equal(blocked.outcome, "BLOCKED");
+  }
+});
+
+for (const accounting of [false, true])
+  test(`${accounting ? "accounting-only" : "completion"} CLI executes only one guarded read-only job and prints a finite sanitized report`, () => {
+    const fixture = mkdtempSync(join(tmpdir(), "s22-completion-cli-"));
+    const preload = join(fixture, "controlled-preload.mjs");
+    try {
+      writeFileSync(
+        preload,
+        `
       import assert from "node:assert/strict";
       import childProcess from "node:child_process";
       import {syncBuiltinESMExports} from "node:module";
@@ -702,7 +768,7 @@ test("completion CLI executes only one guarded read-only job and prints a finite
           assert.ok(args.includes("--region=me-central1"));
           assert.equal(args.find(a=>a.startsWith("--args=")),${JSON.stringify(`--args=^~^--input-type=module~-e~${moduleBootstrap}`)});
           const override=args.find(a=>a.startsWith("--update-env-vars="));
-          assert.ok(override.includes("~S22_BOOKING_READ_STAGE=completion~S22_BOOKING_TRACE_GZIP_B64="));
+          assert.ok(override.includes(${JSON.stringify(`~S22_BOOKING_READ_STAGE=${accounting ? "completion-accounting" : "completion"}~S22_BOOKING_TRACE_GZIP_B64=`)}));
           return {stdout:"lead-agent-staging-migrator-controlled\\n"};
         }
         if(args.slice(0,4).join(" ")==="run jobs executions describe"){
@@ -716,32 +782,45 @@ test("completion CLI executes only one guarded read-only job and prints a finite
         if(url.includes("/workerPools/"))return Response.json(${JSON.stringify(worker())});
         assert.equal(url,"https://logging.googleapis.com/v2/entries:list");logs++;
         assert.ok(JSON.parse(options.body).filter.includes("lead-agent-staging-migrator-controlled"));
-        return Response.json({entries:${JSON.stringify(completionEntries())}});
+        return Response.json({entries:${JSON.stringify(accounting ? completionEntries().filter((entry) => completionAccountingAssertions.has(entry.jsonPayload.assertion)) : completionEntries())}});
       };
       process.on("exit",()=>{assert.equal(executed,1);assert.equal(auth,1);assert.equal(logs,1);assert.equal(polls,1);assert.equal(metadata,1);});
     `,
-    );
-    const result = spawnSync(
-      process.execPath,
-      [
-        "--import",
-        pathToFileURL(preload).href,
-        fileURLToPath(new URL("./s22-booking-evidence.mjs", import.meta.url)),
-        "--complete-booking",
-      ],
-      { cwd: fixture, encoding: "utf8", timeout: 10000 },
-    );
-    assert.equal(result.status, 0, result.stderr + result.stdout);
-    assert.match(result.stdout, /Preflight: PASS/);
-    assert.match(result.stdout, /Persisted booking collection: PASS/);
-    assert.match(result.stdout, /Continuation cost \(USD micros\): 2000/);
-    assert.doesNotMatch(
-      result.stdout + result.stderr,
-      /SENSITIVE|body_ciphertext|DATABASE_URL|contact_id/,
-    );
-  } finally {
-    assert.equal(resolve(fixture).startsWith(resolve(tmpdir())), true);
-    assert.equal(basename(fixture).startsWith("s22-completion-cli-"), true);
-    rmSync(fixture, { recursive: true, force: true });
-  }
-});
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          pathToFileURL(preload).href,
+          fileURLToPath(new URL("./s22-booking-evidence.mjs", import.meta.url)),
+          accounting ? "--complete-booking-accounting" : "--complete-booking",
+        ],
+        { cwd: fixture, encoding: "utf8", timeout: 10000 },
+      );
+      assert.equal(result.status, 0, result.stderr + result.stdout);
+      assert.match(result.stdout, /Preflight: PASS/);
+      assert.match(
+        result.stdout,
+        accounting ? /Booking accounting collection: PASS/ : /Persisted booking collection: PASS/,
+      );
+      assert.match(
+        result.stdout,
+        accounting
+          ? /Booking turn paid cost: USD0\.002000/
+          : /Continuation cost \(USD micros\): 2000/,
+      );
+      if (accounting)
+        assert.doesNotMatch(
+          result.stdout,
+          /completion request:|completion transitions:|completion audits:/,
+        );
+      assert.doesNotMatch(
+        result.stdout + result.stderr,
+        /SENSITIVE|body_ciphertext|DATABASE_URL|contact_id/,
+      );
+    } finally {
+      assert.equal(resolve(fixture).startsWith(resolve(tmpdir())), true);
+      assert.equal(basename(fixture).startsWith("s22-completion-cli-"), true);
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });

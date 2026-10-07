@@ -1086,3 +1086,37 @@ actual ES-module/package resolution, fail-closed guards, rollback/cleanup,
 metadata projection and download-tamper rejection. Live persisted proof remains
 **PENDING** on one owner Cloud Shell run. Keep those local/mocked checks separate
 from the future owner-supplied live result. **S22 unaccepted; no S23 work.**
+
+### Live persisted booking assertions PASS; accounting classification pending
+
+Owner-supplied diagnostic **`lead-agent-staging-migrator-8qlzd`** proves all
+seven scoped booking assertions: **confirmed/4, offer1**, direct Instagram
+customer evidence, complete intermediate transitions, sent offer/acknowledgment,
+audited actors and converted lead. Offer remains **8 October 2026, 17:00–17:30
+Asia/Tashkent**. Together with the reported customer receipt, the scoped
+customer-to-confirmed-booking journey has live proof. Do not repeat it.
+
+The diagnostic overall remains BLOCKED because it confused orchestration records
+with physical provider calls. One booked-source dispatch succeeded with complete
+usage and **USD0.002507** cost. A separate failed orchestration record has no
+dispatch marker and NULL provider/usage/cost; its exact terminal authorization
+and confirmation-source relationship were not collected. No zero cost or extra
+paid confirmation is inferred. Source proves run/start creation happens before
+preflight/dispatch, and records terminal authorization explicitly.
+
+Collected ledger: **4 messages/4 physical reservations**, known cost
+**USD0.008714**, unresolved reserve **0**, combined reserved exposure
+**USD1.042110**, expected `message_limit` stop. Original historical NULLs and
+USD1.033396 reservation remain unchanged. A corrected **dispatch/accounting-only**
+read must prove the missing audit metadata and reconcile the paid run; it does
+not repeat seven passed booking checks. No further customer/staff action, paid
+call, deployment, migration or IAM change is authorized or needed. Exact
+classification/aggregate result remains pending; **S22 unaccepted, no S23 work.**
+
+The accounting-only tooling correction has **100/100 focused regression tests
+PASS**, scoped lint/format/diff PASS and independent source/SQL review. The
+exact bootstrap exercises one dispatch-metadata query plus four guard/accounting
+assertions with rollback/cleanup. V2's pinned download/run needs no uploads and
+does not repeat the seven booking checks. An audited `policy_denied` non-dispatch
+will not be mislabeled uniquely as budget rejection; the code has more than one
+pre-dispatch denial path. Exact live terminal-audit proof remains pending.

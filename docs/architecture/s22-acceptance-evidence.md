@@ -2836,3 +2836,76 @@ the exact execution and sanitized JSON; recover its logs only, never blindly
 rerun. Historical reservation **USD1.033396**, maximum combined exposure
 **USD2.642467** and USD10 ceiling remain unchanged. The different friend's
 unproven DM is outside this cohort. **S22 unaccepted; no S23 work.**
+
+### Persisted booking proved; orchestration/dispatch diagnostic mismatch — 2026-10-07
+
+Owner-supplied execution **`lead-agent-staging-migrator-8qlzd`**, using tooling
+commit `5e1e6924c2187fe1473a1cc98538a622ef93c50c`, returned all seven booking
+assertions **PASS**: request, transitions, direct customer evidence, offer delivery,
+confirmation delivery, audits and converted lead. The current request is
+**confirmed/4, offer1, Instagram direct confirmation**, with start/end
+**2026-10-08T12:00:00Z–12:30:00Z** (17:00–17:30 Asia/Tashkent). Runtime/RLS,
+historical NULL baseline, cohort binding and bounded metadata collection passed.
+This is owner-supplied live persisted diagnostic evidence, not a new independent
+browser observation. It closes this scoped booking persistence/confirmation/audit
+gap; do not repeat the customer or staff actions, or the seven passed reads.
+
+The overall diagnostic is accurately retained as **BLOCKED**, not retroactively
+changed to PASS. `completion_provider_runs` failed, causing the derived
+`cohort_reservation_accounting` assertion to fail. Collected rows:
+
+| Orchestration record | Persisted facts | Evidence interpretation |
+| --- | --- | --- |
+| `01a11698-c4a3-7f88-a76d-1c4a7a4bd677` | Booking source `01a11698-bb8a-7b29-b3a9-2b3b5b9a3839`; correlation `01a11698-bb8a-7dd3-aa9b-f9a30ee634ba`; succeeded 13:41:19.177 UTC; approved Gemini 3.8 Flash; input1222/output424/cache0/total1646; cost2507 USD micros; one start and one dispatch reservation | Complete known paid booking run. |
+| `01a1169a-49a5-79e9-94c6-03c3d91e248c` | Source `01a1169a-4501-73ce-9ef6-dc1c48451b3f`; correlation `01a1169a-4501-7457-9cea-db4e9db186d4`; failed 13:42:52.635 UTC; one start, zero dispatch reservations; model/usage/cost NULL | No automatic inference of a physical provider call, zero cost, exact preflight reason or actual customer-confirmation source. Terminal authorization/audit binding were not selected. |
+
+The observed ledger is four logical messages/four physical reservations,
+**8714 USD micros known cost**, **1042110 USD micros exposure**, unresolved0,
+blocked=`message_limit`. Arithmetic is **6207 + 2507 = 8714** and
+**1033396 + 8714 = 1042110**. Known paid cost is USD0.008714; exposure including
+the unchanged historical budget-only reserve is USD1.042110. These are observed
+metadata, not permission for another call or exact historical accounting.
+
+**Confirmed diagnostic mechanism:** `ai-orchestration.ts` creates an `ai_runs`
+row and `ai_run.journey_started` before preflight and dispatch authorization.
+`orchestrate.ts` invokes the provider only after authorization; terminal audit
+records explicit `dispatch_authorized`. These source files, the budget guard and
+confirmation handler have no diff from deployed source `191a9cdbb4187ad0006a5dbab04882b4f44d0e64`.
+Thus an orchestration record is not necessarily a paid call. The old diagnostic
+wrongly required every scoped row to be a priced booking dispatch and named every
+non-booking trigger `confirmation_calls`; neither assumption follows from the
+actual implementation. No production defect or paid confirmation call is proven.
+
+The narrowly scoped correction distinguishes reserved provider calls from
+**audited non-dispatch orchestration records**, preserving original NULL values.
+Non-dispatch requires one exact terminal audit with explicit authorization false,
+matching status/attempt/correlation/time, no dispatch marker, output or provider
+metadata. Missing/contradictory evidence remains failure, not assumed zero.
+Actual confirmation association is compared with persisted confirmation evidence,
+never inferred from `booking_trigger=false`. Historical costs stay unknown.
+
+One remaining read is dispatch/accounting-only, using the existing reviewed
+runtime image and read-only/RLS/private-network/zero-retry safeguards. It skips
+the seven passed booking assertions; collects the missing finite failure/audit
+fields and source binding; and reconciles priced dispatches against the current
+ledger. No paid call, message replay, runtime deployment, migration, IAM change
+or database write is required. **Exact second-record non-dispatch classification
+and corrected aggregate PASS remain PENDING** on that read. S22 remains unaccepted.
+
+Correction verification: `node --test .github/scripts/s22-booking-evidence.test.mjs .github/scripts/s22-booking-first-turn.test.mjs .github/scripts/s22-booking-final-turn.test.mjs .github/scripts/s22-booking-completion.test.mjs .github/scripts/s22-booking-completion-launch.test.mjs`
+returned **100/100 PASS**. Scoped ESLint zero warnings, Prettier and diff checks
+PASS. Regression fixtures reproduce the observed two-row failure and prove that
+the second row passes only with explicit bound terminal non-authorization; paid
+NULL-cost failures, absent/contradictory audits, extra runs, foreign source binding
+and truncation still fail. The exact generated bootstrap proves accounting-only
+issues one provider-metadata query, reports four assertions, rolls back both
+transactions and closes the connection without seven prior booking reads.
+
+One next owner action uses the checksum-pinned
+`s22-booking-completion-launch-v2.sh` (replacing V1 for new tooling). It downloads
+three verified files and runs only `--complete-booking-accounting`; no uploads or
+runtime rebuild. Original V1 execution/checksum are preserved at commit `5e1e692`.
+If exact audit proves `policy_denied`, that identifies the recorded failure but
+does not uniquely distinguish budget denial from deterministic preflight. Report
+**audited non-dispatch**, not an unproven denial source. No missing NULL cost is
+rewritten or treated as zero. Keep paid calls blocked and S22 unaccepted.

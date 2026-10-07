@@ -30,16 +30,16 @@ while read -r task_hash task_file; do
     exit 1
   fi
 done <<'MANIFEST'
-da6dda5ac9b1033fef1e8a1ec42adc83d81f8c9b45ab9b121a8e597200f911ab s22-booking-evidence.mjs
-feefd98cfa9b578b2e811e17aa42532e128589fada397c01477ff126eb7a8b5d s22-booking-evidence-readonly.mjs
-cf6552bd9d5383d3a4cf4cf570c866f227ce9b638c432dba89d007a96826871b s22-booking-completion-readonly.mjs
+f04605e315533369ed5fcc2b277426d004ed273a9cc6d8315205feb9b0290cff s22-booking-evidence.mjs
+3f6685458c71d3c8fcb640ab3fff8614520d7df920f96474d56d1288cbfdceb7 s22-booking-evidence-readonly.mjs
+91d4bb6d783f900704c145d2e4bfa897007a8df26502b27fb85365af1caedc12 s22-booking-completion-readonly.mjs
 MANIFEST
 
 printf 'Download verification: PASS\n'
-printf 'One read-only booking check; no message, provider call or migration.\n'
+printf 'One read-only dispatch/accounting check; passed booking checks are not repeated.\n'
 cd "$task_directory"
 set +e
-node s22-booking-evidence.mjs --complete-booking
+node s22-booking-evidence.mjs --complete-booking-accounting
 task_result=$?
 set -e
 printf 'Sanitized evidence directory: %s\n' "$task_directory"
