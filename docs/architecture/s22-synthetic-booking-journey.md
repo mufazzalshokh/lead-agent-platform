@@ -966,3 +966,32 @@ Recover only that execution's existing assertion logs through authenticated owne
 Cloud Shell; no upload or IAM change. Until its actual state/request/ledger rows
 are read, current readiness remains unproven and paid execution stays paused.
 The different friend's chat is not substituted into this fixed cohort.
+
+### Readiness snapshot recovered; paid execution approval pending — 2026-10-07
+
+The owner supplied the pinned recovery command's successful output for existing
+execution **`lead-agent-staging-migrator-q2z8g`**. Authentication, collection,
+conversation readiness, reviewed cohort binding and budget readiness all report
+**PASS**. This is owner-supplied live diagnostic evidence from the completed
+check, not a new execution/database read or independent current-state proof.
+
+The original synthetic conversation is **open / ai**, with no active handoff and
+zero booking requests in that snapshot. Usage is **3/4 messages / 3/5 attempts**;
+pending reserve is zero. Known cost is **USD0.006207** and combined historical
+reservation/known exposure is **USD1.039603**. One message with at most two
+attempts remains: maximum additional reservation **USD1.602864**, projected
+maximum combined exposure **USD2.642467**, unchanged hard ceiling **USD10**.
+Historical NULL costs remain unknown; recovery does not reconcile them.
+
+The result-collection gap is closed. Do not repeat log recovery, diagnostics,
+Claim/Resolve, deployment or already-passed checks. No new versions, mutation
+audit proof or booking outcome are inferred from the summarized output. The
+different friend's unanswered DM is not evidence about this exact cohort.
+
+Preparation approval and the exact-plan apply approval are already recorded;
+explicit paid **execution** approval is still required before instructing the
+original friend to send the prepared single combined Uzbek message. Do not
+request a separate price-only message or another test conversation. Stop on
+timeout, unknown cost, guard failure or exhausted allowance without replay.
+Authoritative booking request, staff acceptance, delivered offer and actual
+customer confirmation remain unproven. **S22 remains unaccepted.**

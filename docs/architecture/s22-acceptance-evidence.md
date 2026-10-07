@@ -2655,3 +2655,52 @@ If this new path fails, stop at that specific access failure; do not blindly
 repeat it or start another diagnostic. Next S22 journey item after readiness and
 authorization is the bounded grounded answer/AppointmentRequest, then staff
 acceptance, delivered offer and actual customer confirmation. **S22 unaccepted.**
+
+### Readiness result recovered — owner-supplied evidence, 2026-10-07
+
+The owner returned the successful human-readable output of the pinned
+`--recover-readiness` command from tooling commit
+`8e09859bcdd519f87c171d26b27b52e5900b06a9`. This collects the existing
+**`lead-agent-staging-migrator-q2z8g`** execution's assertion logs; it does not
+launch another diagnostic or read the database again. Authentication and result
+collection both report **PASS**. Record this as **owner-supplied live diagnostic
+evidence**, not an independently collected new state observation.
+
+The recovered snapshot reports:
+
+- Original synthetic conversation **open / ai**, with **no active handoff** and
+  **zero existing booking requests**; readiness for a new test message **PASS**.
+- Reviewed cohort binding **PASS**; cumulative usage **3/4 logical messages** and
+  **3/5 physical attempts**, leaving one message with at most two attempts.
+- Budget readiness **PASS**; unresolved reserve **0**, known cost **6207 USD
+  micros**, combined historical reservation/known exposure **1039603 USD micros**.
+
+This closes the scoped result-collection gap and rules out a still-paused chat,
+existing request or exhausted/unsettled allowance **at the diagnostic snapshot**.
+The original workflow's permission denial and the owner's earlier CLI timeout
+remain recorded; the successful recovery does not retrospectively make that
+workflow PASS or establish the timeout's internal cause. No handoff/conversation
+version, transition/audit rows or database migration-journal head are supplied by
+this human-readable result, so none are newly asserted.
+
+Integer reservation arithmetic remains **1033396 + 6207 = 1039603** micros.
+At the unchanged **801432 micros per attempt**, two remaining slots add at most
+**1602864 micros (USD1.602864)**. The projected maximum combined exposure from
+this snapshot is **2642467 micros (USD2.642467)**, below the unchanged USD10
+ceiling. These are budget reservations, not exact historical costs; original
+historical NULL costs and the accounting gap remain visible and unchanged.
+
+The recorded continuation approval covers preparation; the later owner approval
+authorized only the exact deployment plan. Neither this recovered snapshot nor
+deployment success is paid execution authorization. Keep the extra paid turn
+paused pending explicit approval of **one original-conversation synthetic
+message / at most two provider attempts / USD1.602864 maximum additional
+reservation**. No further log recovery, job execution, Claim/Resolve, deployment,
+OAuth, tests or paid call is needed to close this evidence gap. The different
+friend's unanswered DM remains separately unproven and outside this cohort.
+
+After that execution approval, the next journey step is the prepared combined
+Uzbek service/price/duration question and future booking preference from the
+**original** test friend, followed by observed grounded output/request state.
+Staff acceptance, delivered offer and actual customer confirmation remain open.
+**S22 remains unaccepted; no S23 work.**
