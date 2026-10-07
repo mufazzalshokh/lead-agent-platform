@@ -3,7 +3,7 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
-## Current checkpoint — 2026-10-07
+## Current checkpoint — 2026-10-08
 
 The original eligible Instagram synthetic journey has scoped live proof of
 grounded price/duration, staff acceptance, actual customer confirmation and the
@@ -20,9 +20,13 @@ The current milestone is non-paid Website Chat embedding/session proof. Initial
 owner setup on the controlled distinct-origin Cloud Shell host now succeeded,
 but the real frame returned 400 after a successful policy lookup. The bounded
 [proxy-origin investigation and correction](s22-widget-embedding-proof.md#2026-10-07--live-frame-rejection-and-bounded-correction)
-has an actual installed-framework before/after reproduction; fresh exact-plan
-rollout and live session proof remain pending. Do not replace unrelated setup or
-send a Widget message under the exhausted Instagram allowance.
+has an actual installed-framework before/after reproduction. The owner-approved
+exact rollout **37672530149** and read-only verification **37672800406** now
+passed for runtime source `65b6c906f3a3433a1093abcf1aada4b0f2f00423`, with
+whole-runtime convergence exit **0**. Real frame/session proof remains pending;
+deployment/readiness is not authenticated browser or customer E2E proof. Do not
+replace unrelated setup or send a Widget message under the exhausted Instagram
+allowance.
 
 ## Preserved evidence
 
@@ -3109,3 +3113,70 @@ exhausted cohort still blocks paid dispatch. A fresh immutable build and exact
 reviewed saved plan must precede apply. Live frame/session open/close/reopen,
 blocked-third-party-cookie behavior and disallowed-origin denial remain pending;
 S22 remains unaccepted.
+
+## 2026-10-08 — approved Widget origin rollout
+
+The owner approved only saved plan
+**[37669343531](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37669343531)**,
+SHA256 **`8a61030064cb13168acfafbb1002db866a8d1686fe7898e565cc97e353e1def1`**.
+The source is `65b6c906f3a3433a1093abcf1aada4b0f2f00423` on
+`verify/s22-staging-recovery-capacity`; reviewed deployment timestamp
+`2026-10-07T18:45:42Z` and migration head
+`0031_s22_widget_inbound_route_management` were preserved exactly. This date
+heading uses Asia/Tashkent; provenance timestamps remain canonical UTC.
+
+Existing immutable build
+**[37668568053](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37668568053)**
+contains all four images from that exact source. Independent saved-plan SHA256
+and locked-provider field-level review passed: **0 creates / 4 in-place updates /
+0 destroys / 0 replacements**. Only four image/provenance bindings and one new
+Web `WIDGET_PLATFORM_ORIGIN` changed. Network, identities, secret references,
+commands, scaling, migration head, model and cohort controls matched the refreshed
+before-state. The temporary local reviewer passed **23/23** controlled rejection
+cases; no computed-unknown difference was excluded. These are plan/local checks,
+not browser proof.
+
+Apply
+**[37672530149](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37672530149) PASS**:
+reviewed-plan integrity and exact approval boundary passed, then Terraform
+reported **0 added / 4 changed / 0 destroyed**. No replacement plan, image rebuild,
+migrator execution, migration, IAM, network, scaling, secret or paid-budget change
+occurred. The original prepared-input precheck stopped before dispatch because
+the escalated PowerShell JSON reader converted the RFC3339 string to `DateTime`;
+ordinary Node JSON parsing preserved the exact approved timestamp. Only one
+actual apply workflow was dispatched; no application or workflow change was
+needed for that local tooling issue.
+
+Read-only verification
+**[37672800406](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37672800406) PASS**:
+artifact `s22-api-image-live-evidence-37672800406` reports **PASS / 0 failures**.
+Direct API metadata matches source/timestamp/head, reviewed immutable image,
+runtime identity, private VPC/subnet/egress, 15 secret references and readiness.
+Direct Web image/readiness also matches. Ready revisions are
+`lead-agent-staging-api-00023-w68` and `lead-agent-staging-web-00019-hjs`.
+Whole-runtime refreshed Terraform convergence is **exit 0**; this covers the
+configured Worker/Migrator bindings and the new canonical Web origin setting,
+not a separate direct REST assertion of those descriptors or that environment
+entry. The verifier's apply and one-shot migrator steps were **SKIPPED**.
+
+Bounded unauthenticated public reads after apply passed: API `/health` **HTTP
+200**, service `api`, status `ok`; the exact organization-bound Web `/staff`
+**HTTP 200**, HTML; `/embed/widget.js` **HTTP 200**, 5,039 bytes, SHA256
+`abda0e39938bcd9ab55b938fbc53e712e120b662beea18448d324e9d234d1fd9`, canonical
+Web gateway `API_ORIGIN` matched. These used no cookies, grant or message and
+do not establish authenticated owner access or a ready Widget frame. Initial
+sandbox transport failures were local access restrictions; permitted bounded
+reads succeeded without changing the application.
+
+The existing local application tests, actual Next adapter before/after regression
+and production build evidence were reused; no unchanged test suite or CI was
+repeated. Historical NULL costs remain unknown and unchanged. The exhausted
+synthetic cohort is not reset and no paid test is authorized by this rollout.
+
+Remaining: real approved-origin Widget frame/session open/close/reopen,
+third-party-cookie-independent behavior and disallowed-origin rejection. The
+earlier temporary host has a one-hour lifetime; restarting the unchanged,
+checksum-verified host does not require uploads, infrastructure changes or setup
+replacement when its actual preview origin is unchanged. Do not invent a preview
+URL, rotate the installation key unnecessarily, or press **Send**. S22 remains
+unaccepted; no S23 work.

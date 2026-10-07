@@ -1,9 +1,10 @@
 # S22 synthetic Website Chat embedding proof
 
 Status: non-paid test host and initial owner setup observed; frame bootstrap
-failed live. The proxy-origin correction is under focused verification; live
-embedding/session proof remains pending a fresh reviewed rollout. This does not
-authorize a Widget message, provider call or S22 acceptance.
+failed live. The proxy-origin correction is now deployed in owner-approved apply
+**37672530149**, with read-only verification **37672800406** and whole-runtime
+convergence exit **0**. Real embedding/session proof remains pending. This does
+not authorize a Widget message, provider call or S22 acceptance.
 
 ## Observed starting point — 2026-10-07
 
@@ -159,9 +160,42 @@ organization/CSRF/request semantics. Existing staff workflow and integration
 navigation regressions are retained. Final check results and rollout provenance
 are recorded in the acceptance register.
 
-The current live deployment remains unchanged until an exact new saved plan is
-reviewed and approved. Approved-origin frame/session open/close/reopen,
+At the investigation checkpoint, live deployment remained unchanged until an
+exact new saved plan was reviewed and approved. Approved-origin frame/session open/close/reopen,
 third-party-cookie-independent behavior and disallowed-origin live rejection
 remain unproven. Same-origin embedding is a separately identified unchanged
 isolation risk, not the cause of this distinct-origin test failure. The temporary
 host may expire; do not request another owner retry before the corrected rollout.
+
+## 2026-10-08 — rollout verified; live session still pending
+
+The exact saved plan **37669343531** was owner-approved and applied once in
+**37672530149**: **0 added / 4 changed / 0 destroyed**, no replacements or
+migration execution. The four fresh images belong to source
+`65b6c906f3a3433a1093abcf1aada4b0f2f00423`, deployment timestamp
+`2026-10-07T18:45:42Z`, unchanged migration head
+`0031_s22_widget_inbound_route_management`. Detailed provenance is in the
+[acceptance register](s22-acceptance-evidence.md).
+
+Existing read-only verification **37672800406** passed API source/image/time/head,
+identity/private networking/secret-reference/readiness checks and Web
+image/readiness. Ready revisions: `lead-agent-staging-api-00023-w68` and
+`lead-agent-staging-web-00019-hjs`. Refreshed whole-runtime Terraform convergence
+**exit 0** covers the new Web `WIDGET_PLATFORM_ORIGIN` configured from the same
+canonical Web origin as the API's signed policy; no independent direct REST
+environment assertion is claimed. No paid call or repeated migration/test suite.
+
+Bounded post-apply public probes passed API health, organization-bound staff HTML
+and `/embed/widget.js` reachability (all **HTTP 200**). The loader remains 5,039
+bytes, SHA256 `abda0e39938bcd9ab55b938fbc53e712e120b662beea18448d324e9d234d1fd9`,
+with the canonical Web gateway API origin. No cookies, grant, customer message or
+provider call were used; these are not authenticated owner/session proof.
+
+The live browser must still open the actual approved-origin frame, redeem a
+session, and close/reopen it without **Send**. The old host stops after one hour:
+restart the same checksum-verified script in existing Cloud Shell and obtain the
+actual origin from **Web Preview**. Do not request a setup replacement or key
+rotation unless that actual origin differs from the configured synthetic host.
+The public installation snippet may need remounting on the refreshed temporary
+page; that is not a new provider/tenant setup. No credential or grant value should
+be copied into chat. Deployment/HTTP readiness alone is not Widget acceptance.
