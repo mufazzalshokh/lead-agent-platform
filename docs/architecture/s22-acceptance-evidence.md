@@ -28,6 +28,12 @@ deployment/readiness is not authenticated browser or customer E2E proof. Do not
 replace unrelated setup or send a Widget message under the exhausted Instagram
 allowance.
 
+The subsequent owner browser test shows the genuine frame opens and reports
+successful close/reopen, but its launcher retains `Opening…`. The
+[focused launcher lifecycle correction](#2026-10-08--widget-launcher-lifecycle-correction-checkpoint)
+has generated-script behavioral proof; it is not yet deployed. Owner-observed
+open/reopen does not by itself prove session/security assertions or Widget E2E.
+
 ## Preserved evidence
 
 - Staff owner sign-in works in normal Chrome (owner confirmed). Do not reopen Auth0/MFA.
@@ -3180,3 +3186,54 @@ checksum-verified host does not require uploads, infrastructure changes or setup
 replacement when its actual preview origin is unchanged. Do not invent a preview
 URL, rotate the installation key unnecessarily, or press **Send**. S22 remains
 unaccepted; no S23 work.
+
+## 2026-10-08 — Widget launcher lifecycle correction checkpoint
+
+Owner-supplied live browser evidence after source
+`65b6c906f3a3433a1093abcf1aada4b0f2f00423` / apply **37672530149** shows the
+genuine synthetic-host frame greeting/composer, and the owner confirms it closes
+and reopens without Send. The closed launcher incorrectly retains `Opening…`.
+Record open/close/reopen as owner-observed, not an independently collected
+redemption trace, cookie-independence or origin-denial proof. No paid dispatch.
+
+Confirmed mechanism: generated `READY` clears the busy latch/enables the button
+but never restores its label; `CLOSE` and cached reopen leave that stale label
+unchanged. An exact generated-loader + generated-frame controlled VM reproduction
+observed scripted READY followed by the same enabled `Opening…` symptom before
+correction. Thus the label is not evidence of a failed readiness handshake. The
+same implementation also left pre-READY EXPIRED busy, and kept partially created
+frame/form state after submission failure; these related paths are covered.
+
+Smallest runtime change is restricted to `apps/web/src/lib/widget-embed.ts`:
+restore captured configured/default label on validated READY; allow cached-frame
+reopen after CLOSE while retaining the grant busy latch; discard expired/failed
+frames/reset busy; remove the short-lived grant-transfer form in `finally`.
+No frame/API/public contract, provider, auth, tenant, CSP, sandbox, budget,
+network, IAM or migration change. Retry is manual only. Independent review of
+unchanged exact source/origin/version/instance/payload and stale-frame rejection
+passed. No missing-readiness timeout or unrelated redesign is introduced.
+
+Focused local evidence:
+
+- Exact generated loader/frame VM reproduction: **12/12 PASS** after correction;
+  before correction the label restore and pre-READY-expiry manual retry failed.
+- `node node_modules/vitest/vitest.mjs run apps/web/src/lib/widget-embed.test.ts`:
+  **17/17 PASS**. Actual generated scripts execute against synthetic responses;
+  default/custom labels, cached same-session reopen, duplicate mount/click/READY,
+  foreign/malformed/retired-frame messages, grant/redeem/submission failures,
+  cleanup and close-before-READY are exercised. This is not a live API/DB proof.
+- Scoped existing `product-ux.test.ts` **16/16 PASS** and `widget-frame.test.ts`
+  **26/26 PASS**. No broad CI, provider or completed staff journey repeated.
+- Web `node node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit`:
+  PASS; production `node node_modules/next/dist/bin/next build` from `apps/web`:
+  PASS. Initial test-helper strict-TypeScript/lint findings were corrected before
+  the final checks; no suppression. Runtime bundle and production typecheck pass.
+- Scoped ESLint zero warnings, Prettier and in-scope diff checks: PASS. Existing
+  unrelated README/Instagram edits and the untracked notices patch are preserved;
+  their formatting is not changed or represented as passing this scoped check.
+
+Fresh images and one reviewed full-runtime saved plan are required before apply;
+the previous owner approval does not cover this new correction. Further paid
+dispatch remains blocked; historical NULL costs and the approved reserve remain
+untouched. Live corrected-label/session-security assertions remain pending;
+S22 remains unaccepted. See [Widget proof](s22-widget-embedding-proof.md).

@@ -6,6 +6,12 @@ failed live. The proxy-origin correction is now deployed in owner-approved apply
 convergence exit **0**. Real embedding/session proof remains pending. This does
 not authorize a Widget message, provider call or S22 acceptance.
 
+Latest owner-supplied browser evidence: the genuine cross-origin frame opens,
+closes and reopens without a message. The closed launcher incorrectly retains
+`Opening…`; this is a separate, source-confirmed loader lifecycle defect under
+correction. Visible greeting/composer HTML alone is not redemption, isolation or
+blocked-third-party-cookie proof.
+
 ## Observed starting point — 2026-10-07
 
 The owner's current organization-bound Integrations screenshot shows **Website
@@ -199,3 +205,59 @@ rotation unless that actual origin differs from the configured synthetic host.
 The public installation snippet may need remounting on the refreshed temporary
 page; that is not a new provider/tenant setup. No credential or grant value should
 be copied into chat. Deployment/HTTP readiness alone is not Widget acceptance.
+
+## 2026-10-08 — owner open/reopen and launcher lifecycle regression
+
+### Observations and confirmed mechanism
+
+After the approved origin rollout, the owner installed the normal public snippet
+on the same synthetic Cloud Shell preview origin. Screenshots show the genuine
+frame greeting and composer, and the owner reports successful close/reopen with
+no Send. The closed launcher still reads `Opening…`. These are owner-supplied
+live browser observations, not an agent-collected redemption/database trace.
+
+The generated loader changes its label to `Opening…` while requesting a grant.
+An authenticated-by-origin/source/instance `READY` message clears its busy state
+and enables the button, but never restores the configured label. `CLOSE` simply
+shows that unchanged button; reopening reuses the same frame. This directly
+explains an enabled, working launcher with a stale loading label. A lost READY
+signal is not needed to produce the symptom; welcome HTML by itself would not
+prove that signal was received.
+
+The same lifecycle implementation has two directly related local failure paths:
+`EXPIRED` before `READY` removes the frame but leaves the busy latch set, so the
+manual next attempt is ignored; a form-submit exception leaves a partially
+created frame/form, so retry can reopen that invalid frame. Both require
+behavioral regression coverage. No provider/configuration/tenant change or
+automatic retry is justified. Exact source/origin/version/instance/payload
+checks, sandbox, form-only grant transfer and memory-only bearer remain required.
+
+### Focused correction and local proof
+
+The loader captures the configured/default label and restores it only after a
+validated `READY`. Valid `CLOSE` permits reopening the cached frame even while
+redemption is pending; a later `READY` leaves a closed frame closed. `EXPIRED`
+and startup failures clear the busy latch and discard the old/partial frame.
+The temporary grant-transfer form is removed in `finally`, including a submission
+exception. Retries remain explicitly user-triggered; normal reopen requests no
+new grant or session. No frame/API/public-message contract changes.
+
+An exact generated-loader + generated-frame controlled VM reproduction first
+observed genuine scripted `READY` followed by an enabled `Opening…` launcher and
+the blocked manual retry after failed redemption. After correction, all 12
+reproduction assertions pass. This uses synthetic redemption responses/minimal
+DOM, not live grants, a database or a paid provider. The new repository lifecycle
+suite has **17/17 PASS**, covering default/custom labels, cached reopen,
+duplicate mounts/clicks/READY, foreign/malformed/retired-frame messages, failure
+cleanup, manual retry and close-before-READY. Existing product UX **16/16** and
+frame route **26/26** checks pass unchanged. Visible HTML is not substituted for
+the authenticated-by-origin/source/instance readiness handshake.
+
+### Evidence boundaries
+
+Owner-observed open/close/reopen is recorded and the launcher correction is locally
+verified; it still requires fresh immutable provenance and exact-plan approval
+before staging apply. Corrected live-label behavior, redemption/session metadata,
+blocked-third-party-cookie operation and disallowed-origin denial remain pending.
+No message, model call, configuration replacement, migration or IAM change is
+authorized by this non-paid check. S22 remains unaccepted.
