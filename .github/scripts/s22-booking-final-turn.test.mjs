@@ -8,6 +8,7 @@ import {
   finalTraceAssertions,
   formatFinalTurnReport,
   recoverFinalTurnLogs,
+  readRecoveryToken,
   sanitizeRows,
 } from "./s22-booking-evidence.mjs";
 
@@ -250,4 +251,61 @@ test("final-turn workflow remains read-only and malformed recovery invocation ca
     assert.match(result.stdout, /EXECUTION_SCOPE_INVALID|READ_MODE_INVALID/);
     assert.doesNotMatch(result.stdout, /authentication|job_configuration_changed/);
   }
+});
+
+test("missing gcloud executable reports the precise safe auth blocker without running a diagnostic", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./s22-booking-evidence.mjs", import.meta.url)),
+      "--recover-final-turn",
+      execution,
+    ],
+    { env: { ...process.env, PATH: "" }, encoding: "utf8", timeout: 5000 },
+  );
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout.trim(), "BLOCKED: LOG_AUTH_CLI_UNAVAILABLE");
+  assert.equal(result.stderr, "");
+  assert.doesNotMatch(result.stdout, /job_configuration_changed|private|token=/);
+});
+
+test("token read uses one 30-second bound and preserves token privacy", async () => {
+  let count = 0;
+  const token = await readRecoveryToken(async (args, timeout) => {
+    count++;
+    assert.deepEqual(args, ["auth", "print-access-token", "--quiet"]);
+    assert.equal(timeout, 30000);
+    return "  controlled-fixture-token\n";
+  });
+  assert.equal(token, "controlled-fixture-token");
+  assert.equal(count, 1);
+});
+
+test("token timeouts, missing executable, process failure and invalid output remain distinct and sanitized", async () => {
+  for (const [error, code] of [
+    [{ killed: true, stdout: "private", stderr: "private" }, "LOG_AUTHENTICATION_TIMEOUT"],
+    [{ code: "ETIMEDOUT", message: "private" }, "LOG_AUTHENTICATION_TIMEOUT"],
+    [{ code: "ENOENT", stderr: "private" }, "LOG_AUTH_CLI_UNAVAILABLE"],
+    [{ code: 1, stderr: "private" }, "LOG_AUTHENTICATION_UNAVAILABLE"],
+  ]) {
+    let count = 0;
+    await assert.rejects(
+      readRecoveryToken(async () => {
+        count++;
+        throw error;
+      }),
+      (failure) => {
+        assert.equal(failure.code, code);
+        assert.doesNotMatch(JSON.stringify(failure), /private/);
+        assert.equal(failure.message, "");
+        return true;
+      },
+    );
+    assert.equal(count, 1);
+  }
+  for (const raw of ["", "\n", "private token", undefined])
+    await assert.rejects(
+      readRecoveryToken(async () => raw),
+      { code: "LOG_TOKEN_RESPONSE_INVALID" },
+    );
 });

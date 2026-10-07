@@ -2034,3 +2034,36 @@ a job. Authentication/permission/timeout, truncated/duplicate/missing assertions
 and failed diagnostic assertions remain explicit; no raw error payload or token
 is printed. Existing WIF Logging denial is not grounds for IAM broadening. S22
 and the booking journey remain unaccepted pending the actual persisted trace.
+
+### Existing final-turn execution and recovery authentication — 2026-10-07
+
+Tooling commit `3b4ecec9558f732d6ac13e0b88aa42a681bc7931` was pushed and its
+remote SHA verified. Read-only workflow **37523609035** checked the approved
+Worker image/source, booking gate, one instance and private network, plus the
+diagnostic identity/image/runtime-secret/private-network/explicit-zero-retry
+safeguards. Its single execution **`lead-agent-staging-migrator-kn9mf`** completed
+unsuccessfully. The artifact has no assertion rows because collection failed with
+**`EXACT_EXECUTION_LOG_PERMISSION_DENIED`**. The diagnostic's actual failed
+assertion/SQL error and missing-reply cause are **not yet known**. No migration,
+job configuration change, IAM grant, provider call or message replay occurred.
+
+Owner recovery initially returned `LOG_AUTHENTICATION_UNAVAILABLE`. The follow-up
+bounded Cloud Shell checks returned **LOGIN_CHECK_EXIT=0 / TOKEN_CHECK_EXIT=0**,
+without exposing identity or token values. This proves those CLI commands exited
+successfully, not the earlier failure's exact cause or successful log retrieval.
+The old 10-second wrapper also combined timeout, missing executable, process
+failure and invalid output into one tag; a timeout remains plausible, not proven.
+
+The recovery-only correction uses one **30-second** token attempt followed by
+the existing **15-second** Logging REST bound, without retries. It distinguishes
+`LOG_AUTHENTICATION_TIMEOUT`, `LOG_AUTH_CLI_UNAVAILABLE`,
+`LOG_AUTHENTICATION_UNAVAILABLE` and `LOG_TOKEN_RESPONSE_INVALID`, discarding
+credential-bearing stdout/stderr from errors. Both existing-log recovery modes
+share this narrow correction; neither can execute a diagnostic job.
+
+A controlled missing-CLI subprocess regression failed before the correction and
+passes after it. **26/26 focused Node tests PASS**, including timeout/output/error
+classification, redaction, exact recovery scope and module resolution. Scoped
+ESLint, Prettier and diff checks pass. No broad CI or runtime deployment is needed.
+Recover only the saved output from `kn9mf`; do not rerun the diagnostic, resend the
+DM or spend another paid slot. Historical NULL costs and S22 pending status remain.

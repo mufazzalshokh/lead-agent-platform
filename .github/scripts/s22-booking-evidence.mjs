@@ -339,6 +339,27 @@ export const logReadFailureCode = (error) =>
   /PERMISSION_DENIED|does not have permission|permission denied|403 Forbidden/iu.test(error.stderr)
     ? "EXACT_EXECUTION_LOG_PERMISSION_DENIED"
     : "EXACT_EXECUTION_LOG_READ_BLOCKED";
+export async function readRecoveryToken(authenticate = cloud) {
+  let raw;
+  try {
+    // One attempt, matching the owner's successful bounded CLI check. Never
+    // print stdout/stderr or propagate an exception carrying credential output.
+    raw = await authenticate(["auth", "print-access-token", "--quiet"], 30000);
+  } catch (error) {
+    const code =
+      error?.killed === true || error?.code === "ETIMEDOUT"
+        ? "LOG_AUTHENTICATION_TIMEOUT"
+        : error?.code === "ENOENT"
+          ? "LOG_AUTH_CLI_UNAVAILABLE"
+          : "LOG_AUTHENTICATION_UNAVAILABLE";
+    throw Object.assign(new Error(), { code });
+  }
+  requireSafe(
+    typeof raw === "string" && raw.trim().length > 0 && !/\s/u.test(raw.trim()),
+    "LOG_TOKEN_RESPONSE_INVALID",
+  );
+  return raw.trim();
+}
 // Recovery reads ONLY the completed observation whose result collection failed.
 // It never enters main(), executes a job, changes IAM or retries an API call.
 export const recoveryExecution = "lead-agent-staging-migrator-n2vs5";
@@ -414,14 +435,13 @@ export async function recoverExistingBookingLogs(token, request = fetch) {
 async function recoverMain() {
   let token;
   try {
-    token = (await cloud(["auth", "print-access-token", "--quiet"], 10000)).trim();
-    requireSafe(token.length > 0 && !/\s/u.test(token), "LOG_AUTHENTICATION_UNAVAILABLE");
-  } catch {
+    token = await readRecoveryToken();
+  } catch (error) {
     console.log(
       JSON.stringify({
         outcome: "BLOCKED",
         stage: "authentication",
-        code: "LOG_AUTHENTICATION_UNAVAILABLE",
+        code: error.code,
       }),
     );
     process.exitCode = 1;
@@ -534,10 +554,9 @@ async function recoverFinalMain(execution) {
   }
   let token;
   try {
-    token = (await cloud(["auth", "print-access-token", "--quiet"], 10000)).trim();
-    requireSafe(token.length > 0 && !/\s/u.test(token), "LOG_AUTHENTICATION_UNAVAILABLE");
-  } catch {
-    console.log("BLOCKED: LOG_AUTHENTICATION_UNAVAILABLE");
+    token = await readRecoveryToken();
+  } catch (error) {
+    console.log(`BLOCKED: ${error.code}`);
     process.exitCode = 1;
     return;
   }
