@@ -2704,3 +2704,24 @@ Uzbek service/price/duration question and future booking preference from the
 **original** test friend, followed by observed grounded output/request state.
 Staff acceptance, delivered offer and actual customer confirmation remain open.
 **S22 remains unaccepted; no S23 work.**
+
+### Owner authorizes the single continuation turn — 2026-10-07
+
+After the readiness recovery, the owner explicitly approved: "Approve one test
+message from the original friend, at most two provider attempts." This closes
+the paid-execution authorization gap for **only** the remaining original-cohort
+turn. The existing four-message/five-attempt/two-per-message limits, maximum
+additional reservation **USD1.602864**, projected combined exposure
+**USD2.642467**, historical reserve/NULL costs and USD10 ceiling are unchanged.
+
+The next owner action is one combined Uzbek question about the published test
+consultation's price/duration and a future booking preference in the original
+Instagram conversation. No resend, replay, additional customer test, new cohort,
+manual provider call or privacy override is authorized. Stop on timeout, unknown
+cost, guard failure or exhausted allowance. No additional readiness diagnostic,
+deployment, migration or IAM change is required by this approval.
+
+No new message/provider call or journey result has been observed at this entry.
+Grounded output, authoritative request, staff acceptance, delivered offer and
+actual customer confirmation remain pending; staff acceptance alone is not a
+confirmed booking. **S22 remains unaccepted; no S23 work.**

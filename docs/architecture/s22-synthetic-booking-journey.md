@@ -995,3 +995,24 @@ request a separate price-only message or another test conversation. Stop on
 timeout, unknown cost, guard failure or exhausted allowance without replay.
 Authoritative booking request, staff acceptance, delivered offer and actual
 customer confirmation remain unproven. **S22 remains unaccepted.**
+
+### Single continuation turn execution approved — 2026-10-07
+
+The owner now explicitly approves one test message from the original friend,
+at most two provider attempts, following the recovered readiness snapshot.
+This supersedes the preceding execution-approval pause only for that remaining
+turn; existing cumulative limits, reservations and all stop rules remain intact.
+No new diagnostic, deployment, paid call or message has been performed here.
+
+Send this once in the original Instagram chat:
+
+> Salom, S22 sinov konsultatsiyasi narxi qancha va qancha davom etadi? Ertaga soat 17:00 ga yozilmoqchiman.
+
+This asks for authoritative facts and expresses a future Asia/Tashkent preference,
+not guaranteed availability. Expected published facts are UZS100000 and 30
+minutes; actual grounded response and request creation must still be observed.
+Record the send time in Asia/Tashkent and the customer-visible result. Do not
+resend or send a clarification if the turn fails or needs more information;
+investigate that outcome without another paid turn. Staff acceptance, offer
+delivery and actual customer confirmation are separate subsequent steps, not
+claims made by this instruction. **S22 remains unaccepted.**
