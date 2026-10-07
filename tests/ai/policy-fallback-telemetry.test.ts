@@ -5,6 +5,7 @@ import {
   planAppointmentSubmission,
   type AIOrchestrationStore,
   type AIProviderResult,
+  type AITelemetry,
 } from "../../packages/application/src/index.js";
 import { createStructuredAITelemetry } from "../../apps/worker/src/ai-telemetry.js";
 import { AI_METADATA, AI_REFERENCE, AI_SNAPSHOT, fixtureId, validDecision } from "./fixtures.js";
@@ -36,10 +37,32 @@ const snapshot = {
 };
 
 describe("S22 rejected-proposal disposition and safe structured telemetry", () => {
-  const setup = (mode: "rejected" | "budget" | "stale" | "extraction" = "rejected") => {
+  const setup = (
+    mode:
+      "rejected" | "budget" | "stale" | "extraction" | "citation" | "citation_empty" = "rejected",
+  ) => {
     const write = vi.fn<(record: Readonly<Record<string, unknown>>) => void>(),
       record = vi.fn<(plan: ReturnType<typeof planAppointmentSubmission>) => void>(),
+      metric = vi.fn<AITelemetry["record"]>(),
       safeTelemetry = createStructuredAITelemetry(write);
+    const claim = validDecision({
+      factual_claims: [
+        {
+          claim_kind: "price",
+          source_type: "service",
+          source_id: fixtureId(41200),
+          source_version: 4,
+        },
+      ],
+    }).factual_claims[0];
+    if (claim === undefined) throw new Error("Missing synthetic citation");
+    const testSnapshot = {
+      ...snapshot,
+      policy: {
+        ...snapshot.policy,
+        facts: mode === "citation" ? [{ reference: claim, text: "SYNTHETIC_PRIVATE_FACT" }] : [],
+      },
+    };
     const decide = vi.fn((): Promise<AIProviderResult> =>
       Promise.resolve({
         ...AI_METADATA,
@@ -47,7 +70,7 @@ describe("S22 rejected-proposal disposition and safe structured telemetry", () =
         value: validDecision({
           language: "uz",
           action:
-            mode === "extraction"
+            mode === "extraction" || mode === "citation" || mode === "citation_empty"
               ? { type: "none" }
               : { type: "request_handoff", reason: "customer_requested" },
           ...(mode === "extraction"
@@ -58,6 +81,9 @@ describe("S22 rejected-proposal disposition and safe structured telemetry", () =
                   phone_raw: "+998900000000",
                 },
               }
+            : {}),
+          ...(mode === "citation" || mode === "citation_empty"
+            ? { factual_claims: [{ ...claim, source_version: 5 }] }
             : {}),
           message: { mode: "send_candidate", draft_text: "SENSITIVE_UNTRUSTED_PROVIDER_BODY" },
         }),
@@ -72,7 +98,7 @@ describe("S22 rejected-proposal disposition and safe structured telemetry", () =
               applied: false as const,
             }
           : input.outcome;
-      const plan = planAppointmentSubmission(snapshot, outcome);
+      const plan = planAppointmentSubmission(testSnapshot, outcome);
       record(plan);
       // A controlled application/store test, not live or PostgreSQL persistence evidence.
       return Promise.resolve({
@@ -84,16 +110,74 @@ describe("S22 rejected-proposal disposition and safe structured telemetry", () =
     const flow = createAppointmentSubmissionOrchestrator({
       provider: { decide },
       timeoutMs: 1000,
-      telemetry: safeTelemetry,
+      telemetry: {
+        record: (input) => {
+          metric(input);
+          safeTelemetry.record(input);
+        },
+      },
       store: {
-        load: () => Promise.resolve(snapshot),
+        load: () => Promise.resolve(testSnapshot),
         reserve: () => Promise.resolve({ runId: fixtureId(41103), attemptNo: 1 }),
         authorizeDispatch: () => Promise.resolve(mode !== "budget"),
         finish,
       },
     });
-    return { flow, decide, write, record };
+    return { flow, decide, write, record, metric };
   };
+  it.each(["citation", "citation_empty"] as const)(
+    "%s rejection reports only bounded snapshot counts and never repairs a policy denial",
+    async (mode) => {
+      const test = setup(mode);
+      expect(await test.flow.run(AI_REFERENCE)).toMatchObject({ kind: "handoff_requested" });
+      expect(test.decide).toHaveBeenCalledOnce();
+      expect(test.record.mock.calls[0]?.[0]).toMatchObject({ submission: null, sources: [] });
+      expect(test.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          policyRejectionCode: "untrusted_citation",
+          citationCounts: { supplied: mode === "citation" ? 1 : 0, proposed: 1, unmatched: 1 },
+          providerOutcome: "completed",
+          schemaValid: true,
+          replyDisposition: "queued",
+        }),
+      );
+      expect(JSON.stringify(test.write.mock.calls)).not.toMatch(
+        /SYNTHETIC_PRIVATE_FACT|SENSITIVE|source_id|source_version/u,
+      );
+    },
+  );
+  it("citation telemetry projects only valid counts, not extra properties or unbounded values", async () => {
+    const test = setup("citation");
+    await test.flow.run(AI_REFERENCE);
+    const input = test.metric.mock.calls[0]?.[0];
+    if (input === undefined) throw new Error("Missing telemetry metric");
+    const write = vi.fn<(record: Readonly<Record<string, unknown>>) => void>();
+    const sink = createStructuredAITelemetry(write);
+    const withPrivateExtra = {
+      supplied: 1,
+      proposed: 1,
+      unmatched: 1,
+      payload: "PRIVATE_CITATION",
+    };
+    sink.record({ ...input, citationCounts: withPrivateExtra });
+    expect(write).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        citationCounts: { supplied: 1, proposed: 1, unmatched: 1 },
+      }),
+    );
+    for (const counts of [
+      null,
+      { supplied: 25, proposed: 1, unmatched: 1 },
+      { supplied: 1, proposed: 13, unmatched: 1 },
+      { supplied: 1, proposed: 1, unmatched: 2 },
+      { supplied: 1, proposed: 1, unmatched: -1 },
+      { supplied: Number.NaN, proposed: 1, unmatched: 1 },
+    ]) {
+      sink.record({ ...input, citationCounts: counts });
+      expect(write).toHaveBeenLastCalledWith(expect.objectContaining({ citationCounts: null }));
+    }
+    expect(JSON.stringify(write.mock.calls)).not.toContain("PRIVATE_CITATION");
+  });
   it("reports rejected field names through the complete controlled path, never values", async () => {
     const test = setup("extraction");
     expect(await test.flow.run(AI_REFERENCE)).toMatchObject({

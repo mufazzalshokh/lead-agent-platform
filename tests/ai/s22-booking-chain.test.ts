@@ -165,7 +165,14 @@ describe("S22 connected synthetic booking rehearsal", () => {
                       validDecision({
                         language: "uz",
                         intent: "other",
-                        factual_claims: suppliedFacts.map((fact) => fact.reference),
+                        // Canonical response-schema property order differs from the supplied
+                        // fact order. Exercise JSON decoding, not shared object identity.
+                        factual_claims: suppliedFacts.map(({ reference }) => ({
+                          claim_kind: reference.claim_kind,
+                          source_id: reference.source_id,
+                          source_type: reference.source_type,
+                          source_version: reference.source_version,
+                        })),
                         message: {
                           mode: "send_candidate",
                           draft_text: "Untrusted model draft: already booked.",

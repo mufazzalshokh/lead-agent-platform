@@ -835,3 +835,36 @@ Do not send a fourth paid DM, reset counters, repeat Claim/Resolve or assume the
 old two-call snapshot describes the latest ledger. The final turn must be traced
 before any further action. Historical NULL costs, the approved reserve and all
 privacy/safety/booking boundaries remain intact. S22 remains unaccepted.
+
+### Final turn outcome and paid-test stop — 2026-10-07
+
+Owner-recovered `kn9mf` metadata supersedes the pending trace above: the actual
+latest inbound was persisted at **2026-10-06T19:23:52.883Z**, outside the earlier
+fixed diagnostic window. Its fallback outbound was **sent** at **19:23:59.374Z**.
+Exact correlated Worker metadata proves provider completion/schema validity,
+`action=none`, then **untrusted_citation** policy rejection, safe handoff and
+queued fallback. No AppointmentRequest was created. The conversation is now
+**awaiting_staff / paused / version 21**, with an active handoff. This is a failed
+booking turn with delivered fallback, not a proved channel-delivery defect.
+
+All **three** authorized logical paid messages are consumed (three physical calls,
+known new cost USD0.006207, no unresolved reserve). Historical NULLs remain unknown,
+budget-only reserve USD1.033396 remains visible, combined exposure USD1.039603.
+Do not send a fourth message, replay an event, reset counters or treat unused
+physical slots as extra message authorization. The previously suggested last-turn
+message is historical preparation, not a current instruction to send it again.
+
+Local regression proves identical approved references were rejected solely because
+of JSON key order in the S15/S16 sales gate; both adapter-to-confirmation rehearsals
+failed before the semantic identity correction and pass after it. Genuine foreign,
+unknown, wrong-kind/type and stale-version citations still fail closed. The live
+outcome does not retain the historical rejected reference, so its exact mismatch
+remains unproven. See the evidence-register entry for exact resource/correlation
+IDs and the distinction between local defect proof and live outcome proof.
+
+The next technical step is fresh reviewed runtime rollout preparation, not another
+customer action. Runtime apply still requires the exact saved-plan approval; the
+cancellation/citation corrections are not marked deployed until verified. Any
+future paid journey requires separate renewed owner authorization. Staff acceptance
+alone remains insufficient: the offer must be delivered and explicitly confirmed
+by the real synthetic customer. S22 is not accepted.

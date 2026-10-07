@@ -1,6 +1,20 @@
 import type { AITelemetry } from "@lead-agent/application";
 import { AI_EXTRACTION_REJECTION_FIELDS } from "@lead-agent/application";
 
+const citationCounts = (value: Parameters<AITelemetry["record"]>[0]["citationCounts"]) =>
+  value != null &&
+  Number.isSafeInteger(value.supplied) &&
+  value.supplied >= 0 &&
+  value.supplied <= 24 &&
+  Number.isSafeInteger(value.proposed) &&
+  value.proposed >= 0 &&
+  value.proposed <= 12 &&
+  Number.isSafeInteger(value.unmatched) &&
+  value.unmatched >= 0 &&
+  value.unmatched <= value.proposed
+    ? { supplied: value.supplied, proposed: value.proposed, unmatched: value.unmatched }
+    : null;
+
 /** Explicit metadata projection: never spread provider/store objects into logs. */
 export const createStructuredAITelemetry = (
   write: (record: Readonly<Record<string, unknown>>) => void = (record) =>
@@ -42,6 +56,7 @@ export const createStructuredAITelemetry = (
             metric.modelRejection === "untrusted_extraction" &&
             metric.extractionRejectionFields?.includes(field),
         ),
+        citationCounts: citationCounts(metric.citationCounts),
         salesResultKind: metric.salesResultKind,
         replyDisposition: metric.replyDisposition,
         latencyMs: metric.latencyMs,

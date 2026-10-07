@@ -251,6 +251,8 @@ export type AITelemetry = Readonly<{
       schemaValid: boolean | null;
       modelRejection: AIModelPolicyRejection | null;
       extractionRejectionFields?: readonly AIExtractionRejectionField[];
+      /** Counts against the inference snapshot, not raw claims or refreshed DB state. */
+      citationCounts?: Readonly<{ supplied: number; proposed: number; unmatched: number }> | null;
       salesResultKind: SalesResult["kind"] | null;
       replyDisposition: AIReplyDisposition;
     }>,

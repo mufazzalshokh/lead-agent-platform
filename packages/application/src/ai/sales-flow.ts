@@ -8,7 +8,7 @@ import {
 } from "./grounding-query.js";
 import { createAIOrchestrator } from "./orchestrate.js";
 import { medicalSafetyText } from "./medical-safety.js";
-import { aiFallback } from "./policy.js";
+import { aiFallback, countUnmatchedCitations } from "./policy.js";
 import type {
   AIContextSnapshot,
   AIFallbackReason,
@@ -276,14 +276,7 @@ export const evaluateSalesDecision = (
     decision.message.mode !== "send_candidate"
   )
     return aiFallback("policy_denied", "unsafe_response");
-  if (
-    decision.factual_claims.some(
-      (claim) =>
-        !snapshot.policy.facts.some(
-          (fact) => JSON.stringify(fact.reference) === JSON.stringify(claim),
-        ),
-    )
-  )
+  if (countUnmatchedCitations(decision.factual_claims, snapshot.policy.facts) > 0)
     return aiFallback("policy_denied", "untrusted_citation");
   if (decision.action.type === "request_handoff")
     return aiFallback("policy_denied", "handoff_not_authorized");

@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { buildAIProviderInput } from "./context.js";
-import { aiFallback, evaluateAIDecision, validateAgentDecision } from "./policy.js";
+import {
+  aiFallback,
+  countUnmatchedCitations,
+  evaluateAIDecision,
+  validateAgentDecision,
+} from "./policy.js";
 import type {
   AIOrchestrationStore,
   AIOutcome,
@@ -132,6 +137,10 @@ export const createAIOrchestrator = (
           outcome,
           allowRepair,
         });
+        const proposedDecision =
+          provider?.kind === "completed" && validateAgentDecision(provider.value)
+            ? provider.value
+            : null;
         options.telemetry?.record({
           operation: "decide",
           outcome: resolved.kind,
@@ -149,16 +158,23 @@ export const createAIOrchestrator = (
           correlationId: reference.correlationId,
           runId: reservation.runId,
           attemptNo: reservation.attemptNo,
-          proposedAction:
-            provider?.kind === "completed" && validateAgentDecision(provider.value)
-              ? provider.value.action.type
-              : null,
-          schemaValid:
-            provider?.kind === "completed" ? validateAgentDecision(provider.value) : null,
+          proposedAction: proposedDecision?.action.type ?? null,
+          schemaValid: provider?.kind === "completed" ? proposedDecision !== null : null,
           modelRejection:
             resolved.kind === "fallback_required" ? (resolved.modelRejection ?? null) : null,
           extractionRejectionFields:
             resolved.kind === "fallback_required" ? (resolved.extractionRejectionFields ?? []) : [],
+          citationCounts:
+            proposedDecision === null
+              ? null
+              : {
+                  supplied: snapshot.policy.facts.length,
+                  proposed: proposedDecision.factual_claims.length,
+                  unmatched: countUnmatchedCitations(
+                    proposedDecision.factual_claims,
+                    snapshot.policy.facts,
+                  ),
+                },
           salesResultKind: resolved.salesResult?.kind ?? null,
           replyDisposition: resolved.replyDisposition ?? "not_planned",
         });

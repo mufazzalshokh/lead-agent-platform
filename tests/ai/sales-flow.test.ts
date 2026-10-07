@@ -9,6 +9,7 @@ import {
   salesPreflight,
   salesLocale,
   selectGroundingFacts,
+  validateAgentDecision,
   createSalesFlowOrchestrator,
   medicalSafetyText,
   type AIContextSnapshot,
@@ -274,6 +275,76 @@ describe("S15 shared deterministic sales flow", () => {
       reason: "policy_denied",
     });
     expect(planSalesFlow(snapshot, outcome).sources).toEqual([]);
+  });
+  const citationKeys = ["claim_kind", "source_type", "source_id", "source_version"] as const;
+  const permutations = <T>(values: readonly T[]): T[][] =>
+    values.length === 0
+      ? [[]]
+      : values.flatMap((value, index) =>
+          permutations(values.filter((_, position) => position !== index)).map((rest) => [
+            value,
+            ...rest,
+          ]),
+        );
+  it.each(permutations(citationKeys).map((keys) => ({ keys, label: keys.join(",") })))(
+    "accepts the exact approved citation independent of JSON property order: $label",
+    ({ keys }) => {
+      const snapshot = context("lazer narxi");
+      expect(snapshot.policy.facts.length).toBeGreaterThan(0);
+      const candidate: unknown = JSON.parse(
+        JSON.stringify({
+          ...decision(snapshot),
+          factual_claims: snapshot.policy.facts.map(({ reference }) =>
+            Object.fromEntries(keys.map((key) => [key, reference[key]])),
+          ),
+        }),
+      );
+      if (!validateAgentDecision(candidate)) throw new Error("Invalid reordered citation fixture");
+      const outcome = evaluateSalesDecision(candidate, snapshot);
+      expect(outcome.kind).toBe("decision");
+      const result = planSalesFlow(snapshot, outcome);
+      expect(result.handoffReason).toBeNull();
+      expect(result.text).toContain("250 000 UZS");
+      expect(result.text).not.toContain("UNTRUSTED");
+      expect(result.sources.length).toBeGreaterThan(0);
+    },
+  );
+  it.each(citationKeys)("still denies a changed citation %s with reordered properties", (key) => {
+    const snapshot = context("lazer narxi"),
+      approved = snapshot.policy.facts[0]?.reference;
+    if (approved === undefined) throw new Error("Missing approved citation fixture");
+    const changed = {
+      claim_kind: "hours",
+      source_type: "location",
+      source_id: fixtureId(41999),
+      source_version: approved.source_version + 1,
+    };
+    const candidate: unknown = {
+      ...decision(snapshot),
+      factual_claims: [
+        Object.fromEntries(
+          [...citationKeys]
+            .reverse()
+            .map((field) => [field, field === key ? changed[field] : approved[field]]),
+        ),
+      ],
+    };
+    if (!validateAgentDecision(candidate)) throw new Error("Invalid changed citation fixture");
+    const outcome = evaluateSalesDecision(candidate, snapshot);
+    expect(outcome).toMatchObject({
+      reason: "policy_denied",
+      modelRejection: "untrusted_citation",
+    });
+    expect(planSalesFlow(snapshot, outcome)).toMatchObject({
+      sources: [],
+      handoffReason: "policy_blocked",
+    });
+    expect(
+      evaluateSalesDecision(candidate, {
+        ...snapshot,
+        policy: { ...snapshot.policy, facts: [] },
+      }),
+    ).toMatchObject({ modelRejection: "untrusted_citation" });
   });
   it("budget dispatch denial is not a model rejection and cannot create a fallback Handoff", () => {
     const value = planSalesFlow(context("lazer narxi"), {

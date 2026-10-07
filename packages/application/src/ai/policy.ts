@@ -1,5 +1,11 @@
-import { AgentDecisionV1Schema, isSchemaValue, type AgentDecisionV1 } from "@lead-agent/contracts";
+import {
+  AgentDecisionV1Schema,
+  isSchemaValue,
+  type AgentDecisionV1,
+  type AgentFactualClaim,
+} from "@lead-agent/contracts";
 import type {
+  AIFact,
   AIPolicyContext,
   AIOutcome,
   AIModelPolicyRejection,
@@ -22,6 +28,21 @@ export const aiFallback = (
   });
 export const validateAgentDecision = (value: unknown): value is AgentDecisionV1 =>
   isSchemaValue(AgentDecisionV1Schema, value);
+/** Validated JSON references are identities, not serialization/property order. */
+export const countUnmatchedCitations = (
+  claims: readonly AgentFactualClaim[],
+  facts: readonly AIFact[],
+): number =>
+  claims.filter(
+    (claim) =>
+      !facts.some(
+        ({ reference }) =>
+          reference.claim_kind === claim.claim_kind &&
+          reference.source_type === claim.source_type &&
+          reference.source_id === claim.source_id &&
+          reference.source_version === claim.source_version,
+      ),
+  ).length;
 export const evaluateAIDecision = (
   decision: AgentDecisionV1,
   context: AIPolicyContext,
@@ -29,18 +50,7 @@ export const evaluateAIDecision = (
   if (context.automationMode !== "ai" || context.conversationStatus !== "open")
     return aiFallback("stale_context");
   const references = context.facts.map((fact) => fact.reference);
-  if (
-    decision.factual_claims.some(
-      (claim) =>
-        !references.some(
-          (reference) =>
-            reference.claim_kind === claim.claim_kind &&
-            reference.source_type === claim.source_type &&
-            reference.source_id === claim.source_id &&
-            reference.source_version === claim.source_version,
-        ),
-    )
-  )
+  if (countUnmatchedCitations(decision.factual_claims, context.facts) > 0)
     return aiFallback("stale_context");
   const extracted = decision.extracted_facts;
   if (

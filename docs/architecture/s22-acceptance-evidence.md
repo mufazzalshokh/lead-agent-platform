@@ -2067,3 +2067,83 @@ classification, redaction, exact recovery scope and module resolution. Scoped
 ESLint, Prettier and diff checks pass. No broad CI or runtime deployment is needed.
 Recover only the saved output from `kn9mf`; do not rerun the diagnostic, resend the
 DM or spend another paid slot. Historical NULL costs and S22 pending status remain.
+
+### Final paid turn recovered; citation identity regression — 2026-10-07
+
+Owner-supplied output from the existing `lead-agent-staging-migrator-kn9mf` read
+closes the collection gap, not the booking journey. Discovery failed because no
+inbound was persisted in its fixed **17:58–18:15 UTC** window. The same read found
+the latest synthetic inbound `01a112ac-2131-7760-a642-53cff85fa955` at
+**2026-10-06T19:23:52.883Z**, and outbound
+`01a112ac-3a40-7646-bb0c-7fe07adfc2bf` at **19:23:59.374Z**, delivery **sent**.
+The reported 23:00 and persisted receipt time are not interchangeable; the earlier
+HTTP 200 is not proof of this exact DM. No further diagnostic/replay was executed.
+
+The owner then supplied the exact Worker outcome at **19:23:59.451707Z**:
+AI run `01a112ac-27b2-7589-b4b2-644ad9599946`, correlation
+`01a112ac-2131-74b5-9f58-9a6b8d9de6fd`; provider **completed**, schema **valid**,
+proposed action **none**, extraction rejection fields **empty**, policy rejection
+**untrusted_citation**, final fallback **policy_denied / handoff_requested**,
+reply disposition **queued**. The earliest proven failing stage is citation policy,
+not provider dispatch, missing price/duration, Instagram transport or queue timeout.
+The persisted outbound is the fallback, not a successful grounded booking answer.
+Current state is **awaiting_staff / paused**, conversation version **21**, active
+handoff, **zero AppointmentRequests**. No current handoff ID is inferred from a
+thread-control ID or an old resolved resource.
+
+The current ledger reports **3 logical messages / 3 physical calls**, known new
+cost **6,207 micros (USD0.006207)**, unresolved reserve **0**, historical budget
+reserve **1,033,396 micros**, combined exposure **1,039,603 micros (USD1.039603)**.
+Historical NULL costs and `accountingComplete=false` remain visible. This
+supersedes the historical two-message checkpoint. `blocked=false` does not
+authorize a fourth distinct paid message: the dispatch gate separately enforces
+the approved three-message limit. Paid testing is paused; no allowance is reset.
+
+Source review confirms the deployed S15/S16 citation gate compared
+`JSON.stringify(fact.reference)` with `JSON.stringify(claim)`. Approved fact/input
+order is `claim_kind, source_type, source_id, source_version`; the canonical
+response schema orders `source_id` before `source_type`. Gemini's adapter uses
+`JSON.parse` and contract validation is a non-transforming type guard, so identical
+authorized references with a different property order are reachable and wrongly
+rejected. The exact historical rejected citation/property order was not retained
+in the safe outcome log. This is a **proven local production defect consistent
+with the live rejection**, not proof that the historical model cited no wrong fact.
+No raw provider-output capture, secret access or another paid call is justified.
+
+The focused correction shares the existing four-field semantic identity rule
+between generic and sales policy. Every claim must still match **claim kind,
+source type, source ID and source version** in the supplied tenant-authorized
+snapshot. Foreign/missing/stale references remain rejected; no model text/action,
+publication selector, social-thread eligibility, RLS or booking-confirmation rule
+is relaxed. Internal telemetry adds only bounded supplied/proposed/unmatched
+citation counts against the inference snapshot, never reference values, messages
+or provider payloads. This does not reconcile historical NULL costs.
+
+Before the correction, **23/24** property-order permutations and **both connected
+booking rehearsals failed**. After it, **299/299 focused tests PASS** across sales,
+the real Gemini adapter with mocked HTTP, booking domain workflow, telemetry,
+generic policy, grounding, readiness, submission and orchestration. Tests preserve
+changed-ID/version/type/kind denial and unknown-reference/empty-snapshot failure;
+they prove a policy denial does not consume a repair and diagnostics project only
+bounded numbers. Mocked persistence/HTTP and domain confirmation are **not live
+PostgreSQL, provider quality, offer delivery or customer confirmation evidence**.
+Verification commands/results for this scoped correction:
+
+- `node node_modules/vitest/vitest.mjs run tests/ai/sales-flow.test.ts tests/ai/s22-booking-chain.test.ts tests/ai/policy-fallback-telemetry.test.ts tests/ai/context-policy.test.ts tests/ai/grounded-answers.test.ts tests/ai/s22-business-readiness.test.ts tests/ai/appointment-submission.test.ts tests/ai/orchestration.test.ts` — **299 PASS**.
+- `node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit` — **PASS**.
+- Application build from `packages/application`:
+  `node ../../node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit false --declaration true --declarationMap true --outDir dist --rootDir src` — **PASS**.
+- `node node_modules/typescript/bin/tsc -p apps/worker/tsconfig.build.json` — **PASS**.
+- Scoped ESLint for the eight changed TypeScript files, zero warnings — **PASS**.
+- `node scripts/check-boundaries.mjs` — **PASS**, 313 source files.
+- Scoped Prettier and `git diff --check` for the ten correction files — **PASS**.
+  Whole-worktree diff checking also reports pre-existing trailing whitespace in
+  the unrelated owner-edited `s11-instagram-business.md`; it is preserved/excluded.
+
+No old image, saved plan or approval hash may be reused for this new source.
+
+This correction and the already-committed cancellation-listener correction remain
+**undeployed** at this checkpoint. No paid test, event replay, OAuth, migration,
+IAM change or broad CI occurred. S22 remains unaccepted. A fresh immutable build
+and reviewed runtime-only saved plan precede any exact-plan apply approval; a new
+paid journey allowance would require a separate explicit owner decision.
