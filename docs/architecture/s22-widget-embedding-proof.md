@@ -1,10 +1,11 @@
 # S22 synthetic Website Chat embedding proof
 
-Status: non-paid test host and initial owner setup observed; frame bootstrap
-failed live. The proxy-origin correction is now deployed in owner-approved apply
-**37672530149**, with read-only verification **37672800406** and whole-runtime
-convergence exit **0**. Real embedding/session proof remains pending. This does
-not authorize a Widget message, provider call or S22 acceptance.
+Status: owner-reported genuine frame open/close/reopen after approved proxy-origin
+apply **37672530149**, read-only verification **37672800406**, whole-runtime
+convergence exit **0**. The separate launcher lifecycle correction is locally
+verified and fresh plan **37681742450** reviewed, **not applied**. Remaining live
+label/session-security proof is pending. No Widget message, provider call or S22
+acceptance is authorized.
 
 Latest owner-supplied browser evidence: the genuine cross-origin frame opens,
 closes and reopens without a message. The closed launcher incorrectly retains
@@ -253,6 +254,19 @@ cleanup, manual retry and close-before-READY. Existing product UX **16/16** and
 frame route **26/26** checks pass unchanged. Visible HTML is not substituted for
 the authenticated-by-origin/source/instance readiness handshake.
 
+Final combined run on the committed runtime source:
+`node node_modules/vitest/vitest.mjs run apps/web/src/lib/widget-embed.test.ts apps/web/src/lib/product-ux.test.ts apps/web/src/lib/widget-frame.test.ts`:
+**59/59 PASS**, three files, no paid/network/database dispatch.
+
+The additional isolated native Edge attempt validated real browser `READY`,
+exact iframe sandbox, cross-origin host-DOM denial and form cleanup with synthetic
+HTTPS responses, then stopped at a harness assumption that the iframe must have
+a separate DevTools target. A bounded tooling-only fallback timed out waiting for
+READY before close/reopen assertions. Neither attempt establishes a completed
+native before/after case or live Cloud Run session proof. Both fresh temporary
+profiles were removed and their absence verified; no owner profile, live API,
+message/provider route or credential was used. No further identical retry.
+
 ### Evidence boundaries
 
 Owner-observed open/close/reopen is recorded and the launcher correction is locally
@@ -261,3 +275,86 @@ before staging apply. Corrected live-label behavior, redemption/session metadata
 blocked-third-party-cookie operation and disallowed-origin denial remain pending.
 No message, model call, configuration replacement, migration or IAM change is
 authorized by this non-paid check. S22 remains unaccepted.
+
+## Launcher correction — exact saved-plan approval packet
+
+Status: **local correction verified; one fresh plan reviewed; NOT applied**.
+The owner approval for the preceding origin rollout does not authorize this plan.
+
+- Runtime source: `6a31cd8e3a37f31a7bb85329eab0aa9c4de53926`.
+- Branch: `verify/s22-staging-recovery-capacity`.
+- Focused source/test/evidence commit: `6a31cd8`, pushed and remote verified.
+- Immutable build: [37680689682](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37680689682), PASS;
+  checked-out source and all four manifest images match that exact commit,
+  architecture `linux/amd64`. No duplicate build.
+- Plan: [37681742450](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37681742450), PASS;
+  exactly one `plan/full` dispatch, never apply.
+- Preserved UTC deployment timestamp: `2026-10-07T20:22:40Z`.
+- Unchanged authoritative migration head:
+  `0031_s22_widget_inbound_route_management` (32 migrations; no migration rerun).
+- Independently calculated saved-plan SHA256 matches its downloaded sidecar:
+  `a228a8c3ce86c59c886e9c6884226d7969a8c51e03200b5c5c294d0abd9da485`.
+
+Immutable manifest references:
+
+| Workload | Exact image reference |
+| --- | --- |
+| API | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:fc59c182cc701e3e85d2ec2ee4efb42559f11ba30d07a6120bb166a7b0ada6ff` |
+| Web | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:4e5f2c4bebfae5a994c07699ccc9b0bb0509d032a1dbb88cafabf5f697089e57` |
+| Worker | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:23308eb3c06874b1c582d56f6a4fdfbe5124e795e77fa0f8d2371505c36f0dcf` |
+| Migrator | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:d60994941524aa00ecdd6859c3361f99e213cd0d113ea1753efd03c6caa0fa6f` |
+
+Sanitized actions: **0 creates / 4 in-place updates / 0 destroys / 0 replacements**:
+
+- `update:google_cloud_run_v2_service.api[0]`
+- `update:google_cloud_run_v2_service.web[0]`
+- `update:google_cloud_run_v2_worker_pool.worker[0]`
+- `update:google_cloud_run_v2_job.migrator[0]`
+
+Independent locked-provider field review (Terraform **1.14.7**, Google **7.46.1**)
+passed. Only images, exact git labels and deployment provenance change. All **84**
+unchanged managed resources were checked too; no configuration unknowns or other
+computed-unknown differences remain. All predecessors match the verified prior
+runtime `65b6c906f3a3433a1093abcf1aada4b0f2f00423` /
+`2026-10-07T18:45:42Z` / unchanged migration head. Canonical Web
+`WIDGET_PLATFORM_ORIGIN`, private networking/egress, identities, secret references,
+commands, SQL, IAM, scaling, model/cohort/budget controls are unchanged.
+The temporary readonly reviewer passed **32/32** controlled cases, checking
+configuration differences and configuration-unknown masks explicitly.
+No secret-bearing Terraform JSON or environment values were
+printed or committed.
+
+Workflow full-runtime safety passed; apply and one-shot migrator steps are
+**SKIPPED**, migration execution disabled. No later apply appeared in authenticated
+workflow records at packet review. No separate fresh Cloud Shell state-serial
+comparison is claimed: Terraform must still reject this exact saved plan if state
+has changed by apply time. Such rejection requires stopping, not replacing the
+plan under this approval.
+
+Prepared exact subsequent apply inputs, deliberately **without** an approval token:
+
+```json
+{
+  "action": "apply",
+  "phase": "full",
+  "commit_sha": "6a31cd8e3a37f31a7bb85329eab0aa9c4de53926",
+  "deployment_timestamp": "2026-10-07T20:22:40Z",
+  "api_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:fc59c182cc701e3e85d2ec2ee4efb42559f11ba30d07a6120bb166a7b0ada6ff",
+  "web_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:4e5f2c4bebfae5a994c07699ccc9b0bb0509d032a1dbb88cafabf5f697089e57",
+  "worker_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:23308eb3c06874b1c582d56f6a4fdfbe5124e795e77fa0f8d2371505c36f0dcf",
+  "migrator_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:d60994941524aa00ecdd6859c3361f99e213cd0d113ea1753efd03c6caa0fa6f",
+  "ai_journey_mode": "preserve",
+  "api_migration_head": "0031_s22_widget_inbound_route_management",
+  "runtime_migration_head": "0031_s22_widget_inbound_route_management",
+  "plan_run_id": "37681742450",
+  "approved_plan_sha256": "a228a8c3ce86c59c886e9c6884226d7969a8c51e03200b5c5c294d0abd9da485"
+}
+```
+
+Only after owner approval of this exact run/hash may the existing workflow receive
+`owner_approval_token=S22-APPLY-APPROVED`. No rebuild or replan is needed for later
+documentation-only evidence. After apply, use the existing read-only API-image
+verification with these fresh references/provenance to check API/Web readiness
+and whole-runtime convergence, then verify the real host label with no Send.
+Local tests/plan review do not establish corrected live behavior or S22 acceptance.
+Historical NULL costs remain preserved and the exhausted cohort blocks paid calls.

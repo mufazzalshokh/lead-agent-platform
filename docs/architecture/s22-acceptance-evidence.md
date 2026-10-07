@@ -3232,8 +3232,40 @@ Focused local evidence:
   unrelated README/Instagram edits and the untracked notices patch are preserved;
   their formatting is not changed or represented as passing this scoped check.
 
+Final combined focused test command on committed runtime source:
+`node node_modules/vitest/vitest.mjs run apps/web/src/lib/widget-embed.test.ts apps/web/src/lib/product-ux.test.ts apps/web/src/lib/widget-frame.test.ts`:
+**59/59 PASS**, three files. This is local controlled proof, not live staging.
+
+An additional isolated native Edge check with synthetic responses reached real
+READY/sandbox/cross-origin DOM/form-cleanup assertions, but stopped at a DevTools
+frame-process assumption. A bounded harness fallback timed out before close/reopen.
+No completed native before/after verdict or live session proof is claimed. Both
+fresh profiles were removed; no live API, message/model dispatch or owner profile.
+The deterministic generated-runtime tests above are the completed local proof.
+
 Fresh images and one reviewed full-runtime saved plan are required before apply;
 the previous owner approval does not cover this new correction. Further paid
 dispatch remains blocked; historical NULL costs and the approved reserve remain
 untouched. Live corrected-label/session-security assertions remain pending;
 S22 remains unaccepted. See [Widget proof](s22-widget-embedding-proof.md).
+
+Immutable build **37680689682** and the single fresh full-runtime plan
+**37681742450** now PASS for source
+`6a31cd8e3a37f31a7bb85329eab0aa9c4de53926`, timestamp
+`2026-10-07T20:22:40Z`, unchanged head
+`0031_s22_widget_inbound_route_management`. Independently verified saved-plan
+SHA256: `a228a8c3ce86c59c886e9c6884226d7969a8c51e03200b5c5c294d0abd9da485`.
+Only **0 creates / 4 in-place updates / 0 destroys / 0 replacements**, images/
+git labels/deployment provenance. Locked-provider field review checks all 84
+unchanged managed resources, with zero configuration or computed-unknown
+differences; canonical Widget origin, secrets, network, IAM, SQL, scaling,
+commands, migration head and model/budget controls remain unchanged. All four
+predecessors match the already-verified `65b6c9` runtime/time/head. Reviewer
+controls **32/32 PASS**; workflow safety PASS, apply/migrator steps SKIPPED.
+No later apply appears in workflow records at review; a new independent remote
+state-serial read is not claimed. Built-in saved-plan stale-state rejection remains
+required. Full immutable references and prepared token-free apply inputs are in
+the [exact approval packet](s22-widget-embedding-proof.md#launcher-correction--exact-saved-plan-approval-packet).
+**STOP before apply**: preceding approval does not cover this plan. Later evidence
+documentation must not trigger duplicate runtime builds/plans. No new paid-call
+authorization; S22 remains unaccepted.
