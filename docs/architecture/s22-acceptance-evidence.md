@@ -16,14 +16,13 @@ other channel, recovery/capacity or release gates. Historical NULL costs remain
 unknown under the approved budget-only exception; further paid dispatch is
 blocked. Do not repeat this journey or its completed diagnostic reads.
 
-The next prepared milestone is non-paid Website Chat embedding/session proof.
-The owner's live card screenshot now proves Website Chat is **Not connected**;
-the input is empty with an example-origin placeholder. A real controlled HTTPS
-embed origin has not yet been configured. The verified local
-[Cloud Shell synthetic host preparation](s22-widget-embedding-proof.md) supplies
-the shortest non-paid next step without a domain or infrastructure deployment.
-Do not replace unrelated setup or send a Widget message under the exhausted
-Instagram allowance.
+The current milestone is non-paid Website Chat embedding/session proof. Initial
+owner setup on the controlled distinct-origin Cloud Shell host now succeeded,
+but the real frame returned 400 after a successful policy lookup. The bounded
+[proxy-origin investigation and correction](s22-widget-embedding-proof.md#2026-10-07--live-frame-rejection-and-bounded-correction)
+has an actual installed-framework before/after reproduction; fresh exact-plan
+rollout and live session proof remain pending. Do not replace unrelated setup or
+send a Widget message under the exhausted Instagram allowance.
 
 ## Preserved evidence
 
@@ -3034,3 +3033,79 @@ Shell and open Web Preview on port 8080. No upload, provider call, model change,
 migration, IAM change, image build or staging deployment is needed. Approved
 origin/session/blocked-cookie/disallowed-origin live assertions remain pending;
 Widget paid customer/booking proof requires separate bounded authorization.
+
+## 2026-10-07 — Website Chat frame bootstrap failure and correction
+
+Owner-supplied browser evidence now supersedes the earlier unconfigured snapshot:
+the controlled HTTPS preview opened, initial owner/tenant/CSRF Website Chat setup
+succeeded and reported Active for the exact distinct preview origin. The normal
+public loader installed, but the real iframe displayed its generic unavailable
+response. No Widget message or provider call was sent.
+
+One bounded owner-supplied Cloud Logging read (`LOG_READ_EXIT=0`) reports the
+canonical Web gateway `/v1/widget/embed-policy` **200** at
+`2026-10-07T17:41:07.108243Z` (0.017547776s), and `/widget/frame` **400** at
+`2026-10-07T17:41:06.872729Z` (0.256173704s). This proves policy success followed
+by frame rejection, not redemption or a working customer session. The
+[bounded investigation](s22-widget-embedding-proof.md#2026-10-07--live-frame-rejection-and-bounded-correction)
+records observations, mechanism, rejected earlier-boundary explanations and
+remaining unknowns.
+
+The installed Next standalone adapter reproduces an internal request origin
+`https://0.0.0.0:8080` behind the public TLS endpoint. The original frame compared
+the valid signed policy's public iframe origin with that internal address and
+returned 400. The correction instead requires independent trusted configured Web
+`WIDGET_PLATFORM_ORIGIN` and exact policy matching. Terraform adds only that Web
+environment entry from the existing canonical public Web origin. No arbitrary
+Host/forwarded-header trust, CSP relaxation or new public boundary is introduced.
+
+Related setup UX recovery is corrected: actual authorized-request 401 and missing
+CSRF initiation branches show the existing organization-bound reauthentication
+flow rather than leaving cached ready controls unusable. A 403 stays a permission
+denial, no command is retried, and late initialization/analytics cannot restore
+ready state. Auth0/MFA/membership/backend session policy is unchanged. Specific
+backend cookie-rotation causation remains unproven and is not patched.
+
+Focused verification:
+
+- `node node_modules/vitest/vitest.mjs run apps/web/src/lib/widget-frame.test.ts`:
+  **26/26 PASS**. Actual installed-framework route reproduction was **FAIL** before
+  correction (expected 200, observed 400) and **PASS** after it (200). Covers
+  signed-policy origin matching, spoofed/foreign origins, malformed inputs/config,
+  upstream status/body/fetch errors, fetch/body timeouts, no retries/redemption,
+  nonce CSP and finite sanitized correlated telemetry.
+- Final `node node_modules/vitest/vitest.mjs run apps/web/src/lib/staff-request.test.ts apps/web/src/lib/staff-workflow.test.ts`:
+  **34/34 PASS** (15 request/recovery tests and 19 existing workflow tests).
+  The unchanged `product-ux.test.ts`'s **16/16 PASS** from the earlier scoped run is
+  reused: **50 distinct staff tests PASS**. Organization/CSRF/options/cancellation
+  and no automatic retries preserved. The authentication latch is an explicit
+  per-workspace controller; no React ref is accessed by a render-time factory.
+- Native headless Edge against the local production Web build with synthetic
+  authorized API responses: **three real-DOM cases PASS** — ready-to-401 recovery,
+  missing-CSRF setup recovery with no POST, and 403 retaining the workspace. All
+  cases made zero mutations and zero nonlocal requests; no login/provider flow was
+  performed. The initial sandbox could not expose its debugging endpoint; the
+  bounded isolated-profile check succeeded outside the sandbox. Browser-profile
+  cleanup initially hit EPERM, then validated cleanup of only the fresh temporary
+  profile succeeded and verified its absence. This is not live Cloud Run proof.
+  The exact final controller bundle passed all three cases after a bounded
+  localhost warm read (HTTP 200, 0.502839s) and a 30s local CDP deadline. Its
+  first cold navigation had hit the harness's 10s deadline before assertions;
+  only that tooling deadline changed, not application/production safeguards.
+- Web `node node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit`:
+  PASS; production `node node_modules/next/dist/bin/next build` from `apps/web`:
+  PASS. The final rebuild followed the request/controller integration correction.
+- Scoped ESLint with `--max-warnings=0` for both new helpers/tests, the frame route
+  and workspace component: PASS. No lint rule/compiler error suppression. Scoped
+  Prettier/diff checks and `terraform fmt -check infra/deploy/gcp/staging/runtime.tf`:
+  PASS. Unrelated README/Instagram edits and the untracked notices patch remain
+  outside this milestone.
+
+New policy request failures carry finite safe stage/status/request-ID metadata;
+no grant, key, secret, origin, provider payload or message body enters telemetry.
+No migration, IAM, SQL, scaling, provider setup, fixture rotation or paid-budget
+change is part of this milestone. Historical NULL costs remain untouched and the
+exhausted cohort still blocks paid dispatch. A fresh immutable build and exact
+reviewed saved plan must precede apply. Live frame/session open/close/reopen,
+blocked-third-party-cookie behavior and disallowed-origin denial remain pending;
+S22 remains unaccepted.

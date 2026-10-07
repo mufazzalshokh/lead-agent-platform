@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/staff-request";
 import {
   buildStaffSignInPath,
   formatStaffDateTime,
@@ -145,6 +146,7 @@ export function StaffWorkspace({
         : "checking",
   );
   const [workspaceError, setError] = useState<string | null>(null);
+  const [authRecovery, setAuthRecovery] = useState(initialAuthRecovery);
   const conversationRegion = useRef<HTMLElement>(null);
   const [analytics, setAnalytics] = useState<AnalyticsView | null>(null);
   const [membershipRole, setMembershipRole] = useState<StaffMembershipRole | null>(null);
@@ -174,6 +176,15 @@ export function StaffWorkspace({
   >("loading");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
+  const [authentication] = useState(() =>
+    createStaffAuthenticationGuard(() => {
+      setAuthRecovery("reauthenticate");
+      setAuthState("signed-out");
+      setMembershipRole(null);
+      setAnalytics(null);
+    }),
+  );
+  const requireAuthentication = authentication.requireAuthentication;
 
   const headers = useMemo(
     () =>
@@ -183,14 +194,14 @@ export function StaffWorkspace({
     [organizationId],
   );
 
-  const request = useCallback(
-    async (path: string, init: RequestInit = {}): Promise<Response> =>
-      await fetch(apiOrigin + path, {
-        ...init,
-        credentials: "include",
-        headers: { ...headers, ...init.headers },
+  const request = useMemo(
+    () =>
+      createStaffRequest({
+        apiOrigin,
+        organizationHeaders: headers,
+        onAuthenticationRequired: requireAuthentication,
       }),
-    [apiOrigin, headers],
+    [apiOrigin, headers, requireAuthentication],
   );
 
   const workflow = useMemo(
@@ -249,8 +260,9 @@ export function StaffWorkspace({
     const response = await request(`/v1/staff/analytics?${query.toString()}`);
     if (response.status === 403) return;
     if (!response.ok) throw new Error("analytics_unavailable");
-    setAnalytics(parseAnalytics(await responseData(response)));
-  }, [request]);
+    const value = parseAnalytics(await responseData(response));
+    if (!authentication.isRequired()) setAnalytics(value);
+  }, [authentication, request]);
 
   const loadTelegramStatus = useCallback(async () => {
     setTelegramStatusState("loading");
@@ -316,7 +328,7 @@ export function StaffWorkspace({
             return;
           }
           const role = me.ok ? readStaffMembershipRole(await responseData(me)) : null;
-          if (cancelled) return;
+          if (cancelled || authentication.isRequired()) return;
           if (role === null) {
             setAuthState("denied");
             return;
@@ -329,7 +341,7 @@ export function StaffWorkspace({
           });
           await workflow.loadList();
         } catch {
-          if (!cancelled) {
+          if (!cancelled && !authentication.isRequired()) {
             setAuthState("ready");
             setError("Workspace could not be loaded. Please refresh this page.");
           }
@@ -342,6 +354,7 @@ export function StaffWorkspace({
       workflow.invalidatePending();
     };
   }, [
+    authentication,
     initialAuthRecovery,
     loadAnalytics,
     loadIntegrationStatuses,
@@ -361,7 +374,7 @@ export function StaffWorkspace({
     async (provider: "instagram" | "telegram") => {
       const csrf = readCsrfCookie(document.cookie);
       if (csrf === null) {
-        setIntegrationNotice("Refresh your secure session before connecting an integration.");
+        requireAuthentication();
         return;
       }
       setIntegrationWorking(provider);
@@ -396,13 +409,13 @@ export function StaffWorkspace({
         setIntegrationWorking(null);
       }
     },
-    [request],
+    [request, requireAuthentication],
   );
 
   const configureWidget = useCallback(async () => {
     const csrf = readCsrfCookie(document.cookie);
     if (csrf === null) {
-      setIntegrationNotice("Refresh your secure session before setting up Website Chat.");
+      requireAuthentication();
       return;
     }
     setIntegrationWorking("widget");
@@ -435,7 +448,7 @@ export function StaffWorkspace({
     } finally {
       setIntegrationWorking(null);
     }
-  }, [request, websiteOrigin]);
+  }, [request, requireAuthentication, websiteOrigin]);
 
   const copyWidgetSnippet = useCallback(async () => {
     if (widgetConfiguration === null) return;
@@ -460,13 +473,13 @@ export function StaffWorkspace({
           <p className="eyebrow">Lead Agent</p>
           <h1>Your customer work, in one place.</h1>
           <p>
-            {initialAuthRecovery === "reauthenticate"
+            {authRecovery === "reauthenticate"
               ? "Your previous session ended. Sign in again to continue."
               : "Sign in to manage conversations, handoffs, and appointment requests."}
           </p>
           <a
             className="primary-button"
-            href={`${apiOrigin}${buildStaffSignInPath(organizationId, initialAuthRecovery)}`}
+            href={`${apiOrigin}${buildStaffSignInPath(organizationId, authRecovery)}`}
           >
             Sign in securely
           </a>

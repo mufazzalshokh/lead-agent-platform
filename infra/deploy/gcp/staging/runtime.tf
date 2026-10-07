@@ -277,6 +277,7 @@ resource "google_cloud_run_v2_service" "web" {
         for_each = var.bootstrap_runtime ? {} : merge(local.provenance_env, {
           API_INTERNAL_ORIGIN      = var.api_public_origin
           NEXT_PUBLIC_API_ORIGIN   = var.web_public_origin
+          WIDGET_PLATFORM_ORIGIN   = var.web_public_origin
           WIDGET_PUBLIC_API_ORIGIN = var.web_public_origin
         })
         content {
