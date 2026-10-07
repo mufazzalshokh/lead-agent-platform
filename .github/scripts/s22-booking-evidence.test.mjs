@@ -83,28 +83,28 @@ test("matches only reviewed worker/source/cohort gate and immutable diagnostic",
   assert.equal(verifyWorker(worker()).mode, "booking");
   assert.equal(verifyJob(job()).explicit_zero_retries, true);
 });
-test("reviewed evidence pins match the exact approved extraction rollout", () => {
-  assert.equal(reviewed.source, "3f6dee297bbae03be46ec2a418c6adec329a698f");
-  assert.equal(reviewed.timestamp, "2026-10-06T14:07:45Z");
+test("reviewed evidence pins match the exact approved continuation rollout", () => {
+  assert.equal(reviewed.source, "191a9cdbb4187ad0006a5dbab04882b4f44d0e64");
+  assert.equal(reviewed.timestamp, "2026-10-07T06:50:40Z");
   assert.equal(reviewed.head, "0031_s22_widget_inbound_route_management");
   assert.equal(
     reviewed.worker,
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:53e36057fb1655d7efcad189d2f535cfc77b82a740603bfc0116809a10967c97",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:f654f252f802488f5ef08d3a9a8a99dbe4ccc09ca01b59c1adff88b71c124506",
   );
   assert.equal(
     reviewed.migrator,
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:bdc0e4ba13051e57c29ef978e0326aa49309888cfa963ea5311a563d2e10625d",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:e66cba1a63b620863e30eeea210ff4169daef559dfc4c2b9eae4daba32bafb16",
   );
 });
 
 test("previous deployment images remain rejected after updating the reviewed pins", () => {
   const previousWorker = worker();
   previousWorker.template.containers[0].image =
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:9013c4f4303255678151bd5ab6907da3877bc7e76fe80c81ad554b50b4845beb";
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:53e36057fb1655d7efcad189d2f535cfc77b82a740603bfc0116809a10967c97";
   assert.throws(() => verifyWorker(previousWorker), { code: "WORKER_IMAGE_MISMATCH" });
   const previousJob = job();
   previousJob.spec.template.spec.template.spec.containers[0].image =
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:fc9d7e383d7ae569546a383266919ee49a65c41e2a09078e4cad9f86cd68fe0c";
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:bdc0e4ba13051e57c29ef978e0326aa49309888cfa963ea5311a563d2e10625d";
   assert.throws(() => verifyJob(previousJob), { code: "DIAGNOSTIC_IMAGE_ENTRYPOINT_MISMATCH" });
 });
 
@@ -139,7 +139,12 @@ test("wrong secret, identity or network fails closed", () => {
 });
 test("stale source, paused gate or duplicate settings cannot pass", () => {
   for (const [name, value, code] of [
-    ["DEPLOYMENT_GIT_SHA", "other", "WORKER_PROVENANCE_MISMATCH"],
+    [
+      "DEPLOYMENT_GIT_SHA",
+      "3f6dee297bbae03be46ec2a418c6adec329a698f",
+      "WORKER_PROVENANCE_MISMATCH",
+    ],
+    ["DEPLOYMENT_TIMESTAMP", "2026-10-06T14:07:45Z", "WORKER_PROVENANCE_MISMATCH"],
     ["AI_JOURNEY_MODE", "paused", "WORKER_GATE_MISMATCH"],
   ]) {
     const metadata = worker();

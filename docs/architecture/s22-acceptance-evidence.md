@@ -2432,3 +2432,31 @@ synthetic handoff/request/ledger readiness before instructing another customer
 DM. Paid execution remains paused at this checkpoint. Staff acceptance alone is
 not confirmation; actual delivered-offer customer confirmation is still required.
 **S22 remains unaccepted; no S23 work.**
+
+### Post-Resolve readiness reader repinned — 2026-10-07
+
+The owner reports Claim followed by Resolve on the original synthetic test chat.
+This is owner-reported UI evidence, not a new persisted state/version/audit
+assertion. The different friend's unanswered DM is outside the fixed paid cohort;
+its actual ingress/eligibility disposition is not inferred from this chat's Inbox.
+Neither a new paid call nor a broader social-thread approval is authorized here.
+
+The existing diagnostic launcher still pinned the extraction rollout. Its exact
+source/timestamp and Worker/Migrator image expectations now match the already
+approved apply **37593007330** and verification **37596517708**, using the existing
+build **37583383103** manifest. Only diagnostic pins and regression expectations
+change; all runtime code, image builds, Terraform, secrets and database state are
+unchanged. The exact-pin test matches the continuation rollout and rejects the
+prior images, source and timestamp; no identity, VPC, retry, tenant/RLS,
+read-only transaction, timeout, rollback or output-redaction safeguard is relaxed.
+
+Local verification: `node --test .github/scripts/s22-booking-evidence.test.mjs
+.github/scripts/s22-booking-first-turn.test.mjs` **21/21 PASS**, including real
+Node subprocess module/package resolution with controlled fixtures and no live
+DB/provider access. Scoped ESLint with zero warnings, Prettier and scoped
+`git diff --check` **PASS**. No TypeScript/runtime change requires another build
+or aggregate. One existing **observe** workflow follows publication of this
+tooling commit; it is not another first-turn test or deployment. Collection PASS
+alone will not be called readiness: independently check current open/AI/no-handoff
+state, appointment requests and the settled remaining message/call allowance.
+Paid execution remains paused pending that result and applicable authorization.
