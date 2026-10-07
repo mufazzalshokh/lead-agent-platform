@@ -1120,3 +1120,49 @@ assertions with rollback/cleanup. V2's pinned download/run needs no uploads and
 does not repeat the seven booking checks. An audited `policy_denied` non-dispatch
 will not be mislabeled uniquely as budget rejection; the code has more than one
 pre-dispatch denial path. Exact live terminal-audit proof remains pending.
+
+## 2026-10-07 — original Instagram journey and accounting evidence closed
+
+Owner-supplied execution `lead-agent-staging-migrator-f5cpf` completed the
+checksum-pinned V2 **accounting-only** diagnostic at tooling commit
+`e67fc237dafb82c92e1a08761a7806238640b7c0`. Download/preflight, result collection,
+runtime/RLS baseline, deployed cohort binding, provider-run classification and
+cohort reservation accounting were **PASS**. This supersedes only the pending
+dispatch/accounting evidence above; it does not erase `8qlzd`'s original overall
+BLOCKED result or repeat its seven passed booking assertions.
+
+One continuation provider call had recorded cost **USD0.002507**. The other
+orchestration row was an explicitly audited stop **before dispatch**, reason
+`policy_denied`, not an extra provider invocation. Neither row was bound to the
+actual customer confirmation source. The exact pre-dispatch policy branch is
+not uniquely established by that reason code. Its original NULL provider/usage/
+cost values remain NULL; no fabricated zero-cost reconciliation is required.
+
+Ledger reconciliation: **4 logical messages / 4 physical attempts**; known
+recorded AI cost **USD0.008714**; historical budget-only reservation
+**USD1.033396**; combined exposure **USD1.042110**; pending reserve
+**USD0.000000**. Further paid dispatch is **BLOCKED (`message_limit`)**.
+Historical NULL costs and the exact-accounting gap remain visible; the approved
+reservation exception is not recovered provider billing or new spend approval.
+
+The original eligible Instagram happy path therefore has scoped live evidence:
+grounded synthetic **100,000 UZS / 30-minute** consultation reply, requested
+appointment, staff acceptance, delivered current offer, real customer
+confirmation, persisted **confirmed/4 / offer1**, transitions/audits/lead
+conversion and delivered acknowledgment. The booking is **8 October 2026,
+17:00–17:30 Asia/Tashkent**. Owner-reported customer receipt and `8qlzd`'s
+persisted checks remain distinct evidence sources. No further friend message,
+Claim/Resolve, booking acceptance, paid call or diagnostic is needed for this
+completed milestone. No message, model call, migration or configuration change
+was performed by `f5cpf`.
+
+**S22 remains unaccepted.** Next is non-paid Website Chat embedding/session
+proof, not another Instagram journey. Existing supported owner path is the
+organization-bound workspace → **Integrations → Website Chat**. First collect
+the current card status and configured business website origin; the real
+controlled external HTTPS test host is not yet recorded. Do not treat the
+`https://clinic.example` placeholder as a live host, click **Replace setup**,
+expose installation/session credentials or use **Send**. The exhausted
+Instagram allowance does not authorize Widget provider calls. Existing
+management/security regressions are retained; no unchanged test suite, runtime
+rollout, migration or OAuth repetition is justified by this evidence update.

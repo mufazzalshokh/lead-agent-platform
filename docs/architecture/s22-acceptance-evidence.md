@@ -3,6 +3,24 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## Current checkpoint — 2026-10-07
+
+The original eligible Instagram synthetic journey has scoped live proof of
+grounded price/duration, staff acceptance, actual customer confirmation and the
+persisted confirmed booking. Owner-supplied execution
+`lead-agent-staging-migrator-8qlzd` passed the seven booking assertions; the
+subsequent dispatch/accounting-only execution
+`lead-agent-staging-migrator-f5cpf` passed all four of its assertions and closed
+the missing non-dispatch audit classification. Neither result establishes the
+other channel, recovery/capacity or release gates. Historical NULL costs remain
+unknown under the approved budget-only exception; further paid dispatch is
+blocked. Do not repeat this journey or its completed diagnostic reads.
+
+The next prepared milestone is non-paid Website Chat embedding/session proof.
+The live Website Chat status and a real controlled HTTPS embed origin have not
+yet been collected. Inspect the existing authenticated card first; do not
+replace setup or send a Widget message under the exhausted Instagram allowance.
+
 ## Preserved evidence
 
 - Staff owner sign-in works in normal Chrome (owner confirmed). Do not reopen Auth0/MFA.
@@ -890,9 +908,9 @@ and overlapping rows share one set of observations/tests rather than add up.
 
 | Class / milestone | Exact criterion / repository reference | Requirement / gate | Existing proof | Exact remaining work | Dependency | Active effort | Owner / external action |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| S22 blocker · M1 | 26 small paid cohort; [26 paid/load/recovery gates](26-s22-staging-recovery-capacity.md#recovery-and-capacity-gates); [24 NULL-cost policy](24-s20-analytics-observability-cost.md#cost-policy) | Historical accounting and small paid cohort; NFR-017 | Two exact live rows; current forward parser deployed; 521-split bound PASS; new durable guard's three PostgreSQL cases PASS | Approve/reject the narrow reserve exception or obtain actual historical provider evidence; review/apply the new guard's exact deployment plan; retain NULL/coverage FAIL | Before paid journey | 0.5–1 h decision/evidence; control work in row below | One explicit historical-exception/allowance decision and exact-plan approval; billing/logs only if genuinely available |
-| S22 blocker · M1 | FR-004–010/012–017/021; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Grounded customer-to-confirmed booking; FR-004–010, 012–017, 021 | Five version-1 synthetic publications; duration/price retrieval PASS; approved Gemini profile; Instagram connected | Actual price reply, qualification, one requested appointment, staff acceptance, delivered current offer, explicit customer reply and persisted confirmed evidence; fresh versions after commands | Accounting/controls, existing eligible thread | 1–3 h | Friend's natural question and chosen future date/time; owner acceptance; friend's actual confirmation |
-| Retained PASS · M1 request review only | FR-018/020; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Staff review/handoff/history; FR-018, 020 | Normal Chrome owner access; Claim 1→3/Resolve 4; conversation 10→11→12; six messages preserved; nine persisted assertions PASS | Preserve scoped PASS; exercise request review/acceptance in booking row and collect only its new evidence; no repeat Claim/Resolve | Booking | Shared with journey | Owner reviews only synthetic work |
+| Scoped reserve/dispatch PASS · M1; historical exact-accounting gap retained | 26 small paid cohort; [26 paid/load/recovery gates](26-s22-staging-recovery-capacity.md#recovery-and-capacity-gates); [24 NULL-cost policy](24-s20-analytics-observability-cost.md#cost-policy) | Historical accounting and small paid cohort; NFR-017 | Owner approved the budget-only historical exception and bounded continuation; deployed durable guard; f5cpf dispatch/accounting assertions PASS, no unresolved reserve, message-limit stop | None for this approved cohort's reservation proof; preserve historical NULL/coverage gap and the explicit exception. Wider NFR-017 accounting coverage is not waived | Other paid cohorts need their own applicable controls/authorization | 0 h for the closed scoped check | No repeated diagnostic or paid message; no new spend authorized |
+| Scoped original Instagram journey PASS · M1 | FR-004–010/012–017/021; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Grounded customer-to-confirmed booking; FR-004–010, 012–017, 021 | Authoritative synthetic knowledge; owner-reported grounded reply and actual offer/confirmation receipt; 8qlzd seven booking assertions PASS, confirmed/4, offer1; f5cpf dispatch/accounting PASS | None for this original eligible Instagram happy path; other channels, languages and P0 edges remain in the rows below | Preserve exact synthetic source/offer/evidence bindings | 0 h for this completed journey | No repeated friend message, staff acceptance or confirmation |
+| Retained scoped PASS · M1 | FR-018/020; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Staff review/handoff/history; FR-018, 020 | Normal Chrome owner access; Claim 1→3/Resolve 4; conversation 10→11→12; six messages preserved; nine persisted assertions PASS; synthetic booking acceptance and persisted audit proof PASS | Preserve scoped PASS; remaining state/race/authorization edges are tracked separately, not silently generalized from this journey | Final coherent release matrix | 0 h for these completed actions | Do not repeat Claim/Resolve or synthetic booking acceptance |
 | S22 blocker · M2 | FR-001–004/011–017; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 E2E matrix](09-test-strategy.md#end-to-end-journeys) | Widget live embedding/customer journey; FR-001–004, 011–017; S19b | S10/S19 security contracts/regressions and existing UI | Real allowed/disallowed cross-origin host; opaque session, host-token isolation, no third-party-cookie dependence; actual response/request/confirmation/degraded UI | Live origin fixture; M1 allows only the exact Instagram thread; any Widget paid turn needs its own bounded authorization | 2–4 h | Access to approved synthetic embed origin/browser if needed |
 | S22 blocker · M2, may run last | [26 real Telegram evidence](26-s22-staging-recovery-capacity.md#explicit-non-goals-and-pending-evidence); [S11 mandatory Business scope](s11-telegram-business.md) | Telegram Business real DM; S11/S22 | Webhook/onboarding security and connected-bot path implementation | Trusted business connection with can_reply, tenant binding, business_message and same business-DM reply; no standalone bot-chat substitution | Product flow first; may run last | 1–2 h plus provider wait | Owner connected-bot authorization and synthetic sender; unresolved provider/UI constraint requires explicit re-scope, not silent PASS |
 | S22 blocker · M2/M4 | FR-001–004/013, NFR-001/007/010; [FR/NFR](01-product-and-journeys.md#8-functional-requirements); [09 cross-tenant matrix](09-test-strategy.md#cross-tenant-matrix) | Routing/eligibility, hostile tenancy and webhook integrity; FR-001–004, 013; NFR-001, 007, 010 | FORCE RLS/runtime roles and accepted S5/S11/S21 hostile suites; scoped synthetic guard PASS | Attach live channel binding/eligibility metadata; final release regressions for signatures, replay/reorder, cross-tenant IDs/cursors/pools; unknown/personal traffic remains disabled | Channel evidence + final gate | 1–2 h, shared | None unless a second approved synthetic tenant is needed |
@@ -2909,3 +2927,73 @@ If exact audit proves `policy_denied`, that identifies the recorded failure but
 does not uniquely distinguish budget denial from deterministic preflight. Report
 **audited non-dispatch**, not an unproven denial source. No missing NULL cost is
 rewritten or treated as zero. Keep paid calls blocked and S22 unaccepted.
+
+## 2026-10-07 — owner-supplied dispatch/accounting completion PASS
+
+Provenance: the owner supplied the sanitized completed output from
+`lead-agent-staging-migrator-f5cpf`, using the checksum-pinned V2 accounting-only
+launcher and repository tooling at `e67fc237dafb82c92e1a08761a7806238640b7c0`.
+Download/preflight and result collection were PASS. This is owner-supplied live
+diagnostic evidence, not a new local database read. The prior `8qlzd` overall
+BLOCKED result is retained above; its seven passed booking checks were not
+repeated. The sanitized Cloud Shell artifact directory was reported as
+`/tmp/s22-booking-completion.UAJQyT`; it is not committed evidence or assumed
+durable storage.
+
+| Accounting-only assertion | Observed outcome |
+| --- | --- |
+| `runtime_rls_and_baseline` | PASS; reviewed runtime identity/read-only tenant/RLS safeguards and historical NULL baseline retained |
+| `deployed_cohort_binding` | PASS; exact original synthetic organization/conversation and reviewed limits |
+| `completion_provider_runs` | PASS; one priced dispatched booking call and one explicitly audited non-dispatch orchestration record |
+| `cohort_reservation_accounting` | PASS; recorded cost reconciles to the cohort ledger, zero unresolved reserve, further dispatch blocked at the expected message limit |
+
+The exact rows were classified independently:
+
+- `01a11698-c4a3-7f88-a76d-1c4a7a4bd677`: paid provider call, recorded
+  cost **USD0.002507**; actual confirmation-source association **false**.
+- `01a1169a-49a5-79e9-94c6-03c3d91e248c`: audited stop before provider
+  dispatch, terminal reason `policy_denied`; actual confirmation-source
+  association **false**. The bound terminal audit/absence of dispatch marker
+  proves non-dispatch, not a paid confirmation call. `policy_denied` alone does
+  not uniquely identify the budget versus deterministic-preflight branch.
+  Its original NULL model/usage/cost fields remain NULL, not rewritten to zero.
+
+Known recorded total AI cost is **USD0.008714**, approved historical budget-only
+reservation **USD1.033396**, combined exposure **USD1.042110**, pending reserve
+**USD0.000000**. Paid messages/physical attempts remain **4/4**; further paid
+dispatch is **BLOCKED (`message_limit`)**. This is scoped dispatch/reservation
+proof, not recovered historical provider billing or exact historical accounting.
+The historical NULL-cost gap remains visible; no ledger reset or new allowance
+is implied.
+
+Together with `8qlzd`'s persisted confirmed/4, offer1, actual customer evidence,
+transitions, delivery, audits and converted-lead assertions, and owner-reported
+offer/final acknowledgment receipt, the **original Instagram synthetic booking
+milestone and its reservation/dispatch evidence are PASS**. No customer message,
+provider call, migration, IAM/job configuration change or runtime deployment was
+performed by this completion check. S22 as a whole remains unaccepted.
+
+### Next prepared gate — non-paid Website Chat
+
+Source inspection confirms the existing path: organization-bound staff workspace
+→ **Integrations → Website Chat**. The authenticated read is
+`GET /v1/staff/integrations/widget`, whose validated response reports
+`status`, `publishable_key` and `website_origin`. The existing card can show
+an active exact HTTPS origin, not connected, or a safe load failure. Read its
+status/origin first; **Replace setup** invalidates the previous installation
+key and is not needed to inspect it.
+
+On a real approved controlled HTTPS host, the existing `/embed/widget.js` loader
+opens **Chat with us**, obtains a one-time grant and posts into the sandboxed
+`/widget/frame` before redeeming its session. This is not an invented GET frame
+URL. Opening/closing the frame without **Send** does not initiate a model call;
+non-paid proof can cover origin/CSP binding, session isolation and
+third-party-cookie independence. A Widget message crosses the paid-risk boundary
+and is not covered by the exhausted Instagram-only authorization.
+
+Unknown: current live card configuration and a usable controlled external HTTPS
+embed host. `https://clinic.example` is a placeholder, not a proven test origin.
+Local authenticated browser access is unavailable. One necessary owner action
+is to open the existing **Website Chat** card and report only its status and
+configured business website origin, if present. Do not request installation
+code, cookies, grants or secret values; do not replace setup or send a message.
