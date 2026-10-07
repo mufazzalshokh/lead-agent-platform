@@ -868,3 +868,31 @@ cancellation/citation corrections are not marked deployed until verified. Any
 future paid journey requires separate renewed owner authorization. Staff acceptance
 alone remains insufficient: the offer must be delivered and explicitly confirmed
 by the real synthetic customer. S22 is not accepted.
+
+### Citation correction rollout complete; paid journey still paused — 2026-10-07
+
+The owner-approved saved plan was applied in **37581684183 PASS**: **0 creates,
+4 in-place workload updates, 0 destroys, 0 replacements**. Runtime source is
+**`cde3f6580f7625c02196539ca18c6aa4b3c408fe`**; the citation-identity and
+cancellation-listener corrections are now deployed. No rebuild, replacement plan,
+migration, IAM change or customer-message replay occurred.
+
+Read-only verification **37581905191 PASS** proves API/Web ready image bindings
+and whole-runtime Terraform convergence **exit 0**, using the reviewed fresh
+images and **`2026-10-07T06:11:53Z`** provenance. API health and organization-bound
+Web reachability returned HTTP 200. These are deployment/health checks, not live
+grounded-answer or booking-journey proof. The acceptance register retains the
+exact immutable references, saved-plan hash and verification artifact provenance.
+
+The existing cohort configuration and ledger were not reset. All three logical
+paid message slots remain consumed according to the latest accepted `kn9mf`
+evidence; unused physical slots do not authorize a fourth message. Historical NULL
+costs remain visible and the budget-only reservation remains USD1.033396. No new
+paid call or fresh database observation was made for this rollout.
+
+Next: obtain a separately bounded paid-test authorization before resuming the
+synthetic journey. Do not ask the friend to send another DM yet. The last known
+conversation is paused with an active handoff; a current authorized readiness
+check must precede any newly authorized turn. Staff acceptance alone cannot
+confirm a booking: delivered offer and actual customer confirmation remain
+required. **S22 remains unaccepted.**

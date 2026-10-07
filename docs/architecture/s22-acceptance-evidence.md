@@ -2215,3 +2215,52 @@ Exact saved-plan owner approval is required before apply; any stale/safeguard
 rejection stops rather than generating an unapproved replacement. Historical NULL
 costs, the live booking gap and S22 pending status remain visible. No broad CI,
 paid call, message replay, OAuth, migration or apply was performed for this packet.
+
+### Citation correction applied and verified — 2026-10-07
+
+The owner approved the exact preceding saved-plan packet. Apply run
+**[37581684183](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37581684183) PASS**
+used source **`cde3f6580f7625c02196539ca18c6aa4b3c408fe`**, plan run
+**37580236686**, SHA256
+**`708dad4be348271228c9aa829f54e853f9266605729cddc8a621d5edf10971bb`**,
+and the four exact immutable references recorded above. Saved-plan integrity and
+the full-runtime approval boundary passed. Terraform's actual result was
+**0 added / 4 changed / 0 destroyed**, matching the reviewed four in-place updates
+and zero replacements. No images were rebuilt and no replacement plan was
+generated. The one-shot migrator was **SKIPPED**. No SQL, IAM, networking, scaling
+or secret-reference changes were applied.
+
+Read-only verification run
+**[37581905191](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37581905191) PASS**
+used the same four image references, source, deployment timestamp
+**`2026-10-07T06:11:53Z`**, and unchanged migration provenance
+**`0031_s22_widget_inbound_route_management`**. Its downloaded sanitized artifact
+`s22-api-image-live-evidence-37581905191` reports **zero failed assertions**:
+
+- API image/source/timestamp/migration bindings, runtime identity, private VPC,
+  subnet, private-ranges egress and secret-reference count: **PASS**.
+- API ready revision **`lead-agent-staging-api-00021-d4j`**: **PASS**.
+- Exact Web image and ready revision **`lead-agent-staging-web-00017-x9f`**: **PASS**.
+- Whole-runtime `terraform plan -detailed-exitcode -lock-timeout=5m`: **exit 0**.
+  This refreshed convergence includes the exact Worker/Migrator desired bindings;
+  the separate direct-service metadata assertions cover API/Web. No migration,
+  diagnostic job or apply was executed by the verification run.
+
+Independent public checks after apply returned API `/health` **HTTP 200**, service
+`api`, status `ok`, and the organization-bound Web workspace **HTTP 200**, HTML.
+Web reachability is not authenticated owner-flow or live booking proof.
+
+The citation-identity and cancellation-listener corrections are now deployed.
+The existing `booking` mode was preserved, with no budget/tenant-binding change.
+The last persisted ledger evidence remains the owner-supplied `kn9mf` observation,
+not a new post-deployment ledger read: **three logical messages consumed**, known
+new cost **USD0.006207**, historical budget-only reserve **USD1.033396**, combined
+exposure **USD1.039603**, historical NULL costs still unknown. No message replay,
+new paid call, ledger reset, OAuth or broad CI was performed. Config preservation
+does not renew the exhausted paid-test authorization.
+
+Only these evidence/journey documents changed after rollout; scoped Prettier and
+diff checks apply to that documentation checkpoint, with no runtime redeployment.
+The next journey requires a separately authorized bounded paid allowance and
+current synthetic handoff readiness. Do not send another DM yet. Live grounded
+answer/request/offer/customer-confirmation proof remains open; **S22 is unaccepted**.
