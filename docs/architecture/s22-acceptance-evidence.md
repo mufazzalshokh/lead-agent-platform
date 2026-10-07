@@ -2488,3 +2488,43 @@ authenticated Cloud Shell, with a bounded exact-execution filter and projected
 assertion/outcome/observed fields. No file upload or execution rerun is needed.
 Historical NULLs remain unknown; no accounting reconciliation or S22 acceptance
 is claimed. Paid execution remains paused.
+
+### Existing readiness-result recovery corrected — 2026-10-07
+
+The owner-supplied Cloud Shell result `LOG_READ_EXIT=124` means the bounded CLI
+log read timed out. It does not identify whether CLI authentication, transport or
+the Logging API stalled, and it does not establish a database/product failure.
+The already-completed execution remains **`lead-agent-staging-migrator-q2z8g`**;
+neither that execution nor the deployment has been repeated.
+
+The repository-backed launcher now has a recovery-only `--recover-readiness`
+mode pinned to that execution, project, job, operation and October 7 UTC window.
+It obtains the owner's token privately once (30-second bound), then makes one
+direct Logging REST read (15-second bound, 20-entry cap), with no retry or
+pagination. Authentication, permission, API timeout, malformed/incomplete,
+duplicate, truncated and failed-assertion outcomes remain distinct and fail
+closed. This mode cannot execute a job or enter the migration/readiness launcher;
+malformed arguments stop before authentication.
+
+Human-readable output retains failed assertion names and safe state/request,
+counter and reservation observations. Collection and continuation readiness are
+separate: the original chat must be open/AI/no active handoff with no request;
+the reviewed cumulative 4-message/5-attempt/2-per-message binding and settled
+3-message/3-attempt baseline must match, with two remaining reserved slots within
+the unchanged ceiling. Non-ready snapshots exit nonzero. Historical NULL costs
+remain unknown, and a completed-check snapshot is not new paid-call authorization.
+
+Local verification: `node --test .github/scripts/s22-booking-evidence.test.mjs
+.github/scripts/s22-booking-final-turn.test.mjs` **30/30 PASS**. Coverage includes
+the actual recovery CLI in a Node subprocess with controlled authentication and
+REST fixtures, readiness failure exits, exact scope, no extra process/request,
+redaction and existing recovery regressions. Scoped ESLint (zero warnings),
+Prettier and `git diff --check` **PASS**. Installed CLI entrypoints were used
+directly after the pnpm wrapper tried a blocked dependency reconciliation; no
+dependency installation or host configuration change was made.
+
+Live recovery has **not** yet returned the six assertions. Current readiness and
+the complete booking journey remain **BLOCKED/PENDING**, not PASS. No upload,
+diagnostic rerun, provider call, message replay, runtime build/deployment, IAM,
+SQL or migration change is needed for this result-recovery correction. Unrelated
+owner edits are preserved. **S22 remains unaccepted; no S23 work.**

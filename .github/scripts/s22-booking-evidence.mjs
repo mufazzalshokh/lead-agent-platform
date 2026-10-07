@@ -363,7 +363,8 @@ export async function readRecoveryToken(authenticate = cloud) {
 // Recovery reads ONLY the completed observation whose result collection failed.
 // It never enters main(), executes a job, changes IAM or retries an API call.
 export const recoveryExecution = "lead-agent-staging-migrator-n2vs5";
-export async function recoverExistingBookingLogs(token, request = fetch) {
+export const readinessRecoveryExecution = "lead-agent-staging-migrator-q2z8g";
+async function recoverExecutionLogs(execution, from, until, token, request) {
   let stage = "logging_api";
   try {
     const response = await request("https://logging.googleapis.com/v2/entries:list", {
@@ -373,7 +374,7 @@ export async function recoverExistingBookingLogs(token, request = fetch) {
       signal: AbortSignal.timeout(15000),
       body: JSON.stringify({
         resourceNames: [`projects/${project}`],
-        filter: `resource.type="cloud_run_job" AND resource.labels.job_name="${job}" AND labels."run.googleapis.com/execution_name"="${recoveryExecution}" AND timestamp>="2026-10-06T00:00:00Z" AND timestamp<"2026-10-07T00:00:00Z" AND jsonPayload.operation="s22_booking_readonly"`,
+        filter: `resource.type="cloud_run_job" AND resource.labels.job_name="${job}" AND labels."run.googleapis.com/execution_name"="${execution}" AND timestamp>="${from}" AND timestamp<"${until}" AND jsonPayload.operation="s22_booking_readonly"`,
         orderBy: "timestamp desc",
         pageSize: 20,
       }),
@@ -413,7 +414,7 @@ export async function recoverExistingBookingLogs(token, request = fetch) {
             ? "LOG_ASSERTION_NOT_PASS"
             : null;
     return {
-      execution: recoveryExecution,
+      execution,
       outcome: code === null ? "PASS" : "BLOCKED",
       stage,
       ...(code === null ? {} : { code }),
@@ -432,13 +433,106 @@ export async function recoverExistingBookingLogs(token, request = fetch) {
     };
   }
 }
-async function recoverMain() {
+export const recoverExistingBookingLogs = (token, request = fetch) =>
+  recoverExecutionLogs(
+    recoveryExecution,
+    "2026-10-06T00:00:00Z",
+    "2026-10-07T00:00:00Z",
+    token,
+    request,
+  );
+export const recoverReadinessLogs = (token, request = fetch) =>
+  recoverExecutionLogs(
+    readinessRecoveryExecution,
+    "2026-10-07T00:00:00Z",
+    "2026-10-08T00:00:00Z",
+    token,
+    request,
+  );
+function readinessChecks(result) {
+  const observed = (name) =>
+    result.assertions?.find((item) => item.assertion === name)?.observed ?? {};
+  const current = observed("synthetic_conversation").rows;
+  const requests = observed("synthetic_requests").rows;
+  const budget = observed("cohort_reservation_accounting");
+  const binding = observed("deployed_cohort_binding");
+  const unsigned = (value) => typeof value === "string" && /^[0-9]{1,16}$/u.test(value);
+  const count = (value) => Number.isSafeInteger(value) && value >= 0;
+  const chatReady =
+    result.outcome === "PASS" &&
+    Array.isArray(current) &&
+    current.length === 1 &&
+    current[0]?.id === "01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7" &&
+    current[0].status === "open" &&
+    current[0].automation_mode === "ai" &&
+    current[0].no_active_handoff === true &&
+    Array.isArray(requests) &&
+    requests.length === 0;
+  const bindingReady =
+    result.outcome === "PASS" &&
+    binding.organization === "01a0ee39-91a9-7293-82c0-5b7046c10115" &&
+    binding.conversation === "01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7" &&
+    binding.profile === "s22-synthetic-booking.v1" &&
+    binding.maximum_messages === 4 &&
+    binding.maximum_calls === 5 &&
+    binding.maximum_calls_per_message === 2 &&
+    binding.historical_reserve_micros === "1033396" &&
+    binding.hard_ceiling_micros === "10000000";
+  const budgetReady =
+    bindingReady &&
+    budget.profile === binding.profile &&
+    budget.mode === "booking" &&
+    budget.blocked === false &&
+    budget.reason === null &&
+    budget.accountingComplete === false &&
+    budget.historicalReserveMicros === "1033396" &&
+    budget.perCallReserveMicros === "801432" &&
+    budget.unresolvedReserveMicros === "0" &&
+    count(budget.logicalMessages) &&
+    budget.logicalMessages === 3 &&
+    count(budget.physicalCalls) &&
+    budget.physicalCalls === 3 &&
+    unsigned(budget.knownCostMicros) &&
+    unsigned(budget.combinedExposureMicros) &&
+    BigInt(budget.combinedExposureMicros) === 1033396n + BigInt(budget.knownCostMicros) &&
+    BigInt(budget.combinedExposureMicros) + 2n * 801432n < 10000000n;
+  return { chatReady, bindingReady, budgetReady, current, requests, budget, count, unsigned };
+}
+export function formatReadinessReport(result) {
+  const { chatReady, bindingReady, budgetReady, current, requests, budget, count, unsigned } =
+    readinessChecks(result);
+  const state = Array.isArray(current) && current.length === 1 ? current[0] : null;
+  const safeState = (value, allowed) => (allowed.includes(value) ? value : "unknown");
+  const failed = (result.assertions ?? []).filter((item) => item.outcome !== "PASS");
+  return [
+    `Result collection: ${result.outcome === "PASS" ? "PASS" : `BLOCKED (${result.code ?? "RESULT_UNAVAILABLE"})`}`,
+    ...failed.map((item) => `Failed check: ${item.assertion}${item.code ? ` (${item.code})` : ""}`),
+    `Conversation ready for a new test message: ${chatReady ? "PASS" : "BLOCKED"}`,
+    `Chat state: ${safeState(state?.status, ["open", "awaiting_staff", "closed"])}; automation: ${safeState(state?.automation_mode, ["ai", "paused", "staff"])}`,
+    `Active handoff: ${state?.no_active_handoff === true ? "no" : state?.no_active_handoff === false ? "yes" : "unknown"}`,
+    `Existing booking requests: ${Array.isArray(requests) ? requests.length : "unknown"}`,
+    `Reviewed cohort binding: ${bindingReady ? "PASS" : "BLOCKED"}`,
+    `Budget ready for one message / at most two attempts: ${budgetReady ? "PASS" : "BLOCKED"}`,
+    `Test messages already used: ${count(budget.logicalMessages) ? budget.logicalMessages : "unknown"} / 4`,
+    `Provider attempts already used: ${count(budget.physicalCalls) ? budget.physicalCalls : "unknown"} / 5`,
+    `Pending reserve (USD micros): ${unsigned(budget.unresolvedReserveMicros) ? budget.unresolvedReserveMicros : "unknown"}; expected: 0`,
+    `Known cost / reserved exposure (USD micros): ${unsigned(budget.knownCostMicros) ? budget.knownCostMicros : "unknown"} / ${unsigned(budget.combinedExposureMicros) ? budget.combinedExposureMicros : "unknown"}`,
+    "Historical costs remain unknown; collection does not reconcile them.",
+    "This is the completed check's snapshot, not a new database read or paid-call authorization.",
+    "No message, AI call, migration or diagnostic execution was triggered.",
+  ].join("\n");
+}
+async function recoverMain(
+  recover = recoverExistingBookingLogs,
+  format = (result) => JSON.stringify(result, null, 2),
+  ready = (result) => result.outcome === "PASS",
+) {
   let token;
   try {
     token = await readRecoveryToken();
   } catch (error) {
     console.log(
-      JSON.stringify({
+      format({
         outcome: "BLOCKED",
         stage: "authentication",
         code: error.code,
@@ -448,9 +542,9 @@ async function recoverMain() {
     return;
   }
   console.log(JSON.stringify({ stage: "authentication", outcome: "PASS" }));
-  const result = await recoverExistingBookingLogs(token);
-  console.log(JSON.stringify(result, null, 2));
-  if (result.outcome !== "PASS") process.exitCode = 1;
+  const result = await recover(token);
+  console.log(format(result));
+  if (!ready(result)) process.exitCode = 1;
 }
 // Narrow result recovery for the one new final-turn read, using owner auth only.
 // This path cannot execute a job. No retry, unbounded query or raw error output.
@@ -766,6 +860,11 @@ async function main() {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.length === 3 && process.argv[2] === "--recover-logs") await recoverMain();
+  else if (process.argv.length === 3 && process.argv[2] === "--recover-readiness")
+    await recoverMain(recoverReadinessLogs, formatReadinessReport, (result) => {
+      const checks = readinessChecks(result);
+      return checks.chatReady && checks.budgetReady;
+    });
   else if (process.argv.length === 4 && process.argv[2] === "--recover-final-turn")
     await recoverFinalMain(process.argv[3]);
   else if (process.argv.length === 2) await main();
