@@ -12,7 +12,7 @@ availability.
 | Planning/enforced limit | Value |
 | --- | --- |
 | Selected customer scope | One reviewed WidgetSession; its conversation is derived from persisted tenant-owned records, never supplied by the browser |
-| Additional logical customer messages | 2 |
+| Additional total customer inbound messages | 2, including a confirmation requiring no paid call |
 | Additional physical provider attempts | 4 total, at most 2 per message |
 | Model/request bounds | Unchanged Gemini commercial profile; 1 candidate, input ceiling 1,048,576, output ceiling 4,000 including thinking; no enabled billable tools/cache creation/tier extras |
 | Per-attempt reservation | 801,432 USD micros; integer ceiling of the existing verified standard pricing calculation |
@@ -33,6 +33,12 @@ commit cannot reset the one-off allowance. Old audit/usage rows are preserved;
 no historical NULL becomes zero. New Widget spend is accounted separately and
 also included in the existing aggregate exposure. Original Instagram dispatch
 is not authorized by this mode.
+
+The two-message scope counts **all** persisted customer inbounds, including a
+non-paid confirmation. A bounded first-three-ID read detects a third inbound;
+only the first two can authorize dispatch. `widget.customerMessages` reports
+this count separately from paid `logicalMessages`. Existing duplicate-message
+idempotency remains unchanged; no message body is read for the budget check.
 
 ### Preparation and rollout order
 

@@ -6,6 +6,7 @@ import {
 } from "@lead-agent/config";
 import {
   ConversationIdSchema,
+  MessageIdSchema,
   OrganizationIdSchema,
   ResourceIdSchema,
   isSchemaValue,
@@ -25,7 +26,11 @@ import {
 const RESERVED = "ai_run.dispatch_reserved";
 const STARTED = "ai_run.journey_started";
 const WIDGET_BOUND = "ai_run.widget_journey_bound";
-type WidgetBinding = Readonly<{ conversationId: string | null; contactId: string | null }>;
+type WidgetBinding = Readonly<{
+  conversationId: string | null;
+  contactId: string | null;
+  inboundMessageIds: readonly string[];
+}>;
 
 export type AIJourneyBudgetSnapshot = Readonly<{
   profile: string;
@@ -47,6 +52,8 @@ export type AIJourneyBudgetSnapshot = Readonly<{
     conversationId: string | null;
     physicalCalls: number;
     logicalMessages: number;
+    /** All persisted customer inbounds, including confirmations that need no provider. */
+    customerMessages: number;
     knownCostMicros: string;
     unresolvedReserveMicros: string;
   }>;
@@ -137,7 +144,23 @@ export const createAIJourneyBudgetGuard = (
       (conversationId === null) !== (contactId === null)
     )
       return null;
-    return { conversationId, contactId };
+    const inboundMessageIds: string[] = [];
+    if (conversationId !== null) {
+      // One sentinel beyond the approved two messages; never read bodies. With
+      // the session locked, Widget intake cannot add an inbound during authorization.
+      const messages = await executeTenantRead(
+        session,
+        `select id::text from messages where organization_id=$1 and conversation_id=$2
+           and direction='inbound' order by sequence_no limit 3`,
+        [conversationId],
+      );
+      for (const message of messages) {
+        const id: unknown = message["id"];
+        if (!isSchemaValue(MessageIdSchema, id)) throw new RepositoryDataIntegrityError();
+        inboundMessageIds.push(id);
+      }
+    }
+    return { conversationId, contactId, inboundMessageIds: Object.freeze(inboundMessageIds) };
   };
   const inspect = async (session: TenantDbSession, binding: WidgetBinding | null = null) => {
     const reserve = reserveAt(clock());
@@ -321,6 +344,8 @@ export const createAIJourneyBudgetGuard = (
         exposure > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros
       )
         reason = "widget_allowance";
+      if ((binding?.inboundMessageIds.length ?? 0) > S22_WIDGET_ALLOWANCE.maximumMessages)
+        reason = "message_limit";
     }
     return {
       reserve,
@@ -385,7 +410,10 @@ export const createAIJourneyBudgetGuard = (
         if (widgetSessionId !== undefined) {
           if (
             binding?.conversationId !== input.reference.conversationId ||
-            binding.contactId === null
+            binding.contactId === null ||
+            !binding.inboundMessageIds
+              .slice(0, S22_WIDGET_ALLOWANCE.maximumMessages)
+              .includes(input.reference.messageId)
           )
             return false;
           const widgetConversation = await executeTenantRead(
@@ -504,10 +532,9 @@ export const createAIJourneyBudgetGuard = (
           )
             reason = "attempt_limit";
           else if (
-            messages.size >=
-            (widgetSessionId === undefined
-              ? config.maximumMessages
-              : S22_WIDGET_ALLOWANCE.maximumMessages)
+            widgetSessionId === undefined
+              ? messages.size >= config.maximumMessages
+              : (binding?.inboundMessageIds.length ?? 0) >= S22_WIDGET_ALLOWANCE.maximumMessages
           )
             reason = "message_limit";
           else if (
@@ -545,6 +572,7 @@ export const createAIJourneyBudgetGuard = (
                   conversationId: binding?.conversationId ?? null,
                   physicalCalls: state.widgetCalls,
                   logicalMessages: state.widgetMessages.size,
+                  customerMessages: binding?.inboundMessageIds.length ?? 0,
                   knownCostMicros: state.widgetKnown.toString(),
                   unresolvedReserveMicros: state.widgetPending.toString(),
                 },

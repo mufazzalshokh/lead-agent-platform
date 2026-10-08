@@ -33,6 +33,7 @@ const transport = vi.hoisted(() => {
     widgetConversation: null as Record<string, unknown> | null,
     widgetContactStatus: "active",
     widgetBindings: [] as Record<string, unknown>[],
+    widgetInboundMessages: [] as Record<string, unknown>[],
   };
 });
 vi.mock("pg", async (originalImport) => {
@@ -150,6 +151,19 @@ vi.mock("pg", async (originalImport) => {
                 rows: [{ id: values[1], status: "open", automation_mode: "ai", version: 1 }],
               };
             }
+            if (/from messages/iu.test(sql) && /direction\s*=\s*'inbound'/iu.test(sql))
+              return {
+                rows: transport.widgetInboundMessages
+                  .filter(
+                    (row) =>
+                      row["organization_id"] === organization &&
+                      row["conversation_id"] === values[1] &&
+                      row["direction"] === "inbound",
+                  )
+                  .sort((left, right) => Number(left["sequence_no"]) - Number(right["sequence_no"]))
+                  .slice(0, 3)
+                  .map((row) => ({ ...row })),
+              };
             if (/from ai_runs r/iu.test(sql))
               return {
                 rows: transport.rows
@@ -329,6 +343,15 @@ const widgetCall = (runId = fixtureId(19401), messageId = message(19501), attemp
   reference: { ...widgetReference, messageId },
   reservation: { runId, attemptNo },
 });
+const setWidgetInboundMessages = (...messageIds: readonly string[]): void => {
+  transport.widgetInboundMessages = messageIds.map((id, index) => ({
+    organization_id: reference.organizationId,
+    conversation_id: otherConversation,
+    id,
+    direction: "inbound",
+    sequence_no: String(index + 1),
+  }));
+};
 const originalLedger = (): Record<string, unknown>[] => [
   row(historicalRunIds[0]),
   row(historicalRunIds[1]),
@@ -373,6 +396,7 @@ beforeEach(() => {
   transport.widgetConversation = activeWidgetConversation();
   transport.widgetContactStatus = "active";
   transport.widgetBindings = [];
+  transport.widgetInboundMessages = [];
 });
 
 describe("S22 durable budget ledger — modelled pg transport", () => {
@@ -643,9 +667,12 @@ describe("S22 durable budget ledger — modelled pg transport", () => {
 describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
   const prepare = (candidate: Record<string, unknown> = widgetRow()) => {
     const previous = originalLedger();
+    const candidateMessageId = candidate["trigger_message_id"];
+    if (typeof candidateMessageId !== "string") throw new Error("Invalid Widget fixture message");
     transport.rows = [...previous, candidate];
     transport.widgetSession = activeWidgetSession();
     transport.widgetConversation = activeWidgetConversation();
+    setWidgetInboundMessages(candidateMessageId);
     return { candidate, previous, previousCopy: structuredClone(previous) };
   };
 
@@ -675,6 +702,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
       widget: {
         sessionId: widgetSessionId,
         conversationId: otherConversation,
+        customerMessages: 1,
         physicalCalls: 1,
         logicalMessages: 1,
         knownCostMicros: "0",
@@ -705,6 +733,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
     const second = widgetRow(fixtureId(19402), message(19502));
     prepare(first);
     transport.rows.push(second);
+    setWidgetInboundMessages(message(19501), message(19502));
     const db = runtime();
     const results = await Promise.all([
       createAIJourneyBudgetGuard(db, widgetConfig(), now).authorizeDispatch(widgetCall()),
@@ -818,6 +847,75 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
     },
   );
 
+  it.each(["absent", "foreign tenant", "foreign conversation"] as const)(
+    "denies a Widget candidate missing from scoped inbound metadata: %s",
+    async (scope) => {
+      const { candidate } = prepare();
+      if (scope === "absent") transport.widgetInboundMessages = [];
+      else if (scope === "foreign tenant")
+        transport.widgetInboundMessages[0]!["organization_id"] = fixtureId(19206);
+      else transport.widgetInboundMessages[0]!["conversation_id"] = reference.conversationId;
+      const db = runtime();
+      expect(
+        await createAIJourneyBudgetGuard(db, widgetConfig(), now).authorizeDispatch(widgetCall()),
+      ).toBe(false);
+      expect(candidate["reservations"]).toBe(0);
+      expect(transport.widgetBindings).toEqual([]);
+      await db.close();
+    },
+  );
+
+  it("counts a free confirmation as the second customer message and rejects a third inbound", async () => {
+    const firstMessage = message(19501);
+    const confirmation = message(19502);
+    const thirdMessage = message(19503);
+    const first = widgetRow(fixtureId(19401), firstMessage);
+    prepare(first);
+    const db = runtime();
+    const guard = createAIJourneyBudgetGuard(db, widgetConfig(), now);
+    expect(await guard.authorizeDispatch(widgetCall(fixtureId(19401), firstMessage))).toBe(true);
+    markWidgetReservation(settled(first, "1"));
+
+    setWidgetInboundMessages(firstMessage, confirmation);
+    expect(await guard.read(reference.organizationId)).toMatchObject({
+      blocked: true,
+      reason: "message_limit",
+      widget: {
+        customerMessages: 2,
+        logicalMessages: 1,
+      },
+    });
+    const inboundRead = transport.reads.find((sql) => /from messages/iu.test(sql));
+    expect(inboundRead).toMatch(/organization_id\s*=\s*\$1/iu);
+    expect(inboundRead).toMatch(/conversation_id\s*=\s*\$2/iu);
+    expect(inboundRead).toMatch(/direction\s*=\s*'inbound'/iu);
+    expect(inboundRead).toMatch(/order by\s+sequence_no/iu);
+    expect(inboundRead).toMatch(/limit\s+3/iu);
+    expect(inboundRead).not.toMatch(/body|ciphertext|content/iu);
+
+    const latchesBeforeThird = transport.widgetBindings.length;
+    const reservationsBeforeThird = transport.rows.filter(
+      (item) => item["reservations"] === 1,
+    ).length;
+    expect(latchesBeforeThird).toBe(1);
+    expect(reservationsBeforeThird).toBe(5);
+    const third = widgetRow(fixtureId(19402), thirdMessage);
+    transport.rows.push(third);
+    setWidgetInboundMessages(firstMessage, confirmation, thirdMessage);
+    expect(await guard.authorizeDispatch(widgetCall(fixtureId(19402), thirdMessage))).toBe(false);
+    expect(third["reservations"]).toBe(0);
+    expect(transport.widgetBindings).toHaveLength(latchesBeforeThird);
+    expect(transport.rows.filter((item) => item["reservations"] === 1)).toHaveLength(
+      reservationsBeforeThird,
+    );
+    expect(await guard.read(reference.organizationId)).toMatchObject({
+      blocked: true,
+      reason: "message_limit",
+      widget: { customerMessages: 3, logicalMessages: 1 },
+    });
+    await db.close();
+  });
+
   it("does not revive the original lane after downgrading from a committed Widget slot", async () => {
     const { candidate } = prepare();
     const retry = row(fixtureId(19007), message(19104), 2);
@@ -853,6 +951,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
     const fourth = widgetRow(fixtureId(19404), secondMessage, 2);
     transport.rows = [...previous, ...widgetRuns, fourth];
     transport.widgetSession = activeWidgetSession();
+    setWidgetInboundMessages(firstMessage, secondMessage);
     bindWidget();
     const db = runtime();
     const guard = createAIJourneyBudgetGuard(db, widgetConfig(), now);
@@ -862,6 +961,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
     expect(await guard.read(reference.organizationId)).toMatchObject({
       combinedExposureMicros: S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros.toString(),
       widget: {
+        customerMessages: 2,
         physicalCalls: 4,
         logicalMessages: 2,
         knownCostMicros: "2404296",
@@ -880,6 +980,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
       blocked: true,
       combinedExposureMicros: "4247838",
       widget: {
+        customerMessages: 2,
         physicalCalls: 4,
         logicalMessages: 2,
         knownCostMicros: "3205728",
@@ -902,6 +1003,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
       markWidgetReservation(settled(widgetRow(fixtureId(19402), firstMessage, 2), "1")),
       widgetRow(fixtureId(19403), firstMessage, 3),
     ];
+    setWidgetInboundMessages(firstMessage);
     expect(
       await createAIJourneyBudgetGuard(db, widgetConfig(), now).authorizeDispatch(
         widgetCall(fixtureId(19403), firstMessage, 3),
@@ -914,6 +1016,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
       markWidgetReservation(settled(widgetRow(fixtureId(19405), secondMessage), "1")),
       widgetRow(fixtureId(19406), message(19503)),
     ];
+    setWidgetInboundMessages(firstMessage, secondMessage, message(19503));
     expect(
       await createAIJourneyBudgetGuard(db, widgetConfig(), now).authorizeDispatch(
         widgetCall(fixtureId(19406), message(19503)),
@@ -932,6 +1035,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
       const repair = widgetRow(fixtureId(19402), message(19501), 2);
       transport.rows = [...originalLedger(), first, repair];
       transport.widgetSession = activeWidgetSession();
+      setWidgetInboundMessages(message(19501));
       bindWidget();
       const db = runtime();
       expect(
@@ -966,6 +1070,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
 
     const resetCandidate = widgetRow(fixtureId(19402), message(19502));
     transport.rows = [...originalLedger().slice(0, -1), resetCandidate];
+    setWidgetInboundMessages(message(19502));
     transport.widgetBindings = [];
     expect(
       await createAIJourneyBudgetGuard(db, widgetConfig(), now).authorizeDispatch(
@@ -978,6 +1083,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
     changedHistory[0]!["estimated_cost_micros"] = "0";
     const historyCandidate = widgetRow(fixtureId(19403), message(19503));
     transport.rows = [...changedHistory, historyCandidate];
+    setWidgetInboundMessages(message(19503));
     expect(
       await createAIJourneyBudgetGuard(db, widgetConfig(), now).authorizeDispatch(
         widgetCall(fixtureId(19403), message(19503)),

@@ -3507,6 +3507,30 @@ the restarted dispatch guard blocks it while retaining the unknown-cost slot.
 No runtime behavior was weakened or provider call made. Corrected real-DB result
 remains pending until the next source's focused run completes.
 
+Corrected fixture source `2b3072255b0bf3d6da9b56e6f287679257c674cc`:
+isolated PostgreSQL run **37748266062 PASS, 6/6**; automatic CI run
+**37748272851 PASS**. Image build **37748463181 PASS** was subsequently
+superseded during final scope review and must not be used for the rollout plan.
+The paid-logical-message counter alone could permit a third customer message
+when the second inbound was a confirmation requiring no provider call. No plan,
+apply or paid execution used that source's images.
+
+The correction reads only the first three tenant/conversation-scoped inbound
+message IDs (one bounded sentinel beyond the approved two), authorizes only the
+first two, and denies paid dispatch once a third exists. The selected session
+lock serializes this check with normal Widget intake. Snapshot
+`widget.customerMessages` now distinguishes all customer inbounds from the
+existing paid `logicalMessages` count. The new modeled and isolated PostgreSQL
+regressions cover a free second confirmation followed by a denied third inbound;
+their updated-source validation is recorded below when completed.
+
+Updated local scope verification: `node node_modules/vitest/vitest.mjs run
+tests/ai/s22-budget-ledger.test.ts tests/ai/s22-journey-dispatch.test.ts`:
+**60/60 PASS** (48 ledger, 12 dispatch). Root TypeScript and scoped lint/format/
+diff checks: **PASS**. The added isolated PostgreSQL case makes **seven** cases
+in the scoped workflow; its new-source result remains pending until execution.
+No customer message, live diagnostic, provider call or apply was performed.
+
 Deployment preparation validation: mode/workflow **18/18 PASS**, existing
 infrastructure checks **10/10 PASS**, strict configuration helper **7/7 PASS**;
 Terraform validation/format and Bash syntax **PASS**. The new helper rejects

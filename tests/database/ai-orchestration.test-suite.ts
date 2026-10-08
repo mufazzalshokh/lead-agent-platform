@@ -1824,6 +1824,45 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
         );
       expect(records.rows[0]?.count).toBe(0);
     });
+    it("a non-paid second Widget inbound still exhausts the customer-message scope", async () => {
+      const { reference, cohort, persistence } = await prepareWidget();
+      await accept(harness, {
+        sequence: 101,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.read(reference.organizationId)).toMatchObject({
+        blocked: true,
+        reason: "message_limit",
+        widget: { customerMessages: 2, logicalMessages: 0, physicalCalls: 0 },
+      });
+      const receipt = await accept(harness, {
+        sequence: 102,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      const nextReference = referenceFor(receipt);
+      const snapshot = await persistence.load(nextReference);
+      if (snapshot === null) throw new Error("Missing third Widget context");
+      const reservation = await persistence.reserve({
+        reference: nextReference,
+        snapshot,
+        inputHash: new Uint8Array(32).fill(19),
+      });
+      if (reservation === null) throw new Error("Missing third Widget fixture run");
+      expect(await guard.authorizeDispatch({ reference: nextReference, reservation })).toBe(false);
+      expect(await guard.read(reference.organizationId)).toMatchObject({
+        reason: "message_limit",
+        widget: { customerMessages: 3, logicalMessages: 0, physicalCalls: 0 },
+      });
+      const records = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          "select count(*)::int as count from audit_events where action='ai_run.widget_journey_bound'",
+        );
+      expect(records.rows[0]?.count).toBe(0);
+    });
     it("serializes two independent dispatch gates and persists one committed reservation", async () => {
       const { reference, cohort, reserve } = await prepare();
       const reservations = await Promise.all([reserve(), reserve()]);
