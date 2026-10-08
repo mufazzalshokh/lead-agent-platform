@@ -3,6 +3,47 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-08 — Preparation command rejected before Cloud access
+
+**Owner-supplied result:** download verification **PASS**, followed by
+`BLOCKED: SELECTION_SCOPE_INVALID`, error category `assertion`. No execution ID
+was created. This does not prove a staging configuration or authentication
+failure: the posted command supplied `--origin ORIGIN --preflight-only`, while
+the unchanged selector requires positional `ORIGIN --preflight-only`.
+`parseSelectionArguments` rejects the three supplied arguments before
+`runSelection`, job metadata/authentication/log reads, session selection or any
+diagnostic execution. The incorrect command was an agent handoff error, not a
+reason to loosen a safeguard or change the deployed application.
+
+The exact incorrect invocation was reproduced locally with Node, returning
+exit 1 and the same two sanitized failure lines. Three new actual CLI Node
+subprocess regressions use controlled gcloud/Logging fixtures, not live access:
+the corrected positional invocation passes after exactly one job-describe,
+one token read and one bounded log-permission read; the posted `--origin`
+invocation fails before all three; omitted `maxRetries` still fails after
+describe and before token/log reads. All paths perform zero job executions,
+session selections, messages or provider calls, and do not print the synthetic
+token. Subprocesses are bounded and owned fixture directories are checked
+before cleanup.
+
+Verification: `node --test .github/scripts/s22-widget-session-select.test.mjs`
+**33/33 PASS**; `node --check` and scoped ESLint/Prettier/diff checks for the
+changed test/evidence files **PASS**. No application/launcher/reader source or
+CLI contract changes are needed. Existing runtime source `1ecd729`, build
+37797125277, four immutable references, deployment timestamp and pending
+fresh-frame/binding-plan preparation remain unchanged; no rebuild/replan or
+runtime verification repetition is justified by this test/evidence correction.
+
+The failed shell block printed its tooling directory only after preflight, so
+the directory was not returned. The corrected handoff reuses one preserved
+`/tmp/s22-widget-ready.*` bundle only after independently verifying both imported
+selector-module checksums against tooling commit `79b397e`; it prints that
+directory before invoking the unchanged positional preflight. No new upload,
+download, database diagnostic, session, budget change, migration, IAM or apply
+is included. This command's Bash syntax was checked locally; the live owner
+preflight result is **PENDING**, not inferred from controlled tests.
+Do not open the fresh frame or Send yet. **S22 remains unaccepted.**
+
 ## 2026-10-08 — Correction images ready; fresh-frame selection pending
 
 Verified correction source **`1ecd729d856fdeff22a55cc54e1259c7adcf6472`** is

@@ -2,6 +2,16 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
+**Latest preflight attempt did not reach Cloud access.** Download verification
+passed, but the agent-supplied unsupported `--origin` flag caused
+`SELECTION_SCOPE_INVALID`. The unchanged contract is positional
+`ORIGIN --preflight-only`; actual CLI subprocess regressions verify that form
+with controlled metadata/log fixtures and retain fail-closed retry checks.
+Reuse the checksum-verified downloaded bundle with the corrected invocation;
+no new session, diagnostic execution, paid call or deployment has occurred.
+Current live preflight remains pending. See the
+[command correction record](s22-acceptance-evidence.md#2026-10-08--preparation-command-rejected-before-cloud-access).
+
 **Correction preparation is ready:** source `1ecd729d856fdeff22a55cc54e1259c7adcf6472`
 is pushed; exact all-runtime image build **37797125277 PASS** and its four
 immutable references/manifest are independently checked. The one prepared

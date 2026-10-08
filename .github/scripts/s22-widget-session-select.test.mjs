@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { moduleBootstrap as existingBootstrap } from "./s22-booking-evidence.mjs";
 import {
@@ -360,6 +361,121 @@ test("preflight-only checks actual job identity/provenance and authenticated log
   assert.equal(requests[0].pageSize, 1);
   assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_PRIVATE_TOKEN|DATABASE_URL|bearer/u);
 });
+
+for (const scenario of [
+  {
+    name: "corrected positional preflight command",
+    args: [origin, "--preflight-only"],
+    status: 0,
+    cloudCalls: 2,
+    loggingReads: 1,
+  },
+  {
+    name: "incorrect posted --origin command",
+    args: ["--origin", origin, "--preflight-only"],
+    status: 1,
+    cloudCalls: 0,
+    loggingReads: 0,
+    code: "SELECTION_SCOPE_INVALID",
+  },
+  {
+    name: "corrected command with omitted retry safeguard",
+    args: [origin, "--preflight-only"],
+    status: 1,
+    cloudCalls: 1,
+    loggingReads: 0,
+    code: "EXPLICIT_ZERO_RETRIES_REQUIRED",
+    omitRetries: true,
+  },
+]) {
+  test(`actual launcher CLI: ${scenario.name}`, () => {
+    const fixture = mkdtempSync(join(tmpdir(), "s22-widget-selection-cli-"));
+    try {
+      const metadata = jobMetadata();
+      if (scenario.omitRetries) delete metadata.spec.template.spec.template.spec.maxRetries;
+      const preload = join(fixture, "controlled-cloud.mjs");
+      writeFileSync(
+        preload,
+        `import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import {syncBuiltinESMExports} from "node:module";
+import {promisify} from "node:util";
+const calls=[];
+let loggingReads=0;
+const fakeExecFile=()=>{throw Error("UNEXPECTED_CALLBACK_EXECUTION");};
+fakeExecFile[promisify.custom]=async(file,args,options)=>{
+  assert.equal(file,"gcloud");
+  assert.equal(options.encoding,"utf8");
+  assert.ok(options.timeout>0 && options.timeout<=30000);
+  calls.push(args);
+  if(args[0]==="run" && args[1]==="jobs" && args[2]==="describe") {
+    assert.deepEqual(args,["run","jobs","describe","lead-agent-staging-migrator","--project=lead-agent-stg-739284","--region=me-central1","--format=json"]);
+    return {stdout:${JSON.stringify(JSON.stringify(metadata))},stderr:""};
+  }
+  if(JSON.stringify(args)===JSON.stringify(["auth","print-access-token","--quiet"]))
+    return {stdout:"SYNTHETIC_CLI_TOKEN_DO_NOT_PRINT",stderr:""};
+  throw Error("UNEXPECTED_CLOUD_EXECUTION");
+};
+childProcess.execFile=fakeExecFile;
+syncBuiltinESMExports();
+globalThis.fetch=async(url,options)=>{
+  assert.equal(url,"https://logging.googleapis.com/v2/entries:list");
+  assert.equal(options.method,"POST");
+  assert.equal(options.redirect,"error");
+  assert.equal(options.headers.Authorization,"Bearer SYNTHETIC_CLI_TOKEN_DO_NOT_PRINT");
+  const request=JSON.parse(options.body);
+  assert.deepEqual(request.resourceNames,["projects/lead-agent-stg-739284"]);
+  assert.equal(request.pageSize,1);
+  assert.equal(request.orderBy,"timestamp asc");
+  assert.ok(options.signal instanceof AbortSignal);
+  loggingReads++;
+  return new Response(JSON.stringify({entries:[]}),{status:200});
+};
+process.once("exit",()=>console.log("CLI_FIXTURE="+JSON.stringify({calls,loggingReads})));
+`,
+        { mode: 0o600 },
+      );
+      const launcher = fileURLToPath(new URL("./s22-widget-session-select.mjs", import.meta.url));
+      const result = spawnSync(
+        process.execPath,
+        ["--import", pathToFileURL(preload).href, launcher, ...scenario.args],
+        {
+          encoding: "utf8",
+          env: { ...process.env, S22_WIDGET_SESSION_READ: "" },
+          timeout: 15000,
+          maxBuffer: 65536,
+        },
+      );
+      assert.equal(result.error, undefined);
+      assert.equal(result.signal, null);
+      assert.equal(result.status, scenario.status, result.stdout + result.stderr);
+      assert.equal(result.stderr, "");
+      const line = result.stdout.split(/\r?\n/u).find((value) => value.startsWith("CLI_FIXTURE="));
+      assert.ok(line);
+      const observed = JSON.parse(line.slice("CLI_FIXTURE=".length));
+      assert.equal(observed.calls.length, scenario.cloudCalls);
+      assert.equal(observed.loggingReads, scenario.loggingReads);
+      assert.ok(
+        observed.calls.every((args) => !args.includes("execute") && !args.includes("executions")),
+      );
+      assert.doesNotMatch(
+        result.stdout,
+        /Read-only execution:|Widget session:|SYNTHETIC_CLI_TOKEN|DATABASE_URL/u,
+      );
+      if (scenario.code !== undefined)
+        assert.ok(result.stdout.includes(`BLOCKED: ${scenario.code}`));
+      else {
+        assert.ok(result.stdout.includes("Preflight-only: PASS"));
+        assert.ok(result.stdout.includes("No session selected, diagnostic execution"));
+      }
+    } finally {
+      assert.equal(dirname(realpathSync(fixture)), realpathSync(tmpdir()));
+      assert.ok(basename(fixture).startsWith("s22-widget-selection-cli-"));
+      assert.ok(resolve(fixture).startsWith(resolve(tmpdir()) + sep));
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+}
 
 test("selection artifact contains only exact safe scope/provenance and actual idle deadline", async () => {
   const selected = await completeSelection();
