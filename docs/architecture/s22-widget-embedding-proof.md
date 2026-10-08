@@ -13,7 +13,10 @@ shows the genuine cross-origin frame with an empty composer; the owner explicitl
 confirms successful close/reopen and the corrected launcher label. This closes
 only the launcher UX regression. The earlier stale-label observation is retained
 below as history. No independent redemption/server trace, host-token isolation
-or blocked-third-party-cookie proof was collected.
+or independently captured cookie-policy proof was collected. The subsequent
+owner reports a successful fresh opening with **Block third-party cookies**
+selected and no covering site exception. Restoration of the original setting
+remains unconfirmed.
 
 ## Observed starting point — 2026-10-07
 
@@ -453,3 +456,30 @@ fresh-session check. Only this document and the acceptance register change;
 scoped Markdown format/diff checks suffice. Existing runtime tests, build,
 deployment and read-only verification are not repeated. Historical NULL costs
 and paid-dispatch limits remain unchanged; S22 remains unaccepted.
+
+## 2026-10-08 — fresh opening with cookie-block setting selected
+
+The owner's initial Chrome-settings screenshot showed **Allow third-party
+cookies** selected. The proposed temporary DevTools control was unavailable under
+the `privacy` command in the observed UI; no browser-version-wide removal claim
+is made. The fallback's global scope and planned restoration were disclosed.
+The owner explicitly confirmed selecting **Block third-party cookies**.
+
+The owner was then instructed to hard-refresh only the synthetic website,
+remount the same public installation snippet and open a new frame, not reuse the
+cached iframe. Asked whether the greeting and composer appear, the owner confirmed
+that it works. **Owner-reported fresh opening with Block selected: PASS**.
+No Send was reported; no new runtime/log/DB/provider accounting read was made.
+
+An allowed-site exception can override the global setting. Asked whether an
+exception covers the preview or platform origin (including wildcards), the owner
+answered **no** and reiterated that **Block** was selected. **Owner-reported fresh
+bootstrap under cookie blocking without a covering exception: PASS**. This is
+owner-supplied policy/behavior evidence, not an independent cookie/request trace.
+No exception list, cookie value, token or credential was requested.
+
+Cleanup is still pending: the reply did not confirm restoring the original
+**Allow** setting, so restoration was requested again without deleting cookies.
+Direct session traces, live origin/token isolation and customer E2E remain
+separate. Only documentation changes; no runtime tests, deployment or paid calls
+are repeated. Historical NULL costs remain unchanged; S22 is not accepted.

@@ -38,6 +38,10 @@ exactly. The [refreshed owner test](#2026-10-08--owner-confirms-corrected-widget
 now confirms **Chat with us** and successful close/reopen: launcher UX **PASS**.
 Independent session/security proof and Widget customer E2E remain pending;
 owner-observed open/reopen alone does not establish those assertions.
+The owner also reports successful fresh opening after selecting **Block
+third-party cookies**, with no covering site exception: owner-observed cookie
+bootstrap **PASS**. Original-setting restoration remains unconfirmed in the
+[cookie checkpoint](#2026-10-08--widget-cookie-block-setting-checkpoint).
 
 ## Preserved evidence
 
@@ -3349,3 +3353,23 @@ global settings. Only these two Markdown documents receive scoped format/diff
 checks; no runtime tests, broad CI, deployment, migration, setup/key replacement
 or paid call is repeated or authorized. Historical NULL costs remain visible;
 S22 remains unaccepted. See the [detailed owner proof](s22-widget-embedding-proof.md#2026-10-08--owner-verifies-corrected-live-launcher).
+
+## 2026-10-08 — Widget cookie-block setting checkpoint
+
+Owner-supplied live result: after confirming the standard Chrome **Block
+third-party cookies** selection, the owner reported success following the fresh
+refresh/remount/new-frame instructions. Freshness was not independently traced;
+cached reopen alone would not establish this check. The proposed DevTools control
+was unavailable in this observed UI; no universal browser-removal claim is made.
+
+Asked only whether an exception covers `cloudshell.dev` or `run.app` (including
+wildcards), the owner answered **no** and reiterated that **Block** was selected.
+**Owner-reported fresh bootstrap under cookie blocking without a covering
+exception: PASS**, not an independent cookie/request trace. The reply did not
+confirm restoring the original **Allow** setting; cleanup remains pending and
+restoration was requested again without deleting cookies. No Send was reported;
+no new accounting, direct session trace or paid-call-count proof is claimed.
+Scoped documentation format/diff checks only; no runtime change, deployment,
+migration or repeated CI. Historical NULL costs and exhausted paid-dispatch
+controls stay unchanged. S22 remains unaccepted. See the
+[detailed cookie checkpoint](s22-widget-embedding-proof.md#2026-10-08--fresh-opening-with-cookie-block-setting-selected).
