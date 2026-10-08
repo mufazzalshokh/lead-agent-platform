@@ -4120,3 +4120,67 @@ for another plan. Existing CI/model/PostgreSQL/selector tests are reused, not
 rerun. Only this evidence register and the journey's current status change;
 changed-section formatting and scoped diff checks are the documentation checks.
 Unrelated user edits are preserved. S22 remains unaccepted; no S23 work.
+
+#### Exact post-rollout Widget readiness collection prepared
+
+The completed apply/convergence above is retained, not repeated. The old session
+selector is pinned to the preceding deployment and must not be rerun after this
+rollout. Two repository-backed modules now prepare one exact-session read:
+`.github/scripts/s22-widget-readiness.mjs` and
+`.github/scripts/s22-widget-readiness-readonly.mjs`. No file upload or browser
+credential/session-token copy is required. There is no new runtime build or
+deployment in this tooling milestone.
+
+Launcher preflight pins reviewed source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`,
+timestamp `2026-10-08T11:00:45Z`, migration provenance `0031`, immutable Worker
+and Migrator references, runtime secret **reference** and identities. It checks
+the actual Worker `widget_booking`/selected-session binding, 15-second request
+timeout, manual instance count, readiness and private network/egress. The
+diagnostic job must have explicit numeric zero retries and the exact private
+network/subnet/egress. Log-read permission is tested before one execution;
+authentication, metadata and log responses are bounded and not printed raw.
+
+The execution overrides only its arguments/environment, not job configuration,
+and runs decoded source as real ES-module stdin in the deployed application's
+working directory. Bare application imports, `import.meta.resolve` and the
+relative tenant-runtime import are retained. It never invokes the migration
+entrypoint. Database operations use the runtime role, read-only transactions,
+transaction-local authorized tenant context, row security and FORCE-RLS/non-owner
+checks on all six consulted tables. Queries have parameterized exact scope,
+strict limits, five-second statement/connection timeouts and rollback/connection
+cleanup on every exit. The actual deployed budget guard's **read** interface
+is reused; no reservation, dispatch authorization, provider construction,
+message body or direct database write is performed.
+
+Five assertions collect runtime/tenant/read-only guards, FORCE-RLS/non-owner
+guards, the **existing** selected session, actual cohort accounting and combined
+first-message preparation. Current absolute and 30-minute idle validity are
+computed by the database. An expired session still produces collected session
+and budget **FAIL** results rather than an ambiguous logging failure; the
+launcher does not renew/reselect it. Successful assertion labels are checked
+against their exact metadata, not trusted without state/versions/guard values.
+Failures retain only allowlisted stage/code/SQLSTATE. Human output uses exact
+integer USD conversion and preserves unknown values instead of zeroing them.
+
+**Local verification only:** `node --test` on the two new test modules passed
+**67/67** cases. Three actual Node subprocess cases execute the exact generated
+bootstrap with controlled application-package/relative-module fixtures: ready,
+expired and failed runtime guard. They prove ES-module/package resolution,
+zero transaction commits and rollback/cleanup without live DB/provider access.
+Additional coverage checks tenant/session/channel/origin boundaries, expiry,
+binding/version drift, unknown/pending money, baseline drift, false PASS metadata,
+private network/role/retry/provenance preflight, log access before execution and
+allowlisted redaction. Scoped syntax, ESLint, Prettier, changed-section Markdown
+formatting and diff checks **PASS**. An unrelated pre-existing `s11` trailing
+whitespace warning is preserved and excluded from this milestone's scoped
+diff checks. Previously passed CI, PostgreSQL, provider, Instagram booking
+and rollout checks are reused, not rerun.
+
+**Live result remains pending.** Neither clock-based expiry suspicion nor these
+local tests establish current session eligibility, a paid journey or S22
+acceptance. The owner has not authorized Send/paid Website Chat execution.
+Keep the same selected frame and run the checksum-pinned read in a separate
+Cloud Shell terminal so the temporary website remains running. Paste its
+readable output once. An expired/missing/bound session is a concrete blocker,
+not authority to substitute a session, widen limits or apply another plan.
+Historical NULL costs and the budget-only exception remain unchanged.

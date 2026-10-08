@@ -113,6 +113,22 @@ later, but its exact `last_seen_at` was not supplied. Terraform does not validat
 live session freshness. Post-apply readiness must establish that separately;
 an expired session does not authorize a replacement, widened limit or Send.
 
+The current next check is the repository-backed **exact-session readiness**
+launcher `.github/scripts/s22-widget-readiness.mjs` with its adjacent read-only
+reader. It is pinned to the completed `a2b2f70` rollout, not the older selector's
+deployment. Download both files at one immutable tooling commit, verify their
+SHA256 checksums, and run the launcher once in a **separate Cloud Shell terminal**
+while leaving the website server/frame intact. No upload, reload, reinstall,
+session selection or Send is needed. The launcher checks current Worker binding
+and uses one read-only runtime-role execution to collect the selected session's
+absolute/idle validity plus actual deployed cohort accounting together. A failed
+session still reports both results and does not renew it. Local verification is
+67/67 deterministic cases, including three actual generated-bootstrap subprocess
+cases; no current live session/accounting result has yet been collected by this
+checker. This is preparation only, not paid execution permission. The fuller
+diagnostic provenance is in the
+[evidence register](s22-acceptance-evidence.md#exact-post-rollout-widget-readiness-collection-prepared).
+
 ### Completed read-only session-selection procedure — do not repeat
 
 The procedure below records the path to successful execution `ngh7p`, not the
