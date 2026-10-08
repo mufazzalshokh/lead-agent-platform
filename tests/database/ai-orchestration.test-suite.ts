@@ -88,6 +88,7 @@ const accept = async (
     sequence?: number;
     text?: string;
     receivedAt?: string;
+    widgetThread?: string;
     channelType?: "widget" | "telegram" | "instagram";
   }> = {},
 ): Promise<CanonicalInboundReceipt> => {
@@ -100,7 +101,7 @@ const accept = async (
       ? "ig:900001:700001"
       : channelType === "telegram"
         ? "700001"
-        : "s12:thread";
+        : (options.widgetThread ?? "s12:thread");
   const event: unknown = {
     channel: channelType,
     channel_connection_id: channel,
@@ -114,7 +115,7 @@ const accept = async (
         ? "ig:900001:700001"
         : channelType === "telegram"
           ? "700001"
-          : "s12:participant",
+          : (options.widgetThread ?? "s12:participant"),
     kind: "text",
     occurred_at: options.receivedAt ?? "2026-09-15T08:00:00.000Z",
     received_at: options.receivedAt ?? "2026-09-15T08:00:00.000Z",
@@ -1634,6 +1635,176 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
       };
       return { reference, cohort, persistence, snapshot, reserve };
     };
+    const prepareWidget = async () => {
+      const original = await prepare();
+      const pool = harness.privilegedPool();
+      const oldGuard = createAIJourneyBudgetGuard(harness.runtime(), original.cohort, now);
+      for (let index = 0; index < 4; index++) {
+        const receipt =
+          index === 0
+            ? null
+            : await accept(harness, {
+                sequence: index + 1,
+                receivedAt: now().toISOString(),
+              });
+        const reference = receipt === null ? original.reference : referenceFor(receipt);
+        const snapshot = await original.persistence.load(reference);
+        if (snapshot === null) throw new Error("Missing original cohort fixture");
+        const reservation = await original.persistence.reserve({
+          reference,
+          snapshot,
+          inputHash: new Uint8Array(32).fill(19),
+        });
+        if (reservation === null) throw new Error("Missing original fixture run");
+        expect(await oldGuard.authorizeDispatch({ reference, reservation })).toBe(true);
+        // Isolated PostgreSQL fixture setup only; never live usage reconciliation.
+        await pool.query(
+          `update ai_runs set status='succeeded',schema_valid=true,policy_allowed=true,
+          provider_resolved_model_id='gemini-3.8-flash',output_hash=$2,finished_at=$3,latency_ms=1,
+          estimated_cost_micros=$4,input_units=520,output_units=217,total_units=737,cached_input_units=0
+          where id=$1`,
+          [reservation.runId, Buffer.alloc(32, 19), now(), [1950, 1792, 2465, 2507][index]],
+        );
+      }
+      const receipt = await accept(harness, {
+        sequence: 100,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      await bindWidget(harness, receipt, now().toISOString());
+      await pool.query("update widget_sessions set version=2 where id=$1", [fixtureId(13006)]);
+      const reference = referenceFor(receipt);
+      const cohort = {
+        ...original.cohort,
+        mode: "widget_booking" as const,
+        widgetSessionId: fixtureId(13006),
+      };
+      const persistence = createAIOrchestrationStore(harness.runtime(), {
+        requestedModel: COMMERCIAL_V1_AI_PROFILE.model,
+        providerId: "gemini",
+        journeyCohort: cohort,
+        clock: now,
+        dataProtection,
+        protectProposal: proposalProtection.protect,
+      });
+      const snapshot = await persistence.load(reference);
+      if (snapshot === null) throw new Error("Missing selected Widget fixture");
+      const reserve = async () => {
+        const reservation = await persistence.reserve({
+          reference,
+          snapshot,
+          inputHash: new Uint8Array(32).fill(19),
+        });
+        if (reservation === null) throw new Error("Missing Widget fixture run");
+        return reservation;
+      };
+      return { reference, cohort, persistence, snapshot, reserve, original };
+    };
+    it("Widget binding and first reservation commit atomically under concurrent runtime-role gates", async () => {
+      const { reference, cohort, reserve, original } = await prepareWidget();
+      const reservations = await Promise.all([reserve(), reserve()]);
+      const results = await Promise.all(
+        reservations.map((reservation) =>
+          createAIJourneyBudgetGuard(harness.runtime(), cohort, now).authorizeDispatch({
+            reference,
+            reservation,
+          }),
+        ),
+      );
+      expect(results.filter(Boolean)).toHaveLength(1);
+      const persisted = await harness.privilegedPool().query<{ bindings: number; slots: number }>(
+        `select count(*) filter(where action='ai_run.widget_journey_bound')::int as bindings,
+          count(*) filter(where action='ai_run.dispatch_reserved'
+            and metadata_redacted_jsonb->>'widget_session_id'=$2)::int as slots
+          from audit_events where organization_id=$1`,
+        [reference.organizationId, cohort.widgetSessionId],
+      );
+      expect(persisted.rows[0]).toEqual({ bindings: 1, slots: 1 });
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.read(reference.organizationId)).toMatchObject({
+        knownCostMicros: "8714",
+        unresolvedReserveMicros: "801432",
+        combinedExposureMicros: "1843542",
+        widget: { physicalCalls: 1, logicalMessages: 1, conversationId: reference.conversationId },
+      });
+      const first = reservations[0];
+      if (first === undefined) throw new Error("Missing concurrent fixture reservation");
+      expect(
+        await guard.authorizeDispatch({ reference: original.reference, reservation: first }),
+      ).toBe(false);
+    });
+    it("Widget timeout keeps the new reserve across process restarts without changing the old ledger", async () => {
+      const { reference, cohort, persistence, snapshot, reserve } = await prepareWidget();
+      const first = await reserve();
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.authorizeDispatch({ reference, reservation: first })).toBe(true);
+      await persistence.finish({
+        reference,
+        snapshot,
+        reservation: first,
+        provider: null,
+        dispatchAuthorized: true,
+        outcome: { kind: "fallback_required", reason: "timeout", applied: false },
+        allowRepair: false,
+      });
+      const next = await reserve();
+      const restarted = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await restarted.authorizeDispatch({ reference, reservation: next })).toBe(false);
+      expect(await restarted.read(reference.organizationId)).toMatchObject({
+        blocked: true,
+        reason: "cost_unknown",
+        knownCostMicros: "8714",
+        historicalReserveMicros: "1033396",
+        widget: { unresolvedReserveMicros: "801432" },
+      });
+      const previous = await harness.privilegedPool().query<{ cost: string; calls: number }>(
+        `select sum(estimated_cost_micros)::text as cost,count(*)::int as calls from ai_runs
+          where organization_id=$1 and conversation_id=$2`,
+        [reference.organizationId, cohort.conversationId],
+      );
+      expect(previous.rows[0]).toEqual({ cost: "8714", calls: 4 });
+    });
+    it("Widget authority expiry, disabled origin and foreign tenant fail before any dispatch latch", async () => {
+      const { reference, cohort, reserve } = await prepareWidget();
+      const reservation = await reserve();
+      await seed(harness, "b");
+      const foreign = await accept(harness, { tenant: "b", receivedAt: now().toISOString() });
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(
+        await guard.authorizeDispatch({
+          reference: { ...referenceFor(foreign), organizationId: tenantB },
+          reservation,
+        }),
+      ).toBe(false);
+      await harness
+        .privilegedPool()
+        .query(
+          "update contacts set status='blocked' where organization_id=$1 and id=(select contact_id from conversations where organization_id=$1 and id=$2)",
+          [reference.organizationId, reference.conversationId],
+        );
+      expect(await guard.authorizeDispatch({ reference, reservation })).toBe(false);
+      await harness
+        .privilegedPool()
+        .query(
+          "update contacts set status='active' where organization_id=$1 and id=(select contact_id from conversations where organization_id=$1 and id=$2)",
+          [reference.organizationId, reference.conversationId],
+        );
+      await harness.privilegedPool().query("update widget_allowed_origins set status='disabled'");
+      expect(await guard.authorizeDispatch({ reference, reservation })).toBe(false);
+      await harness.privilegedPool().query("update widget_allowed_origins set status='active'");
+      const expired = createAIJourneyBudgetGuard(
+        harness.runtime(),
+        cohort,
+        () => new Date(now().getTime() + 1_800_000),
+      );
+      expect(await expired.authorizeDispatch({ reference, reservation })).toBe(false);
+      const records = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          "select count(*)::int as count from audit_events where action='ai_run.widget_journey_bound'",
+        );
+      expect(records.rows[0]?.count).toBe(0);
+    });
     it("serializes two independent dispatch gates and persists one committed reservation", async () => {
       const { reference, cohort, reserve } = await prepare();
       const reservations = await Promise.all([reserve(), reserve()]);

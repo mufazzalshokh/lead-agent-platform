@@ -6,7 +6,8 @@ PLAN_PATH="${1:?usage: s22-full-runtime-plan-check.sh <saved-plan>}"
 PLAN_DIRECTORY="$(cd "$(dirname "$PLAN_PATH")" && pwd)"
 PLAN_FILENAME="$(basename "$PLAN_PATH")"
 PLAN_JSON="$(mktemp)"
-trap 'rm -f "$PLAN_JSON"' EXIT
+PROVIDER_SCHEMA="$(mktemp)"
+trap 'rm -f "$PLAN_JSON" "$PROVIDER_SCHEMA"' EXIT
 
 terraform -chdir="$PLAN_DIRECTORY" show -json "$PLAN_FILENAME" > "$PLAN_JSON"
 
@@ -15,6 +16,7 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
   --arg api_image "$TF_VAR_api_image" --arg web_image "$TF_VAR_web_image" \
   --arg worker_image "$TF_VAR_worker_image" --arg migrator_image "$TF_VAR_migrator_image" \
   --arg journey_mode "$TF_VAR_ai_journey_mode" \
+  --arg widget_session "${TF_VAR_ai_journey_widget_session_id:-}" \
   --arg api_origin "$TF_VAR_api_public_origin" --arg web_origin "$TF_VAR_web_public_origin" '
   .variables.project_id.value == $project
     and .variables.region.value == $region
@@ -25,7 +27,11 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
     and .variables.worker_image.value == $worker_image
     and .variables.migrator_image.value == $migrator_image
     and .variables.ai_journey_mode.value == $journey_mode
-    and ($journey_mode == "paused" or $journey_mode == "booking")
+    and .variables.ai_journey_widget_session_id.value == $widget_session
+    and ($journey_mode == "paused" or $journey_mode == "booking" or $journey_mode == "widget_booking")
+    and (if $journey_mode == "widget_booking"
+         then ($widget_session | test("^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"))
+         else $widget_session == "" end)
     and .variables.api_public_origin.value == $api_origin
     and .variables.web_public_origin.value == $web_origin
     and .variables.deploy_runtime.value == "true"
@@ -68,7 +74,7 @@ case "$ACTUAL_ACTIONS" in
     ;;
 esac
 
-if [[ "$TF_VAR_ai_journey_mode" == "booking" && "$PLAN_MODE" != "reconciliation" ]]; then
+if [[ "$TF_VAR_ai_journey_mode" != "paused" && "$PLAN_MODE" != "reconciliation" ]]; then
   echo "Booking gate requires an existing full runtime, not initial resource creation." >&2
   exit 1
 fi
@@ -113,7 +119,8 @@ jq -e --arg image "$TF_VAR_web_image" '
     and $web[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
 ' "$PLAN_JSON" > /dev/null
 
-jq -e --arg image "$TF_VAR_worker_image" --arg journey_mode "$TF_VAR_ai_journey_mode" '
+jq -e --arg image "$TF_VAR_worker_image" --arg journey_mode "$TF_VAR_ai_journey_mode" \
+  --arg widget_session "${TF_VAR_ai_journey_widget_session_id:-}" '
   [.resource_changes[]
    | select(.address == "google_cloud_run_v2_worker_pool.worker[0]")
    | .change.after] as $worker
@@ -123,6 +130,8 @@ jq -e --arg image "$TF_VAR_worker_image" --arg journey_mode "$TF_VAR_ai_journey_
     and $worker[0].template[0].service_account == "lead-agent-staging-worker@lead-agent-stg-739284.iam.gserviceaccount.com"
     and $worker[0].template[0].containers[0].image == $image
     and ([$worker[0].template[0].containers[0].env[] | select(.name == "AI_JOURNEY_MODE") | .value] == [$journey_mode])
+    and ([$worker[0].template[0].containers[0].env[] | select(.name == "AI_JOURNEY_WIDGET_SESSION_ID") | .value]
+         == (if $widget_session == "" then [] else [$widget_session] end))
     and $worker[0].template[0].containers[0].resources[0].limits.cpu == "1"
     and $worker[0].template[0].containers[0].resources[0].limits.memory == "512Mi"
     and $worker[0].template[0].vpc_access[0].egress == "PRIVATE_RANGES_ONLY"
@@ -146,6 +155,11 @@ jq -e --arg image "$TF_VAR_migrator_image" '
 
 jq -e '[.resource_changes[] | select(.change.actions == ["delete"])] | length == 0' "$PLAN_JSON" > /dev/null
 jq -e '[.resource_changes[] | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length == 0' "$PLAN_JSON" > /dev/null
+
+if [[ "$PLAN_MODE" == "reconciliation" ]]; then
+  terraform -chdir="$PLAN_DIRECTORY" providers schema -json > "$PROVIDER_SCHEMA"
+  node "$(dirname "${BASH_SOURCE[0]}")/s22-full-runtime-config-check.mjs" "$PLAN_JSON" "$PROVIDER_SCHEMA"
+fi
 
 printf '%s\n' \
   "full_runtime_plan_mode=$PLAN_MODE" \

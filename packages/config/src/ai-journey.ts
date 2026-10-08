@@ -1,5 +1,16 @@
 import { ConfigurationValidationError } from "./database.js";
 
+/** Owner-approved independent Widget lane; original ledger is never reset. */
+export const S22_WIDGET_ALLOWANCE = Object.freeze({
+  maximumMessages: 2,
+  maximumCalls: 4,
+  additionalReserveMicros: 3_205_728n,
+  maximumCombinedExposureMicros: 4_247_838n,
+  previousKnownCostMicros: 8_714n,
+  previousCalls: 4,
+  previousMessages: 4,
+} as const);
+
 /** Internal, one-off staging profile; not a tenant billing/booking policy. */
 export const S22_BOOKING_COHORT = Object.freeze({
   profile: "s22-synthetic-booking.v1",
@@ -24,7 +35,9 @@ export const S22_BOOKING_COHORT = Object.freeze({
 } as const);
 
 export type AIJourneyCohortConfig = Readonly<{
-  mode: "paused" | "booking";
+  mode: "paused" | "booking" | "widget_booking";
+  /** Non-secret UUID from the reviewed runtime-role session reader, never a browser parameter. */
+  widgetSessionId?: string;
   profile: string;
   organizationId: string;
   conversationId: string;
@@ -43,18 +56,33 @@ export const loadAIJourneyCohortConfig = (
   environment: NodeJS.ProcessEnv,
 ): AIJourneyCohortConfig | null => {
   const mode = environment["AI_JOURNEY_MODE"];
+  const widgetSessionId = environment["AI_JOURNEY_WIDGET_SESSION_ID"];
   const staging = environment["DEPLOYMENT_ENVIRONMENT"] === "staging";
   if (!staging) {
-    if (mode !== undefined) throw new ConfigurationValidationError("AI_JOURNEY_MODE");
+    if (mode !== undefined || widgetSessionId !== undefined)
+      throw new ConfigurationValidationError("AI_JOURNEY_MODE");
     return null;
   }
-  if (mode !== undefined && mode !== "paused" && mode !== "booking")
+  if (mode !== undefined && mode !== "paused" && mode !== "booking" && mode !== "widget_booking")
     throw new ConfigurationValidationError("AI_JOURNEY_MODE");
+  if (
+    mode === "widget_booking"
+      ? widgetSessionId === undefined ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+          widgetSessionId,
+        )
+      : widgetSessionId !== undefined
+  )
+    throw new ConfigurationValidationError("AI_JOURNEY_WIDGET_SESSION_ID");
   if (
     environment["AI_REQUEST_TIMEOUT_MS"] !== undefined &&
     environment["AI_REQUEST_TIMEOUT_MS"] !== "15000"
   )
     throw new ConfigurationValidationError("AI_REQUEST_TIMEOUT_MS");
   // New staging images cannot resume paid dispatch by mere deployment.
-  return Object.freeze({ ...S22_BOOKING_COHORT, mode: mode ?? "paused" });
+  return Object.freeze({
+    ...S22_BOOKING_COHORT,
+    mode: mode ?? "paused",
+    ...(widgetSessionId === undefined ? {} : { widgetSessionId }),
+  });
 };

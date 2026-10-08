@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   budget-postgres:
-    name: Three S22 budget cases on isolated PostgreSQL 17
+    name: Six S22 budget cases on isolated PostgreSQL 17
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # No staging environment, GCP identity, provider key, or production DB access.

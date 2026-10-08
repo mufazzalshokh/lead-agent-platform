@@ -90,6 +90,8 @@ locals {
     INSTAGRAM_OAUTH_REDIRECT_URI    = "${var.web_public_origin}/v1/integrations/instagram/callback"
     TELEGRAM_BOT_USERNAME           = var.telegram_bot_username
     TELEGRAM_WEBHOOK_URL            = "${var.web_public_origin}/v1/webhooks/telegram"
+    }, var.ai_journey_widget_session_id == "" ? {} : {
+    AI_JOURNEY_WIDGET_SESSION_ID = var.ai_journey_widget_session_id
   })
 
   worker_secret_env = {

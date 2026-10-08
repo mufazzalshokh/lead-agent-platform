@@ -1,5 +1,79 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Current preparation — separate Website Chat journey (2026-10-08)
+
+The owner approved **preparing** a bounded, independent Widget journey. This
+does not apply a plan, authorize Send now, repeat the Instagram journey or
+establish S22 acceptance. The existing published synthetic facts below remain
+unchanged: 100,000 UZS, 30 minutes, Monday–Saturday 09:00–18:00 Asia/Tashkent,
+staff review followed by genuine customer confirmation. Hours are not slot
+availability.
+
+| Planning/enforced limit | Value |
+| --- | --- |
+| Selected customer scope | One reviewed WidgetSession; its conversation is derived from persisted tenant-owned records, never supplied by the browser |
+| Additional logical customer messages | 2 |
+| Additional physical provider attempts | 4 total, at most 2 per message |
+| Model/request bounds | Unchanged Gemini commercial profile; 1 candidate, input ceiling 1,048,576, output ceiling 4,000 including thinking; no enabled billable tools/cache creation/tier extras |
+| Per-attempt reservation | 801,432 USD micros; integer ceiling of the existing verified standard pricing calculation |
+| Additional allowance | 3,205,728 USD micros / USD3.205728 |
+| Previous known recorded cost | 8,714 USD micros / USD0.008714; exactly 4 original paid messages/calls |
+| Historical budget-only reservation | 1,033,396 USD micros / USD1.033396; historical NULL costs are not reconciled |
+| Maximum combined planning exposure | 4,247,838 USD micros / USD4.247838 |
+| Existing target / hard ceiling | USD5 / USD10, unchanged |
+
+The prepared staging-only `widget_booking` mode requires an exact canonical
+UUIDv7 `AI_JOURNEY_WIDGET_SESSION_ID`. Missing/foreign/expired/revoked session,
+inactive Widget channel/origin/contact, wrong conversation ownership, stale
+version, budget uncertainty, unknown cost, timeout, exhausted counts or pricing
+expiry deny dispatch. A common original-conversation lock serializes independent
+Workers; an immutable session/conversation binding audit and first reservation
+commit together before provider I/O. Changing the selected session after that
+commit cannot reset the one-off allowance. Old audit/usage rows are preserved;
+no historical NULL becomes zero. New Widget spend is accounted separately and
+also included in the existing aggregate exposure. Original Instagram dispatch
+is not authorized by this mode.
+
+### Preparation and rollout order
+
+1. Focused local and isolated PostgreSQL regressions, reviewed source commit,
+   fresh immutable four-image build. No provider/production DB access in tests.
+2. After images are ready, one fresh real frame opening **without Send**, then
+   the repository-backed runtime-role read selects exactly one fresh unbound
+   session on the approved origin. No bearer/cookie/token is copied. Version 2
+   requires the owner's fresh-frame corroboration; alone it is not redemption
+   execution evidence. Session expiry/30-minute idle rules remain enforced.
+3. One full-runtime reconciliation plan using those exact images, source,
+   migration provenance, timestamp and selected session UUID. Review its saved
+   SHA256 and exact four in-place workload changes, including only the Worker
+   mode/session binding plus image/provenance. No apply without that exact plan
+   approval; no migration, IAM, network, SQL or scaling change.
+4. After approved apply, verify exact runtime convergence and current selected
+   session/cohort readiness before requesting any paid/customer action. An
+   expired or replaced session is a blocker, not permission to substitute one.
+
+### Prepared customer/staff sequence — not instructions to Send now
+
+Give one action at a time after readiness/execution authorization. The first
+natural Uzbek message is: **“Salom, S22 sinov konsultatsiyasi narxi qancha va
+qancha davom etadi? Ertaga soat 17:00 ga yozilmoqchiman.”** Record the actual
+message timestamp and resolved date; use only a future preference inside the
+published hours, never interpret hours as guaranteed availability.
+
+Expect grounded price/duration and an authoritative booking **request**, not a
+confirmed booking. Authorized staff opens only this exact Widget request and
+accepts a reviewed offer through the existing UI with current versions. Verify
+the offer is delivered into the same Widget transcript. Only then the real test
+customer sends **“Ha, shu vaqtni tasdiqlayman.”** Staff acceptance alone and a
+fabricated confirmation are insufficient. Verify persisted request/offer and
+customer evidence, transitions/audits, reply delivery/render, conversion and
+dispatch accounting. Do not replay events or spend beyond the two-message/four-
+attempt scope; stop on timeout/unknown cost/guard failure.
+
+The preceding non-paid embedding, cookie-block, launcher and origin-denial
+checks are retained, not repeated. Selected live session, new build/plan,
+deployment/readiness and customer journey are still pending until collected.
+
 ## Scope and evidence boundary
 
 This is a fictional staging fixture, not a real clinic, price offer or appointment

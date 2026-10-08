@@ -4,8 +4,19 @@ variable "ai_journey_mode" {
   default     = "paused"
 
   validation {
-    condition     = contains(["paused", "booking"], var.ai_journey_mode)
-    error_message = "ai_journey_mode must be paused or booking."
+    condition     = contains(["paused", "booking", "widget_booking"], var.ai_journey_mode)
+    error_message = "ai_journey_mode must be paused, booking, or widget_booking."
+  }
+}
+
+variable "ai_journey_widget_session_id" {
+  description = "Exact trusted owner-selected Widget session UUIDv7; present only for the approved widget_booking mode."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.ai_journey_mode == "widget_booking" ? can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", var.ai_journey_widget_session_id)) : var.ai_journey_widget_session_id == ""
+    error_message = "widget_booking requires an exact canonical UUIDv7 session; other modes require an empty Widget session binding."
   }
 }
 

@@ -91,6 +91,12 @@ on:
           - preserve
           - paused
           - booking
+          - widget_booking
+      ai_journey_widget_session_id:
+        description: Exact owner-selected Widget session UUIDv7; required for widget_booking, otherwise preserve the prior binding or leave empty
+        required: false
+        default: ""
+        type: string
       booking_evidence_stage:
         description: Read-only cohort evidence; initial baseline, observe progress, first-turn or final-turn exact metadata trace
         required: false
@@ -282,6 +288,7 @@ jobs:
       S22_MIGRATOR_EXECUTION_ID: ${{ inputs.migrator_execution_id }}
       S22_PHASE: ${{ inputs.phase }}
       S22_AI_JOURNEY_MODE: ${{ inputs.ai_journey_mode || 'preserve' }}
+      S22_AI_JOURNEY_WIDGET_SESSION_ID: ${{ inputs.ai_journey_widget_session_id || '' }}
       S22_PLAN_RUN_ID: ${{ inputs.plan_run_id }}
       S22_RUNTIME_DEPLOYMENT_TIMESTAMP: ${{ inputs.runtime_deployment_timestamp }}
       S22_RUNTIME_GIT_COMMIT_SHA: ${{ inputs.runtime_git_commit_sha }}
@@ -330,9 +337,16 @@ jobs:
             *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
           esac
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$S22_AI_JOURNEY_MODE" == "preserve" || "$S22_AI_JOURNEY_MODE" == "paused" || "$S22_AI_JOURNEY_MODE" == "booking" ]]
+          [[ "$S22_AI_JOURNEY_MODE" == "preserve" || "$S22_AI_JOURNEY_MODE" == "paused" || "$S22_AI_JOURNEY_MODE" == "booking" || "$S22_AI_JOURNEY_MODE" == "widget_booking" ]]
           if [[ "$S22_AI_JOURNEY_MODE" != "preserve" ]]; then
             [[ "$PHASE" == "full" ]]
+          fi
+          if [[ -n "$S22_AI_JOURNEY_WIDGET_SESSION_ID" ]]; then
+            [[ "$S22_AI_JOURNEY_WIDGET_SESSION_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]
+            [[ "$S22_AI_JOURNEY_MODE" == "widget_booking" || "$S22_AI_JOURNEY_MODE" == "preserve" ]]
+          fi
+          if [[ "$S22_AI_JOURNEY_MODE" == "widget_booking" ]]; then
+            [[ -n "$S22_AI_JOURNEY_WIDGET_SESSION_ID" ]]
           fi
           if [[ "$PHASE" == "migration-error-read" ]]; then
             [[ "$ACTION" == "plan" ]]
@@ -851,10 +865,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Read authoritative remote state internally; emit only the non-secret mode.
-          MODE="$(terraform -chdir=infra/deploy/gcp/staging state pull | node .github/scripts/s22-ai-journey-mode.mjs "$S22_PHASE" "$S22_AI_JOURNEY_MODE")"
-          [[ "$MODE" == "paused" || "$MODE" == "booking" ]]
-          echo "TF_VAR_ai_journey_mode=$MODE" >> "$GITHUB_ENV"
+          # Resolve only the validated, non-secret mode/session from authoritative state.
+          SETTINGS="$(terraform -chdir=infra/deploy/gcp/staging state pull | node .github/scripts/s22-ai-journey-mode.mjs "$S22_PHASE" "$S22_AI_JOURNEY_MODE" "$S22_AI_JOURNEY_WIDGET_SESSION_ID" json)"
+          MODE="$(jq -r '.mode' <<< "$SETTINGS")"
+          SESSION_ID="$(jq -r '.widgetSessionId' <<< "$SETTINGS")"
+          [[ "$MODE" == "paused" || "$MODE" == "booking" || "$MODE" == "widget_booking" ]]
+          {
+            echo "TF_VAR_ai_journey_mode=$MODE"
+            echo "TF_VAR_ai_journey_widget_session_id=$SESSION_ID"
+          } >> "$GITHUB_ENV"
 
       - name: Validate staging Terraform
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_PHASE != 'owner-workspace-verify'

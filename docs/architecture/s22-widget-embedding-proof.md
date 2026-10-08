@@ -576,3 +576,36 @@ the budget-store constructor validates the exact profile/limits. Changing only
 mode cannot authorize Widget. A separately bounded Widget cohort and owner
 budget/exact-plan decision must be prepared before Send, without resetting the
 existing ledger or historical NULL costs. No new test spend is authorized here.
+
+## 2026-10-08 — bounded customer-journey preparation approved
+
+The subsequent owner approval authorizes **preparation**, not immediate Send
+or apply. The new staging-only guard reserves up to USD3.205728 for two logical
+messages/four physical attempts on **one** selected WidgetSession, with the
+existing two-attempt/message/model limits. It preserves the original ledger,
+USD1.033396 historical budget reserve and historical NULL costs. Maximum
+combined exposure is USD4.247838; USD5 target/USD10 ceiling remain unchanged.
+See the [journey preparation](s22-synthetic-booking-journey.md#current-preparation--separate-website-chat-journey-2026-10-08).
+
+Session selection uses the new repository-backed `s22-widget-session-select.mjs`
+and sibling read-only reader, not a browser-token decode or invented staff
+endpoint. It verifies the deployed reviewed Migrator image/source, runtime
+secret **reference** and identity, private VPC/subnet/egress and explicit zero
+retries, and proves Logging access before execution. One task uses the existing
+actual ES-module stdin bootstrap, bounded at 60 seconds; no migration entrypoint
+is invoked. Queries are parameterized, runtime-role/read-only, tenant-bound,
+FORCE-RLS/not-owner checked and limited; rollback/connection cleanup occur on
+every exit. Output contains only allowlisted non-secret routing/session metadata.
+
+The reader requires one exact active approved origin/channel and exactly one
+fresh unbound active version-2 session. It rejects ambiguity/expiry/foreign
+scope. Version 2 plus fresh-frame owner corroboration is scoped selection
+evidence, not independent proof of the redemption HTTP exchange. The new guard
+derives first conversation/contact authority from that session and writes its
+immutable audit binding atomically with the first dispatch reservation. A
+configuration switch or Worker restart cannot silently create another allowance.
+
+No live selection, provider request, message, infrastructure apply or migrations
+were performed by this preparation. After a verified build, select the live
+session without sending, prepare one fresh exact plan, and stop for its approval.
+Do not repeat unchanged embedding/security checks or expose credentials.

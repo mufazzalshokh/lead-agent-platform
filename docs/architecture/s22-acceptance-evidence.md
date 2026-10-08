@@ -5,6 +5,16 @@ live product and recovery/capacity proof. It does not declare S22 acceptance.
 
 ## Current checkpoint — 2026-10-08
 
+**Active milestone:** the owner approved preparation of the separately bounded
+Website Chat customer-to-confirmed-booking test. Its proposed two messages/four
+physical attempts reserve USD3.205728; combined maximum exposure including the
+retained historical reservation and original known cost is USD4.247838. This
+is not approval to apply an unidentified plan or send now. See the
+[current preparation and limits](s22-synthetic-booking-journey.md#current-preparation--separate-website-chat-journey-2026-10-08).
+Local implementation/tests, isolated PostgreSQL proof, immutable build and exact
+session-bound plan are preparation gates; none substitutes for deployed/live
+customer evidence. S22 remains unaccepted.
+
 The original eligible Instagram synthetic journey has scoped live proof of
 grounded price/duration, staff acceptance, actual customer confirmation and the
 persisted confirmed booking. Owner-supplied execution
@@ -3444,3 +3454,63 @@ and denies other conversations before provider dispatch. A separate bounded
 Widget cohort/budget and any exact runtime-plan approval must be prepared before
 Send; changing mode alone is insufficient. The old ledger/reserve/NULL costs
 cannot be reset or transferred silently. No additional paid test is authorized.
+
+## 2026-10-08 — bounded Website Chat guard preparation
+
+The next owner reply approved **preparing this bounded Website Chat test**.
+Authority remains preparation: no apply, message/provider execution, replay,
+migration or IAM change. The existing Instagram booking proof and two historical
+NULL-cost records are preserved. See the [limits and prepared customer/staff
+sequence](s22-synthetic-booking-journey.md#current-preparation--separate-website-chat-journey-2026-10-08).
+
+The concrete missing control was the old gate's intentional pin to the original
+Instagram conversation. Setting a mode alone could not authorize a Widget
+session, and globally authorizing website visitors would violate the bounded
+scope. The new staging-only lane uses an exact trusted WidgetSession UUID and
+derives its tenant/contact/conversation from persisted ownership. A common
+original-conversation lock serializes reservations across Worker instances;
+the immutable one-off session/conversation latch and first paid reservation
+commit atomically before dispatch. It freezes the original four paid messages,
+four attempts and 8,714 micros known cost, retaining the historical planning
+reserve. No switching/restarting can reset the selected lane after its latch.
+
+Two logical messages, four physical attempts and two attempts/message are
+enforced. Pending or unknown cost retains the full 801,432-micros slot and
+blocks continuation. New allowance is 3,205,728 micros; maximum combined
+exposure 4,247,838 micros, below the unchanged USD5 target/USD10 hard ceiling.
+Strict version/state/model/usage/pricing/lifetime checks remain. Independent
+review identified an active-contact race between context load and dispatch;
+the selected-conversation query now rechecks active contact before reservation.
+Historical costs must remain NULL; mutation to zero is explicitly rejected.
+
+Local verification completed without production DB or paid provider access:
+
+- `node node_modules/vitest/vitest.mjs run tests/ai/s22-budget-ledger.test.ts tests/ai/s22-journey-dispatch.test.ts`: **56/56 PASS**. Modeled PostgreSQL transport, not real locking/RLS evidence. Includes concurrency, atomic commit failure, cross-tenant/session/contact/origin denial, revocation/expiry, downgrade/session-reset denial, inclusive fourth-slot cap, message/attempt caps, unknown/timeout retention and immutable historical NULLs.
+- `node node_modules/vitest/vitest.mjs run tests/ai/sales-flow.test.ts`: **89/89 PASS** in the focused combined run. Unchanged deterministic policy/booking failure protections; no real generation or channel delivery claim.
+- `node --test .github/scripts/s22-widget-session-select.test.mjs`: **20/20 PASS**, including exact generated ES-module bootstrap, bare application-package and relative runtime-module resolution, runtime/read-only/tenant guard, forced rollback and cleanup, bounded/sanitized collection, and missing Logging access denial **before** execution.
+- Root `tsc -p tsconfig.json --noEmit`, database TypeScript and Worker TypeScript: **PASS**. `node scripts/check-boundaries.mjs`: **PASS**, 318 source files. Scoped ESLint/Prettier/diff checks: **PASS**.
+
+Three additional isolated PostgreSQL cases exercise real runtime-role concurrent
+gates and immutable binding, retained timeout reserve/process restart, inactive
+contact/origin, session expiry and foreign tenant. Local Docker engine is
+unavailable; the existing scoped `s22-booking-budget.yml` runs all six cases
+on disposable PostgreSQL 17 after push, without staging credentials or Gemini.
+Their result is **pending** here, not replaced by mocked PASS.
+
+Deployment preparation validation: mode/workflow **18/18 PASS**, existing
+infrastructure checks **10/10 PASS**, strict configuration helper **7/7 PASS**;
+Terraform validation/format and Bash syntax **PASS**. The new helper rejects
+configurable unknowns and unrelated resource/environment/secret/network/scaling
+changes. A genuine replay using the locked Google 7.46.1 provider schema and
+the previous saved reconciliation plan verified **88 managed resources / exactly
+4 workload updates**. Only the newly introduced empty legacy session variable
+was supplied in memory for this compatibility test; the saved plan was unchanged.
+This is local guard compatibility evidence, not a new approved plan or apply.
+
+The fresh build and session-bound deployment plan are also pending at this
+checkpoint. Exact live session selection requires one fresh real-frame opening
+without Send and a bounded runtime-role read; no customer credential is exposed.
+The saved plan must contain only four in-place workload image/provenance updates
+plus the explicitly reviewed Worker mode/session binding, no SQL/IAM/network/
+scaling changes, creates/destroys/replacements or migration execution. Exact
+saved-plan approval remains required. S22 remains unaccepted.

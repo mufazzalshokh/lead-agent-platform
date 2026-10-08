@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadAIJourneyCohortConfig, S22_BOOKING_COHORT } from "../../packages/config/src/index.js";
+import {
+  loadAIJourneyCohortConfig,
+  S22_BOOKING_COHORT,
+  S22_WIDGET_ALLOWANCE,
+} from "../../packages/config/src/index.js";
 import {
   createAIOrchestrator,
   type AIOrchestrationStore,
@@ -53,6 +57,46 @@ describe("S22 synthetic booking dispatch boundary", () => {
       loadAIJourneyCohortConfig({ DEPLOYMENT_ENVIRONMENT: "staging", AI_JOURNEY_MODE: "booking" })
         ?.mode,
     ).toBe("booking");
+  });
+  it("requires one exact trusted Widget session binding only in Widget mode", () => {
+    const widgetSessionId = fixtureId(17999);
+    expect(
+      loadAIJourneyCohortConfig({
+        DEPLOYMENT_ENVIRONMENT: "staging",
+        AI_JOURNEY_MODE: "widget_booking",
+        AI_JOURNEY_WIDGET_SESSION_ID: widgetSessionId,
+      }),
+    ).toEqual({
+      ...S22_BOOKING_COHORT,
+      mode: "widget_booking",
+      widgetSessionId,
+    });
+    for (const environment of [
+      {
+        DEPLOYMENT_ENVIRONMENT: "staging",
+        AI_JOURNEY_MODE: "widget_booking",
+      },
+      {
+        DEPLOYMENT_ENVIRONMENT: "staging",
+        AI_JOURNEY_MODE: "widget_booking",
+        AI_JOURNEY_WIDGET_SESSION_ID: "not-a-session",
+      },
+      {
+        DEPLOYMENT_ENVIRONMENT: "staging",
+        AI_JOURNEY_MODE: "paused",
+        AI_JOURNEY_WIDGET_SESSION_ID: widgetSessionId,
+      },
+      {
+        DEPLOYMENT_ENVIRONMENT: "staging",
+        AI_JOURNEY_MODE: "booking",
+        AI_JOURNEY_WIDGET_SESSION_ID: widgetSessionId,
+      },
+      {
+        AI_JOURNEY_MODE: "widget_booking",
+        AI_JOURNEY_WIDGET_SESSION_ID: widgetSessionId,
+      },
+    ])
+      expect(() => loadAIJourneyCohortConfig(environment)).toThrow();
   });
   it.each([
     { AI_JOURNEY_MODE: "booking" },
@@ -141,5 +185,21 @@ describe("S22 synthetic booking dispatch boundary", () => {
     expect(S22_BOOKING_COHORT.historicalReserveMicros + 6_207n + remainingAttempts * 801_432n).toBe(
       2_642_467n,
     );
+    expect(S22_WIDGET_ALLOWANCE).toMatchObject({
+      maximumMessages: 2,
+      maximumCalls: 4,
+      previousMessages: 4,
+      previousCalls: 4,
+      previousKnownCostMicros: 8_714n,
+    });
+    expect(S22_BOOKING_COHORT.maximumCallsPerMessage).toBe(2);
+    expect(BigInt(S22_WIDGET_ALLOWANCE.maximumCalls) * 801_432n).toBe(
+      S22_WIDGET_ALLOWANCE.additionalReserveMicros,
+    );
+    expect(
+      S22_BOOKING_COHORT.historicalReserveMicros +
+        S22_WIDGET_ALLOWANCE.previousKnownCostMicros +
+        S22_WIDGET_ALLOWANCE.additionalReserveMicros,
+    ).toBe(S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros);
   });
 });

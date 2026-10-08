@@ -55,5 +55,6 @@ export {
 export {
   S22_BOOKING_COHORT,
   loadAIJourneyCohortConfig,
+  S22_WIDGET_ALLOWANCE,
   type AIJourneyCohortConfig,
 } from "./ai-journey.js";

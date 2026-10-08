@@ -1,5 +1,9 @@
 import type { AIWorkReference, AIRunReservation } from "@lead-agent/application";
-import { COMMERCIAL_V1_AI_PROFILE, type AIJourneyCohortConfig } from "@lead-agent/config";
+import {
+  COMMERCIAL_V1_AI_PROFILE,
+  S22_WIDGET_ALLOWANCE,
+  type AIJourneyCohortConfig,
+} from "@lead-agent/config";
 import {
   ConversationIdSchema,
   OrganizationIdSchema,
@@ -20,6 +24,8 @@ import {
 
 const RESERVED = "ai_run.dispatch_reserved";
 const STARTED = "ai_run.journey_started";
+const WIDGET_BOUND = "ai_run.widget_journey_bound";
+type WidgetBinding = Readonly<{ conversationId: string | null; contactId: string | null }>;
 
 export type AIJourneyBudgetSnapshot = Readonly<{
   profile: string;
@@ -36,6 +42,14 @@ export type AIJourneyBudgetSnapshot = Readonly<{
    * repair is decided by authorizeDispatch, never by this read-only snapshot. */
   blocked: boolean;
   reason: string | null;
+  widget?: Readonly<{
+    sessionId: string;
+    conversationId: string | null;
+    physicalCalls: number;
+    logicalMessages: number;
+    knownCostMicros: string;
+    unresolvedReserveMicros: string;
+  }>;
 }>;
 
 /** No new billing table or permission. Immutable tenant audit markers are the
@@ -50,7 +64,10 @@ export const createAIJourneyBudgetGuard = (
     historicalRunIds: Object.freeze([...configuration.historicalRunIds]),
   });
   if (
-    !["paused", "booking"].includes(config.mode) ||
+    !["paused", "booking", "widget_booking"].includes(config.mode) ||
+    (config.mode === "widget_booking"
+      ? !isSchemaValue(ResourceIdSchema, config.widgetSessionId)
+      : config.widgetSessionId !== undefined) ||
     config.profile !== "s22-synthetic-booking.v1" ||
     !isSchemaValue(OrganizationIdSchema, config.organizationId) ||
     !isSchemaValue(ConversationIdSchema, config.conversationId) ||
@@ -71,6 +88,7 @@ export const createAIJourneyBudgetGuard = (
   const organizationId = config.organizationId;
   // Copy trusted configuration so mutation by a caller cannot reset/widen a cohort.
   const baseline = Object.freeze([...config.historicalRunIds]);
+  const widgetSessionId = config.widgetSessionId;
   const identifiers = createSecurityIdentifierFactory();
   const reserveAt = (at: Date): bigint | null => {
     const price = resolveAIPrice("gemini", "gemini-3.8-flash", at);
@@ -90,7 +108,38 @@ export const createAIJourneyBudgetGuard = (
       1_000_000n
     );
   };
-  const inspect = async (session: TenantDbSession) => {
+  const widgetBinding = async (
+    session: TenantDbSession,
+    lock = false,
+  ): Promise<WidgetBinding | null> => {
+    if (widgetSessionId === undefined) return null;
+    const at = clock();
+    const rows = await executeTenantRead(
+      session,
+      `select ws.conversation_id::text, ws.contact_id::text
+       from widget_sessions ws
+       join channel_connections cc on cc.organization_id=$1 and cc.id=ws.channel_connection_id
+       join widget_allowed_origins wao on wao.organization_id=$1 and wao.id=ws.widget_allowed_origin_id
+         and wao.channel_connection_id=ws.channel_connection_id
+       where ws.organization_id=$1 and ws.id=$2 and ws.status='active' and ws.revoked_at is null
+         and ws.expires_at>$3 and ws.last_seen_at>$4
+         and cc.status='active' and cc.channel_type='widget' and wao.status='active'
+       ${lock ? "for update of ws" : ""}`,
+      [widgetSessionId, at, new Date(at.getTime() - 1_800_000)],
+    );
+    if (rows.length !== 1) return null;
+    const row = rows[0];
+    const conversationId: unknown = row?.["conversation_id"];
+    const contactId: unknown = row?.["contact_id"];
+    if (
+      (conversationId !== null && !isSchemaValue(ConversationIdSchema, conversationId)) ||
+      (contactId !== null && !isSchemaValue(ResourceIdSchema, contactId)) ||
+      (conversationId === null) !== (contactId === null)
+    )
+      return null;
+    return { conversationId, contactId };
+  };
+  const inspect = async (session: TenantDbSession, binding: WidgetBinding | null = null) => {
     const reserve = reserveAt(clock());
     // Bounded metadata only: no bodies, account identifiers, hashes or snapshots.
     const rows = await executeTenantRead(
@@ -104,6 +153,10 @@ export const createAIJourneyBudgetGuard = (
           and a.target_id=r.id and a.action=$3) as journey_starts,
         (select a.metadata_redacted_jsonb->>'reservation_micros' from audit_events a
           where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=r.id and a.action=$2 limit 1) as reserved_micros,
+        (select a.metadata_redacted_jsonb->>'widget_session_id' from audit_events a
+          where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=r.id and a.action=$2 limit 1) as widget_session_id,
+        (select a.metadata_redacted_jsonb->>'conversation_id' from audit_events a
+          where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=r.id and a.action=$2 limit 1) as widget_conversation_id,
         (select a.metadata_redacted_jsonb->>'dispatch_authorized' from audit_events a
           where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=r.id
           and a.action in ('ai_run.completed','ai_run.failed','ai_run.schema_rejected','ai_run.policy_denied')
@@ -130,6 +183,14 @@ export const createAIJourneyBudgetGuard = (
       pending = BigInt(orphanSlots) * 801_432n,
       calls = orphanSlots,
       reason: string | null = null;
+    let originalCalls = 0,
+      originalKnown = 0n,
+      originalPending = 0n;
+    let widgetCalls = 0,
+      widgetKnown = 0n,
+      widgetPending = 0n;
+    const originalMessages = new Set<string>(),
+      widgetMessages = new Map<string, number>();
     const messages = new Map<string, number>();
     const baselineSeen = new Set<string>();
     if (reserve === null) reason = "pricing_unavailable";
@@ -139,6 +200,7 @@ export const createAIJourneyBudgetGuard = (
       const id = mapString(row["id"]);
       if (baseline.includes(id)) {
         if (row["conversation_id"] !== config.conversationId) reason = "historical_scope_mismatch";
+        if (row["estimated_cost_micros"] !== null) reason = "historical_cost_mutated";
         baselineSeen.add(id);
         continue;
       }
@@ -163,12 +225,30 @@ export const createAIJourneyBudgetGuard = (
       messages.set(messageId, (messages.get(messageId) ?? 0) + 1);
       if (row["provider_id"] !== "gemini" || row["requested_model_id"] !== "gemini-3.8-flash")
         reason = "model_mismatch";
-      if (row["conversation_id"] !== config.conversationId) reason = "scope_mismatch";
+      const original = row["conversation_id"] === config.conversationId;
+      const widget =
+        widgetSessionId !== undefined &&
+        binding?.conversationId !== null &&
+        row["conversation_id"] === binding?.conversationId &&
+        row["widget_session_id"] === widgetSessionId &&
+        row["widget_conversation_id"] === binding?.conversationId;
+      if (original) {
+        originalCalls++;
+        originalMessages.add(messageId);
+        if (row["widget_session_id"] != null) reason = "scope_mismatch";
+      } else if (widget) {
+        widgetCalls++;
+        widgetMessages.set(messageId, (widgetMessages.get(messageId) ?? 0) + 1);
+      } else reason = "scope_mismatch";
       if (row["finished_at"] === null) {
         pending += retained;
+        if (original) originalPending += retained;
+        if (widget) widgetPending += retained;
         reason = "dispatch_in_flight";
       } else if (row["estimated_cost_micros"] === null) {
         pending += retained;
+        if (original) originalPending += retained;
+        if (widget) widgetPending += retained;
         reason = "cost_unknown";
       } else {
         const value = BigInt(mapString(row["estimated_cost_micros"]));
@@ -187,18 +267,76 @@ export const createAIJourneyBudgetGuard = (
         )
           reason = "usage_limit";
         known += value;
+        if (original) originalKnown += value;
+        if (widget) widgetKnown += value;
       }
     }
     if (baselineSeen.size !== baseline.length) reason = "historical_baseline_missing";
     if (
-      calls > config.maximumCalls ||
-      messages.size > config.maximumMessages ||
-      [...messages.values()].some((count) => count > config.maximumCallsPerMessage)
+      widgetSessionId === undefined &&
+      (calls > config.maximumCalls ||
+        messages.size > config.maximumMessages ||
+        [...messages.values()].some((count) => count > config.maximumCallsPerMessage))
     )
       reason = "attempt_limit";
     const exposure = config.historicalReserveMicros + known + pending;
     if (exposure >= config.hardCeilingMicros) reason = "hard_ceiling";
-    return { reserve, known, pending, calls, messages, reason, exposure, rows };
+    let latchCount = 0;
+    if (widgetSessionId !== undefined) {
+      const latches = await executeTenantRead(
+        session,
+        `select target_id::text as session_id,
+          metadata_redacted_jsonb->>'widget_session_id' as widget_session_id,
+          metadata_redacted_jsonb->>'conversation_id' as conversation_id
+         from audit_events where organization_id=$1 and action=$2
+           and target_type='widget_session' and metadata_redacted_jsonb->>'profile'=$3 limit 2`,
+        [WIDGET_BOUND, config.profile],
+      );
+      latchCount = latches.length;
+      if (
+        originalCalls !== S22_WIDGET_ALLOWANCE.previousCalls ||
+        originalMessages.size !== S22_WIDGET_ALLOWANCE.previousMessages ||
+        originalKnown !== S22_WIDGET_ALLOWANCE.previousKnownCostMicros ||
+        originalPending !== 0n
+      )
+        reason = "widget_baseline_mismatch";
+      if (binding === null) reason = "widget_session_unavailable";
+      if (
+        latches.length > 1 ||
+        (widgetCalls > 0 && latches.length !== 1) ||
+        (latches.length === 1 &&
+          (latches[0]?.["session_id"] !== widgetSessionId ||
+            latches[0]["widget_session_id"] !== widgetSessionId ||
+            latches[0]["conversation_id"] !== binding?.conversationId))
+      )
+        reason = "widget_binding_integrity";
+      if (
+        widgetCalls > S22_WIDGET_ALLOWANCE.maximumCalls ||
+        widgetMessages.size > S22_WIDGET_ALLOWANCE.maximumMessages ||
+        [...widgetMessages.values()].some((count) => count > config.maximumCallsPerMessage)
+      )
+        reason = "attempt_limit";
+      if (
+        widgetKnown + widgetPending > S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+        exposure > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros
+      )
+        reason = "widget_allowance";
+    }
+    return {
+      reserve,
+      known,
+      pending,
+      calls,
+      messages,
+      reason,
+      exposure,
+      rows,
+      widgetCalls,
+      widgetMessages,
+      widgetKnown,
+      widgetPending,
+      latchCount,
+    };
   };
   return Object.freeze({
     recordStart: async (
@@ -225,9 +363,11 @@ export const createAIJourneyBudgetGuard = (
       input: Readonly<{ reference: AIWorkReference; reservation: AIRunReservation }>,
     ): Promise<boolean> => {
       if (
-        config.mode !== "booking" ||
+        (config.mode !== "booking" && config.mode !== "widget_booking") ||
         input.reference.organizationId !== organizationId ||
-        input.reference.conversationId !== config.conversationId
+        (widgetSessionId === undefined &&
+          input.reference.conversationId !== config.conversationId) ||
+        (widgetSessionId !== undefined && input.reference.conversationId === config.conversationId)
       )
         return false;
       return runtime.withTenantTransaction(input.reference.organizationId, async (session) => {
@@ -237,32 +377,86 @@ export const createAIJourneyBudgetGuard = (
           `select id,status,automation_mode,version from conversations where organization_id=$1 and id=$2 for update`,
           [config.conversationId],
         );
+        if (locked.length !== 1) return false;
+        // The original conversation remains the shared mutex across old/new Workers.
+        // Widget intake and this gate both lock its session before its conversation.
+        const binding = await widgetBinding(session, true);
+        let currentConversation = locked[0];
+        if (widgetSessionId !== undefined) {
+          if (
+            binding?.conversationId !== input.reference.conversationId ||
+            binding.contactId === null
+          )
+            return false;
+          const widgetConversation = await executeTenantRead(
+            session,
+            `select id,status,automation_mode,version from conversations
+             where organization_id=$1 and id=$2 and contact_id=$3
+               and exists(select 1 from contacts c where c.organization_id=$1 and c.id=$3 and c.status='active')
+             for update`,
+            [binding.conversationId, binding.contactId],
+          );
+          if (widgetConversation.length !== 1) return false;
+          currentConversation = widgetConversation[0];
+        }
         if (
-          locked.length !== 1 ||
-          locked[0]?.["status"] !== "open" ||
-          locked[0]["automation_mode"] !== "ai"
+          currentConversation?.["status"] !== "open" ||
+          currentConversation["automation_mode"] !== "ai"
         )
           return false;
-        const state = await inspect(session);
+        const state = await inspect(session, binding);
+        const calls = widgetSessionId === undefined ? state.calls : state.widgetCalls;
+        const messages = widgetSessionId === undefined ? state.messages : state.widgetMessages;
+        const maximumCalls =
+          widgetSessionId === undefined ? config.maximumCalls : S22_WIDGET_ALLOWANCE.maximumCalls;
+        const maximumMessages =
+          widgetSessionId === undefined
+            ? config.maximumMessages
+            : S22_WIDGET_ALLOWANCE.maximumMessages;
         const current = state.rows.find((row) => row["id"] === input.reservation.runId);
         if (
           current === undefined ||
           current["status"] !== "started" ||
           mapSafeBigInt(current["attempt_no"]) !== input.reservation.attemptNo ||
-          current["expected_conversation_version"] !== locked[0]?.["version"] ||
+          current["expected_conversation_version"] !== currentConversation?.["version"] ||
+          current["conversation_id"] !== input.reference.conversationId ||
           current["provider_id"] !== "gemini" ||
           current["requested_model_id"] !== "gemini-3.8-flash" ||
           current["trigger_message_id"] !== input.reference.messageId ||
           mapSafeBigInt(current["reservations"]) !== 0 ||
           state.reason !== null ||
           state.reserve === null ||
-          state.calls >= config.maximumCalls ||
-          (state.messages.get(input.reference.messageId) ?? 0) >= config.maximumCallsPerMessage ||
-          (!state.messages.has(input.reference.messageId) &&
-            state.messages.size >= config.maximumMessages) ||
-          state.exposure + state.reserve >= config.hardCeilingMicros
+          calls >= maximumCalls ||
+          (messages.get(input.reference.messageId) ?? 0) >= config.maximumCallsPerMessage ||
+          (!messages.has(input.reference.messageId) && messages.size >= maximumMessages) ||
+          state.exposure + state.reserve >= config.hardCeilingMicros ||
+          (widgetSessionId !== undefined &&
+            (state.widgetKnown + state.widgetPending + state.reserve >
+              S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+              state.exposure + state.reserve > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros))
         )
           return false;
+        if (widgetSessionId !== undefined && state.latchCount === 0) {
+          await executeTenantWrite(
+            session,
+            `insert into audit_events (organization_id,id,event_type,actor_type,target_type,target_id,action,result,
+              request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
+             values ($1,$2,$3,'system','widget_session',$4,$3,'succeeded',$5,$6,$7::jsonb,$8)`,
+            [
+              identifiers.issueResourceId(clock()),
+              WIDGET_BOUND,
+              widgetSessionId,
+              `ai-widget-binding:${widgetSessionId}`,
+              input.reference.correlationId,
+              JSON.stringify({
+                profile: config.profile,
+                widget_session_id: widgetSessionId,
+                conversation_id: input.reference.conversationId,
+              }),
+              clock(),
+            ],
+          );
+        }
         await executeTenantWrite(
           session,
           `insert into audit_events (organization_id,id,event_type,actor_type,target_type,target_id,action,result,
@@ -280,6 +474,12 @@ export const createAIJourneyBudgetGuard = (
               historical_reserve_micros: config.historicalReserveMicros.toString(),
               input_token_limit: config.inputTokenLimit,
               output_token_limit: config.outputTokenLimit,
+              ...(widgetSessionId === undefined
+                ? {}
+                : {
+                    widget_session_id: widgetSessionId,
+                    conversation_id: input.reference.conversationId,
+                  }),
             }),
             clock(),
           ],
@@ -290,16 +490,39 @@ export const createAIJourneyBudgetGuard = (
     read: async (tenant: OrganizationId): Promise<AIJourneyBudgetSnapshot> => {
       if (tenant !== organizationId) throw new RepositoryDataIntegrityError();
       return runtime.withTenantTransaction(tenant, async (session) => {
-        const state = await inspect(session);
+        const binding = await widgetBinding(session);
+        const state = await inspect(session, binding);
         let reason = config.mode === "paused" ? "paused" : state.reason;
         if (reason === null) {
-          if (state.calls >= config.maximumCalls) reason = "attempt_limit";
-          else if (state.messages.size >= config.maximumMessages) reason = "message_limit";
+          const calls = widgetSessionId === undefined ? state.calls : state.widgetCalls;
+          const messages = widgetSessionId === undefined ? state.messages : state.widgetMessages;
+          if (
+            calls >=
+            (widgetSessionId === undefined
+              ? config.maximumCalls
+              : S22_WIDGET_ALLOWANCE.maximumCalls)
+          )
+            reason = "attempt_limit";
+          else if (
+            messages.size >=
+            (widgetSessionId === undefined
+              ? config.maximumMessages
+              : S22_WIDGET_ALLOWANCE.maximumMessages)
+          )
+            reason = "message_limit";
           else if (
             state.reserve !== null &&
             state.exposure + state.reserve >= config.hardCeilingMicros
           )
             reason = "hard_ceiling";
+          else if (
+            widgetSessionId !== undefined &&
+            state.reserve !== null &&
+            (state.widgetKnown + state.widgetPending + state.reserve >
+              S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+              state.exposure + state.reserve > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros)
+          )
+            reason = "widget_allowance";
         }
         return Object.freeze({
           profile: config.profile,
@@ -314,6 +537,18 @@ export const createAIJourneyBudgetGuard = (
           accountingComplete: false,
           blocked: reason !== null,
           reason,
+          ...(widgetSessionId === undefined
+            ? {}
+            : {
+                widget: {
+                  sessionId: widgetSessionId,
+                  conversationId: binding?.conversationId ?? null,
+                  physicalCalls: state.widgetCalls,
+                  logicalMessages: state.widgetMessages.size,
+                  knownCostMicros: state.widgetKnown.toString(),
+                  unresolvedReserveMicros: state.widgetPending.toString(),
+                },
+              }),
         });
       });
     },
