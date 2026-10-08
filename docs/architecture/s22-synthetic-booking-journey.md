@@ -94,11 +94,15 @@ Send or paid call was performed. Absolute two-hour expiry does not replace the
 The first pinned selector attempt `lead-agent-staging-migrator-xtcgs` returned
 `DATABASE_OR_TOOLING_UNAVAILABLE`. Its diagnostic SQL parameter-typing defect
 is corrected and verified with 23 local tests plus five real PostgreSQL
-subcases (run 37754475137). **First collect the preserved execution's safe
-assertion/stage output requested in the conversation; do not rerun the old
-command.** The corrected command below is prepared for the subsequent justified
-read, not evidence that a live session has already been selected. No runtime
-rebuild is required; the four verified `a2b2f70` images remain unchanged.
+subcases (run 37754475137). The owner has now supplied the preserved execution's
+safe logs: runtime/tenant/read-only guard **PASS**, followed by FORCE-RLS/non-owner
+guard **BLOCKED** with the generic code. This matches the independently
+reproduced untyped `$1` defect; the old reader did not preserve SQLSTATE. The
+preceding CLI log timeout was a collection failure, not another database job.
+**Original failure-stage collection is closed; do not repeat it or the old
+selector.** One corrected read using a fresh real frame is now justified. The
+command below is not evidence that a live session has already been selected.
+No runtime rebuild is required; the four verified `a2b2f70` images remain unchanged.
 
 Fully reload the existing synthetic preview, reinstall the same public snippet,
 open the chat without Send, then close once and confirm **Chat with us** returns.
@@ -126,6 +130,10 @@ SHA
 
 Do not rerun on a blocked or incomplete result. Preserve its execution ID and
 output for investigation; no automatic newest-session fallback is permitted.
+Expected evidence is `Session selection: PASS`, one safe session/channel/origin
+ID and the active/unbound version-2 snapshot correlated with this fresh frame.
+Keep that same preview/frame intact: selection does not extend its lifetime,
+apply a deployment plan or authorize Send. An expired session remains a blocker.
 
 ## Scope and evidence boundary
 

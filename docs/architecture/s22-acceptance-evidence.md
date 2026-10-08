@@ -3844,3 +3844,45 @@ and at most one correctly scoped Logging request, finite output and no copied
 private fixture strings. This is local tooling evidence only; it neither
 collects `xtcgs` nor verifies a live session. No application/runtime change or
 image rebuild is required. Historical costs and unrelated edits are preserved.
+
+### Owner-supplied original selector failure stage collected
+
+The owner returned the readable result of the single direct Logging API read of
+**existing** execution **`lead-agent-staging-migrator-xtcgs`**:
+
+- `runtime_read_only_tenant_guard`: **PASS**.
+- `force_rls_not_owner_guard`: **BLOCKED**, code
+  `DATABASE_OR_TOOLING_UNAVAILABLE`.
+- Log collection completed; no diagnostic or paid call was run by that read.
+
+This is **owner-supplied live diagnostic evidence**, not a new local or
+independently authenticated GCP read. The last successful boundary is actual
+runtime database access with tenant context, read-only transaction and role
+guards. The first failed boundary is the diagnostic FORCE-RLS catalog query,
+before origin/session selection. Package/config/initial connection failure is
+rejected as the cause of this execution; an expired or ambiguous session is not
+its failing stage because selection was never reached. The initial `124` was
+the intervening CLI log-collection timeout, not a second database failure.
+
+The live stage correlates with the exact original SQL's independently verified
+parameter-type failure: `[organization, tableNames]` binds two values, while
+only `$2::text[]` is typed. Isolated PostgreSQL 17 run **37754475137** reproduced
+**`42P18`** for that original statement and proved the corrected actual SQL,
+which additionally types `$1::uuid`, succeeds without removing FORCE RLS,
+runtime-non-owner or tenant boundaries. The original live reader did not retain
+SQLSTATE, so **`42P18` is regression evidence, not claimed as a persisted live
+field**. The live guard failure is not evidence that FORCE RLS is disabled, nor
+an AI, Widget-frame or messaging-provider failure.
+
+The original failure-stage evidence gap is now closed. A **single corrected
+read** on a freshly opened real Widget frame is justified to collect the
+session needed for the already-prepared deployment plan; no successful live
+selection or cohort binding is claimed yet. Corrected immutable diagnostic
+source remains `676b1d3fc389b66a4c1401cb88bbe4a655e0da6c`. Both committed script
+SHA256 values were rechecked against the prepared download command and match.
+The existing 23 local tests and five isolated PostgreSQL subcases are reused;
+unchanged tests, runtime builds, inventory and passed deployment checks were
+not rerun. Current changes are only this evidence register and the journey's
+next-action instructions, checked with scoped Prettier and `git diff --check`.
+No application code, runtime image, SQL/IAM configuration, migration, paid
+authorization or historical NULL cost changed. S22 remains unaccepted.
