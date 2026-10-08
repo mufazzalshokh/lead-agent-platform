@@ -9,11 +9,15 @@ import { moduleBootstrap as existingBootstrap } from "./s22-booking-evidence.mjs
 import {
   collectWidgetSessionSelection,
   parseSelectionScope,
+  sanitizeSelectionFailure,
+  selectionForceRlsSql,
+  selectionForceRlsTableNames,
   selectionOperation,
   selectionOrganization,
 } from "./s22-widget-session-select-readonly.mjs";
 import {
   collectSelectionLogs,
+  formatSelectionFailure,
   moduleBootstrap,
   reviewedSelectionJob,
   runSelection,
@@ -339,6 +343,81 @@ test("collector rejects missing/duplicate/failed assertions without dumping unex
   );
 });
 
+test("exact catalog guard types every bound parameter without changing the three-table requirement", () => {
+  assert.deepEqual(selectionForceRlsTableNames, [
+    "widget_sessions",
+    "widget_allowed_origins",
+    "channel_connections",
+  ]);
+  assert.equal(Object.isFrozen(selectionForceRlsTableNames), true);
+  assert.match(selectionForceRlsSql, /c\.relname=any\(\$2::text\[\]\)/u);
+  assert.match(selectionForceRlsSql, /and \$1::uuid is not null/u);
+  assert.match(selectionForceRlsSql, /c\.relrowsecurity and c\.relforcerowsecurity/u);
+  assert.match(selectionForceRlsSql, /c\.relowner<>/u);
+});
+
+test("finite failure details never copy messages, names, stacks or unknown codes", () => {
+  const error = Object.assign(new Error("DO_NOT_PRINT_SECRET"), {
+    code: "42P18",
+    name: "DO_NOT_PRINT_NAME",
+    stack: "DO_NOT_PRINT_STACK",
+  });
+  assert.deepEqual(sanitizeSelectionFailure(error, "force_rls_not_owner_guard"), {
+    stage: "force_rls_not_owner_guard",
+    sqlstate: "42P18",
+    error_category: "database_sql",
+  });
+  assert.deepEqual(
+    sanitizeSelectionFailure(
+      { code: "DO_NOT_PRINT_SECRET", sqlstate: "ZZZZZ", error_category: "DO_NOT_PRINT_SECRET" },
+      "DO_NOT_PRINT_SECRET",
+    ),
+    {},
+  );
+  for (const [code, expected] of [
+    ["ERR_MODULE_NOT_FOUND", "module_resolution"],
+    ["configuration_invalid", "configuration"],
+    ["ECONNRESET", "database_transport"],
+    ["FRESH_SESSION_AMBIGUOUS", "assertion"],
+  ])
+    assert.equal(sanitizeSelectionFailure({ code }, "initialize").error_category, expected);
+});
+
+test("launcher retains only allowlisted failure stage and SQLSTATE and prints readable safe diagnostics", () => {
+  for (const sqlstate of ["42P18", "DO_NOT_PRINT_SECRET"]) {
+    let failure;
+    try {
+      collectSelectionLogs([
+        {
+          jsonPayload: {
+            operation: selectionOperation,
+            assertion: "force_rls_not_owner_guard",
+            stage: "force_rls_not_owner_guard",
+            outcome: "BLOCKED",
+            code: "DATABASE_OR_TOOLING_UNAVAILABLE",
+            sqlstate,
+            error_category: sqlstate === "42P18" ? "database_sql" : "DO_NOT_PRINT_SECRET",
+            message: "DO_NOT_PRINT_SECRET",
+            stack: "DO_NOT_PRINT_SECRET",
+          },
+        },
+      ]);
+      assert.fail("Failed assertion must not be accepted");
+    } catch (error) {
+      failure = error;
+    }
+    assert.equal(failure.code, "DATABASE_OR_TOOLING_UNAVAILABLE");
+    assert.equal(failure.stage, "force_rls_not_owner_guard");
+    const lines = formatSelectionFailure(failure);
+    assert.deepEqual(lines, [
+      "BLOCKED: DATABASE_OR_TOOLING_UNAVAILABLE",
+      "Failure stage: force_rls_not_owner_guard",
+      ...(sqlstate === "42P18" ? ["SQLSTATE: 42P18", "Error category: database_sql"] : []),
+    ]);
+    assert.doesNotMatch(JSON.stringify(failure) + lines.join("\n"), /DO_NOT_PRINT_SECRET/u);
+  }
+});
+
 test("exact existing bootstrap executes actual reader with package/relative resolution, read-only rollback and cleanup", () => {
   assert.equal(moduleBootstrap, existingBootstrap);
   const fixture = mkdtempSync(join(tmpdir(), "s22-widget-selection-"));
@@ -355,6 +434,7 @@ test("exact existing bootstrap executes actual reader with package/relative reso
     `
     export const withLibpqCompatibleRequireSsl=v=>v;
     export const createTenantDatabaseRuntimeConfig=v=>{
+      if(process.env.S22_FIXTURE_FAILURE==='configuration')throw Object.assign(Error('DO_NOT_PRINT_SECRET'),{code:'configuration_invalid'});
       const u=new URL(v.connectionString);
       if(!u.searchParams.get('options').includes('default_transaction_read_only=on')||v.maxConnections!==1||v.connectionTimeoutMilliseconds!==5000)throw Error('BAD_CONFIG');return v;
     };`,
@@ -362,12 +442,14 @@ test("exact existing bootstrap executes actual reader with package/relative reso
   writeFileSync(
     join(packages, "database", "index.js"),
     `
-    export const createTenantDatabaseRuntime=()=>({verifyReady:async()=>{},
+    export const createTenantDatabaseRuntime=()=>({verifyReady:async()=>{
+      if(process.env.S22_FIXTURE_FAILURE==='readiness')throw Object.assign(Error('DO_NOT_PRINT_SECRET'),{code:'08006'});
+    },
       withTenantTransaction:async(org,fn)=>{
         if(org!==${JSON.stringify(selectionOrganization)})throw Error('WRONG_TENANT');
         try{await fn({organizationId:org});throw Error('COMMIT_NOT_ALLOWED')}
         catch(error){console.log('FIXTURE_ROLLBACK');throw error}
-      },close:async()=>console.log('FIXTURE_CLOSED')});`,
+      },close:async()=>{console.log('FIXTURE_CLOSED');if(process.env.S22_FIXTURE_FAILURE==='cleanup')throw Object.assign(Error('DO_NOT_PRINT_SECRET'),{code:'DO_NOT_PRINT_CODE'});}});`,
   );
   mkdirSync(join(packages, "database", "runtime"));
   writeFileSync(
@@ -376,9 +458,14 @@ test("exact existing bootstrap executes actual reader with package/relative reso
     export const executeTenantQuery=async(session,build)=>{
       const q=build(session.organizationId), t=q.text;
       if(q.values[0]!==${JSON.stringify(selectionOrganization)}||!t.trimStart().startsWith('select '))throw Error('UNSAFE_QUERY');
+      const parameters=new Set([...t.matchAll(/\\$(\\d+)/gu)].map(match=>Number(match[1])));
+      if(q.values.some((_,index)=>!parameters.has(index+1)))throw Object.assign(Error('DO_NOT_PRINT_SECRET'),{code:'42P18'});
       let rows;
       if(t.includes("current_user='lead_agent_runtime'"))rows=[{runtime:process.env.S22_FIXTURE_BAD_GUARD!=='true',staging_database:true,least_privilege:true,read_only:true,row_security:true,tenant_matches:true,collection_window_valid:true}];
-      else if(t.includes('pg_catalog.pg_class'))rows=[{count:3,safe:true}];
+      else if(t.includes('pg_catalog.pg_class')){
+        if(process.env.S22_FIXTURE_FAILURE==='unknown_sqlstate')throw Object.assign(Error('DO_NOT_PRINT_SECRET'),{code:'ZZZZZ',stack:'DO_NOT_PRINT_STACK'});
+        rows=[{count:process.env.S22_FIXTURE_FAILURE==='missing_table'?2:3,safe:process.env.S22_FIXTURE_FAILURE==='null_safety'?null:true}];
+      }
       else if(t.includes('from widget_allowed_origins'))rows=${JSON.stringify(origins)};
       else if(t.includes('from widget_sessions'))rows=${JSON.stringify([selectedRow()])};
       else throw Error('UNEXPECTED_QUERY');
@@ -386,37 +473,126 @@ test("exact existing bootstrap executes actual reader with package/relative reso
     };`,
   );
   try {
-    for (const badGuard of [false, true]) {
+    const readerSource = readFileSync(
+      new URL("./s22-widget-session-select-readonly.mjs", import.meta.url),
+      "utf8",
+    );
+    for (const scenario of [
+      { name: "success", status: 0, rollback: true, closed: true },
+      {
+        name: "bad_guard",
+        status: 1,
+        rollback: true,
+        closed: true,
+        stage: "runtime_read_only_tenant_guard",
+        code: "READ_ONLY_RUNTIME_TENANT_GUARD_FAILED",
+      },
+      {
+        name: "original_parameter_gap",
+        status: 1,
+        rollback: true,
+        closed: true,
+        stage: "force_rls_not_owner_guard",
+        code: "DATABASE_OR_TOOLING_UNAVAILABLE",
+        sqlstate: "42P18",
+        category: "database_sql",
+      },
+      {
+        name: "unknown_sqlstate",
+        status: 1,
+        rollback: true,
+        closed: true,
+        stage: "force_rls_not_owner_guard",
+        code: "DATABASE_OR_TOOLING_UNAVAILABLE",
+      },
+      {
+        name: "missing_table",
+        status: 1,
+        rollback: true,
+        closed: true,
+        stage: "force_rls_not_owner_guard",
+        code: "FORCE_RLS_NOT_OWNER_GUARD_FAILED",
+      },
+      {
+        name: "null_safety",
+        status: 1,
+        rollback: true,
+        closed: true,
+        stage: "force_rls_not_owner_guard",
+        code: "FORCE_RLS_NOT_OWNER_GUARD_FAILED",
+      },
+      {
+        name: "configuration",
+        status: 1,
+        rollback: false,
+        closed: false,
+        stage: "database_runtime",
+        code: "DATABASE_OR_TOOLING_UNAVAILABLE",
+        category: "configuration",
+      },
+      {
+        name: "readiness",
+        status: 1,
+        rollback: false,
+        closed: true,
+        stage: "database_readiness",
+        code: "DATABASE_OR_TOOLING_UNAVAILABLE",
+        sqlstate: "08006",
+        category: "database_sql",
+      },
+      {
+        name: "cleanup",
+        status: 1,
+        rollback: true,
+        closed: true,
+        stage: "cleanup",
+        code: "DATABASE_CLEANUP_FAILED",
+      },
+    ]) {
+      const source =
+        scenario.name === "original_parameter_gap"
+          ? readerSource.replace(" and $1::uuid is not null", "")
+          : readerSource;
+      if (scenario.name === "original_parameter_gap") assert.notEqual(source, readerSource);
       const result = spawnSync(process.execPath, ["--input-type=module", "-e", moduleBootstrap], {
         cwd: fixture,
         env: {
           ...process.env,
           DATABASE_URL: "postgresql://synthetic.invalid/test",
-          S22_BOOKING_READ_B64: readFileSync(
-            new URL("./s22-widget-session-select-readonly.mjs", import.meta.url),
-          ).toString("base64"),
+          S22_BOOKING_READ_B64: Buffer.from(source).toString("base64"),
           S22_WIDGET_SESSION_READ: "execute",
           S22_WIDGET_SESSION_SCOPE_B64: Buffer.from(
             JSON.stringify({ origin, from: scope.from, until: scope.until }),
           ).toString("base64"),
-          S22_FIXTURE_BAD_GUARD: String(badGuard),
+          S22_FIXTURE_BAD_GUARD: String(scenario.name === "bad_guard"),
+          S22_FIXTURE_FAILURE: scenario.name,
         },
         encoding: "utf8",
         timeout: 10000,
       });
-      assert.equal(result.status, badGuard ? 1 : 0, result.stderr + result.stdout);
-      assert.match(result.stdout, /FIXTURE_ROLLBACK/u);
-      assert.match(result.stdout, /FIXTURE_CLOSED/u);
+      assert.equal(result.status, scenario.status, scenario.name + result.stderr + result.stdout);
+      assert.equal(result.stdout.includes("FIXTURE_ROLLBACK"), scenario.rollback, scenario.name);
+      assert.equal(result.stdout.includes("FIXTURE_CLOSED"), scenario.closed, scenario.name);
       assert.doesNotMatch(
         result.stdout + result.stderr,
-        /postgresql:\/\/|synthetic\.invalid|PASSWORD|bearer/u,
+        /postgresql:\/\/|synthetic\.invalid|PASSWORD|bearer|DO_NOT_PRINT|ZZZZZ/u,
       );
-      if (badGuard) assert.match(result.stdout, /READ_ONLY_RUNTIME_TENANT_GUARD_FAILED/u);
-      else {
-        const entries = result.stdout
-          .split(/\r?\n/u)
-          .filter((line) => line.startsWith("{"))
-          .map((line) => ({ jsonPayload: JSON.parse(line) }));
+      const entries = result.stdout
+        .split(/\r?\n/u)
+        .filter((line) => line.startsWith("{"))
+        .map((line) => ({ jsonPayload: JSON.parse(line) }));
+      if (scenario.status === 1) {
+        const failure = entries.find(
+          (entry) => entry.jsonPayload.outcome === "BLOCKED",
+        )?.jsonPayload;
+        assert.equal(failure?.stage, scenario.stage, scenario.name);
+        assert.equal(failure?.assertion, scenario.stage, scenario.name);
+        assert.equal(failure?.code, scenario.code, scenario.name);
+        assert.equal(failure?.sqlstate, scenario.sqlstate, scenario.name);
+        if (scenario.category !== undefined)
+          assert.equal(failure?.error_category, scenario.category, scenario.name);
+        assert.throws(() => collectSelectionLogs(entries), { code: scenario.code });
+      } else {
         assert.equal(collectSelectionLogs(entries).session_id, sessionId);
       }
     }

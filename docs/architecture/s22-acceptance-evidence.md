@@ -3642,3 +3642,58 @@ tests/workspace/staging-journey-mode.test.ts
 Unrelated `README.md`, `docs/architecture/s11-instagram-business.md` and
 `s22-public-notices.patch` remain untouched and excluded from every preparation
 commit. This final evidence-only update does not require another image build.
+
+### Session-selector failure investigation: `xtcgs`
+
+Owner-supplied live tooling result: both checksum-pinned files reported **OK**;
+read-only execution **`lead-agent-staging-migrator-xtcgs`** was created and
+collection returned **BLOCKED: `DATABASE_OR_TOOLING_UNAVAILABLE`**. The execution
+is preserved and was not rerun. This is not evidence of Widget product failure,
+a failed AI call, successful session selection or a cohort-binding change. No
+plan, apply, Send or paid dispatch is authorized by this result.
+
+Observations: the reader catches unexpected errors into a generic code; the
+launcher originally drops the assertion/stage when displaying that code. Source
+inspection identified a concrete diagnostic SQL defect: the FORCE-RLS catalog
+query uses `$2::text[]` while its tenant helper binds `[organization, tableNames]`,
+leaving `$1` unreferenced/untyped. The pinned deployed tenant query helper forwards
+all parameters to installed `pg`; no adapter fills in this missing type. The
+previous successful booking reader explicitly types `$1::uuid`. The mocked
+selector bootstrap returned a catalog result without executing PostgreSQL SQL,
+so its earlier PASS did not cover server parsing.
+
+The mechanism is corroborated by [PostgreSQL 17's parameter-type validation](https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/tcop/postgres.c#L687):
+every supplied parameter must resolve a type, including an unused earlier slot.
+This source explanation is not substituted for the pending actual wire test or
+persisted `xtcgs` failure-stage attribution.
+
+Ranked hypotheses and distinguishing evidence:
+
+| Hypothesis | Prediction / distinguishing check | Current disposition |
+| --- | --- | --- |
+| Untyped first SQL parameter in FORCE-RLS query | Runtime guard passes, then `force_rls_not_owner_guard` blocks; original statement produces PostgreSQL `42P18`, corrected actual statement executes | Source/transport mechanism identified; isolated PostgreSQL regression and exact persisted stage pending |
+| Package/config/database initialization failure | Failure assertion is `initialize`, with no completed runtime guard | Not excluded by the owner's abbreviated output; existing execution-stage read requested |
+| Missing/expired/ambiguous session or inactive origin | Reader reaches selection and emits its explicit selection failure code | Does not explain the reported generic code; no session is guessed or replaced |
+
+One bounded read of **existing** `xtcgs` structured assertion/outcome/code metadata
+was requested to attribute its exact failed boundary. It creates no execution
+and prints no raw errors, environment, credentials or customer content. Local
+`gcloud` is unavailable; authenticated GitHub access remains available for
+isolated regression checks. The smallest correction being verified is explicit
+typing of the tenant parameter plus finite sanitized stage/SQLSTATE telemetry,
+not removal of tenant/read-only/RLS/identity/VPC/lifetime safeguards. No runtime
+image rebuild or replacement deployment plan is required for diagnostic-only
+changes; the verified `a2b2f70` images remain unchanged.
+
+Local diagnostic correction checks: `node --test
+.github/scripts/s22-widget-session-select.test.mjs` **23/23 PASS**; scoped
+ESLint/Prettier/diff checks **PASS**. The actual catalog query explicitly types
+`$1::uuid` and still requires exactly three FORCE-RLS/non-owner tables. The
+unchanged ES-module bootstrap was exercised in nine controlled subprocess
+scenarios, including the original parameter-gap failure, guard/config/readiness
+failures, unknown SQLSTATE, rollback and cleanup. Only finite allowlisted stages,
+SQLSTATEs and categories reach reader/launcher output; raw error text/name/stack,
+credentials and customer content are never copied. These are local controlled
+fixtures, not a successful live session read. A dedicated isolated PostgreSQL 17
+wire regression is being prepared without rerunning the seven unchanged budget
+cases or using staging credentials/provider access.

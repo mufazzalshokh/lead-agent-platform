@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   parseSelectionScope,
+  sanitizeSelectionFailure,
   selectionFailureCodes,
   selectionOperation,
 } from "./s22-widget-session-select-readonly.mjs";
@@ -137,10 +138,11 @@ export const collectSelectionLogs = (entries) => {
     .map((entry) => entry?.jsonPayload)
     .filter((row) => row?.operation === selectionOperation);
   const blocked = rows.find((row) => row.outcome !== "PASS");
-  requireSafe(
-    blocked === undefined,
-    selectionFailureCodes.has(blocked?.code) ? blocked.code : "LOG_ASSERTION_NOT_PASS",
-  );
+  if (blocked !== undefined)
+    throw Object.assign(new Error(), {
+      code: selectionFailureCodes.has(blocked.code) ? blocked.code : "LOG_ASSERTION_NOT_PASS",
+      ...sanitizeSelectionFailure(blocked, blocked.stage ?? blocked.assertion),
+    });
   requireSafe(
     rows.length === wanted.length &&
       wanted.every((name) => rows.filter((row) => row.assertion === name).length === 1),
@@ -179,6 +181,16 @@ export const collectSelectionLogs = (entries) => {
     contact_unbound: true,
     conversation_unbound: true,
   };
+};
+
+export const formatSelectionFailure = (error) => {
+  const details = sanitizeSelectionFailure(error, error?.stage);
+  return [
+    `BLOCKED: ${errorCodes.has(error?.code) ? error.code : "CLOUD_OR_TOOLING_UNAVAILABLE"}`,
+    ...(details.stage === undefined ? [] : [`Failure stage: ${details.stage}`]),
+    ...(details.sqlstate === undefined ? [] : [`SQLSTATE: ${details.sqlstate}`]),
+    ...(details.error_category === undefined ? [] : [`Error category: ${details.error_category}`]),
+  ];
 };
 
 const cloud = async (args, timeout = 10000) => {
@@ -340,9 +352,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
     console.log(`Reader SHA256: ${selected.reader_sha256}`);
     console.log("This read does not activate the budget or authorize Send; stop here.");
   } catch (error) {
-    console.log(
-      `BLOCKED: ${errorCodes.has(error?.code) ? error.code : "CLOUD_OR_TOOLING_UNAVAILABLE"}`,
-    );
+    for (const line of formatSelectionFailure(error)) console.log(line);
     if (execution !== undefined)
       console.log(`Preserved execution: ${execution}; do not rerun blindly.`);
     process.exitCode = 1;

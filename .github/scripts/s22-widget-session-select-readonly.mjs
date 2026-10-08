@@ -1,6 +1,59 @@
 // Actual ES-module stdin in /app. No provider, migration, writes or customer content.
 export const selectionOrganization = "01a0ee39-91a9-7293-82c0-5b7046c10115";
 export const selectionOperation = "s22_widget_session_selection";
+export const selectionForceRlsTableNames = Object.freeze([
+  "widget_sessions",
+  "widget_allowed_origins",
+  "channel_connections",
+]);
+export const selectionForceRlsSql = `select count(*)::integer as count,
+           bool_and(c.relrowsecurity and c.relforcerowsecurity
+             and c.relowner<>(select oid from pg_catalog.pg_roles where rolname=current_user)) as safe
+           from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+           where n.nspname='public' and c.relname=any($2::text[]) and $1::uuid is not null`;
+export const selectionStages = Object.freeze([
+  "initialize",
+  "selection_scope",
+  "package_config",
+  "package_database",
+  "package_runtime",
+  "database_configuration",
+  "database_runtime",
+  "database_readiness",
+  "tenant_transaction",
+  "runtime_read_only_tenant_guard",
+  "force_rls_not_owner_guard",
+  "widget_session_selection",
+  "pool_error",
+  "cleanup",
+]);
+export const selectionSqlstates = Object.freeze([
+  "08001",
+  "08004",
+  "08006",
+  "25006",
+  "25P02",
+  "28000",
+  "28P01",
+  "42501",
+  "42601",
+  "42703",
+  "42P01",
+  "42P18",
+  "53300",
+  "53400",
+  "55P03",
+  "57014",
+  "57P01",
+]);
+const selectionErrorCategories = Object.freeze([
+  "database_sql",
+  "database_transport",
+  "module_resolution",
+  "configuration",
+  "assertion",
+  "javascript_type",
+]);
 const rollback = new Error("EXPECTED_READ_ONLY_ROLLBACK");
 export const selectionFailureCodes = new Set([
   "SELECTION_SCOPE_INVALID",
@@ -15,6 +68,34 @@ export const selectionFailureCodes = new Set([
   "DATABASE_OR_TOOLING_UNAVAILABLE",
   "DATABASE_CLEANUP_FAILED",
 ]);
+export const sanitizeSelectionFailure = (error, stage) => {
+  const details = {};
+  if (selectionStages.includes(stage)) details.stage = stage;
+  const sqlstate = selectionSqlstates.includes(error?.sqlstate) ? error.sqlstate : error?.code;
+  if (selectionSqlstates.includes(sqlstate)) {
+    details.sqlstate = sqlstate;
+    details.error_category = "database_sql";
+  } else if (selectionErrorCategories.includes(error?.error_category)) {
+    details.error_category = error.error_category;
+  } else if (["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND"].includes(error?.code)) {
+    details.error_category = "database_transport";
+  } else if (
+    [
+      "ERR_MODULE_NOT_FOUND",
+      "ERR_PACKAGE_PATH_NOT_EXPORTED",
+      "ERR_UNSUPPORTED_DIR_IMPORT",
+    ].includes(error?.code)
+  ) {
+    details.error_category = "module_resolution";
+  } else if (error?.code === "configuration_invalid") {
+    details.error_category = "configuration";
+  } else if (selectionFailureCodes.has(error?.code) && !error.code.startsWith("DATABASE_")) {
+    details.error_category = "assertion";
+  } else if (error instanceof TypeError) {
+    details.error_category = "javascript_type";
+  }
+  return details;
+};
 const fail = (code) => {
   throw Object.assign(new Error(), { code });
 };
@@ -149,14 +230,21 @@ export const runReadOnlySelection = async () => {
     console.log(
       JSON.stringify({ operation: selectionOperation, assertion, outcome: "PASS", observed }),
     );
-  const blocked = (assertion, code) => {
+  const blocked = (assertion, code, error) => {
     failures++;
     console.log(
-      JSON.stringify({ operation: selectionOperation, assertion, outcome: "BLOCKED", code }),
+      JSON.stringify({
+        operation: selectionOperation,
+        assertion,
+        outcome: "BLOCKED",
+        code,
+        ...sanitizeSelectionFailure(error, assertion),
+      }),
     );
   };
   try {
     let scope;
+    stage = "selection_scope";
     try {
       scope = parseSelectionScope(
         JSON.parse(
@@ -166,16 +254,21 @@ export const runReadOnlySelection = async () => {
     } catch {
       fail("SELECTION_SCOPE_INVALID");
     }
+    stage = "package_config";
     const config = await import("@lead-agent/config");
+    stage = "package_database";
     const db = await import("@lead-agent/database");
+    stage = "package_runtime";
     const internal = await import(
       new URL("./runtime/tenant.js", import.meta.resolve("@lead-agent/database")).href
     );
+    stage = "database_configuration";
     const url = new URL(config.withLibpqCompatibleRequireSsl(process.env.DATABASE_URL));
     url.searchParams.set(
       "options",
       "-c default_transaction_read_only=on -c row_security=on -c statement_timeout=5000 -c lock_timeout=1000 -c idle_in_transaction_session_timeout=10000",
     );
+    stage = "database_runtime";
     runtime = db.createTenantDatabaseRuntime(
       config.createTenantDatabaseRuntimeConfig({
         connectionString: url.toString(),
@@ -184,10 +277,12 @@ export const runReadOnlySelection = async () => {
         statementTimeoutMilliseconds: 5000,
         idleTimeoutMilliseconds: 5000,
       }),
-      { onUnexpectedPoolError: () => blocked("pool_error", "DATABASE_UNAVAILABLE") },
+      { onUnexpectedPoolError: (error) => blocked("pool_error", "DATABASE_UNAVAILABLE", error) },
     );
+    stage = "database_readiness";
     await runtime.verifyReady();
     try {
+      stage = "tenant_transaction";
       await runtime.withTenantTransaction(selectionOrganization, async (session) => {
         const read = async (text, extra = []) =>
           (await internal.executeTenantQuery(session, (org) => ({ text, values: [org, ...extra] })))
@@ -209,15 +304,12 @@ export const runReadOnlySelection = async () => {
           fail("READ_ONLY_RUNTIME_TENANT_GUARD_FAILED");
         report(stage, guard[0]);
         stage = "force_rls_not_owner_guard";
-        const rls = await read(
-          `select count(*)::integer as count,
-           bool_and(c.relrowsecurity and c.relforcerowsecurity
-             and c.relowner<>(select oid from pg_catalog.pg_roles where rolname=current_user)) as safe
-           from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
-           where n.nspname='public' and c.relname=any($2::text[])`,
-          [["widget_sessions", "widget_allowed_origins", "channel_connections"]],
-        );
-        if (rls.length !== 1 || rls[0].count !== 3 || rls[0].safe !== true)
+        const rls = await read(selectionForceRlsSql, [selectionForceRlsTableNames]);
+        if (
+          rls.length !== 1 ||
+          rls[0].count !== selectionForceRlsTableNames.length ||
+          rls[0].safe !== true
+        )
           fail("FORCE_RLS_NOT_OWNER_GUARD_FAILED");
         report(stage, rls[0]);
         stage = "widget_session_selection";
@@ -231,13 +323,14 @@ export const runReadOnlySelection = async () => {
     blocked(
       stage,
       selectionFailureCodes.has(error?.code) ? error.code : "DATABASE_OR_TOOLING_UNAVAILABLE",
+      error,
     );
   } finally {
     if (runtime !== undefined)
       try {
         await runtime.close();
-      } catch {
-        blocked("cleanup", "DATABASE_CLEANUP_FAILED");
+      } catch (error) {
+        blocked("cleanup", "DATABASE_CLEANUP_FAILED", error);
       }
     if (failures > 0) process.exitCode = 1;
   }
