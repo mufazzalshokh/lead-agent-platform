@@ -12,12 +12,18 @@ passed and its downloaded saved SHA256 independently matched. Only four
 in-place workload updates were applied in **37778746987 PASS**, after the owner's
 exact-plan approval. Read-only verification **37778916467 PASS**: all 16 checks,
 whole-runtime convergence exit 0, API health 200 and Web reachability 200.
-**Current session/budget readiness remains pending; no Send is authorized.**
-The session's supplied idle
+Owner-supplied post-apply execution **`lead-agent-staging-migrator-qpzlc`** now
+passed exact deployment/binding preflight, runtime/tenant/read-only/FORCE-RLS,
+session validity, actual budget readiness and first-message preparation.
+**Separate bounded paid-execution approval remains required; no Send is
+authorized.** The session's supplied idle
 deadline is **2026-10-08T12:59:57.129Z / 17:59:57.129 Asia/Tashkent**; a plan
 or deployment cannot extend it. The complete exact inputs and evidence are in
 the [replacement approval packet](#fresh-replacement-session-and-reviewed-plan-37777865016)
 and [approved rollout checkpoint](#approved-replacement-apply-and-read-only-verification).
+The [readiness checkpoint](#owner-supplied-replacement-readiness-and-execution-approval-boundary)
+closes only the current preparation gap, not customer E2E or exact historical
+accounting.
 
 **Active milestone:** the owner approved preparation of the separately bounded
 Website Chat customer-to-confirmed-booking test. Its proposed two messages/four
@@ -4551,3 +4557,54 @@ checks were reused, not rerun. S22 remains unaccepted. The single next owner
 action is the already-supplied **current exact-session read-only readiness
 command**, returning its sanitized output; paid execution remains separately
 unauthorized.
+
+#### Owner-supplied replacement readiness and execution approval boundary
+
+The owner returned the existing exact-scope checker result, execution
+**`lead-agent-staging-migrator-qpzlc`**. This is **owner-supplied live diagnostic
+evidence**, not a new agent-run DB read. Reader SHA256
+**`7b45ff56c9bdf468a8ac7ace4159360f54428b818bb88140560567e4cd43a971`** matches the
+prepared immutable recovery bundle. No upload/tooling change or diagnostic repeat
+is necessary.
+
+- Exact deployed images/binding/runtime-secret-role reference, private VPC and
+  explicit zero retries: **preflight PASS**.
+- Runtime role, transaction-local tenant, read-only transaction, FORCE RLS and
+  non-owner guards: **PASS**.
+- Exact selected Widget session
+  **`01a11b7d-ddbf-759e-b4e3-1602d9e2238c`**: **PASS**, idle validity **true**,
+  absolute lifetime validity **true**. Last activity
+  **2026-10-08T12:29:57.129Z**, absolute expiry
+  **2026-10-08T14:29:56.031Z**. Idle deadline derived by the unchanged 30-minute
+  policy is **2026-10-08T12:59:57.129Z / 17:59:57.129 Asia/Tashkent**.
+- Actual budget readiness: **PASS**, reason **none**, known cost
+  **USD0.008714**, total reserved exposure **USD1.042110**, pending reserve
+  **USD0.000000**. First-message preparation: **PASS**.
+
+This read performed no customer message, model call, renewal/replacement,
+migration or job-configuration change. It did execute the bounded read-only
+diagnostic under the existing approved mechanism. No message/contact/provider
+payloads, credentials or secrets were supplied in the result. Historical NULL
+costs remain unknown and the diagnostic does not reconcile them. Source/images,
+limits, guards, published synthetic knowledge and social-thread eligibility
+remain unchanged. Existing passed tests/deployment checks are reused, not rerun.
+
+**Preparation gap closed; execution authority remains separate.** The current
+owner approvals cover preparation and exact saved-plan apply, not paid Widget
+Send. Request the existing bounded scope only: **two total customer inbounds**
+(one request, then genuine confirmation after a delivered staff offer), **at
+most four physical provider attempts / two per message**, maximum additional
+reservation **USD3.205728**, maximum combined planning exposure **USD4.247838**.
+The historical budget-only reservation and USD10 hard ceiling remain unchanged.
+Stop on timeout, unknown cost, pending reserve, exhausted limits, session expiry
+or another guard failure. A snapshot is not a reservation, timeless authorization
+or proof of customer-to-confirmed-booking success; runtime guards revalidate on
+actual dispatch. Do not send without explicit execution approval or substitute
+another session. Staff acceptance alone cannot confirm a booking. S22 remains
+unaccepted; no S23 work.
+
+The agent checked its clock at **2026-10-08T12:52:05Z**, before the supplied idle
+deadline; the diagnostic execution timestamp was not provided and is not guessed.
+Only the evidence register/current journey checkpoint change, with changed-section
+Markdown and scoped diff checks. The one next owner action is approval of the
+bounded two-inbound/four-attempt Website Chat journey above, before expiry.

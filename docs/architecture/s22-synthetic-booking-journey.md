@@ -10,7 +10,7 @@ unchanged: 100,000 UZS, 30 minutes, Monday–Saturday 09:00–18:00 Asia/Tashken
 staff review followed by genuine customer confirmation. Hours are not slot
 availability.
 
-**Current result: replacement rollout verified; current readiness pending.**
+**Current result: rollout and live preparation pass; paid approval pending.**
 Owner-supplied fresh selection `lead-agent-staging-migrator-rkgt6` passed all
 runtime/read-only/tenant/FORCE-RLS guards for session
 `01a11b7d-ddbf-759e-b4e3-1602d9e2238c`, active/unbound version 2, on the same
@@ -30,11 +30,20 @@ call occurred. Exact inputs and
 remaining evidence boundaries are in the
 [replacement approval packet](s22-acceptance-evidence.md#fresh-replacement-session-and-reviewed-plan-37777865016).
 The [rollout checkpoint](s22-acceptance-evidence.md#approved-replacement-apply-and-read-only-verification)
-separates deployment proof from current session/budget readiness. One existing
-read-only checker command has been supplied to the owner; no upload is needed.
-Do not reload/reinstall/Send. That actual readiness read must finish before idle
-expiry; unused binding integrity and separate paid execution authority remain
-required.
+separates deployment proof from current session/budget readiness. Owner-supplied
+execution **`lead-agent-staging-migrator-qpzlc`** now passed exact deployed
+images/binding preflight, runtime/tenant/read-only/FORCE-RLS guards, selected
+session idle/absolute validity, actual budget readiness and first-message
+preparation. Known cost **USD0.008714**, reserved exposure **USD1.042110**,
+pending reserve **USD0.000000**; no message/model call or renewal occurred.
+The [readiness checkpoint](s22-acceptance-evidence.md#owner-supplied-replacement-readiness-and-execution-approval-boundary)
+closes this scoped preparation gap, not the customer journey or historical
+accounting. No upload or repeat check is needed. Request separate execution
+approval for the existing **two-total-inbound/four-attempt** scope and
+**USD3.205728** additional allowance (**USD4.247838** maximum combined exposure).
+Do not reload/reinstall/Send before that approval; act before the supplied idle
+deadline and retain all runtime guards/stop rules. Give only the first customer
+message after approval, then the staff action and actual confirmation in order.
 
 **Previous failure: selected-session idle expiry.** Owner-supplied
 execution `lead-agent-staging-migrator-4nx9k` passed current deployment preflight,
@@ -147,8 +156,8 @@ checks are retained, not repeated. Immutable images, selected live session and
 the single reviewed plan are now collected. Exact-plan apply and deployment
 verification have passed. Current selected-session/cohort readiness is collected
 and **FAIL** due to the previous session's idle expiry. Replacement selection
-and exact plan review/apply/verification now pass; fresh readiness, explicit paid
-execution approval and the customer journey remain pending.
+and exact plan review/apply/verification plus owner-supplied fresh readiness now
+pass; explicit paid execution approval and the customer journey remain pending.
 
 Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
 verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run
