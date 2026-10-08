@@ -9,6 +9,27 @@ unchanged: 100,000 UZS, 30 minutes, Monday–Saturday 09:00–18:00 Asia/Tashken
 staff review followed by genuine customer confirmation. Hours are not slot
 availability.
 
+**Current result: BLOCKED by selected-session idle expiry.** Owner-supplied
+execution `lead-agent-staging-migrator-4nx9k` passed current deployment preflight,
+runtime/tenant/read-only and FORCE-RLS/non-owner guards. The selected session
+failed idle validity while still within its absolute lifetime. Last activity
+was 2026-10-08T10:54:49.026Z, so its idle deadline was
+**11:24:49.026Z / 16:24:49.026 Asia/Tashkent**. Actual budget readiness failed
+for the same `widget_session_unavailable` reason; known cost USD0.008714,
+combined exposure USD1.042110 and pending reserve zero are unchanged. Collection
+is complete; do not repeat the checker or try Send on this session.
+
+There is no supported same-ID revival. Cached close/reopen does not renew it.
+Recovery requires explicit permission to prepare a fresh unused session and a
+new binding plan; prior exact-plan approval does not extend to replacement.
+Prepare the tooling/inputs **before** requesting the fresh frame, then complete
+selection, saved-plan approval, apply and readiness within the 30-minute window.
+Existing images need no rebuild. Do not assume an unused binding latch from the
+human summary; the replacement's actual budget read must prove readiness.
+No replacement, new plan, apply or paid action has been authorized/performed by
+this result. Details and evidence boundaries are recorded in the
+[evidence register](s22-acceptance-evidence.md#owner-supplied-current-readiness-idle-expired-selected-session).
+
 | Planning/enforced limit | Value |
 | --- | --- |
 | Selected customer scope | One reviewed WidgetSession; its conversation is derived from persisted tenant-owned records, never supplied by the browser |
@@ -79,8 +100,9 @@ attempt scope; stop on timeout/unknown cost/guard failure.
 The preceding non-paid embedding, cookie-block, launcher and origin-denial
 checks are retained, not repeated. Immutable images, selected live session and
 the single reviewed plan are now collected. Exact-plan apply and deployment
-verification have passed. Live selected-session/cohort readiness, explicit
-paid execution approval and the customer journey remain pending.
+verification have passed. Current selected-session/cohort readiness is collected
+and **FAIL** due to idle expiry. Authorized replacement preparation, fresh
+readiness, explicit paid execution approval and the customer journey remain pending.
 
 Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
 verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run
@@ -104,29 +126,28 @@ or paid call was triggered.** Preparing/applying this journey does not authorize
 paid execution; complete current readiness and obtain bounded execution approval
 before instructing the customer.
 
-Keep the same selected page/frame and temporary host intact; do not reload,
-reinstall or run session selection again. Absolute expiry is
-2026-10-08T12:54:48.093Z, but the enforced 30-minute idle rule still applies.
-Using issuance plus 30 minutes gives a conservative readiness deadline of
-**2026-10-08T11:24:48Z / 16:24:48 Asia/Tashkent**; redemption may have occurred
-later, but its exact `last_seen_at` was not supplied. Terraform does not validate
-live session freshness. Post-apply readiness must establish that separately;
-an expired session does not authorize a replacement, widened limit or Send.
+Do not reload, reinstall, select another session or Send without new authority.
+The completed read collected exact `last_seen_at=2026-10-08T10:54:49.026Z`,
+superseding the earlier conservative issuance-based deadline. The enforced idle
+deadline is **11:24:49.026Z / 16:24:49.026 Asia/Tashkent**, even though absolute
+expiry remains 2026-10-08T12:54:48.093Z. Terraform does not validate live session
+freshness. The post-apply read now establishes idle invalidity; an expired session
+does not authorize a replacement, widened limit or Send.
 
-The current next check is the repository-backed **exact-session readiness**
+The completed post-rollout check used the repository-backed **exact-session readiness**
 launcher `.github/scripts/s22-widget-readiness.mjs` with its adjacent read-only
 reader. It is pinned to the completed `a2b2f70` rollout, not the older selector's
-deployment. Download both files at one immutable tooling commit, verify their
-SHA256 checksums, and run the launcher once in a **separate Cloud Shell terminal**
-while leaving the website server/frame intact. No upload, reload, reinstall,
-session selection or Send is needed. The launcher checks current Worker binding
+deployment. The owner downloaded both files at one immutable tooling commit,
+verified their SHA256 checksums, and ran the launcher once in a **separate Cloud
+Shell terminal** while leaving the website server/frame intact. No upload,
+reload, reinstall, session selection or Send was performed. The launcher checks current Worker binding
 and uses one read-only runtime-role execution to collect the selected session's
 absolute/idle validity plus actual deployed cohort accounting together. A failed
 session still reports both results and does not renew it. Local verification is
 67/67 deterministic cases, including three actual generated-bootstrap subprocess
-cases; no current live session/accounting result has yet been collected by this
-checker. This is preparation only, not paid execution permission. The fuller
-diagnostic provenance is in the
+cases. Its owner-supplied live result is now collected and **FAIL** as recorded
+above; do not repeat this procedure on the expired frame. This is preparation
+only, not paid execution permission. The fuller diagnostic provenance is in the
 [evidence register](s22-acceptance-evidence.md#exact-post-rollout-widget-readiness-collection-prepared).
 
 ### Completed read-only session-selection procedure — do not repeat

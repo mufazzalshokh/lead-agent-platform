@@ -4184,3 +4184,76 @@ Cloud Shell terminal so the temporary website remains running. Paste its
 readable output once. An expired/missing/bound session is a concrete blocker,
 not authority to substitute a session, widen limits or apply another plan.
 Historical NULL costs and the budget-only exception remain unchanged.
+
+#### Owner-supplied current readiness: idle-expired selected session
+
+The owner supplied completed checker output for execution
+`lead-agent-staging-migrator-4nx9k` at tooling commit
+`89488999ec33ce03d22f749415efcef3589a6c84`. Both pinned downloads passed checksum
+verification; reader SHA256 is
+`52bd939ab1a3a5ed0131dba4c88ddd13ae880426dbc16ce6dba8daae5c2f2939`.
+This is **owner-supplied live diagnostic evidence**, not a locally performed DB
+read or an independently retrieved execution descriptor. Collection succeeded;
+the readiness assertions failed. Do not rerun this unchanged check.
+
+Reported outcomes:
+
+- Current exact image/binding/runtime-role-reference/private-VPC/explicit-zero-
+  retries preflight: **PASS**.
+- Runtime/tenant/read-only guard and six-table FORCE-RLS/non-owner guard: **PASS**.
+- Selected session: **FAIL**, `idle_valid=false`, `absolute_valid=true`.
+  Last activity: **2026-10-08T10:54:49.026Z**. Absolute expiry:
+  **2026-10-08T12:54:48.093Z**.
+- Actual cohort read: **FAIL**, reason **`widget_session_unavailable`**.
+  Known cost **USD0.008714**, combined reserved exposure **USD1.042110**,
+  pending reserve **USD0.000000**, unchanged from the reviewed baseline.
+- Combined first-message preparation: **FAIL**. No message, provider call,
+  renewal, replacement, migration or job-configuration change was performed.
+
+**Confirmed mechanism:** the separate 30-minute idle deadline was
+**2026-10-08T11:24:49.026Z / 16:24:49.026 Asia/Tashkent**. Being within the
+two-hour absolute lifetime is insufficient. Deployed-source inspection confirms
+idle expiry is rejected by session authorization, initial-message intake and
+exchange redemption (`packages/database/src/repositories/widget.ts`, idle
+constant and all three checks). The budget reader independently filters out
+idle-expired sessions and returns `widget_session_unavailable`
+(`packages/database/src/repositories/ai-journey-budget.ts`). These are two
+manifestations of the same invalid session, not evidence of new provider,
+database, RLS or monetary-ceiling failure. Read-only collection does not set the
+persisted session status to expired; that status/version is not printed in the
+owner's summary and is not independently claimed here.
+
+**Preparation sequencing failure:** selecting a short-lived session before
+deployment/approval/tooling preparation left it idle beyond the deadline.
+The unbound frame makes no message polling requests; cached close/reopen only
+changes visibility (`apps/web/src/lib/widget-embed.ts`). Its source schedules
+absolute expiry, not an unbound-session idle timer, so an empty frame can appear
+usable after server-side idle expiry. This presentation finding is source-level,
+not a newly observed live screenshot. There is no supported same-ID renewal
+interface; expired grant redemption fails instead of reviving it. The denial
+must not be patched away or replaced by direct SQL refresh/timeout relaxation.
+Existing lifecycle and database idle-expiry regressions are reused, not rerun.
+
+**Smallest supported recovery, pending explicit authority:** prepare all tooling
+and immutable plan inputs before any fresh real-frame opening. Then select one
+fresh session, prepare one saved reconciliation plan, obtain exact-plan approval,
+apply and verify readiness within its idle window. There is no supported
+Worker-only deployment phase: existing full-runtime safeguards require four
+in-place workload updates. Unchanged `a2b2f70` source/four images and migration
+provenance are reusable; a new timestamp/session binding needs a new saved plan
+and its own approval. The previous exact-plan approval does not cover it.
+
+A replacement cannot reset a consumed allowance: the first Widget reservation
+persists an immutable binding audit, and a conflicting session then fails
+`widget_binding_integrity`. The readable owner output does not expose that
+audit's count, so absence of a binding latch is **not** independently claimed.
+Replacement readiness must establish intact unused allowance through the actual
+budget reader before any Send permission. Existing/historical rows, NULL costs,
+target/ceiling and prepared two-inbound/four-attempt scope stay unchanged.
+
+No application patch, build, plan, apply, diagnostic repeat, paid call, migration
+or IAM change was made in this evidence update. Only this register and current
+journey status change, with changed-section formatting and scoped diff checks.
+The next required owner action is explicit approval to prepare a fresh unused
+session and a replacement binding plan, **not** Send or apply approval. S22
+remains unaccepted; no S23 work.
