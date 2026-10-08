@@ -9,7 +9,26 @@ unchanged: 100,000 UZS, 30 minutes, Monday–Saturday 09:00–18:00 Asia/Tashken
 staff review followed by genuine customer confirmation. Hours are not slot
 availability.
 
-**Current result: BLOCKED by selected-session idle expiry.** Owner-supplied
+**Current result: replacement plan reviewed; exact apply approval pending.**
+Owner-supplied fresh selection `lead-agent-staging-migrator-rkgt6` passed all
+runtime/read-only/tenant/FORCE-RLS guards for session
+`01a11b7d-ddbf-759e-b4e3-1602d9e2238c`, active/unbound version 2, on the same
+approved channel/origin. Its idle deadline is
+**2026-10-08T12:59:57.129Z / 17:59:57.129 Asia/Tashkent**; absolute expiry is
+14:29:56.031Z. One replacement plan **37777865016** passed: zero creates,
+four in-place workload updates, zero destroys/replacements. Its independent
+saved-plan SHA256 is
+`9f7cc11c6277a0a72c517153c37e2d1a18b8889ba6186eeebd24b6c5d9efd80c`.
+Existing four-image build 37750247345/source `a2b2f70` is reused; only the
+shared timestamp `2026-10-08T12:34:20Z` and Worker selected-session binding
+change. No apply, migration or paid call has occurred. Exact inputs and
+remaining evidence boundaries are in the
+[replacement approval packet](s22-acceptance-evidence.md#fresh-replacement-session-and-reviewed-plan-37777865016).
+Do not reload/reinstall/Send. Exact-plan approval, apply/verification and the
+prepared actual readiness read must finish before idle expiry; unused binding
+integrity/readiness and separate paid execution authority remain required.
+
+**Previous failure: selected-session idle expiry.** Owner-supplied
 execution `lead-agent-staging-migrator-4nx9k` passed current deployment preflight,
 runtime/tenant/read-only and FORCE-RLS/non-owner guards. The selected session
 failed idle validity while still within its absolute lifetime. Last activity
@@ -27,8 +46,9 @@ Prepare the tooling/inputs **before** requesting the fresh frame, then complete
 selection, saved-plan approval, apply and readiness within the 30-minute window.
 Existing images need no rebuild. Do not assume an unused binding latch from the
 human summary; the replacement's actual budget read must prove readiness.
-No replacement has yet been created/selected and no new plan, apply or paid
-action has been performed. Details and evidence boundaries are recorded in the
+The fresh selection and reviewed replacement plan above supersede the prior
+preparation blocker; no replacement apply or paid action has been performed.
+Previous failure details and evidence boundaries are recorded in the
 [evidence register](s22-acceptance-evidence.md#owner-supplied-current-readiness-idle-expired-selected-session).
 
 **Recovery preparation is ready locally:** existing immutable build/manifest
@@ -39,10 +59,10 @@ safe selection-receipt file. The post-apply reader accepts the new reviewed
 session/timestamp explicitly, with fixed tenant/channel/origin and unchanged
 ledger guards, so there is no code edit after opening the fresh frame.
 **128/128** focused local tests passed, including five exact-bootstrap subprocess
-cases; this is not live replacement readiness. Next is a checksum-pinned download
-and **preflight-only** access check in a second Cloud Shell terminal. Keep the
-website running; do not reload/reinstall/create the fresh frame or Send until
-that check is returned and the next single instruction is given. Prepared plan
+cases; this is not live replacement readiness. The checksum-pinned download,
+**preflight-only** access check and subsequent fresh selection now passed with
+owner-supplied live evidence. Keep the website running; do not reload/reinstall
+or Send. Prepared plan
 inputs and authorization boundaries are in the
 [evidence register](s22-acceptance-evidence.md#authorized-replacement-preparation-tooling-and-provenance-ready).
 
@@ -117,8 +137,9 @@ The preceding non-paid embedding, cookie-block, launcher and origin-denial
 checks are retained, not repeated. Immutable images, selected live session and
 the single reviewed plan are now collected. Exact-plan apply and deployment
 verification have passed. Current selected-session/cohort readiness is collected
-and **FAIL** due to idle expiry. Authorized replacement preparation, fresh
-readiness, explicit paid execution approval and the customer journey remain pending.
+and **FAIL** due to the previous session's idle expiry. Replacement selection
+and exact plan review now pass; replacement apply, fresh readiness, explicit
+paid execution approval and the customer journey remain pending.
 
 Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
 verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run

@@ -5,6 +5,16 @@ live product and recovery/capacity proof. It does not declare S22 acceptance.
 
 ## Current checkpoint — 2026-10-08
 
+**Latest replacement preparation:** owner-supplied read-only selection
+`lead-agent-staging-migrator-rkgt6` passed for fresh session
+`01a11b7d-ddbf-759e-b4e3-1602d9e2238c`. Exact replacement plan **37777865016**
+passed and its downloaded saved SHA256 independently matched. Only four
+in-place workload updates are planned. **Apply approval and post-apply actual
+readiness remain pending; no Send is authorized.** The session's supplied idle
+deadline is **2026-10-08T12:59:57.129Z / 17:59:57.129 Asia/Tashkent**; a plan
+or deployment cannot extend it. The complete exact inputs and evidence are in
+the [replacement approval packet](#fresh-replacement-session-and-reviewed-plan-37777865016).
+
 **Active milestone:** the owner approved preparation of the separately bounded
 Website Chat customer-to-confirmed-booking test. Its proposed two messages/four
 physical attempts reserve USD3.205728; combined maximum exposure including the
@@ -4347,3 +4357,123 @@ channel and origin before any plan. Finish plan/review/approved apply/prepared
 readiness within the idle deadline or stop. Binding-latch integrity and actual
 budget readiness remain mandatory before any separate paid Send authorization.
 S22 remains unaccepted; no S23 work.
+
+#### Fresh replacement session and reviewed plan 37777865016
+
+**Owner-supplied live diagnostic evidence:** the preflight-only recovery bundle
+passed in `/tmp/s22-widget-recovery.dyKUoA`; this established access and current
+job safeguards, not DB/session readiness. The owner subsequently returned
+read-only execution **`lead-agent-staging-migrator-rkgt6`**: runtime-role,
+transaction-local tenant, read-only and FORCE-RLS/non-owner selection guards
+**PASS**. Exactly selected session **`01a11b7d-ddbf-759e-b4e3-1602d9e2238c`**
+is active, version **2**, contact/conversation unbound, on existing approved
+Widget channel **`01a11771-2c02-7240-86f7-19f95690d22e`** and allowed-origin
+record **`01a11771-2c02-7765-b999-7dc9895ee49d`**. Tenant remains
+`01a0ee39-91a9-7293-82c0-5b7046c10115`; no account identifiers or messages
+were collected. Reader SHA256 remains
+`1d430316acc64e4b16e270e9bc795793a1d6f6c175ad545928f15d7997156ef0`.
+The owner reports receipt file
+`/tmp/s22-widget-recovery.dyKUoA/replacement-selection.json`; its contents
+were not independently downloaded by the agent.
+
+Supplied absolute expiry is **2026-10-08T14:29:56.031Z**; supplied idle deadline
+is **2026-10-08T12:59:57.129Z / 17:59:57.129 Asia/Tashkent**. Selection is
+consistent with the instructed fresh real-frame opening but version 2 alone is
+not independent redemption-log proof. No message/provider call was sent.
+Selection does not activate a budget or establish unused binding-latch/current
+post-deployment readiness; the actual post-apply reader must prove those gates.
+
+**Direct authenticated plan evidence:** dispatched **one** supported
+`staging-terraform.yml` plan, approved branch
+`verify/s22-staging-recovery-capacity`, `action=plan`, `phase=full`.
+Run **37777865016**, job **113313187198**, completed **success**. Dispatch
+branch HEAD was diagnostic/evidence commit
+`6851297781c2a6a58f684ff57dd5e73de5493e84`; checkout/ancestry safeguards passed
+for unchanged runtime source **`a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`**.
+No rebuild was dispatched: verified build **37750247345**, immutable manifest
+artifact **11538270536** and manifest SHA256
+`0abf845efa17aadcfaaedc2c8407e5079aad944afdcdaf01d8ccd060e73059af` are reused.
+All four exact references below match that source/build evidence.
+
+Unexpired plan artifact **11550631557**,
+`s22-terraform-plan-full-a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`, was downloaded
+with authenticated `gh run download`. Independent local `Get-FileHash` and a
+second review matched the recorded saved-plan SHA256:
+
+**`9f7cc11c6277a0a72c517153c37e2d1a18b8889ba6186eeebd24b6c5d9efd80c`**.
+
+Private `terraform show -json` parsing emitted only allowlisted provenance and
+resource actions; raw Terraform/secret-bearing content was not printed or
+committed. All source/image/timestamp/session/migration variables matched the
+dispatched inputs. Downloaded sanitized evidence reports **88** managed
+configurations verified, configurable unknowns **NONE**, unreviewed changes
+**NONE**, reconciliation **0 creates / 4 in-place updates / 0 destroys /
+0 replacements**, unexpected actions **NONE**, public IAM changes **NONE** and
+Migrator execution **DISABLED**.
+
+| Resource                                    | Saved-plan action | Exact configurable difference                                       |
+| ------------------------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `google_cloud_run_v2_service.api[0]`        | In-place update   | Shared deployment timestamp only                                    |
+| `google_cloud_run_v2_service.web[0]`        | In-place update   | Shared deployment timestamp only                                    |
+| `google_cloud_run_v2_worker_pool.worker[0]` | In-place update   | Shared deployment timestamp and exact replacement Widget session ID |
+| `google_cloud_run_v2_job.migrator[0]`       | In-place update   | Shared deployment timestamp only; no execution                      |
+
+All images/source/head and existing Worker `widget_booking` mode remain
+unchanged. Schema-aware safeguard and independent metadata inspection show no
+SQL, IAM, network/egress, identity, secret-reference, retry or scaling changes.
+Other managed resources have no actions. Independent source/provenance review
+passed. The saved plan's refreshed state records lineage
+`ad1c3000-d52f-06eb-de1b-53ae4d67f63e`, serial **64**. A subsequent authenticated
+Terraform-workflow history read showed no intervening workflow deployment or
+queued/running Terraform run. This does not rule out manual changes or future
+state writes; exact-plan integrity/scope and Terraform stale-state rejection
+must remain enforced at apply. A rejected/expired plan is not permission to
+apply a replacement.
+
+**Prepared exact subsequent apply inputs — not dispatched:**
+
+```text
+workflow=staging-terraform.yml
+ref=verify/s22-staging-recovery-capacity
+action=apply
+phase=full
+commit_sha=a2b2f708d2e804d2c3d2be66426fa7b49d8203c9
+deployment_timestamp=2026-10-08T12:34:20Z
+api_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:dcf22aa7db8c93ed813c84be96f7216d6b1f9f51081a5ad19fa7a6456985d5bd
+web_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:167e9cf10b6d8ce6a6965565a254c54580deb65a29bf66532589719ef69ee267
+worker_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:c2c31c5643938aaae945ff0906f99522f6573fc562cd0568be7594049409580b
+migrator_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276
+api_migration_head=0031_s22_widget_inbound_route_management
+runtime_migration_head=0031_s22_widget_inbound_route_management
+ai_journey_mode=widget_booking
+ai_journey_widget_session_id=01a11b7d-ddbf-759e-b4e3-1602d9e2238c
+plan_run_id=37777865016
+approved_plan_sha256=9f7cc11c6277a0a72c517153c37e2d1a18b8889ba6186eeebd24b6c5d9efd80c
+```
+
+Isolated provenance overrides remain blank. `owner_approval_token` remains
+unset; it may only be supplied after explicit owner approval of this exact
+saved plan. The obsolete `37767355826` plan/hash/timestamp/session are not reused.
+After a separately approved apply and exact runtime verification, the already
+prepared reader can use this reviewed scope without another download/edit:
+
+```sh
+node /tmp/s22-widget-recovery.dyKUoA/s22-widget-readiness.mjs \
+  --session 01a11b7d-ddbf-759e-b4e3-1602d9e2238c \
+  --deployment-timestamp 2026-10-08T12:34:20Z
+```
+
+This is a future post-apply check, **not an instruction to run it before apply**.
+Do not reload/reinstall/create another session or Send. If the supplied idle
+deadline is reached, stop: neither plan approval nor deployment renews it.
+Paid execution approval remains separate. Two-total-inbound/four-attempt scope,
+USD3.205728 allowance, maximum combined planning exposure USD4.247838 and USD10
+ceiling stay unchanged. Historical NULL costs remain unknown and visible.
+
+This milestone changes only this register and the current journey checkpoint.
+Verification: authenticated run/artifact reads, independent SHA256, sanitized
+actual saved-plan provenance/actions/configuration review, changed-section
+Markdown and scoped `git diff --check`. Reuse existing 128/128 diagnostic tests,
+runtime CI/PostgreSQL/build checks; no repeat paid/DB tests, new build, migration,
+IAM change or apply. S22 remains unaccepted. The single next owner action is
+approval of **plan 37777865016 only**, with the exact saved hash above.
