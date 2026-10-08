@@ -104,12 +104,22 @@ selector.** One corrected read using a fresh real frame is now justified. The
 command below is not evidence that a live session has already been selected.
 No runtime rebuild is required; the four verified `a2b2f70` images remain unchanged.
 
+Corrected execution `lead-agent-staging-migrator-xgbzh` reached
+`widget_session_selection` but returned `NO_FRESH_UNBOUND_SESSION`. The owner
+confirmed **only reopening the existing chat**, not reloading/reinstalling a
+new frame. Close/reopen reuses the old session and does not create a fresh one
+or reset its issuance time. This explains the preparation input mismatch;
+no application change or repeated log read is needed. Follow the fresh-frame
+procedure below once, not a blind repeat on the unchanged old frame.
+
 Fully reload the existing synthetic preview, reinstall the same public snippet,
 open the chat without Send, then close once and confirm **Chat with us** returns.
 Immediately run this in a **second** Cloud Shell tab and paste its readable
 output. Keep the original server and preview/frame intact. This selects one
 fresh unbound tenant-owned session; it does not authorize a message or apply.
 No files need uploading and no credential is requested.
+If the preview reload returns 404, stop and report it: the temporary host may
+have stopped. Do not replace integration setup or bypass session guards.
 
 ```bash
 (

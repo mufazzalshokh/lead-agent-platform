@@ -3886,3 +3886,53 @@ not rerun. Current changes are only this evidence register and the journey's
 next-action instructions, checked with scoped Prettier and `git diff --check`.
 No application code, runtime image, SQL/IAM configuration, migration, paid
 authorization or historical NULL cost changed. S22 remains unaccepted.
+
+### Corrected selector reaches freshness guard: `xgbzh`
+
+Owner-supplied result for **`lead-agent-staging-migrator-xgbzh`**: both corrected
+script checksums **OK**; collection **BLOCKED: `NO_FRESH_UNBOUND_SESSION`**;
+stage `widget_session_selection`, category `assertion`. Preserve this execution;
+no diagnostic retry was triggered by the investigation. The corrected source's
+control flow requires successful runtime/tenant/read-only, FORCE-RLS/non-owner
+and exact active origin checks before reaching this failure. This demonstrates
+progress beyond `xtcgs`'s SQL failure, not successful session selection or
+Widget-message E2E. Those preceding outcomes are source-enforced prerequisites,
+not additional raw log rows supplied by the owner in this result.
+
+The failing selector query returned zero rows for the exact authorized tenant,
+active Widget channel and exact origin, with active/non-revoked, NULL
+contact/conversation bindings and `issued_at` inside the launcher's preceding
+five-minute window. The failure happens **before** its version-2 and lifetime
+postconditions; version mismatch or expiry alone cannot explain this code.
+No selector boundary was weakened, time window widened or session substituted.
+
+Inspection of the actual implementation, unchanged from pinned runtime `6a31`,
+rules out an automatic-binding assumption defect: `createEmbedGrant` persists
+an active version-1 session with NULL bindings; `redeemExchange` changes its
+JTI/last-seen/version to 2 without binding it. The frame does not create a
+conversation, poll or submit telemetry before the first customer message.
+Binding occurs in `acceptInitialInbound` only after Send. The loader's
+close/reopen path retains the existing frame and makes no new grant request;
+it does not change `issued_at`. Existing loader regression coverage explicitly
+checks one grant/redemption across close/reopen and is reused, not rerun.
+
+The owner then confirmed **"Only reopened the existing chat"**, rather than
+reloading/reinstalling/opening a new frame. This explains the absent fresh
+issuance: the retained frame makes no new grant/redemption request on reopen.
+The supplied result does not establish a new application defect; no
+speculative behavior change is made. No further log or database read is needed
+to repeat this finding, and neither `xtcgs` nor `xgbzh` is rerun.
+
+The next justified action is a genuinely new frame on a fully reloaded preview,
+using the same public installation snippet, without Send; immediately collect
+its exact session once with the already-verified corrected selector. This is a
+new preparation input, not replay of the old frame or another attempt to infer
+the old failure. It remains subject to exact origin, tenant, unbound/freshness,
+ambiguity and lifetime guards. If the temporary host has stopped and reload
+returns 404, stop rather than changing integration setup or guessing a session.
+Only the evidence register and the journey's next-action instructions change.
+No new tests or application behavior changes are required by this browser
+sequence correction; existing valid tests are reused. Scoped formatting and
+diff checks pass. Historical NULL costs, paid-call pause and exact-plan
+approval remain intact; successful live selection and S22 acceptance remain
+pending.
