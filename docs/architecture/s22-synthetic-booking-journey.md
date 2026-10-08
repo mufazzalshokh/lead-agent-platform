@@ -2,25 +2,45 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
-**Latest preflight attempt did not reach Cloud access.** Download verification
-passed, but the agent-supplied unsupported `--origin` flag caused
-`SELECTION_SCOPE_INVALID`. The unchanged contract is positional
-`ORIGIN --preflight-only`; actual CLI subprocess regressions verify that form
-with controlled metadata/log fixtures and retain fail-closed retry checks.
-Reuse the checksum-verified downloaded bundle with the corrected invocation;
-no new session, diagnostic execution, paid call or deployment has occurred.
-Current live preflight remains pending. See the
-[command correction record](s22-acceptance-evidence.md#2026-10-08--preparation-command-rejected-before-cloud-access).
+**Latest checkpoint: one fresh session selected; correction plan reviewed.**
+Owner-supplied `lead-agent-staging-migrator-jf2sk` plus confirmed fresh empty-frame
+opening select `01a11c48-dbc2-76de-a873-f41664da5ccb`, active/unbound version 2,
+on the existing exact tenant/channel/origin. Its idle deadline is **8 October
+2026 21:41:40.456 Asia/Tashkent / 16:41:40.456 UTC**; deployment does not renew it.
+One plan **37807472634 PASS** reuses build 37797125277/source `1ecd729` and the
+chosen timestamp, with **0 creates, 4 in-place workload updates, 0 destroys,
+0 replacements**, no other configuration change or migration execution.
+Saved-plan SHA256 is
+`ee7b8a682a0da6dab2b348ae377f4c1a99a928949666b688cd6737e4c3009975`.
+Exact images/inputs/safeguards and independent evidence boundaries are in the
+[correction approval packet](s22-acceptance-evidence.md#2026-10-08--fresh-widget-session-and-correction-plan-37807472634).
+No apply, Send or paid call is authorized by preparation. Do not reload,
+reinstall, create another session or send a message. Next is owner approval of
+this exact saved plan, then apply/provenance/readiness before separate bounded
+execution authorization. Stop if the session expires; do not silently rebind.
 
-**Correction preparation is ready:** source `1ecd729d856fdeff22a55cc54e1259c7adcf6472`
+**Previous checkpoint before fresh selection:**
+**Corrected preparation preflight: owner-supplied live PASS.** Reviewed job
+provenance/identity, private VPC, explicit zero retries and authenticated log
+access passed using `/tmp/s22-widget-ready.nGVnJp`. No session or diagnostic
+execution was created; no paid call or deployment occurred. The earlier
+unsupported `--origin` failure remains recorded, not erased. Next: one full
+preview reload, reinstall the existing snippet, open the real frame once, then
+immediately use positional `ORIGIN --write-selection FILE` from the preserved
+bundle. Do not Replace setup, Send, reopen an old session or repeat opening.
+Stop before selection if the temporary host is unavailable. See the
+[current preparation checkpoint](s22-acceptance-evidence.md#2026-10-08--corrected-preparation-preflight-pass-fresh-frame-next).
+
+**Historical image-preparation checkpoint before fresh selection:**
+source `1ecd729d856fdeff22a55cc54e1259c7adcf6472`
 is pushed; exact all-runtime image build **37797125277 PASS** and its four
 immutable references/manifest are independently checked. The one prepared
 deployment timestamp is **2026-10-08T15:08:01Z**; packaged migration head 0031
 is unchanged. No new session has been selected, plan dispatched, apply approved
 or Send authorized. Prepared current-selector/future-readiness tools keep those
-provenance boundaries distinct. One Cloud Shell **preflight-only read** is next,
-before opening the one fresh real frame and preparing its combined fix/binding
-plan. See the [verified image/preparation record](s22-acceptance-evidence.md#2026-10-08--correction-images-ready-fresh-frame-selection-pending).
+provenance boundaries distinct. The Cloud Shell **preflight-only read** now
+passed; next is opening the one fresh real frame and preparing its combined
+fix/binding plan. See the [verified image/preparation record](s22-acceptance-evidence.md#2026-10-08--correction-images-ready-fresh-frame-selection-pending).
 
 The owner approved **preparing** a bounded, independent Widget journey, then
 **applying only exact replacement plan 37777865016**, and subsequently explicitly
