@@ -3548,3 +3548,97 @@ The saved plan must contain only four in-place workload image/provenance updates
 plus the explicitly reviewed Worker mode/session binding, no SQL/IAM/network/
 scaling changes, creates/destroys/replacements or migration execution. Exact
 saved-plan approval remains required. S22 remains unaccepted.
+
+### Final verified preparation source and immutable build
+
+Runtime source **`a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`**, preserved on
+`verify/s22-staging-recovery-capacity`:
+
+- Focused isolated PostgreSQL **37750085917 PASS, 7/7**. Exact command:
+  `pnpm exec vitest run tests/database/s4a-schema.test.ts --testNamePattern "S22 durable synthetic booking budget" --maxWorkers=1`.
+- Automatic authoritative CI **37750093321 PASS** (`pnpm ci:verify`), including
+  database regressions, type/lint/contracts/boundaries and production builds.
+  It was followed, not manually dispatched or repeated.
+- Final immutable image build **37750247345 PASS**, exact source above,
+  `image_scope=all`, `linux/amd64`. Authenticated artifact download and an
+  independent strict manifest parse verified build/source and all four role/
+  digest references. Manifest SHA256:
+  `0abf845efa17aadcfaaedc2c8407e5079aad944afdcdaf01d8ccd060e73059af`.
+
+| Runtime role | Verified immutable image |
+| --- | --- |
+| API | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:dcf22aa7db8c93ed813c84be96f7216d6b1f9f51081a5ad19fa7a6456985d5bd` |
+| Web | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:167e9cf10b6d8ce6a6965565a254c54580deb65a29bf66532589719ef69ee267` |
+| Worker | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:c2c31c5643938aaae945ff0906f99522f6573fc562cd0568be7594049409580b` |
+| Migrator | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276` |
+
+No migration files changed relative to the last verified live source
+`6a31cd8e3a37f31a7bb85329eab0aa9c4de53926`; migration provenance remains
+`0031_s22_widget_inbound_route_management`. No runtime apply, live diagnostic,
+message, provider call, IAM/job-configuration or unrelated record change was
+made during preparation. The prior successful build **37748463181** is not the
+final runtime source and must not supply this plan's images.
+
+**Remaining preparation blocker:** the exact live fresh unbound Widget session
+has not been read. Local authenticated Cloud Shell/browser access is unavailable;
+no session UUID is guessed or automatically substituted. The bounded repository
+selector requires exactly one recently issued unbound version-2 session on the
+approved origin, runtime/read-only/tenant/FORCE-RLS guards and reviewed immutable
+diagnostic job configuration. It makes no model calls or migration execution.
+Its 20 deterministic tests include the exact ES-module/package-resolution
+bootstrap; these are local tooling tests, not live session-selection evidence.
+
+The next owner action is one fresh real-frame opening without Send, followed
+immediately by the checksum-pinned selector in a second Cloud Shell tab. Keep
+the same preview/frame intact afterward. The printed absolute expiry is not the
+**30-minute idle deadline**: selection, plan, exact approval, apply, verification
+and first permitted message must fit that lifetime. Expiry blocks the process;
+it never authorizes replacement of the reviewed session. Version 2 is correlated
+with this owner opening, not represented as an independent redemption trace.
+
+Once selected, the single supported plan uses `action=plan`, `phase=full`, the
+exact runtime source/images above, `ai_journey_mode=widget_booking`, the exact
+selected `ai_journey_widget_session_id`, unchanged migration head and one UTC
+RFC3339 deployment timestamp. No plan run, saved-plan hash or timestamp has been
+generated before this missing binding is supplied. Review must prove zero
+creates/destroys/replacements, four intended in-place workloads only, with no
+SQL/IAM/network/scaling or migration execution. Subsequent documentation-only
+commits do not justify rebuilding this unchanged runtime source. Apply and
+paid execution remain separately unauthorized; S22 is unaccepted.
+
+The customer-message counter is bounded at three (three means **at least**
+three). The gate prevents additional paid dispatch; it does not globally reject
+Widget HTTP intake or replace the existing deterministic confirmation handler.
+The owner test remains exactly two total sends. The PostgreSQL case proves
+persisted counting/dispatch denial, not a live customer-confirmation transition
+or a new intake-versus-dispatch race experiment.
+
+Exact in-scope preparation files (relative to `a0cb1bb`):
+
+```text
+.github/scripts/s22-ai-journey-mode.mjs
+.github/scripts/s22-full-runtime-config-check.mjs
+.github/scripts/s22-full-runtime-config-check.test.mjs
+.github/scripts/s22-full-runtime-plan-check.sh
+.github/scripts/s22-widget-session-select-readonly.mjs
+.github/scripts/s22-widget-session-select.mjs
+.github/scripts/s22-widget-session-select.test.mjs
+.github/workflows/s22-booking-budget.yml
+.github/workflows/staging-terraform.yml
+docs/architecture/s22-acceptance-evidence.md
+docs/architecture/s22-synthetic-booking-journey.md
+docs/architecture/s22-widget-embedding-proof.md
+infra/deploy/gcp/staging/runtime.tf
+infra/deploy/gcp/staging/variables.tf
+packages/config/src/ai-journey.ts
+packages/config/src/index.ts
+packages/database/src/repositories/ai-journey-budget.ts
+tests/ai/s22-budget-ledger.test.ts
+tests/ai/s22-journey-dispatch.test.ts
+tests/database/ai-orchestration.test-suite.ts
+tests/workspace/staging-journey-mode.test.ts
+```
+
+Unrelated `README.md`, `docs/architecture/s11-instagram-business.md` and
+`s22-public-notices.patch` remain untouched and excluded from every preparation
+commit. This final evidence-only update does not require another image build.

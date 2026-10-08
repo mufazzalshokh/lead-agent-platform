@@ -80,6 +80,44 @@ The preceding non-paid embedding, cookie-block, launcher and origin-denial
 checks are retained, not repeated. Selected live session, new build/plan,
 deployment/readiness and customer journey are still pending until collected.
 
+Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
+verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run
+37750085917), authoritative CI 37750093321 and four-image build 37750247345
+passed. Exact immutable references and validation provenance are in the
+[evidence register](s22-acceptance-evidence.md#final-verified-preparation-source-and-immutable-build).
+The plan is blocked only on the fresh live selected Widget session. No apply,
+Send or paid call was performed. Absolute two-hour expiry does not replace the
+30-minute idle limit; preserve the selected page/frame and stop on expiry.
+
+### One read-only session-selection action
+
+Fully reload the existing synthetic preview, reinstall the same public snippet,
+open the chat without Send, then close once and confirm **Chat with us** returns.
+Immediately run this in a **second** Cloud Shell tab and paste its readable
+output. Keep the original server and preview/frame intact. This selects one
+fresh unbound tenant-owned session; it does not authorize a message or apply.
+No files need uploading and no credential is requested.
+
+```bash
+(
+  set -euo pipefail
+  task_dir=$(mktemp -d /tmp/s22-widget-select.XXXXXX)
+  cd "$task_dir"
+  base='https://raw.githubusercontent.com/mufazzalshokh/lead-agent-platform/a2b2f708d2e804d2c3d2be66426fa7b49d8203c9/.github/scripts'
+  for file in s22-widget-session-select.mjs s22-widget-session-select-readonly.mjs; do
+    curl -fsS --connect-timeout 5 --max-time 20 "$base/$file" -o "$file"
+  done
+  sha256sum --check <<'SHA'
+afbdf917c591f183948e83edd2c3d96e61a82438d3a26b2de1c0dce69cc68387  s22-widget-session-select.mjs
+2d0fdec5335f9ff97ae76a142a4af4ae7327db73b1ff2cf7a8668b1c0ebb13d3  s22-widget-session-select-readonly.mjs
+SHA
+  node s22-widget-session-select.mjs 'https://8080-cs-11613c0c-52ca-4bf6-99e8-7891f5a57000.cs-europe-west4-bhnf.cloudshell.dev'
+)
+```
+
+Do not rerun on a blocked or incomplete result. Preserve its execution ID and
+output for investigation; no automatic newest-session fallback is permitted.
+
 ## Scope and evidence boundary
 
 This is a fictional staging fixture, not a real clinic, price offer or appointment
