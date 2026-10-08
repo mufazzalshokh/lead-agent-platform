@@ -2,7 +2,24 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
-**Latest checkpoint: exact correction plan applied; current session readiness pending.**
+**Latest checkpoint: owner-supplied correction readiness PASS, but its idle deadline elapsed.**
+Execution `lead-agent-staging-migrator-f57lg` passed exact runtime/security/session,
+budget and first-message preparation checks for `01a11c48-dbc2-76de-a873-f41664da5ccb`.
+Known cost/exposure remained USD0.008714/USD1.042110; pending reserve zero; no
+message or model call ran. However, the agent's receipt-time clock was
+**16:41:45 UTC**, after the reported unchanged last activity's **16:41:40.456 UTC /
+21:41:40.456 Asia/Tashkent** idle deadline. A completed valid snapshot is not
+current Send authority. No persisted expired-status assertion or new DB read is made.
+
+The app has no same-session renewal after idle expiry. Close/reopen retains the
+cached frame; a fresh grant creates a new ID. **Do not Send or reload yet.** The
+next required owner authority is preparation of one replacement session/binding,
+with existing deployed images and unchanged budget, followed by exact-plan
+approval and a tightly coordinated readiness/execution window. No replacement
+plan, deployment, paid call or safeguard change is performed here. See the
+[readiness and expiry record](s22-acceptance-evidence.md#2026-10-08--correction-readiness-snapshot-pass-idle-deadline-elapsed).
+
+**Previous checkpoint: exact correction plan applied; current session readiness pending.**
 The owner approved **apply plan 37807472634 only**. Apply **37809243773 PASS**
 made **0 creates / 4 in-place workload updates / 0 destroys**, with the reviewed
 zero-replacement guard and no migration execution. Exact source `1ecd729`, build

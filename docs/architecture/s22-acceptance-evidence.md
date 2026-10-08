@@ -3,6 +3,49 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-08 — Correction readiness snapshot PASS; idle deadline elapsed
+
+Owner-supplied live read-only execution **`lead-agent-staging-migrator-f57lg`**
+reports **PASS** for exact correction image/source/binding preflight, runtime
+identity/role reference, private VPC, explicit zero retries, runtime/tenant/read-only
+guard, FORCE-RLS/non-owner guard, selected session, budget readiness and first-message
+preparation. Reader SHA256 is
+`7b45ff56c9bdf468a8ac7ace4159360f54428b818bb88140560567e4cd43a971`.
+The exact selected session remains `01a11c48-dbc2-76de-a873-f41664da5ccb`.
+At this snapshot idle and absolute lifetime were valid; last activity was
+**2026-10-08T16:11:40.456Z**, absolute expiry **2026-10-08T18:11:39.330Z**.
+Known cost / combined reserved exposure: **USD0.008714 / USD1.042110**;
+pending reserve **USD0**; budget reason **none**. No message, provider call,
+renewal, replacement, migration or job configuration change occurred.
+
+The owner did not supply the diagnostic's observation timestamp. On receiving
+this result, the agent clock read **2026-10-08T16:41:45Z**, already after the
+calculated idle deadline **16:41:40.456Z / 21:41:40.456 Asia/Tashkent**. Therefore
+this valid completed-check snapshot cannot authorize a later Send. Current
+persisted session status/version has not been reread or claimed expired; the
+elapsed deadline follows from the supplied last activity and enforced 30-minute
+idle limit. No unchanged diagnostic is rerun and no customer attempt is requested.
+
+Source inspection confirms that authorization and message intake reject idle
+expiry before touching `last_seen_at`; exchange redemption applies the same guard
+([Widget persistence](../../packages/database/src/repositories/widget.ts)).
+The API exposes no same-session renewal route. Reopening only displays the cached
+frame; an unbound frame does not poll. A fresh grant creates a new session ID.
+Thus no supported owner click revives this idle-expired selection. Do not extend
+limits, fabricate activity, write SQL, replay a message or silently substitute a
+session. The deployed read-path correction remains verified by apply **37809243773**
+and read-only runtime verification **37809490156**; no new application defect or
+provider failure was observed by this readiness read.
+
+**Next authority required:** preparation of one replacement session and exact
+replacement-binding plan, reusing the deployed immutable images and unchanged
+budget. Finish reusable tooling/review inputs before creating that session, then
+coordinate selection, exact-plan approval/apply, readiness and separately bounded
+execution within its lifetime. No replacement, plan, apply or Send is dispatched
+by this evidence update. Historical NULL costs remain unknown. **S22 remains
+unaccepted.** Only the evidence register/journey checkpoint are changed; scoped
+Markdown/diff checks are required, with no runtime regression rerun or redeployment.
+
 ## 2026-10-08 — Exact correction plan applied; live session readiness pending
 
 The owner explicitly approved **apply plan 37807472634 only**. Authenticated
