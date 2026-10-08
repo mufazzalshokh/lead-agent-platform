@@ -3697,3 +3697,49 @@ credentials and customer content are never copied. These are local controlled
 fixtures, not a successful live session read. A dedicated isolated PostgreSQL 17
 wire regression is being prepared without rerunning the seven unchanged budget
 cases or using staging credentials/provider access.
+
+Corrected diagnostic source **`676b1d3fc389b66a4c1401cb88bbe4a655e0da6c`**
+is pushed. Focused isolated PostgreSQL workflow **37754475137 PASS**:
+`node --test .github/scripts/s22-widget-session-select-postgres.test.mjs`.
+Five real database subcases (plus the parent harness) prove:
+
+- The exact original parameterized query fails over installed `pg` with
+  **SQLSTATE `42P18`**; the connection remains usable after explicit rollback.
+- The actual exported corrected SQL returns **`count=3, safe=true`** under a
+  non-superuser, non-bypass, non-owner runtime fixture role with FORCE RLS.
+- The actual selector collector retrieves only the selected tenant's session;
+  a same-origin foreign-tenant session stays invisible under enforced RLS.
+- Same-tenant duplicate origins and fresh sessions independently fail closed
+  with their explicit ambiguity codes.
+- Every read transaction rolls back and clears transaction-local tenant
+  context; runtime connections and the disposable fixture/role are cleaned up.
+
+This is an isolated **three-table selector fixture**, not application migration
+or a production/staging DB test. The full reader's `lead_agent_staging` guard is
+retained, not bypassed or represented as live evidence. The connected server is
+verified as PostgreSQL 17; the workflow has no GCP identity, staging credentials
+or provider access. The seven unchanged budget tests, passed runtime build and
+deployment verification were not manually repeated.
+
+Corrected immutable script checksums (verified from committed blobs):
+
+- Launcher: `25f8bb735ac50b44d80573136f783f5b3e68b58f6336d879245440bac240f0d8`.
+- Reader: `1d430316acc64e4b16e270e9bc795793a1d6f6c175ad545928f15d7997156ef0`.
+
+The diagnostic SQL defect and its correction are now independently proven.
+**At this checkpoint, its attribution to `xtcgs` remains pending**: the owner
+has not supplied the existing execution's assertion/stage read. A
+`force_rls_not_owner_guard` failure after a passed runtime guard would correlate
+the live boundary with this deterministic reproduction; an `initialize` failure
+requires separate investigation. No live success is claimed and no corrected
+execution is triggered merely to infer the missing original stage. No runtime
+code, image, Terraform configuration or historical ledger value changed.
+
+Exact files changed in this diagnostic correction:
+`.github/scripts/s22-widget-session-select-readonly.mjs`,
+`.github/scripts/s22-widget-session-select.mjs`,
+`.github/scripts/s22-widget-session-select.test.mjs`,
+`.github/scripts/s22-widget-session-select-postgres.test.mjs`,
+`.github/workflows/s22-widget-session-select.yml`,
+`docs/architecture/s22-acceptance-evidence.md` and
+`docs/architecture/s22-synthetic-booking-journey.md`.

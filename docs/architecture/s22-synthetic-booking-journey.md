@@ -91,6 +91,15 @@ Send or paid call was performed. Absolute two-hour expiry does not replace the
 
 ### One read-only session-selection action
 
+The first pinned selector attempt `lead-agent-staging-migrator-xtcgs` returned
+`DATABASE_OR_TOOLING_UNAVAILABLE`. Its diagnostic SQL parameter-typing defect
+is corrected and verified with 23 local tests plus five real PostgreSQL
+subcases (run 37754475137). **First collect the preserved execution's safe
+assertion/stage output requested in the conversation; do not rerun the old
+command.** The corrected command below is prepared for the subsequent justified
+read, not evidence that a live session has already been selected. No runtime
+rebuild is required; the four verified `a2b2f70` images remain unchanged.
+
 Fully reload the existing synthetic preview, reinstall the same public snippet,
 open the chat without Send, then close once and confirm **Chat with us** returns.
 Immediately run this in a **second** Cloud Shell tab and paste its readable
@@ -103,13 +112,13 @@ No files need uploading and no credential is requested.
   set -euo pipefail
   task_dir=$(mktemp -d /tmp/s22-widget-select.XXXXXX)
   cd "$task_dir"
-  base='https://raw.githubusercontent.com/mufazzalshokh/lead-agent-platform/a2b2f708d2e804d2c3d2be66426fa7b49d8203c9/.github/scripts'
+  base='https://raw.githubusercontent.com/mufazzalshokh/lead-agent-platform/676b1d3fc389b66a4c1401cb88bbe4a655e0da6c/.github/scripts'
   for file in s22-widget-session-select.mjs s22-widget-session-select-readonly.mjs; do
     curl -fsS --connect-timeout 5 --max-time 20 "$base/$file" -o "$file"
   done
   sha256sum --check <<'SHA'
-afbdf917c591f183948e83edd2c3d96e61a82438d3a26b2de1c0dce69cc68387  s22-widget-session-select.mjs
-2d0fdec5335f9ff97ae76a142a4af4ae7327db73b1ff2cf7a8668b1c0ebb13d3  s22-widget-session-select-readonly.mjs
+25f8bb735ac50b44d80573136f783f5b3e68b58f6336d879245440bac240f0d8  s22-widget-session-select.mjs
+1d430316acc64e4b16e270e9bc795793a1d6f6c175ad545928f15d7997156ef0  s22-widget-session-select-readonly.mjs
 SHA
   node s22-widget-session-select.mjs 'https://8080-cs-11613c0c-52ca-4bf6-99e8-7891f5a57000.cs-europe-west4-bhnf.cloudshell.dev'
 )
