@@ -10,11 +10,13 @@ import {
   readinessOperation,
   readinessScope,
   readinessForceRlsTableNames,
+  parseReadinessScope,
 } from "./s22-widget-readiness-readonly.mjs";
 import {
   collectReadinessLogs,
   formatReadiness,
   moduleBootstrap,
+  parseReadinessArguments,
   reviewedReadiness as pin,
   runReadiness,
   verifyReadinessJob,
@@ -35,7 +37,7 @@ const interfaces = [
     subnetwork: `projects/${pin.project}/regions/${pin.region}/subnetworks/lead-agent-staging-cloud-run`,
   },
 ];
-const job = () => ({
+const job = (inputs = {}) => ({
   metadata: { name: pin.job, labels: { "cloud.googleapis.com/location": pin.region } },
   spec: {
     template: {
@@ -56,7 +58,10 @@ const job = () => ({
                 command: ["node"],
                 args: ["dist/index.js"],
                 env: [
-                  ...env({ DEPLOYMENT_IMAGE_DIGEST: pin.image }),
+                  ...env({
+                    DEPLOYMENT_IMAGE_DIGEST: pin.image,
+                    DEPLOYMENT_TIMESTAMP: inputs.deploymentTimestamp ?? pin.timestamp,
+                  }),
                   {
                     name: "DATABASE_URL",
                     valueFrom: {
@@ -75,7 +80,7 @@ const job = () => ({
     },
   },
 });
-const worker = () => ({
+const worker = (inputs = {}) => ({
   name: `projects/${pin.project}/locations/${pin.region}/workerPools/lead-agent-staging-worker`,
   scaling: { manualInstanceCount: 1 },
   terminalCondition: { state: "CONDITION_SUCCEEDED" },
@@ -87,16 +92,17 @@ const worker = () => ({
         image: pin.worker,
         env: env({
           AI_JOURNEY_MODE: "widget_booking",
-          AI_JOURNEY_WIDGET_SESSION_ID: readinessScope.session,
+          AI_JOURNEY_WIDGET_SESSION_ID: inputs.sessionId ?? readinessScope.session,
+          DEPLOYMENT_TIMESTAMP: inputs.deploymentTimestamp ?? pin.timestamp,
           AI_REQUEST_TIMEOUT_MS: "15000",
         }),
       },
     ],
   },
 });
-const sessionRow = () => ({
+const sessionRow = (scope = readinessScope) => ({
   organization_id: readinessScope.organization,
-  session_id: readinessScope.session,
+  session_id: scope.session,
   channel_connection_id: readinessScope.channel,
   allowed_origin_id: readinessScope.origin,
   status: "active",
@@ -113,7 +119,7 @@ const sessionRow = () => ({
   idle_valid: true,
   scope_matches: true,
 });
-const snapshot = () => ({
+const snapshot = (scope = readinessScope) => ({
   profile: "s22-synthetic-booking.v1",
   mode: "widget_booking",
   physicalCalls: 4,
@@ -127,7 +133,7 @@ const snapshot = () => ({
   blocked: false,
   reason: null,
   widget: {
-    sessionId: readinessScope.session,
+    sessionId: scope.session,
     conversationId: null,
     conversationUnbound: true,
     physicalCalls: 0,
@@ -137,7 +143,7 @@ const snapshot = () => ({
     unresolvedReserveMicros: "0",
   },
 });
-const entries = (expired = false) =>
+const entries = (expired = false, scope = readinessScope) =>
   [
     [
       "runtime_read_only_tenant_guard",
@@ -153,11 +159,19 @@ const entries = (expired = false) =>
       },
     ],
     ["force_rls_not_owner_guard", true, { count: 6, safe: true }],
-    ["exact_widget_session", !expired, { ...sessionRow(), row_count: 1, idle_valid: !expired }],
+    [
+      "exact_widget_session",
+      !expired,
+      { ...sessionRow(scope), row_count: 1, idle_valid: !expired },
+    ],
     [
       "cohort_reservation_accounting",
       !expired,
-      { ...snapshot(), blocked: expired, reason: expired ? "widget_session_unavailable" : null },
+      {
+        ...snapshot(scope),
+        blocked: expired,
+        reason: expired ? "widget_session_unavailable" : null,
+      },
     ],
     [
       "first_message_readiness",
@@ -183,6 +197,63 @@ const entries = (expired = false) =>
 test("exact current deployment preflight preserves runtime role, immutable images, private VPC and explicit retries", () => {
   verifyReadinessJob(job());
   verifyReadinessWorker(worker());
+});
+
+const replacement = {
+  sessionId: "01a11b26-c51d-78ba-8e81-62e6e7331ab9",
+  deploymentTimestamp: "2026-10-08T13:00:00Z",
+};
+test("explicit replacement expectations retain exact images/source and require matching reviewed SID/timestamp", () => {
+  assert.deepEqual(parseReadinessArguments([]), {});
+  assert.deepEqual(
+    parseReadinessArguments([
+      "--session",
+      replacement.sessionId,
+      "--deployment-timestamp",
+      replacement.deploymentTimestamp,
+    ]),
+    replacement,
+  );
+  verifyReadinessJob(job(replacement), replacement);
+  verifyReadinessWorker(worker(replacement), replacement);
+  assert.throws(() => verifyReadinessJob(job(), replacement), { code: "PROVENANCE_MISMATCH" });
+  const wrongSession = worker(replacement);
+  wrongSession.template.containers[0].env.find(
+    (v) => v.name === "AI_JOURNEY_WIDGET_SESSION_ID",
+  ).value = readinessScope.session;
+  assert.throws(() => verifyReadinessWorker(wrongSession, replacement), {
+    code: "WORKER_BINDING_MISMATCH",
+  });
+  const scope = parseReadinessScope(replacement.sessionId);
+  assert.equal(collectReadinessLogs(entries(false, scope), scope).at(-1).outcome, "PASS");
+  assert.throws(() => collectReadinessLogs(entries(), scope), { code: "LOG_METADATA_INVALID" });
+});
+for (const args of [
+  ["--session", replacement.sessionId],
+  ["--session", replacement.sessionId, "--session", replacement.sessionId],
+  ["--source", pin.source, "--deployment-timestamp", replacement.deploymentTimestamp],
+  ["--session", "not-a-session", "--deployment-timestamp", replacement.deploymentTimestamp],
+  ["--session", readinessScope.session, "--deployment-timestamp", replacement.deploymentTimestamp],
+  ["--session", replacement.sessionId, "--deployment-timestamp", pin.timestamp],
+  ["--session", replacement.sessionId, "--deployment-timestamp", "2026-02-30T13:00:00Z"],
+  ["--session", replacement.sessionId, "--deployment-timestamp", "2026-10-08T13:00:00+00:00"],
+])
+  test(`reject incomplete, unreviewed or expired replacement arguments: ${JSON.stringify(args)}`, () => {
+    assert.throws(() => parseReadinessArguments(args));
+  });
+test("invalid replacement expectation stops before credentials or Cloud Run execution", async () => {
+  let cloudCalls = 0;
+  await assert.rejects(
+    runReadiness({
+      sessionId: replacement.sessionId,
+      cloud: async () => {
+        cloudCalls++;
+        return "PRIVATE_FIXTURE_TOKEN";
+      },
+    }),
+    { code: "READINESS_EXPECTATION_INVALID" },
+  );
+  assert.equal(cloudCalls, 0);
 });
 for (const [name, change, code] of [
   [
@@ -415,11 +486,40 @@ for (const status of [401, 403, 503])
     assert.equal(executions, 0);
   });
 
-for (const state of ["ready", "expired", "guard-failure"])
+test("new reviewed expectation is forwarded to one reader execution and mismatched old logs are not accepted", async () => {
+  let executed = false;
+  const scope = parseReadinessScope(replacement.sessionId);
+  const result = await runReadiness({
+    ...replacement,
+    wait: async () => {},
+    cloud: async (args) => {
+      if (args.includes("print-access-token")) return "PRIVATE_FIXTURE_TOKEN";
+      if (args.includes("execute")) {
+        assert.equal(executed, false);
+        executed = true;
+        assert.ok(args.some((a) => a.includes("S22_WIDGET_READINESS_SESSION_ID=" + scope.session)));
+        return "lead-agent-staging-migrator-replacement";
+      }
+      if (args.includes("executions"))
+        return JSON.stringify({ status: { conditions: [{ type: "Completed", status: "True" }] } });
+      return JSON.stringify(job(replacement));
+    },
+    fetch: async (url) =>
+      url.includes("workerPools")
+        ? Response.json(worker(replacement))
+        : Response.json({ entries: executed ? entries(false, scope) : [] }),
+  });
+  assert.equal(result.ready, true);
+  assert.equal(result.rows[2].observed.session_id, scope.session);
+});
+
+for (const state of ["ready", "expired", "guard-failure", "replacement"])
   test(`exact generated ESM bootstrap resolves application packages/relative runtime and cleans up: ${state}`, () => {
     assert.equal(moduleBootstrap, existingBootstrap);
     const dir = mkdtempSync(join(tmpdir(), "s22-widget-readiness-bootstrap-"));
     try {
+      const scope =
+        state === "replacement" ? parseReadinessScope(replacement.sessionId) : readinessScope;
       const config = join(dir, "node_modules", "@lead-agent", "config"),
         database = join(dir, "node_modules", "@lead-agent", "database");
       mkdirSync(config, { recursive: true });
@@ -432,17 +532,17 @@ for (const state of ["ready", "expired", "guard-failure"])
         `export const S22_BOOKING_COHORT={organizationId:'${readinessScope.organization}',conversationId:'01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7',historicalReserveMicros:1033396n,hardCeilingMicros:10000000n};export const withLibpqCompatibleRequireSsl=v=>v;export function createTenantDatabaseRuntimeConfig(c){if(c.maxConnections!==1||c.connectionTimeoutMilliseconds!==5000||c.statementTimeoutMilliseconds!==5000||!new URL(c.connectionString).searchParams.get('options').includes('default_transaction_read_only=on'))throw Error();return c;}`,
       );
       const snap = {
-        ...snapshot(),
+        ...snapshot(scope),
         ...(state === "expired" ? { blocked: true, reason: "widget_session_unavailable" } : {}),
       };
       writeFileSync(
         join(database, "index.js"),
-        `let commits=0,rollbacks=0;export function createTenantDatabaseRuntime(){return{verifyReady:async()=>{},withTenantTransaction:async(org,callback)=>{if(org!=='${readinessScope.organization}')throw Error();try{const v=await callback({organizationId:org});commits++;return v;}catch(e){rollbacks++;throw e;}},close:async()=>console.log(JSON.stringify({fixture_cleanup:true,commits,rollbacks}))};}export function createAIJourneyBudgetGuard(runtime,c){if(c.mode!=='widget_booking'||c.widgetSessionId!=='${readinessScope.session}'||c.historicalReserveMicros!==1033396n)throw Error();return{read:async org=>runtime.withTenantTransaction(org,async()=>(${JSON.stringify(snap)})),authorizeDispatch:()=>{throw Error('PROVIDER_FORBIDDEN');},recordStart:()=>{throw Error('PROVIDER_FORBIDDEN');}};}`,
+        `let commits=0,rollbacks=0;export function createTenantDatabaseRuntime(){return{verifyReady:async()=>{},withTenantTransaction:async(org,callback)=>{if(org!=='${readinessScope.organization}')throw Error();try{const v=await callback({organizationId:org});commits++;return v;}catch(e){rollbacks++;throw e;}},close:async()=>console.log(JSON.stringify({fixture_cleanup:true,commits,rollbacks}))};}export function createAIJourneyBudgetGuard(runtime,c){if(c.mode!=='widget_booking'||c.widgetSessionId!=='${scope.session}'||c.historicalReserveMicros!==1033396n)throw Error();return{read:async org=>runtime.withTenantTransaction(org,async()=>(${JSON.stringify(snap)})),authorizeDispatch:()=>{throw Error('PROVIDER_FORBIDDEN');},recordStart:()=>{throw Error('PROVIDER_FORBIDDEN');}};}`,
       );
-      const row = { ...sessionRow(), idle_valid: state !== "expired" };
+      const row = { ...sessionRow(scope), idle_valid: state !== "expired" };
       writeFileSync(
         join(database, "runtime", "tenant.js"),
-        `export async function executeTenantQuery(session,build){const q=build(session.organizationId);if(q.values[0]!=='${readinessScope.organization}'||!/^[ ]*select /i.test(q.text.trimStart()))throw Error();if(q.text.includes('from pg_catalog.pg_roles r where'))return{rows:[{runtime:${state !== "guard-failure"},staging_database:true,least_privilege:true,read_only:true,row_security:true,tenant_matches:true,collection_window_valid:true}]};if(q.text.includes('from pg_catalog.pg_class')){if(!q.text.includes('$1::uuid')||q.values[1].length!==${readinessForceRlsTableNames.length})throw Error();return{rows:[{count:${readinessForceRlsTableNames.length},safe:true}]};}if(q.text.includes('from widget_sessions s'))return{rows:[${JSON.stringify(row)}]};throw Error();}`,
+        `export async function executeTenantQuery(session,build){const q=build(session.organizationId);if(q.values[0]!=='${readinessScope.organization}'||!/^[ ]*select /i.test(q.text.trimStart()))throw Error();if(q.text.includes('from pg_catalog.pg_roles r where'))return{rows:[{runtime:${state !== "guard-failure"},staging_database:true,least_privilege:true,read_only:true,row_security:true,tenant_matches:true,collection_window_valid:true}]};if(q.text.includes('from pg_catalog.pg_class')){if(!q.text.includes('$1::uuid')||q.values[1].length!==${readinessForceRlsTableNames.length})throw Error();return{rows:[{count:${readinessForceRlsTableNames.length},safe:true}]};}if(q.text.includes('from widget_sessions s')){if(q.values[1]!=='${scope.session}')throw Error();return{rows:[${JSON.stringify(row)}]};}throw Error();}`,
       );
       const reader = readFileSync(new URL("./s22-widget-readiness-readonly.mjs", import.meta.url));
       const r = spawnSync(process.execPath, ["--input-type=module", "-e", moduleBootstrap], {
@@ -455,9 +555,11 @@ for (const state of ["ready", "expired", "guard-failure"])
           S22_BOOKING_READ_B64: reader.toString("base64"),
           S22_WIDGET_READINESS_READ: "execute",
           S22_WIDGET_READINESS_STARTED_AT: "2026-10-08T11:35:00.000Z",
+          S22_WIDGET_READINESS_SESSION_ID: scope.session,
         },
       });
-      assert.equal(r.status, state === "ready" ? 0 : 1, r.stderr);
+      const ready = state === "ready" || state === "replacement";
+      assert.equal(r.status, ready ? 0 : 1, r.stderr);
       assert.doesNotMatch(
         r.stdout + r.stderr,
         /Cannot use 'import.meta'|ERR_MODULE_NOT_FOUND|DO_NOT_PRINT_PRIVATE_FIXTURE|PROVIDER_FORBIDDEN/u,
@@ -474,9 +576,10 @@ for (const state of ["ready", "expired", "guard-failure"])
           output
             .filter((v) => v.operation === readinessOperation)
             .map((jsonPayload) => ({ jsonPayload })),
+          scope,
         );
         assert.equal(rows.length, 5);
-        assert.equal(rows.at(-1).outcome, state === "ready" ? "PASS" : "FAIL");
+        assert.equal(rows.at(-1).outcome, ready ? "PASS" : "FAIL");
       } else assert.ok(output.some((v) => v.code === "READ_ONLY_RUNTIME_TENANT_GUARD_FAILED"));
     } finally {
       const target = realpathSync(dir);

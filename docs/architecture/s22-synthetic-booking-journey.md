@@ -20,15 +20,31 @@ combined exposure USD1.042110 and pending reserve zero are unchanged. Collection
 is complete; do not repeat the checker or try Send on this session.
 
 There is no supported same-ID revival. Cached close/reopen does not renew it.
-Recovery requires explicit permission to prepare a fresh unused session and a
-new binding plan; prior exact-plan approval does not extend to replacement.
+The owner has now explicitly authorized **preparing a fresh unused session and
+a replacement binding plan**; prior exact-plan approval still does not extend
+to applying that replacement or paid execution.
 Prepare the tooling/inputs **before** requesting the fresh frame, then complete
 selection, saved-plan approval, apply and readiness within the 30-minute window.
 Existing images need no rebuild. Do not assume an unused binding latch from the
 human summary; the replacement's actual budget read must prove readiness.
-No replacement, new plan, apply or paid action has been authorized/performed by
-this result. Details and evidence boundaries are recorded in the
+No replacement has yet been created/selected and no new plan, apply or paid
+action has been performed. Details and evidence boundaries are recorded in the
 [evidence register](s22-acceptance-evidence.md#owner-supplied-current-readiness-idle-expired-selected-session).
+
+**Recovery preparation is ready locally:** existing immutable build/manifest
+provenance has been reverified, without rebuilding unchanged runtime code.
+The selector is updated to the current reviewed deployment and has
+`--preflight-only` (no session selection/DB execution) plus an optional exclusive
+safe selection-receipt file. The post-apply reader accepts the new reviewed
+session/timestamp explicitly, with fixed tenant/channel/origin and unchanged
+ledger guards, so there is no code edit after opening the fresh frame.
+**128/128** focused local tests passed, including five exact-bootstrap subprocess
+cases; this is not live replacement readiness. Next is a checksum-pinned download
+and **preflight-only** access check in a second Cloud Shell terminal. Keep the
+website running; do not reload/reinstall/create the fresh frame or Send until
+that check is returned and the next single instruction is given. Prepared plan
+inputs and authorization boundaries are in the
+[evidence register](s22-acceptance-evidence.md#authorized-replacement-preparation-tooling-and-provenance-ready).
 
 | Planning/enforced limit | Value |
 | --- | --- |

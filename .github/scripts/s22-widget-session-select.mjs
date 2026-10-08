@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import {
   sanitizeSelectionFailure,
   selectionFailureCodes,
   selectionOperation,
+  selectionOrganization,
 } from "./s22-widget-session-select-readonly.mjs";
 
 const execute = promisify(execFile);
@@ -17,11 +18,11 @@ export const reviewedSelectionJob = Object.freeze({
   project: "lead-agent-stg-739284",
   region: "me-central1",
   job: "lead-agent-staging-migrator",
-  source: "6a31cd8e3a37f31a7bb85329eab0aa9c4de53926",
-  timestamp: "2026-10-07T20:22:40Z",
+  source: "a2b2f708d2e804d2c3d2be66426fa7b49d8203c9",
+  timestamp: "2026-10-08T11:00:45Z",
   head: "0031_s22_widget_inbound_route_management",
   image:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:d60994941524aa00ecdd6859c3361f99e213cd0d113ea1753efd03c6caa0fa6f",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276",
 });
 // Verbatim existing, subprocess-tested ES-module stdin bootstrap. No eval reader.
 export const moduleBootstrap =
@@ -48,6 +49,9 @@ const errorCodes = new Set([
   "LOG_ASSERTION_NOT_PASS",
   "LOG_SAFE_METADATA_INVALID",
   "DIAGNOSTIC_EXECUTION_FAILED",
+  "SELECTION_FILE_EXISTS",
+  "SELECTION_FILE_WRITE_FAILED",
+  "SELECTION_SNAPSHOT_EXPIRED",
   ...selectionFailureCodes,
 ]);
 export const verifySelectionJob = (metadata) => {
@@ -126,6 +130,10 @@ export const verifySelectionJob = (metadata) => {
 const safeIdentifier = (value) =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value);
+const safeTimestamp = (value) =>
+  typeof value === "string" &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(value).toISOString() === value;
 export const collectSelectionLogs = (entries) => {
   requireSafe(Array.isArray(entries) && entries.length <= 10, "LOG_SAFE_METADATA_INVALID");
   const wanted = [
@@ -166,11 +174,12 @@ export const collectSelectionLogs = (entries) => {
   );
   const result = Object.fromEntries(names.map((name) => [name, observed[name]]));
   for (const name of ["issued_at", "last_seen_at", "expires_at"])
-    requireSafe(
-      typeof observed[name] === "string" &&
-        new Date(observed[name]).toISOString() === observed[name],
-      "LOG_SAFE_METADATA_INVALID",
-    );
+    requireSafe(safeTimestamp(observed[name]), "LOG_SAFE_METADATA_INVALID");
+  requireSafe(
+    Date.parse(observed.issued_at) <= Date.parse(observed.last_seen_at) &&
+      Date.parse(observed.last_seen_at) < Date.parse(observed.expires_at),
+    "LOG_SAFE_METADATA_INVALID",
+  );
   return {
     ...result,
     issued_at: observed.issued_at,
@@ -181,6 +190,110 @@ export const collectSelectionLogs = (entries) => {
     contact_unbound: true,
     conversation_unbound: true,
   };
+};
+
+export const parseSelectionArguments = (args) => {
+  requireSafe(Array.isArray(args), "SELECTION_SCOPE_INVALID");
+  requireSafe(
+    args.length === 1 ||
+      (args.length === 2 && args[1] === "--preflight-only") ||
+      (args.length === 3 && args[1] === "--write-selection"),
+    "SELECTION_SCOPE_INVALID",
+  );
+  requireSafe(typeof args[0] === "string", "SELECTION_SCOPE_INVALID");
+  if (args.length === 3)
+    requireSafe(
+      typeof args[2] === "string" &&
+        args[2].length > 0 &&
+        args[2].length <= 4096 &&
+        !/[\r\n\0]/u.test(args[2]) &&
+        !args[2].startsWith("--"),
+      "SELECTION_SCOPE_INVALID",
+    );
+  return {
+    origin: args[0],
+    selectionFile: args[2],
+    ...(args[1] === "--preflight-only" ? { preflightOnly: true } : {}),
+  };
+};
+
+export const prepareSelectionRecord = (selected, origin, nowMilliseconds = Date.now()) => {
+  requireSafe(Number.isFinite(nowMilliseconds), "LOG_SAFE_METADATA_INVALID");
+  const collectedAt = new Date(nowMilliseconds).toISOString();
+  const scope = parseSelectionScope({
+    origin,
+    from: new Date(nowMilliseconds - 300000).toISOString(),
+    until: collectedAt,
+  });
+  requireSafe(
+    selected?.source === reviewedSelectionJob.source &&
+      /^lead-agent-staging-migrator-[a-z0-9]+$/u.test(selected.execution) &&
+      /^[0-9a-f]{64}$/u.test(selected.reader_sha256) &&
+      ["session_id", "channel_connection_id", "allowed_origin_id"].every((name) =>
+        safeIdentifier(selected[name]),
+      ) &&
+      ["issued_at", "last_seen_at", "expires_at"].every((name) => safeTimestamp(selected[name])) &&
+      selected.status === "active" &&
+      selected.version === "2" &&
+      selected.contact_unbound === true &&
+      selected.conversation_unbound === true,
+    "LOG_SAFE_METADATA_INVALID",
+  );
+  const issued = Date.parse(selected.issued_at),
+    lastSeen = Date.parse(selected.last_seen_at),
+    expires = Date.parse(selected.expires_at),
+    idleDeadline = lastSeen + 1800000;
+  requireSafe(
+    issued <= lastSeen && lastSeen <= nowMilliseconds && lastSeen < expires,
+    "LOG_SAFE_METADATA_INVALID",
+  );
+  requireSafe(
+    nowMilliseconds < idleDeadline && nowMilliseconds < expires,
+    "SELECTION_SNAPSHOT_EXPIRED",
+  );
+  return {
+    schema: "s22-widget-session-selection.v1",
+    organization_id: selectionOrganization,
+    origin: scope.origin,
+    execution: selected.execution,
+    source: selected.source,
+    reader_sha256: selected.reader_sha256,
+    session_id: selected.session_id,
+    channel_connection_id: selected.channel_connection_id,
+    allowed_origin_id: selected.allowed_origin_id,
+    issued_at: selected.issued_at,
+    last_seen_at: selected.last_seen_at,
+    expires_at: selected.expires_at,
+    idle_deadline_at: new Date(idleDeadline).toISOString(),
+    collected_at: collectedAt,
+    status: "active",
+    version: "2",
+    contact_unbound: true,
+    conversation_unbound: true,
+  };
+};
+
+export const writeSelectionFile = async (filename, selected, origin, overrides = {}) => {
+  const args = parseSelectionArguments([origin, "--write-selection", filename]);
+  const record = prepareSelectionRecord(selected, args.origin, (overrides.now ?? Date.now)());
+  let handle, failureCode;
+  try {
+    handle = await (overrides.openFile ?? open)(args.selectionFile, "wx", 0o600);
+    await handle.writeFile(JSON.stringify(record, null, 2) + "\n", { encoding: "utf8" });
+  } catch (error) {
+    failureCode =
+      error?.code === "EEXIST" ? "SELECTION_FILE_EXISTS" : "SELECTION_FILE_WRITE_FAILED";
+  } finally {
+    if (handle !== undefined) {
+      try {
+        await handle.close();
+      } catch {
+        failureCode ??= "SELECTION_FILE_WRITE_FAILED";
+      }
+    }
+  }
+  if (failureCode !== undefined) throw Object.assign(new Error(), { code: failureCode });
+  return record;
 };
 
 export const formatSelectionFailure = (error) => {
@@ -251,6 +364,18 @@ export const runSelection = async (origin, overrides = {}) => {
     `resource.type="cloud_run_job" AND resource.labels.job_name="${pin.job}" AND timestamp>="${until}" AND jsonPayload.operation="${selectionOperation}"`,
     1,
   );
+  if (overrides.preflightOnly === true)
+    return {
+      preflight_only: true,
+      project: pin.project,
+      region: pin.region,
+      job: pin.job,
+      source: pin.source,
+      timestamp: pin.timestamp,
+      image: pin.image,
+      head: pin.head,
+      no_execution_triggered: true,
+    };
   const reader = await readFile(
     new URL("./s22-widget-session-select-readonly.mjs", import.meta.url),
   );
@@ -332,25 +457,41 @@ export const runSelection = async (origin, overrides = {}) => {
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let execution;
   try {
-    requireSafe(process.argv.length === 3, "SELECTION_SCOPE_INVALID");
-    const selected = await runSelection(process.argv[2], {
+    const args = parseSelectionArguments(process.argv.slice(2));
+    const selected = await runSelection(args.origin, {
+      preflightOnly: args.preflightOnly,
       onExecution: (name) => {
         execution = name;
         console.log(`Read-only execution: ${name}`);
       },
     });
-    console.log("Session selection: PASS (runtime/read-only/tenant/FORCE-RLS guards)");
-    console.log(`Widget session: ${selected.session_id}`);
-    console.log(`Widget channel: ${selected.channel_connection_id}`);
-    console.log(`Allowed origin record: ${selected.allowed_origin_id}`);
-    console.log(
-      `State: active; version 2; contact/conversation unbound; expires ${selected.expires_at}`,
-    );
-    console.log(
-      "Correlate this version-2 snapshot with your fresh real-frame opening. No message/call was sent.",
-    );
-    console.log(`Reader SHA256: ${selected.reader_sha256}`);
-    console.log("This read does not activate the budget or authorize Send; stop here.");
+    if (selected.preflight_only === true) {
+      console.log(
+        "Preflight-only: PASS (reviewed image/provenance, runtime identity/reference, private VPC, explicit zero retries, authenticated log access)",
+      );
+      console.log(
+        "No session selected, diagnostic execution, message, AI call, migration or job configuration change. Prepare the fresh frame only when instructed.",
+      );
+    } else {
+      const record =
+        args.selectionFile === undefined
+          ? prepareSelectionRecord(selected, args.origin)
+          : await writeSelectionFile(args.selectionFile, selected, args.origin);
+      console.log("Session selection: PASS (runtime/read-only/tenant/FORCE-RLS guards)");
+      console.log(`Widget session: ${selected.session_id}`);
+      console.log(`Widget channel: ${selected.channel_connection_id}`);
+      console.log(`Allowed origin record: ${selected.allowed_origin_id}`);
+      console.log(
+        `State: active; version 2; contact/conversation unbound; expires ${selected.expires_at}`,
+      );
+      console.log(`Idle deadline (UTC): ${record.idle_deadline_at}`);
+      if (args.selectionFile !== undefined) console.log(`Selection file: ${args.selectionFile}`);
+      console.log(
+        "Correlate this version-2 snapshot with your fresh real-frame opening. No message/call was sent.",
+      );
+      console.log(`Reader SHA256: ${selected.reader_sha256}`);
+      console.log("This read does not activate the budget or authorize Send; stop here.");
+    }
   } catch (error) {
     for (const line of formatSelectionFailure(error)) console.log(line);
     if (execution !== undefined)

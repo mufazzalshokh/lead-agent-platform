@@ -4257,3 +4257,93 @@ journey status change, with changed-section formatting and scoped diff checks.
 The next required owner action is explicit approval to prepare a fresh unused
 session and a replacement binding plan, **not** Send or apply approval. S22
 remains unaccepted; no S23 work.
+
+#### Authorized replacement preparation: tooling and provenance ready
+
+The owner explicitly approved **preparing a fresh session and replacement binding
+plan**. This supersedes the preparation-authority blocker above, not idle expiry,
+apply approval, unused-allowance proof or the paid-call pause. No fresh session
+has yet been created/selected and no replacement plan has been dispatched.
+
+All tooling changes are repository-backed diagnostics, prepared **before** a new
+session's idle clock starts:
+
+- The existing selector now pins the verified `a2b2f70` Migrator, timestamp
+  `2026-10-08T11:00:45Z` and unchanged `0031` head. `ORIGIN --preflight-only`
+  checks actual job image/provenance/identity/runtime-secret-reference/private
+  VPC/explicit zero retries, authentication and log-read permission, then stops
+  before payload loading or execution. It does not read the database or prove
+  current session/budget readiness.
+- `ORIGIN --write-selection NEWFILE.json` retains the one bounded read-only
+  selection procedure and writes only allowlisted exact resource IDs, source,
+  execution/reader checksum and observed timestamps, including the actual
+  `last_seen_at + 30 minutes` idle deadline. The file uses exclusive `wx`/0600,
+  refuses overwrite/expired snapshots and closes on failure. No bearer,
+  installation key, contact details or message text is recorded.
+- Post-apply readiness accepts an explicitly supplied **new** `--session` and
+  `--deployment-timestamp` together. These expected values must come from the
+  newly reviewed plan inputs, not live Worker metadata. The known expired ID,
+  malformed UUID/date, missing paired input and source/image override flags are
+  rejected. Source/images/head/project/tenant/channel/origin, role/RLS/read-only
+  checks, SQL bounds, rollback and ledger baseline remain fixed. Execution-only
+  environment carries the exact reviewed SID to the reader. No post-selection
+  code edit is needed. The original no-argument reader remains usable only as
+  historical diagnostic behavior, not the current next action.
+
+**Authenticated read-only provenance reverified:** existing build
+`37750247345` completed successfully for exact runtime source
+`a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`; build job `113221440755` and manifest
+record/upload steps passed. Unexpired manifest artifact `11538270536` was
+downloaded, and its text SHA256 independently matched
+`0abf845efa17aadcfaaedc2c8407e5079aad944afdcdaf01d8ccd060e73059af`.
+All four immutable references match the reviewed table above. Runtime source is
+an ancestor of the approved remote branch; apps/packages/staging Terraform and
+deployment workflow/guards have no intervening implementation changes.
+Documentation/diagnostic changes do not justify rebuilding these images.
+Latest eight Terraform runs showed no queued/running workflow, with completed
+verification `37769024360` and apply `37768798066` retained. This workflow history
+does not rule out manual infrastructure changes; the future plan must refresh
+and pass the existing exact action/config safeguards.
+
+**Prepared plan contract:** existing `staging-terraform.yml`, approved branch,
+`action=plan`, `phase=full`, `commit_sha=a2b2f70` (full SHA above), exact four
+manifest references, both migration heads `0031_s22_widget_inbound_route_management`,
+`ai_journey_mode=widget_booking`, and the fresh selected SID. Choose **one new
+UTC RFC3339 timestamp only after selection** and preserve it with the complete
+inputs. All isolated provenance overrides and approval/plan-run/hash fields
+remain blank. The currently unknown SID/timestamp, plan ID and saved hash are
+not guessed. Reconciliation must be exactly zero creates/destroys/replacements
+and four in-place workload updates; the shared new timestamp accounts for all
+four updates even though images are unchanged. Only Worker session binding and
+normal shared provenance may differ. No SQL, IAM, network, secret reference,
+scaling, retry or migration execution changes are allowed. Applying that plan
+will require its own exact reviewed hash/run approval.
+
+**Local verification:** `node --test` on the selector, readiness launcher and
+readiness reader test modules passed **128/128** cases. Five actual generated-
+bootstrap subprocess cases cover application-package/relative-module resolution
+and reader rollback, including an explicitly supplied replacement scope. New
+coverage verifies preflight creates no execution, exclusive safe receipt writing,
+malformed/foreign scope rejection, exact reviewed timestamp/SID metadata matching,
+no fallback to expired IDs, unchanged unknown-cost baseline and forwarding to
+one bounded read. These are local/mocked checks, not live replacement or paid
+journey evidence. Existing successful runtime CI/PostgreSQL/provider/rollout
+evidence is reused, not repeated. Seven consumed/changed module syntax checks,
+six-file scoped ESLint/Prettier, changed-section Markdown formatting and scoped
+diff checks **PASS**. Independent static recovery-scope review also passed.
+
+The previously local evidence commit `b7b830d` is now pushed and remote-verified
+using existing authenticated HTTPS access; no repository/global credential
+settings changed. Unrelated user edits remain untouched. No image build, new
+plan/apply, session renewal/replacement, paid call, migration or IAM change has
+been performed during this preparation.
+
+**Next owner interaction:** download the immutable four-module tooling bundle
+and run **preflight only** in a second Cloud Shell terminal, leaving the temporary
+website running. Do not reload/reinstall/open a new frame or Send yet. Once that
+access check passes, the owner can be instructed to open one fresh real frame
+and immediately select it; the selector output must match the existing tenant,
+channel and origin before any plan. Finish plan/review/approved apply/prepared
+readiness within the idle deadline or stop. Binding-latch integrity and actual
+budget readiness remain mandatory before any separate paid Send authorization.
+S22 remains unaccepted; no S23 work.

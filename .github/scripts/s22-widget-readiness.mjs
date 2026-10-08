@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 
 import {
   budgetReadinessPass,
+  parseReadinessScope,
   readinessBudgetReasons,
   readinessFailureCodes,
   readinessForceRlsTableNames,
@@ -44,11 +45,11 @@ const environment = (container) => {
   }
   return values;
 };
-const provenance = (values, image, includeDigest) => {
+const provenance = (values, image, includeDigest, timestamp = pin.timestamp) => {
   for (const [name, expected] of Object.entries({
     DEPLOYMENT_ENVIRONMENT: "staging",
     DEPLOYMENT_GIT_SHA: pin.source,
-    DEPLOYMENT_TIMESTAMP: pin.timestamp,
+    DEPLOYMENT_TIMESTAMP: timestamp,
     DEPLOYMENT_MIGRATION_HEAD: pin.head,
     ...(includeDigest ? { DEPLOYMENT_IMAGE_DIGEST: image } : {}),
   }))
@@ -66,7 +67,49 @@ const networkMatches = (interfaces) =>
     `projects/${pin.project}/regions/${pin.region}/subnetworks/lead-agent-staging-cloud-run`,
   ].includes(interfaces[0].subnetwork);
 
-export function verifyReadinessJob(metadata) {
+const prepareReadinessInputs = (sessionId, deploymentTimestamp) => {
+  if (sessionId === undefined && deploymentTimestamp === undefined)
+    return { scope: readinessScope, timestamp: pin.timestamp };
+  const scope = parseReadinessScope(sessionId);
+  requireSafe(
+    sessionId !== undefined && scope.session !== readinessScope.session,
+    "EXPIRED_SELECTION_REUSE_FORBIDDEN",
+  );
+  requireSafe(
+    typeof deploymentTimestamp === "string" &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(deploymentTimestamp) &&
+      Number.isFinite(Date.parse(deploymentTimestamp)) &&
+      new Date(deploymentTimestamp).toISOString() === deploymentTimestamp.replace(/Z$/u, ".000Z") &&
+      deploymentTimestamp > pin.timestamp,
+    "READINESS_EXPECTATION_INVALID",
+  );
+  return { scope, timestamp: deploymentTimestamp };
+};
+
+// Only exact, explicitly supplied replacement expectation; never learn it from live metadata.
+export function parseReadinessArguments(args) {
+  requireSafe(Array.isArray(args), "ENVIRONMENT_INVALID");
+  if (args.length === 0) return {};
+  requireSafe(args.length === 4, "ENVIRONMENT_INVALID");
+  const values = new Map();
+  for (let index = 0; index < args.length; index += 2) {
+    const name = args[index];
+    requireSafe(
+      ["--session", "--deployment-timestamp"].includes(name) && !values.has(name),
+      "ENVIRONMENT_INVALID",
+    );
+    values.set(name, args[index + 1]);
+  }
+  const inputs = {
+    sessionId: values.get("--session"),
+    deploymentTimestamp: values.get("--deployment-timestamp"),
+  };
+  prepareReadinessInputs(inputs.sessionId, inputs.deploymentTimestamp);
+  return inputs;
+}
+
+export function verifyReadinessJob(metadata, inputs = {}) {
+  const { timestamp } = prepareReadinessInputs(inputs.sessionId, inputs.deploymentTimestamp);
   const task = metadata?.spec?.template?.spec?.template?.spec;
   const container = task?.containers?.[0];
   requireSafe(
@@ -93,7 +136,7 @@ export function verifyReadinessJob(metadata) {
     "EXPLICIT_ZERO_RETRIES_REQUIRED",
   );
   const values = environment(container);
-  provenance(values, pin.image, true);
+  provenance(values, pin.image, true, timestamp);
   const database = values.get("DATABASE_URL");
   requireSafe(
     database?.value === undefined &&
@@ -116,7 +159,8 @@ export function verifyReadinessJob(metadata) {
   );
 }
 
-export function verifyReadinessWorker(metadata) {
+export function verifyReadinessWorker(metadata, inputs = {}) {
+  const { scope, timestamp } = prepareReadinessInputs(inputs.sessionId, inputs.deploymentTimestamp);
   const template = metadata?.template;
   const container = template?.containers?.[0];
   requireSafe(
@@ -127,10 +171,10 @@ export function verifyReadinessWorker(metadata) {
     "WORKER_SCOPE_OR_IMAGE_MISMATCH",
   );
   const values = environment(container);
-  provenance(values, pin.worker, false);
+  provenance(values, pin.worker, false, timestamp);
   requireSafe(
     values.get("AI_JOURNEY_MODE")?.value === "widget_booking" &&
-      values.get("AI_JOURNEY_WIDGET_SESSION_ID")?.value === readinessScope.session &&
+      values.get("AI_JOURNEY_WIDGET_SESSION_ID")?.value === scope.session &&
       values.get("AI_REQUEST_TIMEOUT_MS")?.value === "15000",
     "WORKER_BINDING_MISMATCH",
   );
@@ -236,7 +280,7 @@ const projectSafe = (value) => {
   return result;
 };
 
-export function collectReadinessLogs(entries) {
+export function collectReadinessLogs(entries, scope = readinessScope) {
   requireSafe(Array.isArray(entries) && entries.length <= 12, "LOG_METADATA_INVALID");
   const rows = entries
     .map((entry) => entry?.jsonPayload)
@@ -248,6 +292,7 @@ export function collectReadinessLogs(entries) {
       diagnostic_stage: [
         ...assertions,
         "collection_window",
+        "selection_scope",
         "package_resolution",
         "cohort_scope",
         "database_configuration",
@@ -296,9 +341,13 @@ export function collectReadinessLogs(entries) {
   const sessionPass =
     session.observed.row_count === 1 &&
     session.observed.scope_matches === true &&
-    sessionReadinessPass([{ organization_id: readinessScope.organization, ...session.observed }]);
+    sessionReadinessPass(
+      [{ organization_id: readinessScope.organization, ...session.observed }],
+      scope,
+    );
   const budgetPass =
-    budgetReadinessPass(budget.observed) && budget.observed.widget.conversationUnbound === true;
+    budgetReadinessPass(budget.observed, scope) &&
+    budget.observed.widget.conversationUnbound === true;
   requireSafe(
     runtime.outcome === "PASS" &&
       [
@@ -339,6 +388,7 @@ export function formatReadiness(rows) {
   return [
     `Runtime / tenant / read-only guard: ${rows[0].outcome}`,
     `FORCE RLS / non-owner guard: ${rows[1].outcome}`,
+    `Selected Widget session: ${session.observed.session_id ?? "not collected"}`,
     `Selected session: ${session.outcome}; idle valid: ${session.observed.idle_valid ?? "unknown"}; absolute lifetime valid: ${session.observed.absolute_valid ?? "unknown"}`,
     `Last session activity (UTC): ${session.observed.last_seen_at ?? "not collected"}`,
     `Absolute expiry (UTC): ${session.observed.expires_at ?? "not collected"}`,
@@ -360,6 +410,7 @@ const cloud = async (args, timeout = 10000) => {
   }
 };
 export async function runReadiness(overrides = {}) {
+  const { scope } = prepareReadinessInputs(overrides.sessionId, overrides.deploymentTimestamp);
   const runCloud = overrides.cloud ?? cloud,
     runFetch = overrides.fetch ?? fetch;
   const now = overrides.now ?? (() => Date.now()),
@@ -402,6 +453,7 @@ export async function runReadiness(overrides = {}) {
     await request(
       `https://run.googleapis.com/v2/projects/${pin.project}/locations/${pin.region}/workerPools/lead-agent-staging-worker`,
     ),
+    overrides,
   );
   verifyReadinessJob(
     JSON.parse(
@@ -415,6 +467,7 @@ export async function runReadiness(overrides = {}) {
         "--format=json",
       ]),
     ),
+    overrides,
   );
   const logging = (execution) =>
     request("https://logging.googleapis.com/v2/entries:list", {
@@ -438,7 +491,7 @@ export async function runReadiness(overrides = {}) {
         `--project=${pin.project}`,
         `--region=${pin.region}`,
         `--args=^~^--input-type=module~-e~${moduleBootstrap}`,
-        `--update-env-vars=^~^S22_BOOKING_READ_B64=${payload}~S22_WIDGET_READINESS_READ=execute~S22_WIDGET_READINESS_STARTED_AT=${started}`,
+        `--update-env-vars=^~^S22_BOOKING_READ_B64=${payload}~S22_WIDGET_READINESS_READ=execute~S22_WIDGET_READINESS_STARTED_AT=${started}~S22_WIDGET_READINESS_SESSION_ID=${scope.session}`,
         "--tasks=1",
         "--task-timeout=65s",
         "--format=value(metadata.name)",
@@ -484,7 +537,7 @@ export async function runReadiness(overrides = {}) {
     const logs = await logging(execution);
     requireSafe(!logs.nextPageToken, "LOG_METADATA_INVALID");
     try {
-      rows = collectReadinessLogs(logs.entries ?? []);
+      rows = collectReadinessLogs(logs.entries ?? [], scope);
       break;
     } catch (error) {
       if (error.code !== "LOG_ASSERTIONS_INCOMPLETE" || attempt === 2) throw error;
@@ -503,6 +556,9 @@ export async function runReadiness(overrides = {}) {
 
 const failureCodes = new Set([
   "ENVIRONMENT_INVALID",
+  "READINESS_SCOPE_INVALID",
+  "READINESS_EXPECTATION_INVALID",
+  "EXPIRED_SELECTION_REUSE_FORBIDDEN",
   "PROVENANCE_MISMATCH",
   "DIAGNOSTIC_SCOPE_MISMATCH",
   "DIAGNOSTIC_IMAGE_MISMATCH",
@@ -531,8 +587,9 @@ const failureCodes = new Set([
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let execution;
   try {
-    requireSafe(process.argv.length === 2, "ENVIRONMENT_INVALID");
+    const inputs = parseReadinessArguments(process.argv.slice(2));
     const result = await runReadiness({
+      ...inputs,
       onPreflight: () =>
         console.log(
           "Preflight: PASS (exact deployed images/binding, runtime role reference, private VPC, explicit zero retries)",

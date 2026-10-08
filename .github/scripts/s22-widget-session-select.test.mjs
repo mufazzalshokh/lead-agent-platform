@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import test from "node:test";
@@ -19,9 +27,12 @@ import {
   collectSelectionLogs,
   formatSelectionFailure,
   moduleBootstrap,
+  parseSelectionArguments,
+  prepareSelectionRecord,
   reviewedSelectionJob,
   runSelection,
   verifySelectionJob,
+  writeSelectionFile,
 } from "./s22-widget-session-select.mjs";
 
 const origin =
@@ -226,6 +237,12 @@ const jobMetadata = () => {
 };
 
 test("preflight validates current exact image/provenance, runtime identity/reference, private VPC and explicit zero retries", () => {
+  assert.equal(reviewedSelectionJob.source, "a2b2f708d2e804d2c3d2be66426fa7b49d8203c9");
+  assert.equal(reviewedSelectionJob.timestamp, "2026-10-08T11:00:45Z");
+  assert.match(
+    reviewedSelectionJob.image,
+    /@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276$/u,
+  );
   verifySelectionJob(jobMetadata());
   const badRetry = jobMetadata();
   delete badRetry.spec.template.spec.template.spec.maxRetries;
@@ -242,6 +259,22 @@ test("preflight validates current exact image/provenance, runtime identity/refer
   const badVpc = jobMetadata();
   badVpc.spec.template.metadata.annotations["run.googleapis.com/vpc-access-egress"] = "all-traffic";
   assert.throws(() => verifySelectionJob(badVpc), { code: "DIAGNOSTIC_VPC_MISMATCH" });
+});
+
+test("previous selector deployment is rejected by immutable image and provenance safeguards", () => {
+  const previous = jobMetadata();
+  previous.spec.template.spec.template.spec.containers[0].image =
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:d60994941524aa00ecdd6859c3361f99e213cd0d113ea1753efd03c6caa0fa6f";
+  assert.throws(() => verifySelectionJob(previous), {
+    code: "DIAGNOSTIC_IMAGE_ENTRYPOINT_MISMATCH",
+  });
+  const previousSource = jobMetadata();
+  previousSource.spec.template.spec.template.spec.containers[0].env.find(
+    (entry) => entry.name === "DEPLOYMENT_GIT_SHA",
+  ).value = "6a31cd8e3a37f31a7bb85329eab0aa9c4de53926";
+  assert.throws(() => verifySelectionJob(previousSource), {
+    code: "DIAGNOSTIC_PROVENANCE_MISMATCH",
+  });
 });
 
 const completedLogs = async () => {
@@ -262,6 +295,177 @@ const completedLogs = async () => {
     ...reports,
   ].map((jsonPayload) => ({ jsonPayload }));
 };
+
+const completeSelection = async () => ({
+  execution: "lead-agent-staging-migrator-synthetic",
+  source: reviewedSelectionJob.source,
+  reader_sha256: "a".repeat(64),
+  ...collectSelectionLogs(await completedLogs()),
+});
+
+test("optional output flag accepts only one new-file path and preserves existing origin-only invocation", () => {
+  assert.deepEqual(parseSelectionArguments([origin]), { origin, selectionFile: undefined });
+  assert.deepEqual(parseSelectionArguments([origin, "--write-selection", "selection.json"]), {
+    origin,
+    selectionFile: "selection.json",
+  });
+  assert.deepEqual(parseSelectionArguments([origin, "--preflight-only"]), {
+    origin,
+    selectionFile: undefined,
+    preflightOnly: true,
+  });
+  for (const args of [
+    [],
+    [origin, "--write-selection"],
+    [origin, "--unknown", "selection.json"],
+    [origin, "--write-selection", "selection.json", "--write-selection", "another.json"],
+    [origin, "--write-selection", ""],
+    [origin, "--write-selection", "selection.json\nDO_NOT_PRINT"],
+    [origin, "--write-selection", "--flag"],
+    [origin, "--preflight-only", "--write-selection", "selection.json"],
+    [origin, "--write-selection", "selection.json", "--preflight-only"],
+    [origin, "--preflight-only", "--preflight-only"],
+  ])
+    assert.throws(() => parseSelectionArguments(args), { code: "SELECTION_SCOPE_INVALID" });
+});
+
+test("preflight-only checks actual job identity/provenance and authenticated log permission without reading or executing the reader", async () => {
+  const calls = [],
+    requests = [];
+  const result = await runSelection(origin, {
+    preflightOnly: true,
+    now: () => Date.parse(scope.until),
+    wait: async () => assert.fail("Preflight must not enter execution polling"),
+    onExecution: () => assert.fail("Preflight must not create an execution"),
+    cloud: async (args) => {
+      calls.push(args);
+      if (args.includes("print-access-token")) return "SYNTHETIC_PRIVATE_TOKEN";
+      assert.ok(args.includes("describe"));
+      assert.ok(!args.includes("executions") && !args.includes("execute"));
+      return JSON.stringify(jobMetadata());
+    },
+    fetch: async (url, options) => {
+      assert.equal(url, "https://logging.googleapis.com/v2/entries:list");
+      requests.push(JSON.parse(options.body));
+      return new Response(JSON.stringify({ entries: [] }), { status: 200 });
+    },
+  });
+  assert.deepEqual(result, {
+    preflight_only: true,
+    ...reviewedSelectionJob,
+    no_execution_triggered: true,
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].pageSize, 1);
+  assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_PRIVATE_TOKEN|DATABASE_URL|bearer/u);
+});
+
+test("selection artifact contains only exact safe scope/provenance and actual idle deadline", async () => {
+  const selected = await completeSelection();
+  const record = prepareSelectionRecord(
+    {
+      ...selected,
+      cookie: "DO_NOT_PRINT",
+      body_text: "DO_NOT_PRINT",
+      DATABASE_URL: "DO_NOT_PRINT",
+    },
+    origin,
+    Date.parse(scope.until),
+  );
+  assert.equal(record.schema, "s22-widget-session-selection.v1");
+  assert.equal(record.organization_id, selectionOrganization);
+  assert.equal(record.origin, origin);
+  assert.equal(record.source, reviewedSelectionJob.source);
+  assert.equal(record.execution, selected.execution);
+  assert.equal(record.session_id, selected.session_id);
+  assert.equal(record.collected_at, scope.until);
+  assert.equal(record.idle_deadline_at, "2026-10-08T09:34:00.500Z");
+  assert.equal(record.expires_at, "2026-10-08T11:04:00.000Z");
+  assert.doesNotMatch(JSON.stringify(record), /DO_NOT_PRINT|cookie|body_text|DATABASE_URL/u);
+});
+
+test("selection artifact fails closed at idle or absolute expiry and rejects forged scope/date/source", async () => {
+  const selected = await completeSelection();
+  for (const time of ["2026-10-08T09:34:00.500Z", "2026-10-08T11:04:00.000Z"])
+    assert.throws(() => prepareSelectionRecord(selected, origin, Date.parse(time)), {
+      code: "SELECTION_SNAPSHOT_EXPIRED",
+    });
+  assert.throws(
+    () =>
+      prepareSelectionRecord(
+        { ...selected, expires_at: "2026-10-08T09:05:00.000Z" },
+        origin,
+        Date.parse(scope.until),
+      ),
+    { code: "SELECTION_SNAPSHOT_EXPIRED" },
+  );
+  for (const mutation of [
+    { source: "6a31cd8e3a37f31a7bb85329eab0aa9c4de53926" },
+    { session_id: "foreign" },
+    { issued_at: "not-a-date" },
+    { last_seen_at: "2026-10-08T09:03:00.000Z" },
+    { last_seen_at: "2026-10-08T09:06:00.000Z" },
+    { version: "3" },
+    { contact_unbound: false },
+  ])
+    assert.throws(
+      () => prepareSelectionRecord({ ...selected, ...mutation }, origin, Date.parse(scope.until)),
+      { code: "LOG_SAFE_METADATA_INVALID" },
+    );
+  assert.throws(
+    () => prepareSelectionRecord(selected, "https://attacker.invalid", Date.parse(scope.until)),
+    { code: "SELECTION_SCOPE_INVALID" },
+  );
+});
+
+test("selection file is exclusively created with owner-only permissions and never overwrites prior work", async () => {
+  const fixture = mkdtempSync(join(tmpdir(), "s22-widget-selection-file-"));
+  try {
+    const filename = join(fixture, "selection.json"),
+      selected = await completeSelection();
+    const record = await writeSelectionFile(filename, selected, origin, {
+      now: () => Date.parse(scope.until),
+    });
+    assert.deepEqual(JSON.parse(readFileSync(filename, "utf8")), record);
+    if (process.platform !== "win32") assert.equal(statSync(filename).mode & 0o777, 0o600);
+    const original = readFileSync(filename, "utf8");
+    await assert.rejects(
+      writeSelectionFile(filename, selected, origin, { now: () => Date.parse(scope.until) }),
+      { code: "SELECTION_FILE_EXISTS" },
+    );
+    assert.equal(readFileSync(filename, "utf8"), original);
+  } finally {
+    assert.equal(dirname(realpathSync(fixture)), realpathSync(tmpdir()));
+    assert.ok(basename(fixture).startsWith("s22-widget-selection-file-"));
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test("selection writer closes its exclusive handle even if writing fails and exposes no filesystem error details", async () => {
+  let closed = false;
+  await assert.rejects(
+    writeSelectionFile("new-selection.json", await completeSelection(), origin, {
+      now: () => Date.parse(scope.until),
+      openFile: async (filename, flags, mode) => {
+        assert.equal(filename, "new-selection.json");
+        assert.equal(flags, "wx");
+        assert.equal(mode, 0o600);
+        return {
+          writeFile: async () => {
+            throw Object.assign(new Error("DO_NOT_PRINT"), { code: "DO_NOT_PRINT" });
+          },
+          close: async () => {
+            closed = true;
+          },
+        };
+      },
+    }),
+    (error) =>
+      error.code === "SELECTION_FILE_WRITE_FAILED" && !error.message.includes("DO_NOT_PRINT"),
+  );
+  assert.equal(closed, true);
+});
 
 test("launcher proves log permission first, executes only one bounded reader, and sanitizes collected output", async () => {
   const calls = [],

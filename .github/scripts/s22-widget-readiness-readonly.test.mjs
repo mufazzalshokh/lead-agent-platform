@@ -4,19 +4,21 @@ import test from "node:test";
 import {
   budgetReadinessPass,
   collectWidgetReadiness,
+  parseReadinessScope,
   readinessForceRlsSql,
   readinessForceRlsTableNames,
   readinessScope,
   readinessSessionSql,
+  runReadOnlyReadiness,
   sanitizeReadinessBudget,
   sessionReadinessPass,
 } from "./s22-widget-readiness-readonly.mjs";
 
-const session = () => ({
-  organization_id: readinessScope.organization,
-  session_id: readinessScope.session,
-  channel_connection_id: readinessScope.channel,
-  allowed_origin_id: readinessScope.origin,
+const session = (scope = readinessScope) => ({
+  organization_id: scope.organization,
+  session_id: scope.session,
+  channel_connection_id: scope.channel,
+  allowed_origin_id: scope.origin,
   status: "active",
   version: "2",
   issued_at: "2026-10-08T10:54:48.093Z",
@@ -30,7 +32,7 @@ const session = () => ({
   absolute_valid: true,
   idle_valid: true,
 });
-const budget = () => ({
+const budget = (scope = readinessScope) => ({
   profile: "s22-synthetic-booking.v1",
   mode: "widget_booking",
   physicalCalls: 4,
@@ -44,7 +46,7 @@ const budget = () => ({
   blocked: false,
   reason: null,
   widget: {
-    sessionId: readinessScope.session,
+    sessionId: scope.session,
     conversationId: null,
     physicalCalls: 0,
     logicalMessages: 0,
@@ -52,6 +54,143 @@ const budget = () => ({
     knownCostMicros: "0",
     unresolvedReserveMicros: "0",
   },
+});
+const replacementSessionId = "01a11ba0-1234-7456-8abc-123456789abc";
+test("an explicit canonical UUIDv7 changes only the diagnostic session scope; omission preserves old diagnostic", () => {
+  assert.equal(parseReadinessScope(), readinessScope);
+  assert.equal(parseReadinessScope(undefined), readinessScope);
+  const scope = parseReadinessScope(replacementSessionId);
+  assert.equal(Object.isFrozen(scope), true);
+  assert.deepEqual(scope, { ...readinessScope, session: replacementSessionId });
+  assert.equal(parseReadinessScope(readinessScope.session).session, readinessScope.session);
+});
+for (const value of [
+  null,
+  123,
+  {},
+  [],
+  "",
+  "PRIVATE_VALUE",
+  " " + replacementSessionId,
+  replacementSessionId.toUpperCase(),
+  "01a11ba0-1234-4456-8abc-123456789abc",
+  "01a11ba0-1234-7456-7abc-123456789abc",
+  replacementSessionId + "\n",
+])
+  test(`explicit invalid session scope is never normalized or discovered (${JSON.stringify(value)})`, () => {
+    assert.throws(
+      () => parseReadinessScope(value),
+      (error) => error.code === "READINESS_SCOPE_INVALID" && error.message === "",
+    );
+  });
+test("explicit replacement collection uses one exact parameterized session with unchanged ledger and tenant boundaries", async () => {
+  const scope = parseReadinessScope(replacementSessionId);
+  const reports = [];
+  let reads = 0,
+    budgetReads = 0;
+  const result = await collectWidgetReadiness(
+    async (sql, values) => {
+      reads++;
+      assert.equal(sql, readinessSessionSql);
+      assert.deepEqual(values, [
+        replacementSessionId,
+        readinessScope.channel,
+        readinessScope.origin,
+      ]);
+      return [session(scope)];
+    },
+    async () => {
+      budgetReads++;
+      return budget(scope);
+    },
+    (...report) => reports.push(report),
+    scope,
+  );
+  assert.deepEqual(result, { sessionReady: true, budgetReady: true });
+  assert.equal(reads, 1);
+  assert.equal(budgetReads, 1);
+  assert.equal(reports[0][2].session_id, replacementSessionId);
+  assert.equal(reports[1][2].widget.sessionId, replacementSessionId);
+  assert.equal(reports[1][2].knownCostMicros, "8714");
+  assert.equal(reports[1][2].historicalReserveMicros, "1033396");
+  assert.equal(reports[1][2].combinedExposureMicros, "1042110");
+  assert.equal(reports[1][2].physicalCalls, 4);
+  assert.equal(reports[1][2].logicalMessages, 4);
+  assert.equal(reports[1][2].accountingComplete, false);
+  assert.equal(reports[2][2].no_message_or_call_triggered, true);
+});
+test("explicit scope does not accept old session rows, old budget binding or foreign tenant metadata", () => {
+  const scope = parseReadinessScope(replacementSessionId);
+  assert.equal(sessionReadinessPass([session()], scope), false);
+  assert.equal(budgetReadinessPass(budget(), scope), false);
+  assert.equal(sanitizeReadinessBudget(budget(), scope).widget.sessionId, null);
+  assert.equal(
+    sessionReadinessPass([{ ...session(scope), organization_id: replacementSessionId }], scope),
+    false,
+  );
+  assert.equal(
+    budgetReadinessPass({ ...budget(scope), historicalReserveMicros: "0" }, scope),
+    false,
+  );
+  assert.equal(
+    budgetReadinessPass({ ...budget(scope), physicalCalls: 0, logicalMessages: 0 }, scope),
+    false,
+  );
+});
+for (const changes of [
+  { organization: replacementSessionId },
+  { channel: replacementSessionId },
+  { origin: replacementSessionId },
+  { session: "PRIVATE_VALUE" },
+])
+  test(`caller cannot widen approved scope (${Object.keys(changes)[0]})`, async () => {
+    const scope = { ...readinessScope, ...changes };
+    let reads = 0;
+    assert.equal(sessionReadinessPass([session(scope)], scope), false);
+    assert.equal(budgetReadinessPass(budget(scope), scope), false);
+    assert.equal(sanitizeReadinessBudget(budget(scope), scope).widget.sessionId, null);
+    await assert.rejects(
+      collectWidgetReadiness(
+        async () => {
+          reads++;
+          return [session(scope)];
+        },
+        async () => {
+          reads++;
+          return budget(scope);
+        },
+        () => assert.fail("invalid scope must not emit PASS"),
+        scope,
+      ),
+      (error) => error.code === "READINESS_SCOPE_INVALID",
+    );
+    assert.equal(reads, 0);
+  });
+test("invalid execution-only override is reported safely before imports or database configuration", async () => {
+  const previousOverride = process.env.S22_WIDGET_READINESS_SESSION_ID;
+  const previousExit = process.exitCode;
+  const previousLog = console.log;
+  const output = [];
+  try {
+    process.env.S22_WIDGET_READINESS_SESSION_ID = "PRIVATE_INVALID_OVERRIDE";
+    console.log = (value) => output.push(JSON.parse(value));
+    await runReadOnlyReadiness();
+    assert.equal(process.exitCode, 1);
+    assert.deepEqual(output, [
+      {
+        operation: "s22_widget_readiness",
+        assertion: "selection_scope",
+        outcome: "BLOCKED",
+        code: "READINESS_SCOPE_INVALID",
+      },
+    ]);
+    assert.doesNotMatch(JSON.stringify(output), /PRIVATE_INVALID_OVERRIDE|DATABASE_URL/u);
+  } finally {
+    console.log = previousLog;
+    process.exitCode = previousExit;
+    if (previousOverride === undefined) delete process.env.S22_WIDGET_READINESS_SESSION_ID;
+    else process.env.S22_WIDGET_READINESS_SESSION_ID = previousOverride;
+  }
 });
 test("fresh exact redeemed/unbound session and intact separate ledger are ready, not authorization", async () => {
   const reports = [];
@@ -209,7 +348,9 @@ test("reader uses actual guard.read only, bounded read-only options, module reso
     new URL("./s22-widget-readiness-readonly.mjs", import.meta.url),
     "utf8",
   );
-  assert.match(source, /budget\.read\(readinessScope\.organization\)/u);
+  assert.match(source, /budget\.read\(scope\.organization\)/u);
+  assert.match(source, /parseReadinessScope\(process\.env\.S22_WIDGET_READINESS_SESSION_ID\)/u);
+  assert.match(source, /widgetSessionId: scope\.session/u);
   assert.doesNotMatch(source, /\.authorizeDispatch\(|\.recordStart\(|\b(insert|update|delete)\b/iu);
   assert.match(
     source,

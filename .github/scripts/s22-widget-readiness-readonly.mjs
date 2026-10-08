@@ -6,6 +6,19 @@ export const readinessScope = Object.freeze({
   channel: "01a11771-2c02-7240-86f7-19f95690d22e",
   origin: "01a11771-2c02-7765-b999-7dc9895ee49d",
 });
+const canonicalUuidV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+export const parseReadinessScope = (sessionId = undefined) => {
+  if (sessionId === undefined) return readinessScope;
+  if (typeof sessionId !== "string" || !canonicalUuidV7.test(sessionId))
+    throw Object.assign(new Error(), { code: "READINESS_SCOPE_INVALID" });
+  return Object.freeze({ ...readinessScope, session: sessionId });
+};
+const validScope = (scope) =>
+  scope?.organization === readinessScope.organization &&
+  scope.channel === readinessScope.channel &&
+  scope.origin === readinessScope.origin &&
+  typeof scope.session === "string" &&
+  canonicalUuidV7.test(scope.session);
 export const readinessForceRlsTableNames = Object.freeze([
   "widget_sessions",
   "widget_allowed_origins",
@@ -39,19 +52,20 @@ const timestamp = (value) => {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 };
-const scopeMatches = (row) =>
-  row?.organization_id === readinessScope.organization &&
-  row.session_id === readinessScope.session &&
-  row.channel_connection_id === readinessScope.channel &&
-  row.allowed_origin_id === readinessScope.origin;
-export const sessionReadinessPass = (rows) => {
-  if (!Array.isArray(rows) || rows.length !== 1) return false;
+const scopeMatches = (row, scope) =>
+  validScope(scope) &&
+  row?.organization_id === scope.organization &&
+  row.session_id === scope.session &&
+  row.channel_connection_id === scope.channel &&
+  row.allowed_origin_id === scope.origin;
+export const sessionReadinessPass = (rows, scope = readinessScope) => {
+  if (!validScope(scope) || !Array.isArray(rows) || rows.length !== 1) return false;
   const row = rows[0];
   const issued = timestamp(row?.issued_at),
     seen = timestamp(row?.last_seen_at),
     expires = timestamp(row?.expires_at);
   return (
-    scopeMatches(row) &&
+    scopeMatches(row, scope) &&
     row.status === "active" &&
     row.version === "2" &&
     [
@@ -70,7 +84,8 @@ export const sessionReadinessPass = (rows) => {
     expires > seen
   );
 };
-export const budgetReadinessPass = (snapshot) =>
+export const budgetReadinessPass = (snapshot, scope = readinessScope) =>
+  validScope(scope) &&
   snapshot?.profile === "s22-synthetic-booking.v1" &&
   snapshot.mode === "widget_booking" &&
   snapshot.physicalCalls === 4 &&
@@ -83,7 +98,7 @@ export const budgetReadinessPass = (snapshot) =>
   snapshot.accountingComplete === false &&
   snapshot.blocked === false &&
   snapshot.reason === null &&
-  snapshot.widget?.sessionId === readinessScope.session &&
+  snapshot.widget?.sessionId === scope.session &&
   snapshot.widget.conversationId === null &&
   snapshot.widget.physicalCalls === 0 &&
   snapshot.widget.logicalMessages === 0 &&
@@ -118,7 +133,7 @@ export const readinessBudgetReasons = Object.freeze([
   "paused",
 ]);
 const safeCode = (value) => (readinessBudgetReasons.includes(value) ? value : null);
-export const sanitizeReadinessBudget = (snapshot) => ({
+export const sanitizeReadinessBudget = (snapshot, scope = readinessScope) => ({
   profile: snapshot?.profile === "s22-synthetic-booking.v1" ? snapshot.profile : null,
   mode: snapshot?.mode === "widget_booking" ? snapshot.mode : null,
   physicalCalls: safeInteger(snapshot?.physicalCalls),
@@ -133,7 +148,7 @@ export const sanitizeReadinessBudget = (snapshot) => ({
   reason: safeCode(snapshot?.reason),
   widget: {
     sessionId:
-      snapshot?.widget?.sessionId === readinessScope.session ? readinessScope.session : null,
+      validScope(scope) && snapshot?.widget?.sessionId === scope.session ? scope.session : null,
     // First readiness must be unbound; do not print a contact or unexpected conversation ID.
     conversationId: null,
     conversationUnbound: snapshot?.widget?.conversationId === null,
@@ -144,18 +159,15 @@ export const sanitizeReadinessBudget = (snapshot) => ({
     unresolvedReserveMicros: safeMoney(snapshot?.widget?.unresolvedReserveMicros),
   },
 });
-export const collectWidgetReadiness = async (read, readBudget, report) => {
-  const rows = await read(readinessSessionSql, [
-    readinessScope.session,
-    readinessScope.channel,
-    readinessScope.origin,
-  ]);
-  const row = rows.length === 1 && scopeMatches(rows[0]) ? rows[0] : undefined;
-  const sessionReady = sessionReadinessPass(rows);
+export const collectWidgetReadiness = async (read, readBudget, report, scope = readinessScope) => {
+  if (!validScope(scope)) throw Object.assign(new Error(), { code: "READINESS_SCOPE_INVALID" });
+  const rows = await read(readinessSessionSql, [scope.session, scope.channel, scope.origin]);
+  const row = rows.length === 1 && scopeMatches(rows[0], scope) ? rows[0] : undefined;
+  const sessionReady = sessionReadinessPass(rows, scope);
   report("exact_widget_session", sessionReady, {
-    session_id: readinessScope.session,
-    channel_connection_id: readinessScope.channel,
-    allowed_origin_id: readinessScope.origin,
+    session_id: scope.session,
+    channel_connection_id: scope.channel,
+    allowed_origin_id: scope.origin,
     row_count: rows.length,
     scope_matches: row !== undefined,
     status: ["active", "expired", "revoked"].includes(row?.status) ? row.status : null,
@@ -178,8 +190,8 @@ export const collectWidgetReadiness = async (read, readBudget, report) => {
   });
   // An expired session is not an exception: collect the budget too, without renewing/reselecting it.
   const snapshot = await readBudget();
-  const budgetReady = budgetReadinessPass(snapshot);
-  report("cohort_reservation_accounting", budgetReady, sanitizeReadinessBudget(snapshot));
+  const budgetReady = budgetReadinessPass(snapshot, scope);
+  report("cohort_reservation_accounting", budgetReady, sanitizeReadinessBudget(snapshot, scope));
   report("first_message_readiness", sessionReady && budgetReady, {
     session_ready: sessionReady,
     budget_ready: budgetReady,
@@ -194,6 +206,7 @@ export const readinessFailureCodes = new Set([
   "READ_ONLY_RUNTIME_TENANT_GUARD_FAILED",
   "FORCE_RLS_NOT_OWNER_GUARD_FAILED",
   "READINESS_START_INVALID",
+  "READINESS_SCOPE_INVALID",
   "COHORT_SCOPE_INVALID",
   "TENANT_MISMATCH",
   "DATABASE_UNAVAILABLE",
@@ -255,6 +268,8 @@ export const runReadOnlyReadiness = async () => {
     );
   };
   try {
+    stage = "selection_scope";
+    const scope = parseReadinessScope(process.env.S22_WIDGET_READINESS_SESSION_ID);
     stage = "collection_window";
     const startedAt = process.env.S22_WIDGET_READINESS_STARTED_AT;
     if (timestamp(startedAt) !== startedAt) fail("READINESS_START_INVALID");
@@ -266,7 +281,7 @@ export const runReadOnlyReadiness = async () => {
     );
     stage = "cohort_scope";
     if (
-      config.S22_BOOKING_COHORT.organizationId !== readinessScope.organization ||
+      config.S22_BOOKING_COHORT.organizationId !== scope.organization ||
       config.S22_BOOKING_COHORT.conversationId !== "01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7" ||
       config.S22_BOOKING_COHORT.historicalReserveMicros !== 1_033_396n ||
       config.S22_BOOKING_COHORT.hardCeilingMicros !== 10_000_000n
@@ -291,7 +306,7 @@ export const runReadOnlyReadiness = async () => {
     stage = "database_readiness";
     await runtime.verifyReady();
     const readOnly = async (tenant, callback) => {
-      if (tenant !== readinessScope.organization) fail("TENANT_MISMATCH");
+      if (tenant !== scope.organization) fail("TENANT_MISMATCH");
       const callbackStage = stage;
       let result;
       try {
@@ -356,11 +371,11 @@ export const runReadOnlyReadiness = async () => {
     const budget = db.createAIJourneyBudgetGuard(readOnlyRuntime, {
       ...config.S22_BOOKING_COHORT,
       mode: "widget_booking",
-      widgetSessionId: readinessScope.session,
+      widgetSessionId: scope.session,
     });
     await collectWidgetReadiness(
       (text, extra) =>
-        readOnly(readinessScope.organization, async (session) => {
+        readOnly(scope.organization, async (session) => {
           stage = "exact_widget_session";
           return (
             await internal.executeTenantQuery(session, (org) => ({ text, values: [org, ...extra] }))
@@ -368,9 +383,10 @@ export const runReadOnlyReadiness = async () => {
         }),
       () => {
         stage = "cohort_reservation_accounting";
-        return budget.read(readinessScope.organization);
+        return budget.read(scope.organization);
       },
       report,
+      scope,
     );
   } catch (error) {
     blocked(stage, error);
