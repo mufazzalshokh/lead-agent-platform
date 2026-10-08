@@ -2,6 +2,16 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
+**Correction preparation is ready:** source `1ecd729d856fdeff22a55cc54e1259c7adcf6472`
+is pushed; exact all-runtime image build **37797125277 PASS** and its four
+immutable references/manifest are independently checked. The one prepared
+deployment timestamp is **2026-10-08T15:08:01Z**; packaged migration head 0031
+is unchanged. No new session has been selected, plan dispatched, apply approved
+or Send authorized. Prepared current-selector/future-readiness tools keep those
+provenance boundaries distinct. One Cloud Shell **preflight-only read** is next,
+before opening the one fresh real frame and preparing its combined fix/binding
+plan. See the [verified image/preparation record](s22-acceptance-evidence.md#2026-10-08--correction-images-ready-fresh-frame-selection-pending).
+
 The owner approved **preparing** a bounded, independent Widget journey, then
 **applying only exact replacement plan 37777865016**, and subsequently explicitly
 approved the existing **bounded Website Chat booking test**. Execution authority

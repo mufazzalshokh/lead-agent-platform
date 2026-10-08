@@ -259,6 +259,36 @@ const assertions = [
   "cohort_reservation_accounting",
   "first_message_readiness",
 ];
+const diagnosticStages = new Set([
+  ...assertions,
+  "collection_window",
+  "selection_scope",
+  "package_resolution",
+  "cohort_scope",
+  "database_configuration",
+  "database_readiness",
+  "pool_error",
+  "cleanup",
+]);
+const diagnosticSqlstates = new Set([
+  "08001",
+  "08004",
+  "08006",
+  "25006",
+  "25P02",
+  "28000",
+  "28P01",
+  "42501",
+  "42601",
+  "42703",
+  "42P01",
+  "42P18",
+  "53300",
+  "53400",
+  "55P03",
+  "57014",
+  "57P01",
+]);
 const safeFields = new Set([
   "runtime",
   "staging_database",
@@ -348,43 +378,11 @@ export function collectReadinessLogs(entries, scope = readinessScope) {
   if (blocked)
     throw Object.assign(new Error(), {
       code: "READ_ONLY_DIAGNOSTIC_BLOCKED",
-      diagnostic_stage: [
-        ...assertions,
-        "collection_window",
-        "selection_scope",
-        "package_resolution",
-        "cohort_scope",
-        "database_configuration",
-        "database_readiness",
-        "pool_error",
-        "cleanup",
-      ].includes(blocked.assertion)
-        ? blocked.assertion
-        : "unknown",
+      diagnostic_stage: diagnosticStages.has(blocked.assertion) ? blocked.assertion : "unknown",
       diagnostic_code: readinessFailureCodes.has(blocked.code)
         ? blocked.code
         : "DATABASE_OR_TOOLING_UNAVAILABLE",
-      sqlstate: [
-        "08001",
-        "08004",
-        "08006",
-        "25006",
-        "25P02",
-        "28000",
-        "28P01",
-        "42501",
-        "42601",
-        "42703",
-        "42P01",
-        "42P18",
-        "53300",
-        "53400",
-        "55P03",
-        "57014",
-        "57P01",
-      ].includes(blocked.sqlstate)
-        ? blocked.sqlstate
-        : null,
+      sqlstate: diagnosticSqlstates.has(blocked.sqlstate) ? blocked.sqlstate : null,
     });
   requireSafe(
     rows.length === assertions.length &&
@@ -654,6 +652,22 @@ const failureCodes = new Set([
   "EXECUTION_WINDOW_ELAPSED_NO_RERUN",
   "DIAGNOSTIC_TASK_FAILED",
 ]);
+export function formatReadinessFailure(error, execution = undefined) {
+  const lines = [
+    `BLOCKED: ${failureCodes.has(error?.code) ? error.code : "CLOUD_OR_TOOLING_UNAVAILABLE"}`,
+  ];
+  if (error?.code === "READ_ONLY_DIAGNOSTIC_BLOCKED") {
+    const stage = diagnosticStages.has(error.diagnostic_stage) ? error.diagnostic_stage : "unknown";
+    const code = readinessFailureCodes.has(error.diagnostic_code)
+      ? error.diagnostic_code
+      : "DATABASE_OR_TOOLING_UNAVAILABLE";
+    lines.push(`Failure stage: ${stage}; reason: ${code}`);
+    if (diagnosticSqlstates.has(error.sqlstate)) lines.push(`SQLSTATE: ${error.sqlstate}`);
+  }
+  if (typeof execution === "string" && /^lead-agent-staging-migrator-[a-z0-9]+$/u.test(execution))
+    lines.push(`Preserved execution: ${execution}; do not rerun blindly.`);
+  return lines;
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let execution;
   try {
@@ -673,14 +687,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log(`Reader SHA256: ${result.reader_sha256}`);
     process.exitCode = result.ready ? 0 : 1;
   } catch (error) {
-    console.log(
-      `BLOCKED: ${failureCodes.has(error?.code) ? error.code : "CLOUD_OR_TOOLING_UNAVAILABLE"}`,
-    );
-    if (error?.code === "READ_ONLY_DIAGNOSTIC_BLOCKED") {
-      console.log(`Failure stage: ${error.diagnostic_stage}; reason: ${error.diagnostic_code}`);
-      if (error.sqlstate !== null) console.log(`SQLSTATE: ${error.sqlstate}`);
-    }
-    if (execution) console.log(`Preserved execution: ${execution}; do not rerun blindly.`);
+    for (const line of formatReadinessFailure(error, execution)) console.log(line);
     process.exitCode = 1;
   }
 }

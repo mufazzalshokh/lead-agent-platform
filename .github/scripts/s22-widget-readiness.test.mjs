@@ -15,6 +15,7 @@ import {
 import {
   collectReadinessLogs,
   formatReadiness,
+  formatReadinessFailure,
   moduleBootstrap,
   parseReadinessArguments,
   reviewedReadiness as pin,
@@ -493,6 +494,88 @@ test("read-only failures preserve allowlisted stage and SQLSTATE without error o
       !JSON.stringify(e).includes("DO_NOT_PRINT_PRIVATE_FIXTURE"),
   );
 });
+
+test("failure formatter preserves only allowlisted diagnostic fields and reviewed execution identity", () => {
+  let failure;
+  try {
+    collectReadinessLogs([
+      {
+        jsonPayload: {
+          operation: readinessOperation,
+          assertion: "force_rls_not_owner_guard",
+          outcome: "BLOCKED",
+          code: "FORCE_RLS_NOT_OWNER_GUARD_FAILED",
+          sqlstate: "42501",
+          error: "DO_NOT_PRINT_PRIVATE_FIXTURE",
+        },
+      },
+    ]);
+  } catch (error) {
+    failure = error;
+  }
+  assert.deepEqual(formatReadinessFailure(failure, "lead-agent-staging-migrator-reviewed1"), [
+    "BLOCKED: READ_ONLY_DIAGNOSTIC_BLOCKED",
+    "Failure stage: force_rls_not_owner_guard; reason: FORCE_RLS_NOT_OWNER_GUARD_FAILED",
+    "SQLSTATE: 42501",
+    "Preserved execution: lead-agent-staging-migrator-reviewed1; do not rerun blindly.",
+  ]);
+});
+
+for (const code of [
+  "REVIEWED_RUNTIME_INVALID",
+  "READINESS_EXPECTATION_INVALID",
+  "PROVENANCE_MISMATCH",
+  "CLOUD_READ_PERMISSION_UNAVAILABLE",
+  "EXECUTION_WINDOW_ELAPSED_NO_RERUN",
+])
+  test(`failure formatter retains known ${code} without raw error data`, () => {
+    const error = Object.assign(new Error("DO_NOT_PRINT_PRIVATE_FIXTURE"), {
+      code,
+      token: "DO_NOT_PRINT_PRIVATE_FIXTURE",
+      stack: "DO_NOT_PRINT_PRIVATE_FIXTURE",
+      diagnostic_stage: "DO_NOT_PRINT_PRIVATE_FIXTURE",
+      sqlstate: "DO_NOT_PRINT_PRIVATE_FIXTURE",
+    });
+    assert.deepEqual(formatReadinessFailure(error), [`BLOCKED: ${code}`]);
+  });
+
+test("failure formatter suppresses unknown code, message, credentials and untrusted diagnostic fields", () => {
+  const privateValue = "DO_NOT_PRINT_PRIVATE_FIXTURE";
+  assert.deepEqual(
+    formatReadinessFailure(Object.assign(new Error(privateValue), { code: privateValue })),
+    ["BLOCKED: CLOUD_OR_TOOLING_UNAVAILABLE"],
+  );
+  assert.deepEqual(
+    formatReadinessFailure({
+      code: "READ_ONLY_DIAGNOSTIC_BLOCKED",
+      message: privateValue,
+      token: privateValue,
+      diagnostic_stage: privateValue,
+      diagnostic_code: privateValue,
+      sqlstate: privateValue,
+    }),
+    [
+      "BLOCKED: READ_ONLY_DIAGNOSTIC_BLOCKED",
+      "Failure stage: unknown; reason: DATABASE_OR_TOOLING_UNAVAILABLE",
+    ],
+  );
+  assert.deepEqual(formatReadinessFailure(null), ["BLOCKED: CLOUD_OR_TOOLING_UNAVAILABLE"]);
+});
+
+for (const execution of [
+  "foreign-job-reviewed1",
+  "lead-agent-staging-migrator-reviewed1\nDO_NOT_PRINT_PRIVATE_FIXTURE",
+  "lead-agent-staging-migrator-Reviewed1",
+  "lead-agent-staging-migrator-",
+  "DO_NOT_PRINT_PRIVATE_FIXTURE",
+  null,
+  123,
+])
+  test(`failure formatter suppresses invalid execution ${JSON.stringify(execution)}`, () => {
+    assert.deepEqual(formatReadinessFailure({ code: "PROVENANCE_MISMATCH" }, execution), [
+      "BLOCKED: PROVENANCE_MISMATCH",
+    ]);
+  });
 
 for (const [name, change] of [
   [

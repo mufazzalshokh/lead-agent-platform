@@ -3,6 +3,85 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-08 — Correction images ready; fresh-frame selection pending
+
+Verified correction source **`1ecd729d856fdeff22a55cc54e1259c7adcf6472`** is
+pushed on `verify/s22-staging-recovery-capacity`. One matching all-runtime build
+was dispatched after confirming none existed: **37797125277 PASS**, build job
+113379401334, exact checked-out/preserved source and four successful image
+steps. The authenticated downloaded `s22-image-manifest.txt` independently
+matches source/run/registry, all four digest/reference pairs and architecture
+`linux/amd64`; the workflow also pulled/checked that architecture.
+Manifest SHA256:
+`8a3632682b5a4d1982746aee5002ea4d176e4b46fe92172bffae433ed92d7193`.
+
+| Workload | Fresh immutable reference                                                                                                                      |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| API      | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:1e0bf75524e5f6815972ba6c5549e97720649849581195bc4ee1927f69a30844`      |
+| Web      | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:08f693c01936ff2b261d88e43d16c4b60813df5378904782ff1253030554a20b`      |
+| Worker   | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:9bb77154a6057981b3fed82164defa222ff6b893a5fbe5563a4e06f9140ab381`   |
+| Migrator | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:f4c6e5bdbf0e39a0fe6042e090b93ebaa21209a628bdc5cb889a49f8a03beace` |
+
+One deployment timestamp is chosen and retained:
+**`2026-10-08T15:08:01Z`**. Migration provenance remains
+**`0031_s22_widget_inbound_route_management`**, the last packaged migration;
+database/infra and Terraform/image workflows are unchanged from deployed
+`a2b2f708`. The later isolated selector PostgreSQL-test workflow is not a live
+reader or migration. Latest staging workflow records still end with approved
+apply37778746987/verification37778916467; this is execution-record evidence,
+not a new independent read of all live service revisions.
+
+Prepared next-plan inputs are `action=plan`, `phase=full`, `commit_sha` equal
+to the correction source above, this one timestamp, these four image references,
+both `api_migration_head` and `runtime_migration_head` equal to the retained
+0031 head, `ai_journey_mode=widget_booking`, and **only the future actual
+owner-selected session ID** for `ai_journey_widget_session_id`.
+That last value is **not available and is not guessed**. No new plan has been
+dispatched; no saved-plan ID/hash or apply approval exists. Expected scope is
+only four in-place workload/image/provenance updates plus the Worker unused
+session binding, no creates/destroys/replacements, SQL/IAM/network/scaling
+changes or migration execution. Actual sanitized plan/actions/state/hash must
+be inspected before requesting exact-plan approval. Paid calls remain paused.
+
+The corrected selector is pinned to the **currently deployed** `a2b2f708` image
+and `12:34:20Z` timestamp, not falsely to the undeployed correction. Its
+preflight-only mode retrieves job/log-access safeguards without a diagnostic
+execution or session selection. The new tiny
+`s22-widget-correction-readiness.mjs` is pinned to the **future correction**
+manifest/timestamp and accepts only explicit `--session`; it must run only
+after the corresponding approved apply. It rejects either expired reviewed
+session and any extra source/image/timestamp selector before credentials.
+Its immutable packet cannot be overridden by observer inputs. No future
+provenance is learned from deployed metadata or arbitrary CLI input.
+
+Readiness failure formatting is shared with the existing launcher, not a
+duplicated error contract: finite codes/stages/SQLSTATE, bounded valid execution
+identity, no raw errors/stack/private values. Focused tooling-only verification:
+**77 readiness tests PASS** (14 new safe-formatting cases), **13 wrapper tests
+PASS**, scoped syntax/lint/format/diff checks. Prior actual generated-ESM and
+read-only SQL/rollback proofs are retained, not repeated. These follow-up tools
+and evidence do not change runtime code or justify rebuilding the verified
+correction images. They do not make a model call or modify job configuration.
+
+Prepared download bundle SHA256 (no upload required; tests are not run in Cloud Shell):
+
+| File                                     | SHA256                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| `s22-widget-session-select.mjs`          | `6a05c720ba0a3c0e2b3f0310bb8b04f7f2967fb8b4e3eae56c7b38bb48ea9171` |
+| `s22-widget-session-select-readonly.mjs` | `1d430316acc64e4b16e270e9bc795793a1d6f6c175ad545928f15d7997156ef0` |
+| `s22-widget-readiness.mjs`               | `dea200cfcc6401071742c2115de0d0d35aef400305b9cf51aaaf3745e4099fd8` |
+| `s22-widget-readiness-readonly.mjs`      | `7b45ff56c9bdf468a8ac7ace4159360f54428b818bb88140560567e4cd43a971` |
+| `s22-widget-correction-readiness.mjs`    | `877bdd7a0b33930a57aeafea49b00555ce09dfecd7d061c578a653b862842030` |
+
+Root has authenticated GitHub access but no installed local gcloud or owner
+Cloud Shell/browser/runtime-DB session. The single next external action is a
+checksum-pinned **preflight-only Cloud Shell read** before asking for the one
+fresh real frame. It will prove current diagnostic-job provenance/identity,
+private network/explicit zero retries and authenticated log access. Then finish
+one real-frame selection and one combined plan promptly, not another build or
+old-session revival. No Send, deployment or paid call is authorized by the
+owner's preparation-only approval. **S22 remains unaccepted.**
+
 ## 2026-10-08 — Widget attempt evidence and same-origin read correction
 
 ### Observations and evidence boundaries
