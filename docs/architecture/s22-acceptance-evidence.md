@@ -47,6 +47,9 @@ The subsequent Widget-specific `contentDocument === null` check returned
 **true**: [owner-reported host DOM denial](#2026-10-08--widget-host-document-denial)
 **PASS**. This closes only that scoped browser assertion, not token isolation,
 disallowed-origin denial, direct session traces or Widget customer E2E.
+The subsequent [live actual-request origin check](#2026-10-08--widget-live-actual-request-origin-denial)
+is now **PASS**, paired with the owner's working public installation. It does
+not close independent token/session traces or actual Widget customer E2E.
 
 ## Preserved evidence
 
@@ -3407,3 +3410,37 @@ is permitted. See [detailed scope and provenance](s22-widget-embedding-proof.md#
 Only scoped evidence documentation/format/diff checks; no runtime change,
 deployment, migration, repeated CI or new paid authorization. Historical NULL
 costs stay visible, and S22 remains unaccepted.
+
+## 2026-10-08 — Widget live actual-request origin denial
+
+**Agent-executed live actual-request denial: PASS**, paired with the preserved
+owner-reported approved-origin success and newly supplied public installation
+snippet. No public key is saved in this evidence. Exactly one credential/cookie-
+free POST to the canonical gateway `/v1/widget/embed-grants` used normalized
+Origin/page URL `https://s22-origin-denial.invalid`, locale `uz`, no tenant input.
+Start/end: `2026-10-08T07:13:24.883Z` / `2026-10-08T07:13:26.024Z`.
+
+Observed **404 / resource_not_found**, exact Problem endpoint instance,
+**`request:req-c`**, no `Access-Control-Allow-Origin`, `Cache-Control: no-store`.
+Redirects prohibited, fetch/body bounded to 15 seconds/8 KB, no retry/redemption,
+session opening, message or paid provider call. This is an actual grant-route
+request, not OPTIONS or malformed-Origin rejection, and not intrinsically a
+read-only operation. The deployed source denies before session INSERT; no
+independent DB zero-insert proof is claimed. The non-enumerating 404 is paired
+with owner working-key evidence, not independent current routing/allowlist reads.
+
+This closes only server-side Origin-header denial, not a second real browser
+host's E2E, bearer storage/isolation or direct session trace. Widget customer E2E
+still needs separately bounded paid authorization; the Instagram allowance is
+exhausted and cannot be reused. No runtime change/deployment/repeated CI,
+migration, budget reset or historical NULL-cost reconciliation. Scoped evidence
+format/diff checks only; S22 remains unaccepted. See
+[detailed request provenance](s22-widget-embedding-proof.md#2026-10-08--live-actual-request-origin-denial).
+
+Next M2 boundary is the first meaningful Widget message and complete customer
+journey, not another opening/cookie/DOM check. Read-only source inspection
+confirms the current internal cohort pins the original Instagram conversation
+and denies other conversations before provider dispatch. A separate bounded
+Widget cohort/budget and any exact runtime-plan approval must be prepared before
+Send; changing mode alone is insufficient. The old ledger/reserve/NULL costs
+cannot be reset or transferred silently. No additional paid test is authorized.

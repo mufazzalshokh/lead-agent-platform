@@ -19,8 +19,10 @@ selected and no covering site exception. Restoration of the original setting
 is now explicitly owner-confirmed; the cookie test and its cleanup are finished.
 The subsequent owner-reported host-document access check returned `true` for
 the Widget-specific null-document expression below: scoped host DOM denial
-**PASS**. Token isolation and disallowed-origin denial remain separate pending
-assertions; this result does not establish complete session/security proof.
+**PASS**. The subsequent agent-executed actual-request disallowed-origin check
+also passed, paired with the owner's working approved-origin installation.
+Token isolation and independent session traces remain pending; these scoped
+results do not establish complete session/security or customer E2E proof.
 
 ## Observed starting point — 2026-10-07
 
@@ -523,3 +525,54 @@ Only the two evidence documents change. Existing tests/deployment are not
 repeated; scoped format/diff validation suffices. Historical NULL costs and paid
 limits remain unchanged. Customer E2E and the other S22 gates remain pending;
 S22 is not accepted.
+
+## 2026-10-08 — live actual-request origin denial
+
+The owner supplied the normal public installation snippet from **Copy
+installation code**, following the successful approved-origin browser checks.
+The installation key is not recorded here. No setup replacement/key rotation.
+This positive baseline is owner-reported, not a new agent-issued allowed grant.
+
+One agent-executed POST to the canonical Web gateway `/v1/widget/embed-grants`
+used that public key, `requested_locale=uz`, and both Origin and page URL on
+`https://s22-origin-denial.invalid`. Request start/end:
+`2026-10-08T07:13:24.883Z` / `2026-10-08T07:13:26.024Z`.
+**Actual-request origin denial: PASS**: HTTP **404**, validated Problem
+`resource_not_found`, exact endpoint instance, request ID **`request:req-c`**;
+`Access-Control-Allow-Origin` absent, `Cache-Control: no-store` present.
+
+The probe validated the exact canonical public snippet, prohibited redirects,
+used no Cookie/Authorization, bounded fetch/body to 15 seconds/8 KB, and made
+exactly **one** request with no retries. An unexpected success would have had
+its body discarded without redemption; the observed response was a denial.
+No grant redemption, session opening, message/provider call, allowlist change
+or tenant identifier was sent. Rate-limit accounting is not a database-read-only
+claim. Source inspection supports denial before session INSERT; no independent
+persisted zero-insert or private routing/allowlist read was collected. The
+non-enumerating 404 must be interpreted with the owner's working-key baseline,
+not as standalone proof that an arbitrary key is valid.
+
+This is server-side Origin-header denial, not a second real browser-host E2E
+test. Token isolation, direct redemption/session trace and actual Widget
+customer journey remain separate. Only evidence documentation changes;
+scoped format/diff checks, no repeated runtime CI/build/deployment. Historical
+NULL costs and paid limits remain unchanged; S22 remains unaccepted.
+
+### Next boundary, not another opening check
+
+The next product proof is Journey A's **first meaningful Widget message** in
+[01 customer journeys](01-product-and-journeys.md#a-anonymous-lead-opens-the-website-widget), then the
+[09 E2E matrix](09-test-strategy.md#end-to-end-journeys): idempotent business-object
+creation, grounded reply, request, staff offer and actual customer confirmation.
+Do not repeat the passed owner opening/cookie/DOM checks. Deployed source and
+existing controlled regressions support the bearer-in-frame-memory and finite
+host protocol design; independent live bearer/redemption/session trace remains
+uncollected, not a request to expose credentials.
+
+Non-paid source preparation confirms `S22_BOOKING_COHORT` still pins the original
+Instagram conversation, four paid messages/five attempts/two per message.
+`authorizeDispatch` denies a different conversation before provider dispatch;
+the budget-store constructor validates the exact profile/limits. Changing only
+mode cannot authorize Widget. A separately bounded Widget cohort and owner
+budget/exact-plan decision must be prepared before Send, without resetting the
+existing ledger or historical NULL costs. No new test spend is authorized here.
