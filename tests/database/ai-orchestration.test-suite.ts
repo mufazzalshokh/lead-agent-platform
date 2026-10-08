@@ -1747,9 +1747,28 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
         outcome: { kind: "fallback_required", reason: "timeout", applied: false },
         allowRepair: false,
       });
-      const next = await reserve();
+      // A terminal timeout cannot create a repair attempt for the same message.
+      expect(
+        await persistence.reserve({ reference, snapshot, inputHash: new Uint8Array(32).fill(19) }),
+      ).toBeNull();
+      const receipt = await accept(harness, {
+        sequence: 101,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      const nextReference = referenceFor(receipt);
+      const nextSnapshot = await persistence.load(nextReference);
+      if (nextSnapshot === null) throw new Error("Missing subsequent Widget context");
+      const next = await persistence.reserve({
+        reference: nextReference,
+        snapshot: nextSnapshot,
+        inputHash: new Uint8Array(32).fill(19),
+      });
+      if (next === null) throw new Error("Missing subsequent Widget fixture run");
       const restarted = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
-      expect(await restarted.authorizeDispatch({ reference, reservation: next })).toBe(false);
+      expect(
+        await restarted.authorizeDispatch({ reference: nextReference, reservation: next }),
+      ).toBe(false);
       expect(await restarted.read(reference.organizationId)).toMatchObject({
         blocked: true,
         reason: "cost_unknown",

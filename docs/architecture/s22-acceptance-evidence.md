@@ -3497,6 +3497,16 @@ unavailable; the existing scoped `s22-booking-budget.yml` runs all six cases
 on disposable PostgreSQL 17 after push, without staging credentials or Gemini.
 Their result is **pending** here, not replaced by mocked PASS.
 
+First isolated run **37747745619** at preparation source
+`fe07763cc0c5c7a0f3366014af99611e54af0d9f`: **5/6 PASS**, timeout-case fixture
+**FAIL** (`Missing Widget fixture run`). The fixture attempted to reserve the
+same message after terminal timeout with `allowRepair=false`; the existing
+persistence correctly rejects that reservation. Correction explicitly asserts
+that rejection, then creates a fresh isolated subsequent inbound and verifies
+the restarted dispatch guard blocks it while retaining the unknown-cost slot.
+No runtime behavior was weakened or provider call made. Corrected real-DB result
+remains pending until the next source's focused run completes.
+
 Deployment preparation validation: mode/workflow **18/18 PASS**, existing
 infrastructure checks **10/10 PASS**, strict configuration helper **7/7 PASS**;
 Terraform validation/format and Bash syntax **PASS**. The new helper rejects
