@@ -5,15 +5,19 @@ live product and recovery/capacity proof. It does not declare S22 acceptance.
 
 ## Current checkpoint — 2026-10-08
 
-**Latest replacement preparation:** owner-supplied read-only selection
+**Latest replacement rollout:** owner-supplied read-only selection
 `lead-agent-staging-migrator-rkgt6` passed for fresh session
 `01a11b7d-ddbf-759e-b4e3-1602d9e2238c`. Exact replacement plan **37777865016**
 passed and its downloaded saved SHA256 independently matched. Only four
-in-place workload updates are planned. **Apply approval and post-apply actual
-readiness remain pending; no Send is authorized.** The session's supplied idle
+in-place workload updates were applied in **37778746987 PASS**, after the owner's
+exact-plan approval. Read-only verification **37778916467 PASS**: all 16 checks,
+whole-runtime convergence exit 0, API health 200 and Web reachability 200.
+**Current session/budget readiness remains pending; no Send is authorized.**
+The session's supplied idle
 deadline is **2026-10-08T12:59:57.129Z / 17:59:57.129 Asia/Tashkent**; a plan
 or deployment cannot extend it. The complete exact inputs and evidence are in
-the [replacement approval packet](#fresh-replacement-session-and-reviewed-plan-37777865016).
+the [replacement approval packet](#fresh-replacement-session-and-reviewed-plan-37777865016)
+and [approved rollout checkpoint](#approved-replacement-apply-and-read-only-verification).
 
 **Active milestone:** the owner approved preparation of the separately bounded
 Website Chat customer-to-confirmed-booking test. Its proposed two messages/four
@@ -4477,3 +4481,73 @@ Markdown and scoped `git diff --check`. Reuse existing 128/128 diagnostic tests,
 runtime CI/PostgreSQL/build checks; no repeat paid/DB tests, new build, migration,
 IAM change or apply. S22 remains unaccepted. The single next owner action is
 approval of **plan 37777865016 only**, with the exact saved hash above.
+
+#### Approved replacement apply and read-only verification
+
+The owner explicitly approved **"Apply plan 37777865016 only."** The agent
+dispatched **one** existing `staging-terraform.yml` apply on the approved branch,
+with the complete previously reviewed inputs, exact saved-plan SHA256
+`9f7cc11c6277a0a72c517153c37e2d1a18b8889ba6186eeebd24b6c5d9efd80c` and the
+repository-required owner approval token. Source remains
+`a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`, timestamp
+**2026-10-08T12:34:20Z**, session
+**`01a11b7d-ddbf-759e-b4e3-1602d9e2238c`**, unchanged four manifest images and
+`0031_s22_widget_inbound_route_management` provenance. No isolated provenance
+override, new build, replacement saved plan or migration execution was requested.
+
+**Direct authenticated apply evidence: 37778746987 PASS**, job **113316191084**.
+Exact source checkout/branch ancestry, reviewed-plan download, SHA256 integrity
+(`s22.tfplan: OK`) and exact full-runtime approval/scope safeguards passed.
+Sanitized guard output reports 88 configurations verified, unknown/unreviewed
+changes **NONE**, correct four update actions, no creates/destroys/replacements,
+IAM changes **NONE**, unexpected actions **NONE**, Migrator execution
+**DISABLED**. Actual Terraform result at **2026-10-08T12:43:04.3743320Z**:
+**0 added / 4 changed / 0 destroyed**. The saved plan was not rejected as stale.
+Only the reviewed shared timestamp and Worker selected-session ID changed;
+SQL/IAM/network/scaling/identity/retry controls and historical NULL costs remain
+unchanged. This apply is not permission for another plan or paid test.
+
+**Direct read-only deployment verification: 37778916467 PASS.** The supported
+`action=plan`, `phase=api-image-verify` profile reads deployed metadata and runs
+unsaved convergence inspection; it does not create another saved deployment
+plan, apply infrastructure, execute a migration or call a model. Expected
+source/timestamp/head/four images were supplied from reviewed evidence. The
+private journey-state read preserved `widget_booking` and required the exact
+replacement session binding. All **16** live verification assertions passed,
+including **whole-runtime Terraform convergence exit 0**. Unexpired sanitized
+artifact **11551282615**, `s22-api-image-live-evidence-37778916467`, was downloaded
+through authenticated `gh run download` and inspected without secret values.
+
+- API ready revision **`lead-agent-staging-api-00026-bjg`**: exact image/digest,
+  source, timestamp and `0031` provenance, runtime service account, private
+  network/subnet/egress, expected secret-reference count and readiness **PASS**.
+- Web ready revision **`lead-agent-staging-web-00022-5qn`**: exact image and
+  readiness **PASS**. Whole-runtime convergence covers all four declared
+  workloads; this artifact does not independently enumerate direct Worker or
+  Migrator live API metadata.
+- Separate bounded public `curl.exe` reads: API `/health` **HTTP200** with
+  `service=api`, `status=ok`; organization-bound Web `/staff` **HTTP200**.
+  Web reachability is anonymous, not proof of the owner's authenticated browser
+  access, session readiness or customer journey.
+
+**Remaining exact gate:** the agent has no direct authenticated runtime DB or
+owner browser access. The existing already-downloaded readiness launcher was
+given to the owner with the exact reviewed `--session` and
+`--deployment-timestamp` above. This is one new post-apply bounded read, not a
+repeat of the expired session's collection. It verifies direct Worker/Migrator
+image/provenance/binding safeguards and actual runtime-role/read-only/tenant/
+FORCE-RLS session/budget/unused-binding readiness. No fresh result has yet been
+received. Stop at the supplied idle deadline **12:59:57.129Z / 17:59:57.129
+Asia/Tashkent**; deployment cannot extend it. Keep the existing frame/website
+running, do not reload/create a substitute session and do not Send.
+
+No paid call, customer message, migration, IAM grant or job execution/configuration
+change was introduced beyond the exact approved in-place Migrator provenance
+update. The prepared read-only execution has not been dispatched by the agent.
+Historical costs remain unknown under the visible budget-only exception.
+Documentation changes are limited to this register and current journey status;
+changed-section formatting and scoped diff checks pass. Existing tests/build
+checks were reused, not rerun. S22 remains unaccepted. The single next owner
+action is the already-supplied **current exact-session read-only readiness
+command**, returning its sanitized output; paid execution remains separately
+unauthorized.

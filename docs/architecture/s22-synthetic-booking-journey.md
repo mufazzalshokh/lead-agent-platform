@@ -2,14 +2,15 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
-The owner approved **preparing** a bounded, independent Widget journey. This
-does not apply a plan, authorize Send now, repeat the Instagram journey or
-establish S22 acceptance. The existing published synthetic facts below remain
+The owner approved **preparing** a bounded, independent Widget journey and later
+approved **applying only exact replacement plan 37777865016**. This does not
+authorize Send now, repeat the Instagram journey or establish S22 acceptance.
+The existing published synthetic facts below remain
 unchanged: 100,000 UZS, 30 minutes, Monday–Saturday 09:00–18:00 Asia/Tashkent,
 staff review followed by genuine customer confirmation. Hours are not slot
 availability.
 
-**Current result: replacement plan reviewed; exact apply approval pending.**
+**Current result: replacement rollout verified; current readiness pending.**
 Owner-supplied fresh selection `lead-agent-staging-migrator-rkgt6` passed all
 runtime/read-only/tenant/FORCE-RLS guards for session
 `01a11b7d-ddbf-759e-b4e3-1602d9e2238c`, active/unbound version 2, on the same
@@ -21,12 +22,19 @@ saved-plan SHA256 is
 `9f7cc11c6277a0a72c517153c37e2d1a18b8889ba6186eeebd24b6c5d9efd80c`.
 Existing four-image build 37750247345/source `a2b2f70` is reused; only the
 shared timestamp `2026-10-08T12:34:20Z` and Worker selected-session binding
-change. No apply, migration or paid call has occurred. Exact inputs and
+change. Owner-approved **apply 37778746987 PASS**: actual zero added, four
+changed, zero destroyed; saved hash and all strict scope safeguards passed.
+Read-only **verification 37778916467 PASS**: all 16 assertions, whole-runtime
+convergence exit 0, API health 200 and Web reachability 200. No migration or paid
+call occurred. Exact inputs and
 remaining evidence boundaries are in the
 [replacement approval packet](s22-acceptance-evidence.md#fresh-replacement-session-and-reviewed-plan-37777865016).
-Do not reload/reinstall/Send. Exact-plan approval, apply/verification and the
-prepared actual readiness read must finish before idle expiry; unused binding
-integrity/readiness and separate paid execution authority remain required.
+The [rollout checkpoint](s22-acceptance-evidence.md#approved-replacement-apply-and-read-only-verification)
+separates deployment proof from current session/budget readiness. One existing
+read-only checker command has been supplied to the owner; no upload is needed.
+Do not reload/reinstall/Send. That actual readiness read must finish before idle
+expiry; unused binding integrity and separate paid execution authority remain
+required.
 
 **Previous failure: selected-session idle expiry.** Owner-supplied
 execution `lead-agent-staging-migrator-4nx9k` passed current deployment preflight,
@@ -47,7 +55,8 @@ selection, saved-plan approval, apply and readiness within the 30-minute window.
 Existing images need no rebuild. Do not assume an unused binding latch from the
 human summary; the replacement's actual budget read must prove readiness.
 The fresh selection and reviewed replacement plan above supersede the prior
-preparation blocker; no replacement apply or paid action has been performed.
+preparation blocker; replacement apply/verification now pass, no paid action
+has been performed.
 Previous failure details and evidence boundaries are recorded in the
 [evidence register](s22-acceptance-evidence.md#owner-supplied-current-readiness-idle-expired-selected-session).
 
@@ -138,8 +147,8 @@ checks are retained, not repeated. Immutable images, selected live session and
 the single reviewed plan are now collected. Exact-plan apply and deployment
 verification have passed. Current selected-session/cohort readiness is collected
 and **FAIL** due to the previous session's idle expiry. Replacement selection
-and exact plan review now pass; replacement apply, fresh readiness, explicit
-paid execution approval and the customer journey remain pending.
+and exact plan review/apply/verification now pass; fresh readiness, explicit paid
+execution approval and the customer journey remain pending.
 
 Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
 verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run
