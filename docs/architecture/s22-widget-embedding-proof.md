@@ -16,7 +16,7 @@ below as history. No independent redemption/server trace, host-token isolation
 or independently captured cookie-policy proof was collected. The subsequent
 owner reports a successful fresh opening with **Block third-party cookies**
 selected and no covering site exception. Restoration of the original setting
-remains unconfirmed.
+is now explicitly owner-confirmed; the cookie test and its cleanup are finished.
 
 ## Observed starting point — 2026-10-07
 
@@ -478,8 +478,10 @@ bootstrap under cookie blocking without a covering exception: PASS**. This is
 owner-supplied policy/behavior evidence, not an independent cookie/request trace.
 No exception list, cookie value, token or credential was requested.
 
-Cleanup is still pending: the reply did not confirm restoring the original
-**Allow** setting, so restoration was requested again without deleting cookies.
+Cleanup: the initial reply did not confirm restoring the original **Allow**
+setting, so restoration was requested again without deleting cookies. The owner
+subsequently replied **restored**, closing this owner-reported cleanup gap. No
+independent browser-setting read or new runtime assertion is claimed.
 Direct session traces, live origin/token isolation and customer E2E remain
 separate. Only documentation changes; no runtime tests, deployment or paid calls
 are repeated. Historical NULL costs remain unchanged; S22 is not accepted.

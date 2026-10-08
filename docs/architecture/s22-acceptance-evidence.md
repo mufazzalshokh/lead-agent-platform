@@ -40,7 +40,8 @@ Independent session/security proof and Widget customer E2E remain pending;
 owner-observed open/reopen alone does not establish those assertions.
 The owner also reports successful fresh opening after selecting **Block
 third-party cookies**, with no covering site exception: owner-observed cookie
-bootstrap **PASS**. Original-setting restoration remains unconfirmed in the
+bootstrap **PASS**. The owner has now explicitly confirmed restoring the original
+cookie setting, closing cleanup in the
 [cookie checkpoint](#2026-10-08--widget-cookie-block-setting-checkpoint).
 
 ## Preserved evidence
@@ -3365,10 +3366,11 @@ was unavailable in this observed UI; no universal browser-removal claim is made.
 Asked only whether an exception covers `cloudshell.dev` or `run.app` (including
 wildcards), the owner answered **no** and reiterated that **Block** was selected.
 **Owner-reported fresh bootstrap under cookie blocking without a covering
-exception: PASS**, not an independent cookie/request trace. The reply did not
-confirm restoring the original **Allow** setting; cleanup remains pending and
-restoration was requested again without deleting cookies. No Send was reported;
-no new accounting, direct session trace or paid-call-count proof is claimed.
+exception: PASS**, not an independent cookie/request trace. The initial reply did
+not confirm restoring the original **Allow** setting; restoration was requested
+again without deleting cookies. The owner subsequently replied **restored**:
+owner-reported cleanup **PASS**, not an independent setting read. No Send was
+reported; no new accounting, direct session trace or paid-call-count proof is claimed.
 Scoped documentation format/diff checks only; no runtime change, deployment,
 migration or repeated CI. Historical NULL costs and exhausted paid-dispatch
 controls stay unchanged. S22 remains unaccepted. See the
