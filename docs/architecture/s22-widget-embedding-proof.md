@@ -1,18 +1,19 @@
 # S22 synthetic Website Chat embedding proof
 
-Status: owner-reported genuine frame open/close/reopen after the prior proxy-origin
-rollout. The separate launcher correction is now deployed by exact approved apply
-**37735083627**, with read-only verification **37735337876**, whole-runtime
-convergence exit **0** and corrected public loader byte-match proof. Remaining
-owner-browser label/session-security proof is pending. No Widget message, provider
-call or S22 acceptance is authorized.
+Status: **owner-observed live launcher UX PASS** after exact approved apply
+**37735083627**. Read-only verification **37735337876**, whole-runtime convergence
+exit **0** and corrected public loader byte-match proof remain valid. The owner
+now confirms the refreshed chat closes/reopens and its closed button reads
+`Chat with us`, not `Opening…`. Session/security and customer E2E proof remain
+separate and pending. No Widget message, provider call or S22 acceptance is
+authorized by this check.
 
-Latest owner-supplied browser evidence: the genuine cross-origin frame opens,
-closes and reopens without a message. The closed launcher incorrectly retains
-`Opening…`; this separate, source-confirmed loader lifecycle defect now has a
-verified rollout, not yet a refreshed owner-browser result. Visible greeting/
-composer HTML alone is not redemption, isolation or
-blocked-third-party-cookie proof.
+Latest owner-supplied browser evidence: the restored synthetic Cloud Shell page
+shows the genuine cross-origin frame with an empty composer; the owner explicitly
+confirms successful close/reopen and the corrected launcher label. This closes
+only the launcher UX regression. The earlier stale-label observation is retained
+below as history. No independent redemption/server trace, host-token isolation
+or blocked-third-party-cookie proof was collected.
 
 ## Observed starting point — 2026-10-07
 
@@ -421,3 +422,34 @@ The temporary host may have expired: first confirm that the actual test page is
 still available; do not assume an unavailable server is an application failure.
 No Send or new paid-call authorization. Historical NULL costs and the exhausted
 cohort remain untouched; S22 remains unaccepted.
+
+## 2026-10-08 — owner verifies corrected live launcher
+
+Evidence type: **owner-supplied live browser observation**. Attribution uses the
+already verified `6a31cd8e3a37f31a7bb85329eab0aa9c4de53926` rollout / Web revision
+`lead-agent-staging-web-00020-hz9` and served-loader byte match above; no new
+revision read or exact UTC browser-test timestamp was collected.
+
+The owner showed HTTP **404** at the temporary preview root after hard refresh,
+then confirmed page availability after the supplied checksum-pinned existing-host
+startup instruction. The fixture accepts `/?authuser=0` and stops after one hour,
+but the screenshot alone does not prove expiry or a particular proxy/server
+cause. No production defect was inferred from the 404.
+
+After remounting the normal public snippet under instructions not to replace
+setup or Send, the owner supplied a screenshot on the same distinct preview
+origin showing the genuine frame, greeting and empty composer. The owner then
+explicitly confirmed the chat reopens and the closed button reads exactly
+**Chat with us**. Owner-observed open/close/reopen and corrected label: **PASS**.
+This is consistent with the corrected validated `READY` lifecycle, but no message
+event, redemption response, session ID or server trace was independently captured.
+No Send was reported; this update makes no new ledger/provider-call-count claim.
+
+Blocked-third-party-cookie fresh-session behavior, disallowed-origin denial,
+host access denial to iframe/token and actual Widget customer/booking E2E remain
+pending. The next non-paid preparation is to inspect the existing browser cookie
+setting without changing it or deleting cookies, before selecting a bounded
+fresh-session check. Only this document and the acceptance register change;
+scoped Markdown format/diff checks suffice. Existing runtime tests, build,
+deployment and read-only verification are not repeated. Historical NULL costs
+and paid-dispatch limits remain unchanged; S22 remains unaccepted.

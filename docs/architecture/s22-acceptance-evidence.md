@@ -28,14 +28,16 @@ deployment/readiness is not authenticated browser or customer E2E proof. Do not
 replace unrelated setup or send a Widget message under the exhausted Instagram
 allowance.
 
-The subsequent owner browser test shows the genuine frame opens and reports
-successful close/reopen, but its launcher retains `Opening…`. The
+The previous owner browser test showed the genuine frame opens and reports
+successful close/reopen, but its launcher retained `Opening…`. The
 [focused launcher lifecycle correction](#2026-10-08--widget-launcher-lifecycle-correction-checkpoint)
 has generated-script behavioral proof and is now deployed in approved apply
 **37735083627**, verified read-only by **37735337876** with whole-runtime
 convergence exit **0**. The served loader matches committed corrected source
-exactly; refreshed owner-browser label/session/security proof remains pending.
-Owner-observed open/reopen alone does not prove those assertions or Widget E2E.
+exactly. The [refreshed owner test](#2026-10-08--owner-confirms-corrected-widget-launcher)
+now confirms **Chat with us** and successful close/reopen: launcher UX **PASS**.
+Independent session/security proof and Widget customer E2E remain pending;
+owner-observed open/reopen alone does not establish those assertions.
 
 ## Preserved evidence
 
@@ -3322,3 +3324,28 @@ origin rejection and the remaining Widget/channel/recovery/capacity/release gate
 remain pending. Historical NULL costs remain visible, no cohort reset/new paid
 authorization, S22 unaccepted. See the
 [rollout proof](s22-widget-embedding-proof.md#2026-10-08--exact-approved-launcher-rollout-verified).
+
+## 2026-10-08 — owner confirms corrected Widget launcher
+
+**Owner-observed live launcher UX PASS**, following the approved `6a31cd8` rollout
+and preserved verifier **37735337876** / corrected-loader byte match. No new
+revision read is claimed. After a temporary preview-root 404, the owner confirmed
+page availability after the existing checksum-pinned host startup instruction.
+Expiry is plausible from the one-hour lifetime, not a proven cause; the fixture
+accepts `/?authuser=0`.
+
+The owner remounted the public snippet, supplied a screenshot of the genuine
+empty frame on the same preview origin, and explicitly confirmed the chat reopens
+and the closed button reads exactly **Chat with us**. This closes the stale
+`Opening…` label gap. Exact UTC test time, session ID and redemption/server trace
+were not collected. No Send was reported and no new provider ledger read was
+performed; no accounting or paid-call-count claim is added.
+
+Blocked-third-party-cookie fresh-session behavior, disallowed-origin denial,
+host/frame/token isolation and actual Widget customer/booking E2E remain pending,
+alongside the other preserved S22 gates. Next non-paid preparation: inspect the
+existing browser cookie setting without deleting cookies or blindly changing
+global settings. Only these two Markdown documents receive scoped format/diff
+checks; no runtime tests, broad CI, deployment, migration, setup/key replacement
+or paid call is repeated or authorized. Historical NULL costs remain visible;
+S22 remains unaccepted. See the [detailed owner proof](s22-widget-embedding-proof.md#2026-10-08--owner-verifies-corrected-live-launcher).
