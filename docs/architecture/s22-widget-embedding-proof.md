@@ -8,6 +8,13 @@ now confirms the refreshed chat closes/reopens and its closed button reads
 separate and pending. No Widget message, provider call or S22 acceptance is
 authorized by this check.
 
+**Latest boundary:** the owner-supplied attempted-send diagnostic and a separate
+isolated Chrome reproduction now distinguish an expired selected session from
+a confirmed gateway read-origin defect. The correction is locally verified,
+not deployed or customer E2E proven. Only preparation of a fresh unused session
+and one combined correction/binding plan is approved; neither apply nor Send is
+authorized. See the [current attempt investigation](#2026-10-08--attempted-send-session-expiry-and-gateway-read-origin-defect).
+
 Latest owner-supplied browser evidence: the restored synthetic Cloud Shell page
 shows the genuine cross-origin frame with an empty composer; the owner explicitly
 confirms successful close/reopen and the corrected launcher label. This closes
@@ -609,3 +616,108 @@ No live selection, provider request, message, infrastructure apply or migrations
 were performed by this preparation. After a verified build, select the live
 session without sending, prepare one fresh exact plan, and stop for its approval.
 Do not repeat unchanged embedding/security checks or expose credentials.
+
+## 2026-10-08 — attempted Send: session expiry and gateway read-origin defect
+
+### Owner-supplied live evidence and attribution limits
+
+The owner subsequently approved the separately bounded Website Chat booking
+test, then reported that pressing Enter at approximately **18:00 Asia/Tashkent**
+closed the frame and changed its launcher to **Start a new chat**. The owner
+returned one read-only diagnostic execution,
+**`lead-agent-staging-migrator-29zhz`**, for the exact reviewed session
+**`01a11b7d-ddbf-759e-b4e3-1602d9e2238c`**. This is owner-supplied live evidence,
+not an agent-run runtime DB read.
+
+The exact selected session remained **active, version 2 and contact/conversation
+unbound**, with its idle deadline **2026-10-08T12:59:57.129Z** already elapsed.
+The scoped Widget accounting contained **zero customer messages and zero
+provider reservations**. These facts close this selected-session collection
+gap; they do not prove another session's intake or attribute a provider call.
+Rejected initial intake need not change the persisted status to `expired`, so
+the active label does not override the idle-validity guard.
+
+The same bounded collection included separate **POST201 → GET/messages403**
+HTTP candidates. They were filtered by time and route, **not correlated to the
+private session bearer**. The accepted candidate conversations must not be
+substituted for this still-unbound exact session. HTTP201 does not establish
+model generation, reply persistence, delivery, budget eligibility or booking.
+No diagnostic replay, customer resend, paid call, migration or job-configuration
+change was performed by this collection. Historical NULL costs remain unknown.
+
+### Confirmed implementation mechanism, independent of session attribution
+
+The generated frame handles Enter with `preventDefault()` and submission;
+Enter is not a close command. After successful initial intake it assigns the
+returned bound bearer and immediately performs a same-origin messages GET.
+The browser supplies the platform `Origin` on POST but omits it on this GET.
+The original Web gateway copied that absence upstream. The API's actual Widget
+read contract normalizes the request Origin and matches it to the signed token;
+an empty Origin raises `WidgetOriginInvalidError`, mapped to **403** before the
+tenant-owned message reader. The frame treats 401/403 as expiry and sends a
+validated `EXPIRED` message; the parent removes it and displays **Start a new
+chat**. This is a proven implementation/browser mechanism, not proof that the
+uncorrelated HTTP candidates belong to the owner's selected session.
+
+The parent-host Origin is not forwarded as an API authorization shortcut. Its
+validated value remains in the signed token's separate `embeddingOrigin`, while
+the transport Origin is the configured platform. Correcting a missing read
+transport Origin must not replace either authority with a browser-supplied host,
+request URL, Host, Referer or forwarded header.
+
+### Smallest correction and local/native proof
+
+The correction is restricted to **GET** on the exact canonical UUIDv7
+`/v1/widget/conversations/:id` and `/messages` read paths. Only when Origin is
+absent, Fetch Metadata is `same-origin` with `cors` or `same-origin` mode and
+`empty` destination, and a syntactically bounded bearer is present, the gateway
+adds the independently validated trusted `WIDGET_PLATFORM_ORIGIN`. Existing
+empty/null/foreign Origin headers are preserved. Missing/invalid trusted
+configuration fails closed. Mutation, preflight, staff, bootstrap and other
+routes are unchanged. The API still verifies the actual signed token, tenant,
+session/JTI, conversation ownership, current status and origin eligibility; a
+syntactic bearer is not authorization. No idle lifetime, RLS, budget or social
+eligibility boundary is relaxed.
+
+Sanitized gateway telemetry records only a generated request ID, conversation
+ID, read-route kind, Origin presence/normalization, finite outcome code and HTTP
+status. It includes no bearer, query string, cookie, customer content, provider
+payload or raw upstream error. Existing authoritative API rejection statuses
+remain visible rather than being turned into success.
+
+**Actual isolated Chrome before/after:** the original gateway source with the
+genuine generated loader/frame produced **POST201, read403 and EXPIRED** against
+a strict controlled local upstream. The corrected gateway produced **read200**
+and kept the frame open. This exercises native browser GET/POST header behavior,
+not a manually supplied Origin in a mocked fetch. It uses isolated local
+fixtures and a controlled upstream: **no live database, Gemini call, owner
+profile, staging credential or real customer journey**. It does not establish
+the corrected deployed revision, grounded answer, outbound delivery or booking.
+The **62/62** focused gateway tests also pass, covering the exact internal Next
+request-URL context, spoofed forwarding headers, fetch-metadata/bearer guards,
+present Origin preservation, cross-route/mutation behavior, trusted-config
+failure, authoritative upstream rejection and private-free telemetry. Four
+additional cases prove an injected throwing telemetry observer cannot replace
+upstream200/403 or transport502/504, retry its report, or leak its error detail.
+Existing
+opening/label/security successes are retained, not repeated as new E2E proof.
+
+### Current authorization and remaining proof
+
+The owner approved **preparing a fresh unused session and one combined
+correction/binding saved plan only**. No exact new apply or Send is approved.
+Prepare and verify tooling, immutable runtime provenance and plan inputs before
+requesting the fresh frame, then record its actual remaining idle lifetime.
+Do not revive the expired session, manufacture last activity, substitute a
+session after a committed budget binding, reset allowance or replay the old
+customer event. The failed frame cleared its private in-memory bearer and was
+removed; a manual new chat is a new session, not silent continuation.
+
+Runtime rollout still requires repository-supported reviewed immutable images,
+one exact saved plan and separate owner approval. Current deployed-session and
+unused-budget readiness must pass before a separately authorized bounded
+customer/staff journey. Staff acceptance alone is not booking confirmation.
+This correction remains **locally verified, not live staging/E2E verified**;
+S22 remains unaccepted. Current rollout/preparation provenance belongs in the
+[evidence register](s22-acceptance-evidence.md) and
+[synthetic journey checkpoint](s22-synthetic-booking-journey.md).

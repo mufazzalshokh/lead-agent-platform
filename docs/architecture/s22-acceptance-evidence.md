@@ -3,7 +3,157 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-08 — Widget attempt evidence and same-origin read correction
+
+### Observations and evidence boundaries
+
+Owner-supplied execution **`lead-agent-staging-migrator-29zhz`** passed download,
+reviewed-runtime/binding, private-network/zero-retry, runtime-role/read-only,
+tenant-context, FORCE-RLS and non-owner guards. Reader SHA256:
+`17473dcc4377a9c36e79214c2091b2a9f90c4df8eb705ff1a8c57d2e094b9eaa`.
+The exact approved Widget session `01a11b7d-ddbf-759e-b4e3-1602d9e2238c`
+remained **active/2, contact/conversation unbound**, last activity
+`2026-10-08T12:29:57.129Z`, idle validity false and absolute validity true.
+Initial intake can reject idle expiry without persisting an expired status.
+Its idle deadline was **12:59:57.129Z**, immediately before the owner's reported
+18:00 Asia/Tashkent attempted Send. These records support expired original
+intake, not an accepted inbound or a generated reply.
+
+Actual cohort read was blocked (`widget_session_unavailable`), **0 Widget
+customer messages / 0 provider reservations / 0 pending reserve**, known AI
+cost **USD0.008714**, combined reserved exposure **USD1.042110**. Unbound-session
+child queries were explicitly skipped, not queried-and-empty. Historical NULL
+costs remain unknown; no message, provider call, replay, renewal, replacement,
+migration, IAM or job-configuration change occurred in this diagnostic.
+
+The bounded **12:58–13:03 UTC** HTTP candidates separately showed initial
+POST401 and three POST201 → GET/messages403 sequences. The candidate
+conversation IDs were `01a11b99-f157-74fb-acc4-ac428830a694`,
+`01a11b9a-294a-783a-863a-45c6c1c589d5` and
+`01a11b9a-e722-74ae-9366-39816b67c9d7`. HTTP metadata does not correlate their
+private session bearer, tenant, customer or exact persistence. They are **not**
+attributed to the approved unbound session. Their raw API error codes were not
+collected. No additional read of those unknown conversations is authorized by
+the original exact-session scope alone.
+
+### Mechanism established before changing behavior
+
+The exact gateway implementation is unchanged between deployed source
+`a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` and baseline tooling commit
+`833901476b77b5fddfa1a7bbe7688b19ec16d26c`. Its baseline file SHA256 is
+`3196720cf6330b25a7ff4d09b524f6f169b208b66e70b5ce2c267b1e5b1009f2`.
+API receipt, application authorization and frame/loader source establish:
+
+1. Real browser POST carries Origin; same-origin GET does not. The gateway
+   previously forwarded that absence unchanged.
+2. Widget API `originOf` converts absent Origin to an empty string. Application
+   request verification calls origin normalization before signed-token/session
+   verification. Empty origin raises `WidgetOriginInvalidError`, HTTP403
+   `origin_not_allowed`.
+3. After successful intake, the real frame immediately polls messages. Any
+   HTTP401/403 expires its bearer and posts EXPIRED; the validated loader removes
+   the iframe and displays Start a new chat.
+
+An isolated **real Chrome / local HTTPS / strict mocked upstream** reproduction
+uses the actual generated loader/frame, cross-origin embedding and native Enter
+events. Baseline POST201 is followed by an Origin-absent same-origin GET403,
+EXPIRED, removed frame and restart label. Corrected gateway gives GET200,
+preserves the frame and renders the synthetic reply. This is browser transport
+proof, **not live DB, provider, budget, or customer E2E proof**.
+
+| Hypothesis                                             | Disposition and distinguishing evidence                                                                                                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Approved first intake idle-expired                     | Exact session unbound/unchanged with idle invalid, no Widget reservation; consistent with POST401 candidate. Exact candidate bearer/error not collected.                             |
+| Accepted creation then missing-Origin read rejection   | Proven source mechanism and real browser reproduction. Explains the observed candidate class, but does not bind any candidate to the original approved session.                      |
+| Poll rejected for expiry/JTI or conversation ownership | Such source paths yield HTTP401 or HTTP404, respectively; not the reproduced fresh-token HTTP403 mechanism. No claim that all live authorization causes were independently excluded. |
+| Provider failed after accepted approved intake         | No approved-session conversation or reservation exists. Provider behavior cannot explain its pre-intake rejection or the locally reproduced read403.                                 |
+| Enter performs native navigation/closes chat directly  | Rejected by actual generated Enter handler and native-key reproduction: expiry follows HTTP rejection, not default form navigation.                                                  |
+
+### Smallest correction and unchanged boundaries
+
+Only the Web gateway changes application behavior. It supplies trusted
+`WIDGET_PLATFORM_ORIGIN` when Origin is **absent**, method GET, path is one
+canonical UUIDv7 Widget conversation or messages read, bounded bearer syntax
+matches the API, and Fetch Metadata states same-origin fetch/cors with empty
+destination. It never derives authority from Request URL, Host, Forwarded,
+Referer, embedding origin or tenant selectors. Explicit foreign/empty/null
+Origin is preserved for rejection; non-Widget routes and mutations are unchanged.
+Missing/invalid trusted configuration fails closed before upstream access.
+The existing API still checks signed platform/embedding origins, tenant,
+session/JTI, idle/absolute expiry, conversation ownership, rate limits and RLS.
+No cookie dependence, expiry extension, session revival, retry, replay,
+social-thread eligibility change or budget bypass is added.
+
+Safe `widget_gateway_read` telemetry records a generated request ID, validated
+conversation ID, read route, Origin presence/normalization booleans, safe outcome
+code and upstream HTTP status. It excludes header values, origins, bearers,
+query values, customer content and private configuration. This makes later
+deployed read rejection distinguishable without repeated broad/manual queries.
+Review reproduced an introduced observer defect: a throwing injected reporter
+changed upstream200 into a rejected proxy promise and was invoked twice. The
+reporter is now isolated with a finite private-free fallback event. Four
+regressions preserve upstream200/403 and transport502/504 with one invocation;
+the reporter cannot turn an authoritative response into a retry.
+
+Focused verification for this correction and recovery preparation:
+
+- `node .github/scripts/s22-widget-origin-browser.mjs both` — **PASS**, exit 0, actual isolated Chrome **154.0.8037.98**. Baseline POST201/Origin-absent GET403 removes the frame; corrected POST201/GET200 retains it and renders the synthetic reply. Controlled loopback upstream, no owner profile/DB/provider/channel access.
+- `node --test .github/scripts/s22-widget-origin-browser.test.mjs` — **22/22 PASS**; both tool/test syntax checks PASS. Earlier local harness attempts failed closed on CDP/Git timeouts and a Windows temporary-profile EBUSY lock, not a demonstrated production assertion failure. The final helper loads the exact pinned source before starting Chrome, bounds read-only Git calls at 15 seconds, bounds CDP startup and validates/retries only its owned temporary-profile cleanup. Browser/application assertions and runtime deadlines are unchanged; primary versus cleanup failures are safely distinguished. Final native-Node run passed both assertions and cleanup.
+- Gateway suite: `node node_modules/vitest/vitest.mjs run apps/web/src/lib/api-gateway.test.ts` — **62/62 PASS**, including absent/present Origin, internal Next URL, spoofed forwarding, metadata/bearer/config guards, rejected ownership/session outcomes, unchanged mutations/routes and safe observer behavior.
+- Related Widget frame/embed/application/security suites — **125 tests including the then-58 gateway cases PASS** in the six-file focused run; the API suite's first test hit the local 5-second test timer under concurrent imports/build. Its isolated run `node node_modules/vitest/vitest.mjs run apps/api/tests/widget.test.ts --testTimeout 30000` then passed **12/12**, first test 1.562 seconds. This CLI wall-time allowance is not a change to runtime/provider/DB deadlines or an SLA claim.
+- `node --test .github/scripts/s22-widget-readiness.test.mjs .github/scripts/s22-widget-readiness-readonly.test.mjs .github/scripts/s22-widget-session-select.test.mjs` — **151/151 PASS**, real generated-ESM subprocess fixtures plus controlled cloud responses; no live access or provider call.
+- Web TypeScript (`node node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit`) — **PASS** after the observer correction.
+- Production Web build (`node node_modules/next/dist/bin/next build`, working directory `apps/web`) — **PASS**, including final observer isolation, TypeScript and route generation.
+- Scoped ESLint/Prettier and in-scope diff checks — **PASS** for gateway and preparation helpers. Unrelated README/S11 edits and the untracked notices patch are preserved and excluded.
+
+The selector's reviewed timestamp now matches the existing deployed
+`2026-10-08T12:34:20Z` while retaining its original `a2b2f708` source/image pins.
+Readiness now accepts only a programmatically supplied, copied/frozen reviewed
+runtime packet of exact source, Worker/Migrator references and timestamp;
+explicit selected-session/timestamp inputs must match it. Unknown keys,
+noncanonical time/source/digests and live provenance mismatch fail closed before
+execution. Fixed project/region, migration head, identity, secret reference,
+network/retries, tenant/channel/origin and budget guards remain unchanged.
+Historical exports/defaults remain compatible with the existing attempted-send
+reader; no arbitrary provenance CLI or expectation learned from live metadata
+is added. A future wrapper must use verified build and exact reviewed-plan
+literals, not guessed values.
+
+### Preparation authority and remaining live gap
+
+The owner explicitly approved **preparation only** of one fresh unused real-frame
+session and its binding with this correction in **one reviewed deployment plan**.
+The old session is not revived/reused. Previously approved limits remain
+unchanged: 2 total customer inbounds, at most 4 physical attempts, at most
+2/message, reserve **801432 USD micros/attempt**, additional allowance
+**USD3.205728**, maximum combined planning exposure **USD4.247838**,
+USD5 target/USD10 hard ceiling and visible historical NULLs/exception.
+This approval does not authorize Send, new provider calls, deployment/apply,
+extra sessions or repetition of the original Instagram journey.
+
+Build and verify fresh immutable correction images and finish pinned selector/
+readiness tooling **before** requesting the fresh real frame. Then obtain one
+owner-supplied runtime/tenant/RLS-guarded selection, prepare one combined full
+runtime plan, inspect its exact saved hash and scope, obtain exact-plan approval,
+apply/verify, and prove actual session/budget readiness within the idle window.
+No saved plan, digest, approval hash or live proof is reused for changed runtime
+code. No migration, dependency or IAM change is required. **S22 remains
+unaccepted; corrected deployed transport and Website Chat booking are pending.**
+
 ## Current checkpoint — 2026-10-08
+
+**Latest unresolved Widget boundary:** owner-supplied read-only execution
+`lead-agent-staging-migrator-29zhz` collected the failed first-Send attempt.
+The approved session remained unbound and idle-expired, with zero Widget
+messages/reservations. Separately, exact source and isolated real Chrome
+reproduce successful intake followed by a missing-Origin GET rejection and
+frame expiry. A narrowly scoped Web-gateway correction is being verified.
+The owner approved **preparation only** of one fresh unused session plus its
+binding in one correction-image plan; no new apply or Send is authorized.
+Finish images/tooling before opening the fresh frame. See the
+[current investigation](#2026-10-08--widget-attempt-evidence-and-same-origin-read-correction).
+
+**Previously completed preparation:**
 
 **Latest replacement rollout:** owner-supplied read-only selection
 `lead-agent-staging-migrator-rkgt6` passed for fresh session

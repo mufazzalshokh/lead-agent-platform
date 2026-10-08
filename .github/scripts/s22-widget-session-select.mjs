@@ -19,7 +19,7 @@ export const reviewedSelectionJob = Object.freeze({
   region: "me-central1",
   job: "lead-agent-staging-migrator",
   source: "a2b2f708d2e804d2c3d2be66426fa7b49d8203c9",
-  timestamp: "2026-10-08T11:00:45Z",
+  timestamp: "2026-10-08T12:34:20Z",
   head: "0031_s22_widget_inbound_route_management",
   image:
     "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276",

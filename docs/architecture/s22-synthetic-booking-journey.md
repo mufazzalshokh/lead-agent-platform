@@ -14,7 +14,35 @@ unchanged: 100,000 UZS, 30 minutes, Monday–Saturday 09:00–18:00 Asia/Tashken
 staff review followed by genuine customer confirmation. Hours are not slot
 availability.
 
-**Current result: first approved Send attempted; diagnosis pending live evidence.**
+**Current result: attempted-send evidence collected; read-path correction and
+fresh-session preparation in progress.** Owner-supplied read-only execution
+`lead-agent-staging-migrator-29zhz` proved the exact approved session remained
+active/unbound version 2 with unchanged last activity, expired idle validity,
+zero Widget customer messages/provider reservations and zero pending reserve.
+Known AI cost remains USD0.008714; combined reserved exposure USD1.042110.
+Collection PASS is not customer E2E PASS. The original approved session cannot
+be reused or silently substituted.
+
+Nearby, non-bearer-correlated HTTP candidates include POST401 and repeated
+POST201 followed immediately by GET/messages403. These are not attributed to
+the selected session. Source inspection and an isolated real Chrome reproduction
+confirm a separate read-path defect: browser same-origin GET omits Origin,
+the Web gateway forwards it unchanged, and the API rejects it before checking
+the signed session. The frame treats that 403 as expiry and discards its bearer.
+The focused gateway correction normalizes only absent Origin on canonical
+Widget GET reads carrying same-origin Fetch Metadata and a bounded bearer,
+using trusted WIDGET_PLATFORM_ORIGIN. Explicit/foreign/null origins, mutations,
+tenant/session/ownership checks and idle limits remain unchanged.
+
+The owner now approved **preparation only** of one fresh unused real-frame
+session and one combined correction-image/session-binding plan. This is not
+apply or Send approval, a budget increase, or permission to replay the failed
+event. Finish checks, immutable images and diagnostic tooling before requesting
+the fresh frame; do not spend its 30-minute idle window on the build. New saved
+plan review/approval, deployed readiness and separately bounded execution remain
+required. See the [current investigation](s22-acceptance-evidence.md#2026-10-08--widget-attempt-evidence-and-same-origin-read-correction).
+
+**Previous observation before collection:**
 The owner reports pressing Enter at approximately **18:00 Asia/Tashkent /
 13:00 UTC on 2026-10-08**, after which the frame closed and the launcher showed
 **Start a new chat**. The selected session's idle deadline was **17:59:57.129
@@ -32,7 +60,8 @@ and sanitized HTTP candidates in **12:58–13:03 UTC**. It runs one read-only
 diagnostic with runtime/RLS/provenance/VPC/zero-retry safeguards, not a new paid
 journey. Collection PASS means observations were retrieved, not readiness,
 generation or delivery PASS. HTTP candidates are not bearer-correlated proof.
-No runtime behavior change or additional rollout is justified before that read.
+That read has now returned as `29zhz`; its original scope and provenance remain
+recorded rather than being replaced by a new diagnostic.
 Tooling and distinguishing evidence are in the
 [attempt investigation](s22-acceptance-evidence.md#approved-widget-send-at-idle-deadline-investigation).
 

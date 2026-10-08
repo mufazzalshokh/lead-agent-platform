@@ -45,10 +45,16 @@ const environment = (container) => {
   }
   return values;
 };
-const provenance = (values, image, includeDigest, timestamp = pin.timestamp) => {
+const provenance = (
+  values,
+  image,
+  includeDigest,
+  timestamp = pin.timestamp,
+  source = pin.source,
+) => {
   for (const [name, expected] of Object.entries({
     DEPLOYMENT_ENVIRONMENT: "staging",
-    DEPLOYMENT_GIT_SHA: pin.source,
+    DEPLOYMENT_GIT_SHA: source,
     DEPLOYMENT_TIMESTAMP: timestamp,
     DEPLOYMENT_MIGRATION_HEAD: pin.head,
     ...(includeDigest ? { DEPLOYMENT_IMAGE_DIGEST: image } : {}),
@@ -67,23 +73,68 @@ const networkMatches = (interfaces) =>
     `projects/${pin.project}/regions/${pin.region}/subnetworks/lead-agent-staging-cloud-run`,
   ].includes(interfaces[0].subnetwork);
 
-const prepareReadinessInputs = (sessionId, deploymentTimestamp) => {
+const canonicalTimestamp = (value) =>
+  typeof value === "string" &&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(value) &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(value).toISOString() === value.replace(/Z$/u, ".000Z");
+
+// A reviewed wrapper supplies these literals from verified build/plan evidence.
+// They are never inferred from the job/Worker being checked or exposed as CLI selectors.
+const copyReviewedRuntime = (value) => {
+  if (value === undefined) return undefined;
+  requireSafe(
+    value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.keys(value).sort().join() === "image,source,timestamp,worker",
+    "REVIEWED_RUNTIME_INVALID",
+  );
+  const reviewed = Object.freeze({
+    source: value.source,
+    worker: value.worker,
+    image: value.image,
+    timestamp: value.timestamp,
+  });
+  requireSafe(
+    typeof reviewed.source === "string" &&
+      /^[0-9a-f]{40}$/u.test(reviewed.source) &&
+      typeof reviewed.worker === "string" &&
+      /^me-central1-docker\.pkg\.dev\/lead-agent-stg-739284\/lead-agent\/worker@sha256:[0-9a-f]{64}$/u.test(
+        reviewed.worker,
+      ) &&
+      typeof reviewed.image === "string" &&
+      /^me-central1-docker\.pkg\.dev\/lead-agent-stg-739284\/lead-agent\/migrator@sha256:[0-9a-f]{64}$/u.test(
+        reviewed.image,
+      ) &&
+      canonicalTimestamp(reviewed.timestamp),
+    "REVIEWED_RUNTIME_INVALID",
+  );
+  return reviewed;
+};
+const prepareReadinessInputs = (sessionId, deploymentTimestamp, reviewedRuntime = undefined) => {
+  const reviewed = copyReviewedRuntime(reviewedRuntime);
+  const runtime = reviewed === undefined ? pin : Object.freeze({ ...pin, ...reviewed });
+  if (reviewed !== undefined)
+    requireSafe(
+      sessionId !== undefined && deploymentTimestamp !== undefined,
+      "READINESS_EXPECTATION_INVALID",
+    );
   if (sessionId === undefined && deploymentTimestamp === undefined)
-    return { scope: readinessScope, timestamp: pin.timestamp };
+    return { scope: readinessScope, timestamp: pin.timestamp, runtime, reviewedRuntime: reviewed };
   const scope = parseReadinessScope(sessionId);
   requireSafe(
     sessionId !== undefined && scope.session !== readinessScope.session,
     "EXPIRED_SELECTION_REUSE_FORBIDDEN",
   );
   requireSafe(
-    typeof deploymentTimestamp === "string" &&
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(deploymentTimestamp) &&
-      Number.isFinite(Date.parse(deploymentTimestamp)) &&
-      new Date(deploymentTimestamp).toISOString() === deploymentTimestamp.replace(/Z$/u, ".000Z") &&
-      deploymentTimestamp > pin.timestamp,
+    canonicalTimestamp(deploymentTimestamp) &&
+      (reviewed === undefined
+        ? deploymentTimestamp > pin.timestamp
+        : deploymentTimestamp === reviewed.timestamp),
     "READINESS_EXPECTATION_INVALID",
   );
-  return { scope, timestamp: deploymentTimestamp };
+  return { scope, timestamp: deploymentTimestamp, runtime, reviewedRuntime: reviewed };
 };
 
 // Only exact, explicitly supplied replacement expectation; never learn it from live metadata.
@@ -108,8 +159,12 @@ export function parseReadinessArguments(args) {
   return inputs;
 }
 
-export function verifyReadinessJob(metadata, inputs = {}) {
-  const { timestamp } = prepareReadinessInputs(inputs.sessionId, inputs.deploymentTimestamp);
+export function verifyReadinessJob(metadata, inputs = {}, reviewedRuntime = undefined) {
+  const { timestamp, runtime } = prepareReadinessInputs(
+    inputs.sessionId,
+    inputs.deploymentTimestamp,
+    reviewedRuntime,
+  );
   const task = metadata?.spec?.template?.spec?.template?.spec;
   const container = task?.containers?.[0];
   requireSafe(
@@ -119,7 +174,7 @@ export function verifyReadinessJob(metadata, inputs = {}) {
   );
   requireSafe(
     task?.containers?.length === 1 &&
-      container.image === pin.image &&
+      container.image === runtime.image &&
       JSON.stringify(container.command) === '["node"]' &&
       JSON.stringify(container.args) === '["dist/index.js"]',
     "DIAGNOSTIC_IMAGE_MISMATCH",
@@ -136,7 +191,7 @@ export function verifyReadinessJob(metadata, inputs = {}) {
     "EXPLICIT_ZERO_RETRIES_REQUIRED",
   );
   const values = environment(container);
-  provenance(values, pin.image, true, timestamp);
+  provenance(values, runtime.image, true, timestamp, runtime.source);
   const database = values.get("DATABASE_URL");
   requireSafe(
     database?.value === undefined &&
@@ -159,19 +214,23 @@ export function verifyReadinessJob(metadata, inputs = {}) {
   );
 }
 
-export function verifyReadinessWorker(metadata, inputs = {}) {
-  const { scope, timestamp } = prepareReadinessInputs(inputs.sessionId, inputs.deploymentTimestamp);
+export function verifyReadinessWorker(metadata, inputs = {}, reviewedRuntime = undefined) {
+  const { scope, timestamp, runtime } = prepareReadinessInputs(
+    inputs.sessionId,
+    inputs.deploymentTimestamp,
+    reviewedRuntime,
+  );
   const template = metadata?.template;
   const container = template?.containers?.[0];
   requireSafe(
     metadata?.name ===
       `projects/${pin.project}/locations/${pin.region}/workerPools/lead-agent-staging-worker` &&
       template?.containers?.length === 1 &&
-      container.image === pin.worker,
+      container.image === runtime.worker,
     "WORKER_SCOPE_OR_IMAGE_MISMATCH",
   );
   const values = environment(container);
-  provenance(values, pin.worker, false, timestamp);
+  provenance(values, runtime.worker, false, timestamp, runtime.source);
   requireSafe(
     values.get("AI_JOURNEY_MODE")?.value === "widget_booking" &&
       values.get("AI_JOURNEY_WIDGET_SESSION_ID")?.value === scope.session &&
@@ -410,7 +469,15 @@ const cloud = async (args, timeout = 10000) => {
   }
 };
 export async function runReadiness(overrides = {}) {
-  const { scope } = prepareReadinessInputs(overrides.sessionId, overrides.deploymentTimestamp);
+  const expectations = Object.freeze({
+    sessionId: overrides.sessionId,
+    deploymentTimestamp: overrides.deploymentTimestamp,
+  });
+  const { scope, reviewedRuntime } = prepareReadinessInputs(
+    expectations.sessionId,
+    expectations.deploymentTimestamp,
+    overrides.reviewedRuntime,
+  );
   const runCloud = overrides.cloud ?? cloud,
     runFetch = overrides.fetch ?? fetch;
   const now = overrides.now ?? (() => Date.now()),
@@ -453,7 +520,8 @@ export async function runReadiness(overrides = {}) {
     await request(
       `https://run.googleapis.com/v2/projects/${pin.project}/locations/${pin.region}/workerPools/lead-agent-staging-worker`,
     ),
-    overrides,
+    expectations,
+    reviewedRuntime,
   );
   verifyReadinessJob(
     JSON.parse(
@@ -467,7 +535,8 @@ export async function runReadiness(overrides = {}) {
         "--format=json",
       ]),
     ),
-    overrides,
+    expectations,
+    reviewedRuntime,
   );
   const logging = (execution) =>
     request("https://logging.googleapis.com/v2/entries:list", {
@@ -558,6 +627,7 @@ const failureCodes = new Set([
   "ENVIRONMENT_INVALID",
   "READINESS_SCOPE_INVALID",
   "READINESS_EXPECTATION_INVALID",
+  "REVIEWED_RUNTIME_INVALID",
   "EXPIRED_SELECTION_REUSE_FORBIDDEN",
   "PROVENANCE_MISMATCH",
   "DIAGNOSTIC_SCOPE_MISMATCH",

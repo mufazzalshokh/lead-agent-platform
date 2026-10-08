@@ -37,7 +37,7 @@ const interfaces = [
     subnetwork: `projects/${pin.project}/regions/${pin.region}/subnetworks/lead-agent-staging-cloud-run`,
   },
 ];
-const job = (inputs = {}) => ({
+const job = (inputs = {}, reviewed = pin) => ({
   metadata: { name: pin.job, labels: { "cloud.googleapis.com/location": pin.region } },
   spec: {
     template: {
@@ -54,12 +54,13 @@ const job = (inputs = {}) => ({
             serviceAccountName: `lead-agent-staging-migrator@${pin.project}.iam.gserviceaccount.com`,
             containers: [
               {
-                image: pin.image,
+                image: reviewed.image,
                 command: ["node"],
                 args: ["dist/index.js"],
                 env: [
                   ...env({
-                    DEPLOYMENT_IMAGE_DIGEST: pin.image,
+                    DEPLOYMENT_IMAGE_DIGEST: reviewed.image,
+                    DEPLOYMENT_GIT_SHA: reviewed.source,
                     DEPLOYMENT_TIMESTAMP: inputs.deploymentTimestamp ?? pin.timestamp,
                   }),
                   {
@@ -80,7 +81,7 @@ const job = (inputs = {}) => ({
     },
   },
 });
-const worker = (inputs = {}) => ({
+const worker = (inputs = {}, reviewed = pin) => ({
   name: `projects/${pin.project}/locations/${pin.region}/workerPools/lead-agent-staging-worker`,
   scaling: { manualInstanceCount: 1 },
   terminalCondition: { state: "CONDITION_SUCCEEDED" },
@@ -89,8 +90,9 @@ const worker = (inputs = {}) => ({
     vpcAccess: { egress: "PRIVATE_RANGES_ONLY", networkInterfaces: interfaces },
     containers: [
       {
-        image: pin.worker,
+        image: reviewed.worker,
         env: env({
+          DEPLOYMENT_GIT_SHA: reviewed.source,
           AI_JOURNEY_MODE: "widget_booking",
           AI_JOURNEY_WIDGET_SESSION_ID: inputs.sessionId ?? readinessScope.session,
           DEPLOYMENT_TIMESTAMP: inputs.deploymentTimestamp ?? pin.timestamp,
@@ -228,6 +230,116 @@ test("explicit replacement expectations retain exact images/source and require m
   assert.equal(collectReadinessLogs(entries(false, scope), scope).at(-1).outcome, "PASS");
   assert.throws(() => collectReadinessLogs(entries(), scope), { code: "LOG_METADATA_INVALID" });
 });
+
+// Controlled fixtures only; real wrapper literals come from verified build/plan artifacts.
+const futureRuntime = Object.freeze({
+  source: "b".repeat(40),
+  worker: `me-central1-docker.pkg.dev/${pin.project}/lead-agent/worker@sha256:${"c".repeat(64)}`,
+  image: `me-central1-docker.pkg.dev/${pin.project}/lead-agent/migrator@sha256:${"d".repeat(64)}`,
+  timestamp: "2026-10-08T15:00:00Z",
+});
+const futureInputs = Object.freeze({
+  sessionId: replacement.sessionId,
+  deploymentTimestamp: futureRuntime.timestamp,
+});
+test("explicit reviewed runtime uses exact future images/source/time without changing historical defaults", () => {
+  verifyReadinessJob(job(futureInputs, futureRuntime), futureInputs, futureRuntime);
+  verifyReadinessWorker(worker(futureInputs, futureRuntime), futureInputs, futureRuntime);
+  verifyReadinessJob(job());
+  verifyReadinessWorker(worker());
+  assert.throws(() => verifyReadinessJob(job(futureInputs), futureInputs, futureRuntime), {
+    code: "DIAGNOSTIC_IMAGE_MISMATCH",
+  });
+  assert.throws(() => verifyReadinessWorker(worker(futureInputs), futureInputs, futureRuntime), {
+    code: "WORKER_SCOPE_OR_IMAGE_MISMATCH",
+  });
+  const wrongSource = job(futureInputs, futureRuntime);
+  wrongSource.spec.template.spec.template.spec.containers[0].env.find(
+    (v) => v.name === "DEPLOYMENT_GIT_SHA",
+  ).value = pin.source;
+  assert.throws(() => verifyReadinessJob(wrongSource, futureInputs, futureRuntime), {
+    code: "PROVENANCE_MISMATCH",
+  });
+  const wrongTime = worker(futureInputs, futureRuntime);
+  wrongTime.template.containers[0].env.find((v) => v.name === "DEPLOYMENT_TIMESTAMP").value =
+    pin.timestamp;
+  assert.throws(() => verifyReadinessWorker(wrongTime, futureInputs, futureRuntime), {
+    code: "PROVENANCE_MISMATCH",
+  });
+  const wrongHead = job(futureInputs, futureRuntime);
+  wrongHead.spec.template.spec.template.spec.containers[0].env.find(
+    (v) => v.name === "DEPLOYMENT_MIGRATION_HEAD",
+  ).value = "0032_unapproved";
+  assert.throws(() => verifyReadinessJob(wrongHead, futureInputs, futureRuntime), {
+    code: "PROVENANCE_MISMATCH",
+  });
+});
+for (const [name, reviewedRuntime] of [
+  ["null", null],
+  ["array", []],
+  ["string", "unreviewed"],
+  [
+    "missing key",
+    { source: futureRuntime.source, worker: futureRuntime.worker, image: futureRuntime.image },
+  ],
+  ["extra project selector", { ...futureRuntime, project: "foreign" }],
+  ["extra migration selector", { ...futureRuntime, head: "0032_unapproved" }],
+  ["uppercase source", { ...futureRuntime, source: "B".repeat(40) }],
+  ["abbreviated source", { ...futureRuntime, source: "bbbbbbb" }],
+  [
+    "mutable worker tag",
+    { ...futureRuntime, worker: futureRuntime.worker.split("@")[0] + ":latest" },
+  ],
+  [
+    "wrong registry",
+    { ...futureRuntime, worker: futureRuntime.worker.replace(pin.project, "foreign-project") },
+  ],
+  ["wrong image component", { ...futureRuntime, image: futureRuntime.worker }],
+  [
+    "wrong region",
+    { ...futureRuntime, image: futureRuntime.image.replace("me-central1", "europe-west1") },
+  ],
+  ["non-string image", { ...futureRuntime, image: 0 }],
+  ["timestamp offset", { ...futureRuntime, timestamp: "2026-10-08T15:00:00+00:00" }],
+  ["invalid calendar date", { ...futureRuntime, timestamp: "2026-02-30T15:00:00Z" }],
+  ["timestamp precision", { ...futureRuntime, timestamp: "2026-10-08T15:00:00.000Z" }],
+])
+  test(`reviewed runtime rejects ${name} before credentials or diagnostic execution`, async () => {
+    let calls = 0;
+    await assert.rejects(
+      runReadiness({
+        ...futureInputs,
+        reviewedRuntime,
+        cloud: async () => {
+          calls++;
+          return "PRIVATE_FIXTURE_TOKEN";
+        },
+      }),
+      { code: "REVIEWED_RUNTIME_INVALID" },
+    );
+    assert.equal(calls, 0);
+  });
+for (const inputs of [
+  {},
+  { sessionId: futureInputs.sessionId },
+  { deploymentTimestamp: futureInputs.deploymentTimestamp },
+  { ...futureInputs, deploymentTimestamp: replacement.deploymentTimestamp },
+])
+  test(`reviewed runtime requires explicit exact SID/time: ${JSON.stringify(inputs)}`, async () => {
+    let calls = 0;
+    await assert.rejects(
+      runReadiness({
+        ...inputs,
+        reviewedRuntime: futureRuntime,
+        cloud: async () => {
+          calls++;
+          return "PRIVATE_FIXTURE_TOKEN";
+        },
+      }),
+      { code: "READINESS_EXPECTATION_INVALID" },
+    );
+    assert.equal(calls, 0);
+  });
 for (const args of [
   ["--session", replacement.sessionId],
   ["--session", replacement.sessionId, "--session", replacement.sessionId],
@@ -511,6 +623,68 @@ test("new reviewed expectation is forwarded to one reader execution and mismatch
   });
   assert.equal(result.ready, true);
   assert.equal(result.rows[2].observed.session_id, scope.session);
+});
+
+test("reviewed future runtime is snapshotted before reads and scopes one existing read-only execution", async () => {
+  const reviewed = { ...futureRuntime };
+  const calls = [];
+  let executed = false;
+  const scope = parseReadinessScope(futureInputs.sessionId);
+  const result = await runReadiness({
+    ...futureInputs,
+    reviewedRuntime: reviewed,
+    wait: async () => {},
+    cloud: async (args) => {
+      calls.push(args);
+      if (args.includes("print-access-token")) {
+        reviewed.source = "e".repeat(40);
+        reviewed.image = pin.image;
+        return "PRIVATE_FIXTURE_TOKEN";
+      }
+      if (args.includes("execute")) {
+        assert.equal(executed, false);
+        executed = true;
+        assert.ok(args.some((a) => a.includes("S22_WIDGET_READINESS_SESSION_ID=" + scope.session)));
+        assert.ok(args.includes("--tasks=1"));
+        assert.ok(args.includes("--task-timeout=65s"));
+        return "lead-agent-staging-migrator-future";
+      }
+      if (args.includes("executions"))
+        return JSON.stringify({ status: { conditions: [{ type: "Completed", status: "True" }] } });
+      return JSON.stringify(job(futureInputs, futureRuntime));
+    },
+    fetch: async (url) =>
+      url.includes("workerPools")
+        ? Response.json(worker(futureInputs, futureRuntime))
+        : Response.json({ entries: executed ? entries(false, scope) : [] }),
+  });
+  assert.equal(result.ready, true);
+  assert.equal(result.rows[2].observed.session_id, scope.session);
+  assert.equal(calls.filter((args) => args.includes("execute")).length, 1);
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_FIXTURE_TOKEN/u);
+});
+
+test("reviewed future runtime rejects matching-image wrong-source metadata before execution", async () => {
+  let executions = 0;
+  const wrongSource = worker(futureInputs, futureRuntime);
+  wrongSource.template.containers[0].env.find(
+    (entry) => entry.name === "DEPLOYMENT_GIT_SHA",
+  ).value = pin.source;
+  await assert.rejects(
+    runReadiness({
+      ...futureInputs,
+      reviewedRuntime: futureRuntime,
+      cloud: async (args) => {
+        if (args.includes("execute")) executions++;
+        return args.includes("print-access-token")
+          ? "PRIVATE_FIXTURE_TOKEN"
+          : JSON.stringify(job(futureInputs, futureRuntime));
+      },
+      fetch: async () => Response.json(wrongSource),
+    }),
+    { code: "PROVENANCE_MISMATCH" },
+  );
+  assert.equal(executions, 0);
 });
 
 for (const state of ["ready", "expired", "guard-failure", "replacement"])

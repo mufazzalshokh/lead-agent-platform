@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 const MAX_REQUEST_BYTES = 1_048_576;
 const UPSTREAM_TIMEOUT_MILLISECONDS = 65_000;
 
@@ -20,12 +22,46 @@ const UNTRUSTED_FORWARDING_HEADERS = new Set([
   "x-forwarded-proto",
 ]);
 
+export type WidgetReadObservation = Readonly<{
+  operation: "widget_gateway_read";
+  request_id: string;
+  conversation_id: string;
+  route: "conversation" | "messages";
+  origin_present: boolean;
+  origin_normalized: boolean;
+  code: "forwarded" | "platform_configuration_invalid" | "upstream_request_failed";
+  status: number;
+}>;
+
 type GatewayOptions = Readonly<{
   fetchImpl?: typeof fetch;
   maximumRequestBytes?: number;
   timeoutMilliseconds?: number;
   upstreamOrigin?: string;
+  widgetPlatformOrigin?: string;
+  report?: (observation: WidgetReadObservation) => void;
 }>;
+
+const widgetReadPath =
+  /^\/v1\/widget\/conversations\/([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/messages)?$/u;
+
+const requireWidgetPlatformOrigin = (value: string | undefined): string => {
+  if (value === undefined) throw new TypeError("WIDGET_PLATFORM_ORIGIN is required");
+  const parsed = new URL(value);
+  if (parsed.protocol !== "https:" || parsed.origin !== value || parsed.username || parsed.password)
+    throw new TypeError("WIDGET_PLATFORM_ORIGIN must be an exact HTTPS origin");
+  return value;
+};
+
+// Same-origin fetch GET does not carry Origin. Normalize only this isolated
+// frame read shape, from trusted configuration, never Host/Forwarded/Referer.
+// The API still verifies the signed origin, tenant, session/JTI and conversation.
+const canNormalizeWidgetReadOrigin = (headers: Headers): boolean =>
+  !headers.has("origin") &&
+  headers.get("sec-fetch-site") === "same-origin" &&
+  ["cors", "same-origin"].includes(headers.get("sec-fetch-mode") ?? "") &&
+  headers.get("sec-fetch-dest") === "empty" &&
+  /^Bearer [A-Za-z0-9._-]{80,4096}$/u.test(headers.get("authorization") ?? "");
 
 const problem = (status: number, code: string): Response =>
   Response.json(
@@ -145,6 +181,53 @@ export const proxyApiRequest = async (
 
   const source = new URL(request.url);
   const upstream = new URL(path + source.search, upstreamOrigin);
+  const readMatch = request.method === "GET" ? widgetReadPath.exec(path) : null;
+  const readConversationId = readMatch?.[1];
+  const requestHeaders = copyRequestHeaders(request.headers);
+  const readRequestId = readMatch === null ? null : randomUUID();
+  let originNormalized = false;
+  const observeRead = (code: WidgetReadObservation["code"], status: number): void => {
+    if (readMatch === null || readRequestId === null || readConversationId === undefined) return;
+    const observation: WidgetReadObservation = {
+      operation: "widget_gateway_read",
+      request_id: readRequestId,
+      conversation_id: readConversationId,
+      route: readMatch[2] === undefined ? "conversation" : "messages",
+      origin_present: request.headers.has("origin"),
+      origin_normalized: originNormalized,
+      code,
+      status,
+    };
+    if (options.report === undefined) console.info(JSON.stringify(observation));
+    else {
+      try {
+        options.report(observation);
+      } catch {
+        // An injected observer must not turn an authoritative response into a retry.
+        console.error(
+          JSON.stringify({
+            ...observation,
+            operation: "widget_gateway_report_failure",
+            code: "reporter_failed",
+          }),
+        );
+      }
+    }
+  };
+  if (readMatch !== null && canNormalizeWidgetReadOrigin(request.headers)) {
+    try {
+      requestHeaders.set(
+        "origin",
+        requireWidgetPlatformOrigin(
+          options.widgetPlatformOrigin ?? process.env["WIDGET_PLATFORM_ORIGIN"],
+        ),
+      );
+      originNormalized = true;
+    } catch {
+      observeRead("platform_configuration_invalid", 500);
+      return problem(500, "gateway_configuration_invalid");
+    }
+  }
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
@@ -153,17 +236,22 @@ export const proxyApiRequest = async (
   try {
     const response = await (options.fetchImpl ?? fetch)(upstream, {
       ...(body === undefined ? {} : { body }),
-      headers: copyRequestHeaders(request.headers),
+      headers: requestHeaders,
       method: request.method,
       redirect: "manual",
       signal: controller.signal,
     });
+    observeRead("forwarded", response.status);
     return new Response(response.body, {
       headers: copyResponseHeaders(response.headers),
       status: response.status,
       statusText: response.statusText,
     });
   } catch (error) {
+    observeRead(
+      "upstream_request_failed",
+      error instanceof DOMException && error.name === "AbortError" ? 504 : 502,
+    );
     return problem(
       error instanceof DOMException && error.name === "AbortError" ? 504 : 502,
       error instanceof DOMException && error.name === "AbortError"

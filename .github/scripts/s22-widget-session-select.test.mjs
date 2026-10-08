@@ -238,7 +238,7 @@ const jobMetadata = () => {
 
 test("preflight validates current exact image/provenance, runtime identity/reference, private VPC and explicit zero retries", () => {
   assert.equal(reviewedSelectionJob.source, "a2b2f708d2e804d2c3d2be66426fa7b49d8203c9");
-  assert.equal(reviewedSelectionJob.timestamp, "2026-10-08T11:00:45Z");
+  assert.equal(reviewedSelectionJob.timestamp, "2026-10-08T12:34:20Z");
   assert.match(
     reviewedSelectionJob.image,
     /@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276$/u,
