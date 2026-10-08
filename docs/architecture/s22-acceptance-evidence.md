@@ -4608,3 +4608,104 @@ deadline; the diagnostic execution timestamp was not provided and is not guessed
 Only the evidence register/current journey checkpoint change, with changed-section
 Markdown and scoped diff checks. The one next owner action is approval of the
 bounded two-inbound/four-attempt Website Chat journey above, before expiry.
+
+#### Approved Widget Send at idle deadline: investigation
+
+The owner subsequently explicitly approved the **bounded Website Chat booking
+test**: two total customer inbounds, four physical provider attempts maximum,
+two per message, additional allowance **USD3.205728**, maximum combined planning
+exposure **USD4.247838**, unchanged USD5 target/USD10 ceiling and visible
+historical reservation/NULL costs. This is not replacement-session authority,
+replay permission or S22 acceptance.
+
+**Observation (owner report):** at approximately **2026-10-08 18:00
+Asia/Tashkent / 13:00 UTC**, pressing Enter closed the frame and changed its
+launcher to **Start a new chat**. No HTTP response, persisted inbound/run or
+post-attempt budget result has yet been received. `qpzlc`'s prior snapshot
+remains preparation evidence only. Its exact selected session idle deadline
+was **12:59:57.129Z**; the approval-to-send sequence left too little margin.
+The diagnostic did not renew it, and close/reopen also does not renew it.
+
+**Implementation evidence:** unchanged deployed source `a2b2f708` uses Enter to
+submit, not close. The frame expires on Send/poll HTTP401/403 and certain
+resource/business-rule errors; the validated parent then discards the frame and
+shows Start a new chat. Initial intake in the Widget repository checks the
+30-minute idle deadline before creating contact/conversation/message/outbox or
+binding the session; rejection raises `WidgetTokenInvalidError`, maps to HTTP401
+`token_invalid` and rolls back. Unlike other session readers, rejected initial
+intake need not persist `status=expired`. The frame currently schedules only
+absolute expiry, so it can appear usable past idle expiry. These are source
+facts, **not persisted evidence for this exact Send**. No application behavior
+has been patched from the owner screenshot alone.
+
+| Ranked hypothesis | Predicted evidence / distinguishing bounded read |
+| --- | --- |
+| 1. First POST rejected at idle deadline | POST401 candidate; exact session still unbound/version 2 with unchanged last activity; no accepted intake binding; actual cohort/reservation observation |
+| 2. Origin/channel authorization rejection | POST403 candidate plus current exact channel/origin/session metadata; HTTP alone cannot identify its error branch |
+| 3. Accepted intake, later polling rejection | POST201 followed by GET401/403 candidates; exact persisted session binding and inbound/run/action/outbox metadata; no resend permitted |
+| 4. Resource/business-rule rejection | POST404/422 candidate, relevant persisted metadata and versions; must not label uniquely as idle expiry |
+| Lower likelihood: Enter navigation or network-only error | Source Enter handler prevents navigation; network failure normally leaves an in-frame failed message, not EXPIRED. Rejected as a direct source-level explanation, not a live network exclusion |
+
+**Last confirmed boundary:** pre-Send frame/readiness. **First unobservable
+boundary:** initial HTTP intake and its persisted result. Root lacks owner
+browser/runtime-DB/GCP read credentials locally; authenticated GitHub access
+can publish immutable, checksummed tooling but cannot supply this live proof.
+
+**One new, justified read prepared:** `.github/scripts/s22-widget-attempt.mjs`
+and `s22-widget-attempt-readonly.mjs`, with focused tests. The launcher pins
+the reviewed replacement timestamp/session, current Worker/Migrator source and
+immutable images, runtime identity/secret reference, private network/subnet/
+egress and explicit numeric zero retries. It proves log-read permission before
+one execution override, preserves its execution ID on failure and never
+automatically launches another execution. Bounded HTTP metadata is limited to
+**12:58–13:03 UTC**, known Widget intake/message routes and 40 rows, without
+query strings, payloads or bearers; those candidates are not independently
+session-correlated.
+
+The reader uses actual ESM stdin in `/app`, compressed transport via built-in
+zlib, deployed bare-package resolution and the actual relative tenant runtime.
+It enforces read-only transactions, runtime/non-owner/FORCE-RLS guards on 11
+referenced tables, transaction-local tenant context, parameterized exact
+organization/session/derived-conversation/window filters, short connection/
+statement/lock timeouts, strict row limits and rollback/cleanup. Only allowlisted
+state/version/usage/policy/application/outbox/request fields are selected, not
+message bodies, contact/account/provider identifiers, credentials, ciphertext
+or entire audit blobs. Unbound sessions skip child queries explicitly rather
+than fabricating queried zero rows. Actual budget `.read` remains SELECT-only;
+an expired/blocked snapshot is observation PASS, not readiness PASS. Session/
+child facts share one transaction; budget uses a second bounded read-only
+transaction, so this is not claimed as an atomic HTTP/provider trace. Historical
+NULLs are never rewritten or treated as zero. No migration entrypoint, IAM,
+job-configuration update, session renewal/replacement or paid call is included.
+
+Independent repository/schema/grant/rollback review found no remaining blocker;
+it caught and corrected an omitted authoritative AI-run `stale` status before
+publication. Local verification is **41/41 focused tests PASS**, including five
+actual generated-bootstrap Node subprocess cases (expired/unbound, bound
+policy-denied, runtime guard failure, RLS failure and SQL42703). Those controlled
+fixtures prove ESM/package/relative-runtime resolution, bounded read projection,
+no commit/provider invocation and rollback/cleanup, not a live DB/provider call.
+Launcher tests cover exact preflight, denied access before execution, one
+execution only, safe SQLSTATE/failure-stage reporting, timeout/no-repeat and
+independent HTTP/persistence/provider/outbound observations. Exact commands:
+
+- `node --test .github/scripts/s22-widget-attempt.test.mjs .github/scripts/s22-widget-attempt-readonly.test.mjs` — **PASS**, 41 tests.
+- `node --check` for each of those four new script/test files — **PASS**.
+- Scoped ESLint and Prettier checks on those same four files — **PASS**.
+- Scoped `git diff --check` for the new scripts and two changed S22 documents — **PASS**.
+
+Published-bundle SHA256 values (test files are not uploaded/run in Cloud Shell):
+
+| Module | SHA256 |
+| --- | --- |
+| `s22-widget-attempt.mjs` | `afbc6393a991ebc24d21e27b16d4314d4ac4990b9b567edf06b633fb881ea2c8` |
+| `s22-widget-attempt-readonly.mjs` | `17473dcc4377a9c36e79214c2091b2a9f90c4df8eb705ff1a8c57d2e094b9eaa` |
+| Existing `s22-widget-readiness.mjs` | `bde1160c7035b8fa7f92c71b0da29e8a2135336ea02cb39404ab836a30c04701` |
+| Existing `s22-widget-readiness-readonly.mjs` | `7b45ff56c9bdf468a8ac7ace4159360f54428b818bb88140560567e4cd43a971` |
+
+No runtime source, image, configuration, permission, architecture or dependency
+change is included. Existing passing deployment, embedding, duplicate-inbound
+and initial idle-boundary regressions are reused, not rerun. **Live diagnosis
+and Website Chat booking remain pending; S22 is unaccepted.** The sole next
+owner action is the immutable download/run command for this attempted-send
+collection, not another message or session. No upload is required.

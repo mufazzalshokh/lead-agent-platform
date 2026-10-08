@@ -2,15 +2,40 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
-The owner approved **preparing** a bounded, independent Widget journey and later
-approved **applying only exact replacement plan 37777865016**. This does not
-authorize Send now, repeat the Instagram journey or establish S22 acceptance.
+The owner approved **preparing** a bounded, independent Widget journey, then
+**applying only exact replacement plan 37777865016**, and subsequently explicitly
+approved the existing **bounded Website Chat booking test**. Execution authority
+is limited to two total customer inbounds and four physical provider attempts,
+at most two per message, with the allowance below. It does not authorize a new
+session, replay, extra paid test or repeat Instagram journey, or establish S22
+acceptance.
 The existing published synthetic facts below remain
 unchanged: 100,000 UZS, 30 minutes, Monday–Saturday 09:00–18:00 Asia/Tashkent,
 staff review followed by genuine customer confirmation. Hours are not slot
 availability.
 
-**Current result: rollout and live preparation pass; paid approval pending.**
+**Current result: first approved Send attempted; diagnosis pending live evidence.**
+The owner reports pressing Enter at approximately **18:00 Asia/Tashkent /
+13:00 UTC on 2026-10-08**, after which the frame closed and the launcher showed
+**Start a new chat**. The selected session's idle deadline was **17:59:57.129
+Asia/Tashkent**. The leading hypothesis is an idle-expired first POST, but frame
+closure alone cannot distinguish it from accepted intake followed by rejected
+polling, another authorization rejection, or a resource/business-rule rejection.
+Do not resend or click Start a new chat. Whether any inbound, reservation or
+provider call occurred remains unknown until the bounded attempted-send read
+returns. The exact session may remain active/version 2 despite an initial
+idle-expiry rejection; do not require a persisted expired status as proof.
+
+The prepared repository-backed `s22-widget-attempt.mjs` collects only this
+session's tenant-owned metadata and derived conversation, actual budget snapshot,
+and sanitized HTTP candidates in **12:58–13:03 UTC**. It runs one read-only
+diagnostic with runtime/RLS/provenance/VPC/zero-retry safeguards, not a new paid
+journey. Collection PASS means observations were retrieved, not readiness,
+generation or delivery PASS. HTTP candidates are not bearer-correlated proof.
+No runtime behavior change or additional rollout is justified before that read.
+Tooling and distinguishing evidence are in the
+[attempt investigation](s22-acceptance-evidence.md#approved-widget-send-at-idle-deadline-investigation).
+
 Owner-supplied fresh selection `lead-agent-staging-migrator-rkgt6` passed all
 runtime/read-only/tenant/FORCE-RLS guards for session
 `01a11b7d-ddbf-759e-b4e3-1602d9e2238c`, active/unbound version 2, on the same
@@ -38,12 +63,11 @@ preparation. Known cost **USD0.008714**, reserved exposure **USD1.042110**,
 pending reserve **USD0.000000**; no message/model call or renewal occurred.
 The [readiness checkpoint](s22-acceptance-evidence.md#owner-supplied-replacement-readiness-and-execution-approval-boundary)
 closes this scoped preparation gap, not the customer journey or historical
-accounting. No upload or repeat check is needed. Request separate execution
-approval for the existing **two-total-inbound/four-attempt** scope and
-**USD3.205728** additional allowance (**USD4.247838** maximum combined exposure).
-Do not reload/reinstall/Send before that approval; act before the supplied idle
-deadline and retain all runtime guards/stop rules. Give only the first customer
-message after approval, then the staff action and actual confirmation in order.
+accounting. That readiness read did not renew the session. The owner subsequently
+approved the **two-total-inbound/four-attempt** scope and **USD3.205728** additional
+allowance (**USD4.247838** maximum combined exposure). The reported first attempt
+above is not proof of acceptance or permission to repeat it. Retain all runtime
+guards/stop rules and pause customer/staff actions until its outcome is known.
 
 **Previous failure: selected-session idle expiry.** Owner-supplied
 execution `lead-agent-staging-migrator-4nx9k` passed current deployment preflight,
@@ -64,8 +88,8 @@ selection, saved-plan approval, apply and readiness within the 30-minute window.
 Existing images need no rebuild. Do not assume an unused binding latch from the
 human summary; the replacement's actual budget read must prove readiness.
 The fresh selection and reviewed replacement plan above supersede the prior
-preparation blocker; replacement apply/verification now pass, no paid action
-has been performed.
+preparation blocker; replacement apply/verification now pass. The later approved
+attempt is recorded above; its persistence/provider outcome remains unknown.
 Previous failure details and evidence boundaries are recorded in the
 [evidence register](s22-acceptance-evidence.md#owner-supplied-current-readiness-idle-expired-selected-session).
 
@@ -154,10 +178,12 @@ attempt scope; stop on timeout/unknown cost/guard failure.
 The preceding non-paid embedding, cookie-block, launcher and origin-denial
 checks are retained, not repeated. Immutable images, selected live session and
 the single reviewed plan are now collected. Exact-plan apply and deployment
-verification have passed. Current selected-session/cohort readiness is collected
-and **FAIL** due to the previous session's idle expiry. Replacement selection
-and exact plan review/apply/verification plus owner-supplied fresh readiness now
-pass; explicit paid execution approval and the customer journey remain pending.
+verification have passed. Earlier readiness **failed** for the previous expired
+session. Replacement selection, exact plan review/apply/verification and the
+owner-supplied pre-Send readiness snapshot then passed. Execution approval is
+now recorded, but the attempted Send outcome and the
+customer journey remain pending. Do not reuse the pre-Send readiness checker
+after attempted intake: its unbound/unused assertions are not a progress reader.
 
 Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
 verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run
