@@ -43,6 +43,10 @@ third-party cookies**, with no covering site exception: owner-observed cookie
 bootstrap **PASS**. The owner has now explicitly confirmed restoring the original
 cookie setting, closing cleanup in the
 [cookie checkpoint](#2026-10-08--widget-cookie-block-setting-checkpoint).
+The subsequent Widget-specific `contentDocument === null` check returned
+**true**: [owner-reported host DOM denial](#2026-10-08--widget-host-document-denial)
+**PASS**. This closes only that scoped browser assertion, not token isolation,
+disallowed-origin denial, direct session traces or Widget customer E2E.
 
 ## Preserved evidence
 
@@ -3375,3 +3379,31 @@ Scoped documentation format/diff checks only; no runtime change, deployment,
 migration or repeated CI. Historical NULL costs and exhausted paid-dispatch
 controls stay unchanged. S22 remains unaccepted. See the
 [detailed cookie checkpoint](s22-widget-embedding-proof.md#2026-10-08--fresh-opening-with-cookie-block-setting-selected).
+
+## 2026-10-08 — Widget host document denial
+
+Following instructions to keep the genuine chat open on the distinct-origin
+synthetic host and use DevTools Console's **top** context, the owner reported
+**true** for:
+
+```js
+document.querySelector('iframe[name^="lead_agent_widget_"]').contentDocument === null
+```
+
+**Owner-reported scoped host DOM denial: PASS**. The matched frame's document
+was not readable through that property in the reported context. Context,
+frame identity/origin and exact UTC time were not independently captured.
+No document contents, cookies, tokens or message bodies were requested. This
+does not prove token storage/access, grant redemption, postMessage validation
+or disallowed-origin rejection. No message, model call or new accounting read.
+
+Next separate check: one valid-public-key, disallowed-HTTPS-Origin request.
+Actual deployed source denies before session INSERT and maps the rejection
+to **404 / resource_not_found**; a bad key, OPTIONS result or malformed-Origin
+403 cannot substitute for allowlist proof. No such probe has been executed.
+Unexpected success could create one unbound session, so no redemption/retry/Send
+is permitted. See [detailed scope and provenance](s22-widget-embedding-proof.md#2026-10-08--host-document-access-denial).
+
+Only scoped evidence documentation/format/diff checks; no runtime change,
+deployment, migration, repeated CI or new paid authorization. Historical NULL
+costs stay visible, and S22 remains unaccepted.

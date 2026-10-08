@@ -17,6 +17,10 @@ or independently captured cookie-policy proof was collected. The subsequent
 owner reports a successful fresh opening with **Block third-party cookies**
 selected and no covering site exception. Restoration of the original setting
 is now explicitly owner-confirmed; the cookie test and its cleanup are finished.
+The subsequent owner-reported host-document access check returned `true` for
+the Widget-specific null-document expression below: scoped host DOM denial
+**PASS**. Token isolation and disallowed-origin denial remain separate pending
+assertions; this result does not establish complete session/security proof.
 
 ## Observed starting point — 2026-10-07
 
@@ -485,3 +489,37 @@ independent browser-setting read or new runtime assertion is claimed.
 Direct session traces, live origin/token isolation and customer E2E remain
 separate. Only documentation changes; no runtime tests, deployment or paid calls
 are repeated. Historical NULL costs remain unchanged; S22 is not accepted.
+
+## 2026-10-08 — host document access denial
+
+Evidence type: **owner-supplied live browser result**, not an agent-controlled
+browser capture. With the genuine chat open on the distinct-origin synthetic
+host, the owner was instructed to use DevTools Console's **top** context and
+evaluate only:
+
+```js
+document.querySelector('iframe[name^="lead_agent_widget_"]').contentDocument === null
+```
+
+The owner returned **true**. **Scoped host DOM access denial: PASS**: the matched
+iframe document was not readable through `contentDocument` in that reported
+context. Console context, exact frame identity/origin and UTC test timestamp
+were not independently captured. This is not proof of bearer/token storage,
+postMessage validation, grant redemption or an unapproved host's rejection.
+No document contents, cookies, tokens or customer messages were requested.
+
+The next separate non-paid check requires the unchanged public installation
+snippet that just worked and a genuinely disallowed, normalized HTTPS Origin.
+Inspection of the deployed-source paths confirms that `createEmbedGrant` uses
+the Origin header; tenant-scoped `originAllowed` rejects before session INSERT.
+That rejection becomes `channel_unavailable`, mapped by the API to **404 /
+resource_not_found**. OPTIONS or malformed-Origin rejection is not equivalent
+proof, nor is a 404 with an unverified key. No negative-origin request was made.
+The actual grant POST is not intrinsically read-only: unexpected success could
+create an unbound session. Any such response must be discarded without
+redemption, retry or Send, and the check stopped rather than reported PASS.
+
+Only the two evidence documents change. Existing tests/deployment are not
+repeated; scoped format/diff validation suffices. Historical NULL costs and paid
+limits remain unchanged. Customer E2E and the other S22 gates remain pending;
+S22 is not accepted.
