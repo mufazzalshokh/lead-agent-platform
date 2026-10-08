@@ -78,8 +78,9 @@ attempt scope; stop on timeout/unknown cost/guard failure.
 
 The preceding non-paid embedding, cookie-block, launcher and origin-denial
 checks are retained, not repeated. Immutable images, selected live session and
-the single reviewed plan are now collected. Exact-plan approval, apply,
-post-apply readiness and the customer journey remain pending.
+the single reviewed plan are now collected. Exact-plan apply and deployment
+verification have passed. Live selected-session/cohort readiness, explicit
+paid execution approval and the customer journey remain pending.
 
 Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
 verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run
@@ -92,8 +93,16 @@ read-only, tenant and FORCE-RLS guards PASS. Plan **37767355826** completed
 successfully using this exact session and the already-built images. Its saved
 SHA256 is `f2e30ee380a465e3804ea1de9af5aa91938bf58333c9eb04dff168833f61fc7e`.
 The complete [approval packet](s22-acceptance-evidence.md#fresh-widget-session-selected-and-exact-plan-reviewed)
-preserves the exact inputs and four in-place updates. **No apply, Send or paid
-call was performed.** Preparing this journey does not authorize paid execution.
+preserves the exact inputs and four in-place updates. The owner then approved
+only this saved plan: **apply 37768798066 PASS**, actual 0 added / 4 changed /
+0 destroyed, no replacements or migration execution. **Read-only verification
+37769024360 PASS**, all 16 assertions and whole-runtime convergence exit 0;
+API health and Web reachability also pass. The reviewed Worker mode/session
+binding is preserved. This proves deployment configuration, not current
+WidgetSession database readiness or a completed customer journey. **No Send
+or paid call was triggered.** Preparing/applying this journey does not authorize
+paid execution; complete current readiness and obtain bounded execution approval
+before instructing the customer.
 
 Keep the same selected page/frame and temporary host intact; do not reload,
 reinstall or run session selection again. Absolute expiry is
@@ -108,7 +117,8 @@ an expired session does not authorize a replacement, widened limit or Send.
 
 The procedure below records the path to successful execution `ngh7p`, not the
 current next action. Selection is complete; preserve the selected frame while
-requesting approval for **plan 37767355826 only**.
+proving current readiness. **Plan 37767355826 has already been applied and
+verified; do not apply it again.**
 
 The first pinned selector attempt `lead-agent-staging-migrator-xtcgs` returned
 `DATABASE_OR_TOOLING_UNAVAILABLE`. Its diagnostic SQL parameter-typing defect

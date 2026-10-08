@@ -4058,3 +4058,65 @@ historical accounting, establish booking/channel E2E or accept S22. Next action:
 obtain **exact approval for plan 37767355826 only**, then apply and prove runtime
 convergence/current selected-session readiness before any separately authorized
 customer message. No S23 work.
+
+#### Approved exact Widget rollout and read-only convergence
+
+The owner explicitly authorized **“Apply plan 37767355826 only.”** One apply
+was dispatched with the exact prepared source, four immutable references,
+timestamp, migration heads, mode/session and approved saved-plan hash above.
+The repository-required approval token was submitted only for that approved
+apply. No image rebuild, replacement plan or migration was dispatched.
+
+**[Apply 37768798066](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37768798066)
+PASS**. The saved-plan integrity and exact full-runtime approval-boundary steps
+passed. Actual Terraform completion at 2026-10-08T11:15:58.712435Z reported
+**0 added / 4 changed / 0 destroyed**. Strict plan verification additionally
+confirmed **0 replacements**, the four reviewed workload addresses only, no
+unexpected actions and migrator execution **DISABLED**. The one-shot migrator
+step was skipped; deployment provenance recording passed. SQL, IAM, network,
+scaling and historical accounting records were not changed by this rollout.
+
+One existing read-only verification was dispatched, using `action=plan`,
+`phase=api-image-verify`, `ai_journey_mode=preserve` and the exact selected
+session ID. All API/runtime/Migrator source and timestamp inputs match the
+reviewed full-runtime packet; all four immutable references and both migration
+heads are retained. This is a convergence read, not a new saved deployment plan.
+
+**[Verification 37769024360](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37769024360)
+PASS**. Its authenticated artifact `s22-api-image-live-evidence-37769024360`
+(ID 11547257535) was downloaded and inspected. All **16** assertions passed:
+12 direct API image/provenance/identity/VPC/readiness checks, three Web
+image/readiness/revision checks, and whole-runtime Terraform convergence exit
+**0**. Current API revision: `lead-agent-staging-api-00025-7wl`; current Web
+revision: `lead-agent-staging-web-00021-vg8`. Source is exactly
+`a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`; timestamp remains
+`2026-10-08T11:00:45Z`; packaged migration provenance remains `0031` as above.
+
+Whole-runtime convergence confirms the reviewed Worker mode/session and all
+four workload configurations agree with deployed Terraform-managed state.
+It is **not** a direct Worker execution/DB readiness assertion. No independent
+live WidgetSession or cohort-ledger database read was performed by this
+verifier, and this deployment evidence does not prove an actual Widget message,
+provider decision, booking or delivery.
+
+Separate public, non-message reads returned API `/health` HTTP **200** with
+`status=ok` and Web `/staff` HTTP **200**. The latter proves reachability, not
+authenticated owner access. Web has no dedicated `/health` route in the source;
+an attempted JSON health probe there is excluded as an invalid endpoint check,
+not recorded as a product failure. Web health proof here is Cloud Run readiness
+plus the actual staff-page reachability check. No credentials or response bodies
+were included in the report.
+
+This owner approval covers only the saved deployment plan, **not Send or paid
+Website Chat execution**. The preparation scope remains two total customer
+inbounds/four physical attempts, USD3.205728 additional allowance and maximum
+combined planning exposure USD4.247838. Historical NULL costs remain visible;
+the exception is not exact accounting. Current selected-session/cohort readiness
+and explicit bounded execution approval are still required before the first
+customer message. Preserve the same frame; do not reload, select a replacement
+or bypass idle expiry. The conservative 16:24:48 Asia/Tashkent idle deadline is
+not extended by this rollout. An expired session is a blocker, not permission
+for another plan. Existing CI/model/PostgreSQL/selector tests are reused, not
+rerun. Only this evidence register and the journey's current status change;
+changed-section formatting and scoped diff checks are the documentation checks.
+Unrelated user edits are preserved. S22 remains unaccepted; no S23 work.
