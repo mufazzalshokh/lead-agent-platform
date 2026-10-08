@@ -1,16 +1,17 @@
 # S22 synthetic Website Chat embedding proof
 
-Status: owner-reported genuine frame open/close/reopen after approved proxy-origin
-apply **37672530149**, read-only verification **37672800406**, whole-runtime
-convergence exit **0**. The separate launcher lifecycle correction is locally
-verified and fresh plan **37681742450** reviewed, **not applied**. Remaining live
-label/session-security proof is pending. No Widget message, provider call or S22
-acceptance is authorized.
+Status: owner-reported genuine frame open/close/reopen after the prior proxy-origin
+rollout. The separate launcher correction is now deployed by exact approved apply
+**37735083627**, with read-only verification **37735337876**, whole-runtime
+convergence exit **0** and corrected public loader byte-match proof. Remaining
+owner-browser label/session-security proof is pending. No Widget message, provider
+call or S22 acceptance is authorized.
 
 Latest owner-supplied browser evidence: the genuine cross-origin frame opens,
 closes and reopens without a message. The closed launcher incorrectly retains
-`Opening…`; this is a separate, source-confirmed loader lifecycle defect under
-correction. Visible greeting/composer HTML alone is not redemption, isolation or
+`Opening…`; this separate, source-confirmed loader lifecycle defect now has a
+verified rollout, not yet a refreshed owner-browser result. Visible greeting/
+composer HTML alone is not redemption, isolation or
 blocked-third-party-cookie proof.
 
 ## Observed starting point — 2026-10-07
@@ -358,3 +359,65 @@ verification with these fresh references/provenance to check API/Web readiness
 and whole-runtime convergence, then verify the real host label with no Send.
 Local tests/plan review do not establish corrected live behavior or S22 acceptance.
 Historical NULL costs remain preserved and the exhausted cohort blocks paid calls.
+
+## 2026-10-08 — exact approved launcher rollout verified
+
+The owner explicitly authorized **Apply plan 37681742450 only**. The existing
+binary and sidecar were checked again against approved SHA256
+`a228a8c3ce86c59c886e9c6884226d7969a8c51e03200b5c5c294d0abd9da485`.
+Prepared inputs/manifest/source/time/head matched the packet; independent
+read-only comparison passed 52 assertions. The later `1f45516` commit changes
+only evidence documentation, not runtime/workflow/Terraform code. No build,
+replacement plan or previously passed test was repeated.
+
+[Apply **37735083627**](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37735083627)
+**PASS**: exact saved artifact download, integrity and full-runtime approval
+checks passed, then Terraform reported **0 added / 4 changed / 0 destroyed**.
+No replacements. Apply used reviewed runtime source
+`6a31cd8e3a37f31a7bb85329eab0aa9c4de53926`, all four immutable references above,
+unchanged head `0031_s22_widget_inbound_route_management`, and the exact declared
+deployment timestamp `2026-10-07T20:22:40Z`. This historical provenance timestamp
+was preserved, not replaced with the approval/execution date. GitHub dispatch
+HEAD was the documentation descendant `1f45516`; runtime checkout and deployment
+provenance remain `6a31cd8`. Migrator execution/database validation steps were
+**SKIPPED**. No unrelated configuration, IAM, network, SQL, scaling or paid-budget
+changes.
+
+[Read-only verification **37735337876**](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37735337876)
+**PASS**, artifact `s22-api-image-live-evidence-37735337876`: all **16** assertions
+pass, **0 failures**. Twelve direct API checks cover image/source/time/head,
+identity/private VPC/subnet/egress, 15 secret references by count and readiness.
+Three direct Web checks cover exact image/readiness/revision. Ready revisions:
+
+- API: `lead-agent-staging-api-00024-hx6`.
+- Web: `lead-agent-staging-web-00020-hz9`.
+
+The remaining assertion is refreshed **whole-runtime convergence exit 0**,
+covering Worker/Migrator bindings and canonical Web origin configuration, not
+independent direct REST descriptors for those resources. Migration head is
+configured provenance; no new DB-journal diagnostic is claimed. The verifier's
+replacement-plan creation, apply, migrator execution and DB-validation steps
+were **SKIPPED**. Its unsaved convergence read is not a replacement deployment
+plan or infrastructure apply.
+
+Bounded credential/cookie-free post-apply public reads passed before
+`2026-10-08T06:02:02Z`: API `/health` **HTTP 200**, `service=api`, `status=ok`;
+exact organization-bound staff shell **HTTP 200** HTML; `/embed/widget.js` **HTTP
+200**, **5,286 bytes**, exact byte match to the loader generated from committed
+`6a31cd8` with the canonical Web gateway origin. Expected and live SHA256:
+`9174e16a48d3bb1620d20e8854a774f78daac22d5d917b8ea7744cc2f7eaea0a`.
+Each request/body read was bounded to 15 seconds/100 KB, redirects prohibited.
+An initial restricted-network failure was a local transport limitation; the
+permitted read succeeded. No HTML/script, cookies, grants or credentials were
+dumped. These GETs prove serving/reachability, not owner authentication, grant
+redemption or browser close/reopen. No paid/provider/message route was called.
+
+The existing open page can still hold the old launcher in memory or its cached
+script (public cache lifetime 300 seconds). A fresh page/remount must fetch the
+new loader before claiming the label fixed in the owner's browser. Reloading the
+synthetic host clears its intentionally non-persisted installation; remount only
+the public snippet, never replace setup or rotate the key merely to update JS.
+The temporary host may have expired: first confirm that the actual test page is
+still available; do not assume an unavailable server is an application failure.
+No Send or new paid-call authorization. Historical NULL costs and the exhausted
+cohort remain untouched; S22 remains unaccepted.

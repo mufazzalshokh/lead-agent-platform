@@ -31,8 +31,11 @@ allowance.
 The subsequent owner browser test shows the genuine frame opens and reports
 successful close/reopen, but its launcher retains `Opening…`. The
 [focused launcher lifecycle correction](#2026-10-08--widget-launcher-lifecycle-correction-checkpoint)
-has generated-script behavioral proof; it is not yet deployed. Owner-observed
-open/reopen does not by itself prove session/security assertions or Widget E2E.
+has generated-script behavioral proof and is now deployed in approved apply
+**37735083627**, verified read-only by **37735337876** with whole-runtime
+convergence exit **0**. The served loader matches committed corrected source
+exactly; refreshed owner-browser label/session/security proof remains pending.
+Owner-observed open/reopen alone does not prove those assertions or Widget E2E.
 
 ## Preserved evidence
 
@@ -3269,3 +3272,53 @@ the [exact approval packet](s22-widget-embedding-proof.md#launcher-correction--e
 **STOP before apply**: preceding approval does not cover this plan. Later evidence
 documentation must not trigger duplicate runtime builds/plans. No new paid-call
 authorization; S22 remains unaccepted.
+
+## 2026-10-08 — exact approved launcher apply and deployed verification
+
+Owner authorization: **Apply plan 37681742450 only**. Approved source
+`6a31cd8e3a37f31a7bb85329eab0aa9c4de53926`, build **37680689682**, plan SHA256
+`a228a8c3ce86c59c886e9c6884226d7969a8c51e03200b5c5c294d0abd9da485`, exact
+declared timestamp `2026-10-07T20:22:40Z`, unchanged migration provenance
+`0031_s22_widget_inbound_route_management`. Local binary/sidecar and prepared
+inputs were checked; independent 52 read-only comparisons passed. Source remains
+on `verify/s22-staging-recovery-capacity`; dispatch HEAD `1f45516` is an
+evidence-only descendant, not a new runtime source or reason to rebuild.
+
+[Apply **37735083627**](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37735083627)
+**PASS**: saved-plan integrity and exact approval boundary passed; actual Terraform
+counts **0 added / 4 changed / 0 destroyed**, no replacements. Exactly the
+reviewed artifact was applied once. No image rebuild, replacement plan,
+unrelated configuration/IAM/network/SQL/scaling/budget change or migration execution.
+Migrator/DB-validation steps were **SKIPPED**. The declared timestamp was preserved
+exactly, not changed to the later approval/execution date.
+
+[Read-only verifier **37735337876**](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37735337876)
+**PASS**, downloaded artifact `s22-api-image-live-evidence-37735337876` reports
+**16 assertions PASS / 0 failures**. Direct API image/source/time/head,
+identity/private network/egress, secret-reference count (15) and readiness pass;
+direct Web image/readiness pass. Ready revisions:
+`lead-agent-staging-api-00024-hx6`, `lead-agent-staging-web-00020-hz9`.
+Whole-runtime refreshed convergence **exit 0** covers configured Worker/Migrator
+and canonical Web origin, not separate direct REST assertions for their
+descriptors. Head is configured provenance, not a repeated DB-journal read.
+Verifier apply/migrator/DB-validation and replacement-plan creation were SKIPPED.
+
+Bounded public probes before `2026-10-08T06:02:02Z`: API health **HTTP 200**,
+expected `api/ok`; organization-bound staff HTML **HTTP 200**; Widget loader
+**HTTP 200**, **5,286 bytes**, exact match to the generated committed `6a31cd8`
+source. Expected/live SHA256
+`9174e16a48d3bb1620d20e8854a774f78daac22d5d917b8ea7744cc2f7eaea0a`.
+Credential/cookie-free GETs, redirects prohibited, each fetch/body bounded to
+15 seconds/100 KB; no grant, conversation, message or paid provider call. Local
+restricted transport required permitted network access; final read exited 0.
+No existing test suite, OAuth, Claim/Resolve, inventory or migration was repeated.
+
+Existing owner-page JS can remain old until a fresh page/remount; public script
+cache is 300 seconds. Reloading the temporary host clears the non-persisted public
+snippet installation, so remount it before verifying the label. First establish
+host availability if its one-hour window elapsed; do not rotate setup/key or ask
+for a DM. Live corrected close/reopen label, redemption, cookie-independence,
+origin rejection and the remaining Widget/channel/recovery/capacity/release gates
+remain pending. Historical NULL costs remain visible, no cohort reset/new paid
+authorization, S22 unaccepted. See the
+[rollout proof](s22-widget-embedding-proof.md#2026-10-08--exact-approved-launcher-rollout-verified).
