@@ -77,19 +77,38 @@ dispatch accounting. Do not replay events or spend beyond the two-message/four-
 attempt scope; stop on timeout/unknown cost/guard failure.
 
 The preceding non-paid embedding, cookie-block, launcher and origin-denial
-checks are retained, not repeated. Selected live session, new build/plan,
-deployment/readiness and customer journey are still pending until collected.
+checks are retained, not repeated. Immutable images, selected live session and
+the single reviewed plan are now collected. Exact-plan approval, apply,
+post-apply readiness and the customer journey remain pending.
 
 Preparation source `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9` is pushed and
 verified: 60 focused modeled tests, seven isolated PostgreSQL cases (run
 37750085917), authoritative CI 37750093321 and four-image build 37750247345
 passed. Exact immutable references and validation provenance are in the
 [evidence register](s22-acceptance-evidence.md#final-verified-preparation-source-and-immutable-build).
-The plan is blocked only on the fresh live selected Widget session. No apply,
-Send or paid call was performed. Absolute two-hour expiry does not replace the
-30-minute idle limit; preserve the selected page/frame and stop on expiry.
+Owner-supplied execution `lead-agent-staging-migrator-ngh7p` selected session
+`01a11b26-c51d-78ba-8e81-62e6e7331ab8`: active/unbound version 2; runtime,
+read-only, tenant and FORCE-RLS guards PASS. Plan **37767355826** completed
+successfully using this exact session and the already-built images. Its saved
+SHA256 is `f2e30ee380a465e3804ea1de9af5aa91938bf58333c9eb04dff168833f61fc7e`.
+The complete [approval packet](s22-acceptance-evidence.md#fresh-widget-session-selected-and-exact-plan-reviewed)
+preserves the exact inputs and four in-place updates. **No apply, Send or paid
+call was performed.** Preparing this journey does not authorize paid execution.
 
-### One read-only session-selection action
+Keep the same selected page/frame and temporary host intact; do not reload,
+reinstall or run session selection again. Absolute expiry is
+2026-10-08T12:54:48.093Z, but the enforced 30-minute idle rule still applies.
+Using issuance plus 30 minutes gives a conservative readiness deadline of
+**2026-10-08T11:24:48Z / 16:24:48 Asia/Tashkent**; redemption may have occurred
+later, but its exact `last_seen_at` was not supplied. Terraform does not validate
+live session freshness. Post-apply readiness must establish that separately;
+an expired session does not authorize a replacement, widened limit or Send.
+
+### Completed read-only session-selection procedure — do not repeat
+
+The procedure below records the path to successful execution `ngh7p`, not the
+current next action. Selection is complete; preserve the selected frame while
+requesting approval for **plan 37767355826 only**.
 
 The first pinned selector attempt `lead-agent-staging-migrator-xtcgs` returned
 `DATABASE_OR_TOOLING_UNAVAILABLE`. Its diagnostic SQL parameter-typing defect

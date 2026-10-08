@@ -3936,3 +3936,125 @@ sequence correction; existing valid tests are reused. Scoped formatting and
 diff checks pass. Historical NULL costs, paid-call pause and exact-plan
 approval remain intact; successful live selection and S22 acceptance remain
 pending.
+
+### Fresh Widget session selected and exact plan reviewed
+
+Owner-supplied live execution **`lead-agent-staging-migrator-ngh7p`** completed
+session selection with runtime-role/read-only/tenant/FORCE-RLS guards **PASS**.
+Both pinned downloads verified. Reader SHA256:
+`1d430316acc64e4b16e270e9bc795793a1d6f6c175ad545928f15d7997156ef0`.
+
+| Allowlisted session metadata | Owner-supplied snapshot                       |
+| ---------------------------- | --------------------------------------------- |
+| Organization                 | `01a0ee39-91a9-7293-82c0-5b7046c10115`        |
+| Selected WidgetSession       | `01a11b26-c51d-78ba-8e81-62e6e7331ab8`        |
+| Widget channel               | `01a11771-2c02-7240-86f7-19f95690d22e`        |
+| Allowed origin record        | `01a11771-2c02-7765-b999-7dc9895ee49d`        |
+| State / version / bindings   | Active / 2 / contact and conversation unbound |
+| Absolute expiry              | `2026-10-08T12:54:48.093Z`                    |
+
+This closes only session selection. It is owner-supplied live diagnostic
+evidence, not an independently authenticated local database read. Version 2
+matches the source's redeemed-session state but is not independent execution
+proof of the real frame's redemption. No message or provider call was sent.
+Preserve the owner's same frame; do not select a different session or reload it.
+The source-enforced two-hour absolute lifetime implies issuance around
+10:54:48.093Z. Issuance plus 30 minutes gives a **conservative** idle deadline
+11:24:48Z / 16:24:48 Asia/Tashkent, not a collected `last_seen_at` value. Exact
+redemption/last-seen timing and live readiness must be checked before execution.
+Terraform input validation alone does not prove live session validity.
+
+#### Exact saved-plan approval packet — apply not dispatched
+
+Within the owner's preparation authorization, exactly **one** full-runtime
+reconciliation plan was dispatched. No duplicate build or plan was dispatched.
+Authenticated GitHub evidence:
+
+- Runtime source: `a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`.
+- Branch: `verify/s22-staging-recovery-capacity`.
+- Existing immutable all-image build: **37750247345**, PASS, exact runtime source.
+- Manifest SHA256: `0abf845efa17aadcfaaedc2c8407e5079aad944afdcdaf01d8ccd060e73059af`.
+- Plan: **[37767355826](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37767355826)**,
+  PASS; phase `full`, action `plan`.
+- Workflow dispatch HEAD: `9255a3390f3d32114a68ae487284c16cb82b3f8b`; later
+  documentation/diagnostic commits do not change this reviewed runtime source.
+- Deployment timestamp: **`2026-10-08T11:00:45Z`**, preserved in all inputs.
+- API/runtime migration head: **`0031_s22_widget_inbound_route_management`**,
+  unchanged; no migration execution.
+- Worker mode/session: `widget_booking` /
+  `01a11b26-c51d-78ba-8e81-62e6e7331ab8`.
+- Saved-plan SHA256:
+  **`f2e30ee380a465e3804ea1de9af5aa91938bf58333c9eb04dff168833f61fc7e`**.
+- Artifact: `s22-terraform-plan-full-a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`,
+  authenticated artifact ID **11545716263**; binary, checksum and sanitized
+  reconciliation evidence downloaded, not committed.
+
+| Apply image input | Exact immutable reference from verified build                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api_image`       | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:dcf22aa7db8c93ed813c84be96f7216d6b1f9f51081a5ad19fa7a6456985d5bd`      |
+| `web_image`       | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:167e9cf10b6d8ce6a6965565a254c54580deb65a29bf66532589719ef69ee267`      |
+| `worker_image`    | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:c2c31c5643938aaae945ff0906f99522f6573fc562cd0568be7594049409580b`   |
+| `migrator_image`  | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276` |
+
+Sanitized action counts: **0 creates / 4 in-place updates / 0 destroys /
+0 replacements**. Exact actions:
+
+| Resource                                    | Reviewed action                                               |
+| ------------------------------------------- | ------------------------------------------------------------- |
+| `google_cloud_run_v2_service.api[0]`        | Update image/provenance only                                  |
+| `google_cloud_run_v2_service.web[0]`        | Update image/provenance only                                  |
+| `google_cloud_run_v2_worker_pool.worker[0]` | Update image/provenance and exact Widget journey mode/session |
+| `google_cloud_run_v2_job.migrator[0]`       | Update image/provenance only; do not execute                  |
+
+The plan's schema-aware guard verified **88 managed-resource configurations**,
+with no configurable unknowns, unreviewed configuration changes, public IAM
+changes, unexpected actions or replacements. SQL, IAM, network/VPC/egress,
+runtime identities/secret references, scaling and job retries remain unchanged.
+Migrator execution is explicitly disabled for the full phase; both apply and
+migrator execution steps were skipped in this plan run.
+
+Independent local inspection computed the downloaded binary's SHA256 and
+matched its sidecar, parsed `terraform show -json` privately in a Node subprocess,
+verified all ten exact source/image/timestamp/head/mode/session variables and the
+four allowed action addresses, and compared environment entries by **name**
+rather than array position. Only the permitted provenance fields and Worker's
+mode/session differ; unrelated environment and secret references match. No
+secret-bearing plan JSON or state was printed. A local `providers schema -json`
+read required initialization of the GCS backend; no initialization or state
+operation was performed. Full configurable-field coverage is the completed
+workflow's strict schema guard on this exact artifact, not a claimed local rerun.
+
+Authenticated workflow history at review showed no newer staging rollout
+after this plan. This is not a guarantee against later/manual infrastructure
+changes: the exact saved-plan apply must still pass the workflow's checksum,
+input/configuration and Terraform stale-state safeguards. A rejected plan
+does not authorize replacement planning or apply.
+
+Prepared subsequent apply inputs (not submitted): `action=apply`, `phase=full`,
+`commit_sha=a2b2f708d2e804d2c3d2be66426fa7b49d8203c9`, the four exact image
+references above, `deployment_timestamp=2026-10-08T11:00:45Z`,
+`api_migration_head=0031_s22_widget_inbound_route_management`,
+`runtime_migration_head=0031_s22_widget_inbound_route_management`,
+`ai_journey_mode=widget_booking`,
+`ai_journey_widget_session_id=01a11b26-c51d-78ba-8e81-62e6e7331ab8`,
+`plan_run_id=37767355826` and
+`approved_plan_sha256=f2e30ee380a465e3804ea1de9af5aa91938bf58333c9eb04dff168833f61fc7e`.
+The required `owner_approval_token` is **not submitted or authorized here**.
+All isolated-workload override inputs remain blank, as in the reviewed plan.
+
+Existing validation is reused: 60 focused modeled tests, seven isolated
+PostgreSQL cases (37750085917), authoritative CI (37750093321), plus the corrected
+selector's 23 local tests and five PostgreSQL subcases (37754475137). No unchanged
+tests, inventory, OAuth, Claim/Resolve or deployment verification were repeated.
+Only the evidence register and journey instructions change; scoped Prettier
+and `git diff --check` are the justified documentation checks.
+
+The two-total-inbound/four-attempt preparation scope reserves at most
+USD3.205728 additional, for combined planning exposure **USD4.247838**, including
+USD0.008714 existing known cost and USD1.033396 historical budget-only reserve.
+The USD5 target/USD10 ceiling, stop rules, old usage and historical NULL costs
+remain unchanged. This preparation does not approve paid execution, reconcile
+historical accounting, establish booking/channel E2E or accept S22. Next action:
+obtain **exact approval for plan 37767355826 only**, then apply and prove runtime
+convergence/current selected-session readiness before any separately authorized
+customer message. No S23 work.
