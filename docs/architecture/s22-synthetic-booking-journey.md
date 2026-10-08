@@ -2,7 +2,26 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
-**Latest checkpoint: one fresh session selected; correction plan reviewed.**
+**Latest checkpoint: exact correction plan applied; current session readiness pending.**
+The owner approved **apply plan 37807472634 only**. Apply **37809243773 PASS**
+made **0 creates / 4 in-place workload updates / 0 destroys**, with the reviewed
+zero-replacement guard and no migration execution. Exact source `1ecd729`, build
+37797125277, timestamp **2026-10-08T15:08:01Z**, four images and reviewed session
+binding were preserved. One read-only verification **37809490156 PASS** proves
+API/Web ready images, exact API provenance/security bindings and whole-runtime
+convergence **exit 0**. Separate API health and Web reachability returned
+**HTTP 200**. These checks are not real-provider Widget customer E2E.
+
+The existing Cloud Shell bundle now needs one pinned post-apply readiness read
+for `01a11c48-dbc2-76de-a873-f41664da5ccb`, proving current lifetime, unused state
+and reservation accounting. No upload or session renewal is needed or authorized.
+**Do not Send, reload or reinstall** before that result and separate bounded
+execution authority. Stop on expiry; apply does not extend the **21:41:40.456
+Asia/Tashkent** idle deadline. Historical NULL costs remain unknown and the
+budget exception remains visible. See the
+[applied correction evidence](s22-acceptance-evidence.md#2026-10-08--exact-correction-plan-applied-live-session-readiness-pending).
+
+**Previous checkpoint: one fresh session selected; correction plan reviewed.**
 Owner-supplied `lead-agent-staging-migrator-jf2sk` plus confirmed fresh empty-frame
 opening select `01a11c48-dbc2-76de-a873-f41664da5ccb`, active/unbound version 2,
 on the existing exact tenant/channel/origin. Its idle deadline is **8 October

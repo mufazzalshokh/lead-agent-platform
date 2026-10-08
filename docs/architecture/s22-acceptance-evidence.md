@@ -3,6 +3,95 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-08 — Exact correction plan applied; live session readiness pending
+
+The owner explicitly approved **apply plan 37807472634 only**. Authenticated
+workflow history showed no intervening or duplicate Terraform run before dispatch.
+One [apply run 37809243773](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37809243773),
+job **113421514935**, completed **PASS** using the exact saved plan below.
+Workflow-head commit was `d1125356a8fa0091439d95aaf69351c5befbc2e3`; the checked-out
+runtime source remains **`1ecd729d856fdeff22a55cc54e1259c7adcf6472`**.
+No image rebuild, replacement plan or repeated regression suite was performed.
+
+- Saved-plan run: **37807472634**.
+- Independently reviewed and apply-verified saved-plan SHA256:
+  **`ee7b8a682a0da6dab2b348ae377f4c1a99a928949666b688cd6737e4c3009975`**.
+- Deployment provenance timestamp: **2026-10-08T15:08:01Z**, unchanged from review;
+  this is not the wall-clock time of apply.
+- API/runtime migration provenance: **`0031_s22_widget_inbound_route_management`**.
+- Exact four immutable images: the verified build **37797125277** references in
+  the preparation packet below, unchanged at apply.
+- Exact Worker binding: `widget_booking`, session
+  **`01a11c48-dbc2-76de-a873-f41664da5ccb`**; no alternate session was selected.
+
+The downloaded saved-plan checksum was **OK** and the exact full-runtime
+approval boundary passed, including **88 configurations verified**, configurable
+unknowns **NONE**, unreviewed configuration changes **NONE**, IAM changes **NONE**,
+Migrator execution **DISABLED** and unexpected actions **NONE**. Native Terraform
+accepted the saved plan; no stale-plan rejection or replacement-plan authority
+was exercised. Actual completion reported **0 added / 4 changed / 0 destroyed**.
+All four modification-complete records are the intended resources:
+
+- `google_cloud_run_v2_service.api[0]`
+- `google_cloud_run_v2_service.web[0]`
+- `google_cloud_run_v2_worker_pool.worker[0]`
+- `google_cloud_run_v2_job.migrator[0]`
+
+The reviewed replacement count was **0**. SQL, IAM, network, scaling, identity,
+secret references, commands, retry limits and budget limits were not changed.
+**Create reviewed plan**, **Execute one-shot migrator**, the database validator
+and unrelated social/booking diagnostic jobs were **SKIPPED**. The Migrator
+workload image/provenance update was not a migration execution.
+
+One [read-only verification run 37809490156](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37809490156)
+completed **PASS**, using the same source, four images, deployment timestamp,
+migration provenance and exact preserved Widget binding. This uses
+`action=plan`, `phase=api-image-verify`, **not** another saved deployment plan.
+Its **Create reviewed plan**, **Apply exact reviewed plan** and **Execute
+one-shot migrator** steps were **SKIPPED**. Authenticated artifact
+`s22-api-image-live-evidence-37809490156/s22-api-image-live-evidence.txt` was
+downloaded; independent SHA256 is
+**`9e40227eb9f1e13d4eab763fbb7386caf72a50efed5c9f4d344fa31c82a6b60c`**.
+
+Live API metadata proves the exact reviewed image/source/timestamp/head, expected
+runtime identity, private VPC/subnet/egress, 15 secret references and ready revision
+**`lead-agent-staging-api-00027-cvd`**. Live Web metadata proves the exact reviewed
+image and ready revision **`lead-agent-staging-web-00023-gcb`**. Whole-runtime
+`terraform plan -detailed-exitcode -lock-timeout=5m`, without a saved output plan,
+returned **0**. Worker/Migrator image/provenance and exact session binding are
+covered by authoritative-state preservation plus whole-runtime refresh/convergence,
+not a separately reported live descriptor read of those two workloads.
+
+Separate bounded public `curl.exe` checks returned API `/health` **HTTP 200**,
+`service=api`, `status=ok`, and the organization-bound Web staff shell **HTTP 200**,
+HTML. No cookies, credentials, private headers, customer messages, raw Terraform
+content or provider payloads were emitted. Health/reachability and convergence
+are **not** authenticated owner-flow or real-provider Widget E2E evidence.
+
+The owner's fresh-frame corroboration and `jf2sk` selection remain the last
+session snapshot. The fixed read path is deployed, but this apply does not renew
+the session, prove its current unused state or authorize Send. Idle deadline
+remains **2026-10-08T16:41:40.456Z / 21:41:40.456 Asia/Tashkent**; absolute expiry
+remains **2026-10-08T18:11:39.330Z**. One pinned, already downloaded post-apply
+reader is the next bounded owner action:
+
+```bash
+node /tmp/s22-widget-ready.nGVnJp/s22-widget-correction-readiness.mjs --session 01a11c48-dbc2-76de-a873-f41664da5ccb
+```
+
+It must prove current runtime/tenant/read-only/FORCE-RLS guards, exact binding,
+idle/absolute validity, unused session and actual reservation accounting. No
+upload, new chat, replay, renewal, paid call or migration is requested. Stop on
+expiry or any failed safeguard; no silent replacement is authorized. Separate
+bounded execution authority remains required after readiness. Historical NULL
+costs stay unknown under the visible approved budget-only exception. **S22 remains
+unaccepted.** Only this register and the journey checkpoint change; unrelated
+README/S11/patch edits are preserved. Existing regression evidence is reused.
+
+Documentation verification: changed-section Prettier formatting, safe evidence
+reference assertions and scoped `git diff --check`; no runtime tests or CI rerun
+for these two documentation-only changes.
+
 ## 2026-10-08 — Fresh Widget session and correction plan 37807472634
 
 ### Owner-supplied session evidence and authority
