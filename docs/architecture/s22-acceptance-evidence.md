@@ -3743,3 +3743,104 @@ Exact files changed in this diagnostic correction:
 `.github/workflows/s22-widget-session-select.yml`,
 `docs/architecture/s22-acceptance-evidence.md` and
 `docs/architecture/s22-synthetic-booking-journey.md`.
+
+### Existing selector log-read timeout — no diagnostic retry
+
+The owner returned **`LOG_READ_EXIT=124`** from the bounded `gcloud logging read`
+for preserved execution `lead-agent-staging-migrator-xtcgs`. This establishes a
+timeout of that log-collection command, not a database outage, failed provider
+call or another execution. The original failure-stage attribution remains
+uncollected. Do not repeat the same CLI read or execute the selector again to
+infer what happened.
+
+The following alternative makes **one direct Logging API request** for that
+existing execution and operation within the last 24 hours. It obtains a token
+privately in memory with a ten-second subprocess timeout, bounds the API/body
+read to twenty seconds and at most ten entries, rejects pagination/incomplete
+responses, and prints only allowlisted assertion labels, outcomes and failure
+codes. It does not output observed metadata, raw errors, credentials or message
+content. No upload, database connection, job execution, mutation or paid call
+is involved. Local GCP authentication is unavailable; this command needs the
+owner's existing authenticated Cloud Shell. Empty results are missing evidence,
+not PASS. The old reader did not persist SQLSTATE, so this read can identify its
+failed stage but cannot recover a historical `42P18` value.
+
+```bash
+node --input-type=module <<'NODE'
+import {execFileSync} from 'node:child_process';
+const labels = {
+  initialize: 'Initialization',
+  runtime_read_only_tenant_guard: 'Runtime / tenant / read-only guard',
+  force_rls_not_owner_guard: 'FORCE RLS / non-owner guard',
+  widget_session_selection: 'Session selection',
+  exact_active_widget_origin: 'Active website origin',
+  fresh_unbound_widget_session: 'Fresh unbound session',
+  pool_error: 'Database connection',
+  cleanup: 'Connection cleanup'
+};
+const codes = new Set(['DATABASE_OR_TOOLING_UNAVAILABLE', 'DATABASE_UNAVAILABLE',
+  'DATABASE_CLEANUP_FAILED', 'SELECTION_SCOPE_INVALID',
+  'READ_ONLY_RUNTIME_TENANT_GUARD_FAILED', 'FORCE_RLS_NOT_OWNER_GUARD_FAILED',
+  'EXACT_ORIGIN_NOT_ACTIVE', 'EXACT_ORIGIN_AMBIGUOUS', 'NO_FRESH_UNBOUND_SESSION',
+  'FRESH_SESSION_AMBIGUOUS', 'FRESH_SESSION_STATE_INVALID']);
+let failure = 'Cannot obtain Cloud Shell authentication.';
+try {
+  const token = execFileSync('gcloud', ['auth', 'print-access-token', '--quiet'], {
+    encoding: 'utf8', timeout: 10000, maxBuffer: 65536,
+    stdio: ['ignore', 'pipe', 'pipe']
+  }).trim();
+  if (!token || /\s/u.test(token)) throw Error();
+  failure = 'Logging API timed out or could not be reached.';
+  const until = new Date().toISOString();
+  const from = new Date(Date.parse(until) - 86400000).toISOString();
+  const response = await fetch('https://logging.googleapis.com/v2/entries:list', {
+    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
+    headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+    body: JSON.stringify({resourceNames: ['projects/lead-agent-stg-739284'],
+      filter: `resource.type="cloud_run_job" AND resource.labels.job_name="lead-agent-staging-migrator" AND labels."run.googleapis.com/execution_name"="lead-agent-staging-migrator-xtcgs" AND jsonPayload.operation="s22_widget_session_selection" AND timestamp>="${from}" AND timestamp<="${until}"`,
+      pageSize: 10, orderBy: 'timestamp asc'})
+  });
+  failure = [401, 403].includes(response.status)
+    ? 'Cloud Shell does not have authorized Logging API access.'
+    : 'Logging API returned an unsuccessful response.';
+  if (!response.ok) throw Error();
+  failure = 'Logging API response timed out or could not be read.';
+  const raw = await response.text();
+  failure = 'Log response was incomplete or invalid; no conclusion drawn.';
+  if (raw.length > 65536) throw Error();
+  const data = JSON.parse(raw);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error();
+  const entries = data.entries ?? [];
+  if (!Array.isArray(entries) || entries.length > 10 || data.nextPageToken) throw Error();
+  failure = 'No diagnostic rows found in the last 24 hours; evidence still missing.';
+  if (!entries.length) throw Error();
+  failure = 'Unexpected diagnostic rows; unsafe fields withheld.';
+  const rows = entries.map(entry => entry?.jsonPayload);
+  if (rows.some(row => !row || row.operation !== 's22_widget_session_selection'
+    || !Object.hasOwn(labels, row.assertion) || !['PASS', 'BLOCKED'].includes(row.outcome)
+    || (row.outcome === 'BLOCKED' && !codes.has(row.code)))) throw Error();
+  console.log('Existing execution: lead-agent-staging-migrator-xtcgs');
+  for (const row of rows) console.log(`${labels[row.assertion]}: ${row.outcome}`
+    + (row.outcome === 'BLOCKED' ? ` (${row.code})` : ''));
+  if (!rows.some(row => row.outcome === 'BLOCKED')) {
+    failure = 'Original failure stage not present; evidence still incomplete.';
+    throw Error();
+  }
+  console.log('Log read collected. No diagnostic or paid call was run.');
+} catch {
+  console.log(`BLOCKED: ${failure}`);
+  process.exitCode = 1;
+}
+NODE
+```
+
+Verification for this alternative: the **exact ESM source extracted from the
+documented command** passed 17 controlled Node subprocess cases without live
+access: guard-then-failure, initialization failure, private authentication error,
+invalid token, HTTP 401/403/503, transport/body timeout, empty/malformed/
+paginated/oversized response, untrusted assertion/code, wrong operation and
+missing original failure. The fixtures assert exactly one private auth command
+and at most one correctly scoped Logging request, finite output and no copied
+private fixture strings. This is local tooling evidence only; it neither
+collects `xtcgs` nor verifies a live session. No application/runtime change or
+image rebuild is required. Historical costs and unrelated edits are preserved.
