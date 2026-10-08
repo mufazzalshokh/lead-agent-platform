@@ -14,15 +14,17 @@ import {
 } from "./s22-widget-session-select-readonly.mjs";
 
 const execute = promisify(execFile);
+// Verified correction apply 37809243773 / read-only convergence 37809490156.
+// This is the current deployment, not the future replacement-binding timestamp.
 export const reviewedSelectionJob = Object.freeze({
   project: "lead-agent-stg-739284",
   region: "me-central1",
   job: "lead-agent-staging-migrator",
-  source: "a2b2f708d2e804d2c3d2be66426fa7b49d8203c9",
-  timestamp: "2026-10-08T12:34:20Z",
+  source: "1ecd729d856fdeff22a55cc54e1259c7adcf6472",
+  timestamp: "2026-10-08T15:08:01Z",
   head: "0031_s22_widget_inbound_route_management",
   image:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:f4c6e5bdbf0e39a0fe6042e090b93ebaa21209a628bdc5cb889a49f8a03beace",
 });
 // Verbatim existing, subprocess-tested ES-module stdin bootstrap. No eval reader.
 export const moduleBootstrap =

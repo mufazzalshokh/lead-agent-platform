@@ -238,11 +238,11 @@ const jobMetadata = () => {
 };
 
 test("preflight validates current exact image/provenance, runtime identity/reference, private VPC and explicit zero retries", () => {
-  assert.equal(reviewedSelectionJob.source, "a2b2f708d2e804d2c3d2be66426fa7b49d8203c9");
-  assert.equal(reviewedSelectionJob.timestamp, "2026-10-08T12:34:20Z");
+  assert.equal(reviewedSelectionJob.source, "1ecd729d856fdeff22a55cc54e1259c7adcf6472");
+  assert.equal(reviewedSelectionJob.timestamp, "2026-10-08T15:08:01Z");
   assert.match(
     reviewedSelectionJob.image,
-    /@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276$/u,
+    /@sha256:f4c6e5bdbf0e39a0fe6042e090b93ebaa21209a628bdc5cb889a49f8a03beace$/u,
   );
   verifySelectionJob(jobMetadata());
   const badRetry = jobMetadata();
@@ -262,6 +262,44 @@ test("preflight validates current exact image/provenance, runtime identity/refer
   assert.throws(() => verifySelectionJob(badVpc), { code: "DIAGNOSTIC_VPC_MISMATCH" });
 });
 
+test("selector accepts exact independently verified correction metadata rather than its prior rollout", () => {
+  const correction = jobMetadata();
+  const container = correction.spec.template.spec.template.spec.containers[0];
+  container.image =
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:f4c6e5bdbf0e39a0fe6042e090b93ebaa21209a628bdc5cb889a49f8a03beace";
+  for (const [name, value] of Object.entries({
+    DEPLOYMENT_GIT_SHA: "1ecd729d856fdeff22a55cc54e1259c7adcf6472",
+    DEPLOYMENT_TIMESTAMP: "2026-10-08T15:08:01Z",
+    DEPLOYMENT_IMAGE_DIGEST: container.image,
+  })) {
+    container.env.find((entry) => entry.name === name).value = value;
+  }
+  assert.doesNotThrow(() => verifySelectionJob(correction));
+});
+
+test("unapplied replacement timestamp fails selection before authentication or execution", async () => {
+  const future = jobMetadata();
+  future.spec.template.spec.template.spec.containers[0].env.find(
+    (entry) => entry.name === "DEPLOYMENT_TIMESTAMP",
+  ).value = "2026-10-08T16:48:02Z";
+  const calls = [];
+  await assert.rejects(
+    runSelection(origin, {
+      preflightOnly: true,
+      cloud: async (args) => {
+        calls.push(args);
+        return JSON.stringify(future);
+      },
+      fetch: async () => assert.fail("Provenance mismatch must stop before Logging access"),
+    }),
+    { code: "DIAGNOSTIC_PROVENANCE_MISMATCH" },
+  );
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].includes("describe"));
+  assert.equal(calls[0].includes("print-access-token"), false);
+  assert.equal(calls[0].includes("execute"), false);
+});
+
 test("previous selector deployment is rejected by immutable image and provenance safeguards", () => {
   const previous = jobMetadata();
   previous.spec.template.spec.template.spec.containers[0].image =
@@ -276,6 +314,27 @@ test("previous selector deployment is rejected by immutable image and provenance
   assert.throws(() => verifySelectionJob(previousSource), {
     code: "DIAGNOSTIC_PROVENANCE_MISMATCH",
   });
+});
+
+test("immediately previous selector image/source/timestamp cannot masquerade as the correction runtime", () => {
+  for (const [kind, code] of [
+    ["image", "DIAGNOSTIC_IMAGE_ENTRYPOINT_MISMATCH"],
+    ["DEPLOYMENT_GIT_SHA", "DIAGNOSTIC_PROVENANCE_MISMATCH"],
+    ["DEPLOYMENT_TIMESTAMP", "DIAGNOSTIC_PROVENANCE_MISMATCH"],
+  ]) {
+    const old = jobMetadata();
+    const container = old.spec.template.spec.template.spec.containers[0];
+    if (kind === "image") {
+      container.image =
+        "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:2aa2c94ef59b8becda3db9e731a2cd5e65b535a40b539b896b97486d67c80276";
+    } else {
+      container.env.find((entry) => entry.name === kind).value =
+        kind === "DEPLOYMENT_GIT_SHA"
+          ? "a2b2f708d2e804d2c3d2be66426fa7b49d8203c9"
+          : "2026-10-08T12:34:20Z";
+    }
+    assert.throws(() => verifySelectionJob(old), { code });
+  }
 });
 
 const completedLogs = async () => {

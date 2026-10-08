@@ -3,6 +3,122 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-08 — Replacement session/binding preparation approved; tools ready
+
+The owner explicitly approved **preparing one replacement session and binding,
+with no budget increase**. This is preparation authority only, not apply or Send.
+No fresh frame/session, diagnostic execution, paid call or plan is created by
+this local milestone. The expired selection `01a11c48-dbc2-76de-a873-f41664da5ccb`
+and its passed `f57lg` snapshot remain recorded below; neither is reused.
+
+Authenticated workflow history still ends at successful correction apply
+**37809243773** and read-only verification **37809490156**, without an intervening
+deployment. Their saved sanitized evidence and the existing all-runtime build
+**37797125277** manifest are reused. Source is exactly
+**`1ecd729d856fdeff22a55cc54e1259c7adcf6472`**; manifest SHA256 remains
+`8a3632682b5a4d1982746aee5002ea4d176e4b46fe92172bffae433ed92d7193`.
+No application, package, infrastructure or workflow change exists against that
+runtime source. No rebuild, migration, OAuth, staff action or broad CI is needed.
+
+### Current versus future provenance must not be confused
+
+The previously downloaded selector froze the older `a2b2f70` image/source and
+12:34:20Z timestamp. It cannot select against the deployed correction. Controlled
+metadata for the exact correction image/provenance reproduced this rejection
+**before** the pin update. The smallest change repins only its immutable source,
+image and timestamp to the verified **current** correction runtime. Every existing
+identity, runtime DB reference, private VPC, zero-retry, tenant/read-only/FORCE-RLS,
+selection freshness/ambiguity/ownership, bounded query, cleanup and exclusive
+receipt-writing guard remains unchanged. The SQL reader/bootstrap are byte-identical.
+
+- Current selector: source `1ecd729`, Migrator `f4c6e5bd…`, timestamp
+  **2026-10-08T15:08:01Z**. Use this for preflight and subsequent fresh selection.
+- Future replacement readiness: same source/Worker/Migrator images, newly chosen
+  timestamp **2026-10-08T16:48:02Z**. This timestamp is a prepared expectation,
+  not a deployed-state claim; it is preserved for the future plan/apply inputs.
+- The future wrapper accepts only the actual selected UUIDv7 session, rejects
+  all three recorded expired selections and prevents observer overrides. The
+  default runner rejects either old Worker or old Migrator provenance before
+  creating a diagnostic. Do not run it before exact-plan-approved replacement apply.
+
+The repository-backed replacement bundle contains these exact reviewed bytes:
+
+| File                                     | SHA256                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| `s22-widget-session-select.mjs`          | `a9253f09c0ab4b0fbf332dba5eb7bfe12af1dfdbc89c40837e7929147f5a5f56` |
+| `s22-widget-session-select-readonly.mjs` | `1d430316acc64e4b16e270e9bc795793a1d6f6c175ad545928f15d7997156ef0` |
+| `s22-widget-readiness.mjs`               | `dea200cfcc6401071742c2115de0d0d35aef400305b9cf51aaaf3745e4099fd8` |
+| `s22-widget-readiness-readonly.mjs`      | `7b45ff56c9bdf468a8ac7ace4159360f54428b818bb88140560567e4cd43a971` |
+| `s22-widget-replacement-readiness.mjs`   | `b65dafefa371b6f8585dd41233f5f6e06794cd384960780847350c6fed8cad5e` |
+
+### Supported replacement plan scope, still awaiting actual selection
+
+The inspected full-runtime action guard and independent provider-schema
+configuration guard require **exactly four** in-place workload updates. A plan
+changing only the Worker SID while preserving every timestamp would fail these
+unchanged safeguards. No known-invalid plan is dispatched and no guard is loosened.
+The smallest currently supported plan reuses all four current immutable images
+and runtime source, changes their common deployment timestamp, and changes only
+the Worker's exact selected session binding:
+
+```text
+workflow=staging-terraform.yml
+ref=verify/s22-staging-recovery-capacity
+action=plan
+phase=full
+commit_sha=1ecd729d856fdeff22a55cc54e1259c7adcf6472
+deployment_timestamp=2026-10-08T16:48:02Z
+api_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:1e0bf75524e5f6815972ba6c5549e97720649849581195bc4ee1927f69a30844
+web_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:08f693c01936ff2b261d88e43d16c4b60813df5378904782ff1253030554a20b
+worker_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:9bb77154a6057981b3fed82164defa222ff6b893a5fbe5563a4e06f9140ab381
+migrator_image=me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:f4c6e5bdbf0e39a0fe6042e090b93ebaa21209a628bdc5cb889a49f8a03beace
+api_migration_head=0031_s22_widget_inbound_route_management
+runtime_migration_head=0031_s22_widget_inbound_route_management
+ai_journey_mode=widget_booking
+ai_journey_widget_session_id=<actual fresh owner-correlated selection; not guessed>
+```
+
+Isolated provenance overrides, approval token and apply inputs stay blank. Plan
+ID/hash are not yet available and old ones are not reused. Expected scope is
+**0 creates / 4 in-place updates / 0 destroys / 0 replacements**: API/Web/Migrator
+timestamp only; Worker timestamp plus SID. Source, images, budgets, model limits,
+identity, network, scaling, commands, retries and migration head stay unchanged;
+Migrator execution stays disabled. Actual saved-plan scope must be checked later.
+
+The existing two-total-inbound/four-physical-attempt allowance remains
+**USD3.205728**; last observed baseline exposure **USD1.042110**, maximum combined
+planning exposure **USD4.247838**, USD5 target and USD10 hard ceiling unchanged.
+This is not a new accounting read or spend authorization. Historical NULL costs
+remain unknown under the existing visible budget-only exception.
+
+### Verification and one external boundary
+
+- Before fix: exact independently verified current-runtime metadata test failed
+  against the old selector pin; after fix, selector tests **36/36 PASS**.
+- `node --test .github/scripts/s22-widget-session-select.test.mjs` includes the
+  actual positional CLI, fail-closed missing retries, stale/future provenance,
+  one diagnostic only, tenant/selector isolation, exclusive receipts and the
+  exact ESM bootstrap with package/relative-module resolution and rollback/cleanup.
+- `node --test .github/scripts/s22-widget-replacement-readiness.test.mjs`:
+  **21/21 PASS**, exercising the shared default runner with controlled Worker/job
+  metadata, exact future reader/bootstrap, invalid/expired CLI scope and preserved
+  identity/VPC/retry guards. These are local/controlled tests, not live DB/provider proof.
+- Scoped syntax, ESLint zero warnings, Prettier, diff checks and independent
+  security/provenance review **PASS**. Existing runtime tests/build are reused.
+
+There is no local authenticated `gcloud` or owner-browser automation access.
+The single next owner action is a checksum-verified download of this bundle and
+**current-runtime preflight only** in the existing authenticated Cloud Shell.
+It proves metadata/Logging access before starting a session clock and creates
+no session or diagnostic. No uploads are needed. Only after that passes should
+the owner reload the approved preview, reinstall the existing public snippet and
+open one fresh empty real frame, then immediately run positional origin selection
+with a new exclusive receipt. Do not Replace setup, reuse an old frame or Send.
+Finish review/approval/apply/readiness promptly; stop on expiry or any failed guard.
+Exact-plan approval and explicitly bounded execution authority remain separate;
+both may be requested in one clear later decision, never inferred from apply-only
+approval. **S22 remains unaccepted.** Unrelated edits are preserved.
+
 ## 2026-10-08 — Correction readiness snapshot PASS; idle deadline elapsed
 
 Owner-supplied live read-only execution **`lead-agent-staging-migrator-f57lg`**

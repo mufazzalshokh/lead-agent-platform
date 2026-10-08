@@ -2,7 +2,32 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
-**Latest checkpoint: owner-supplied correction readiness PASS, but its idle deadline elapsed.**
+**Latest checkpoint: replacement preparation approved; current/future tooling ready.**
+The owner approved one replacement session/binding with **no budget increase**,
+not apply or Send. Current selector pins are corrected to deployed source
+`1ecd729`, existing image build 37797125277 and **15:08:01Z**; future readiness
+separately pins the prepared replacement timestamp **2026-10-08T16:48:02Z**.
+The controlled old-selector rejection was reproduced before correction; selector
+**36/36** and replacement-wrapper **21/21** tests now pass, with scoped validation
+and independent security review. Shared readers/bootstrap, application code,
+deployment safeguards and budgets are unchanged; no rebuild is needed.
+
+The current workflow requires four in-place updates even with reused images:
+API/Web/Migrator timestamp provenance only, Worker timestamp plus the actual fresh
+session binding. No plan is dispatched until that exact selection exists. The
+USD3.205728 allowance/USD4.247838 maximum combined planning exposure and existing
+USD10 ceiling remain unchanged; historical NULL costs stay unknown.
+
+**Next: checksum-verified current-runtime preflight in Cloud Shell only.** Finish
+that metadata/Logging check before opening a fresh frame or starting its 30-minute
+idle clock. No uploads, diagnostic execution, new chat, Send or deployment is
+requested yet. Then coordinate one real-frame selection, exact plan review/approval,
+apply and current readiness promptly. Separately bounded execution authority is
+still required and may be explicitly requested with exact-plan approval to avoid
+an additional timed handoff. Do not infer it from apply-only approval. See the
+[replacement preparation packet](s22-acceptance-evidence.md#2026-10-08--replacement-sessionbinding-preparation-approved-tools-ready).
+
+**Previous checkpoint: owner-supplied correction readiness PASS, but its idle deadline elapsed.**
 Execution `lead-agent-staging-migrator-f57lg` passed exact runtime/security/session,
 budget and first-message preparation checks for `01a11c48-dbc2-76de-a873-f41664da5ccb`.
 Known cost/exposure remained USD0.008714/USD1.042110; pending reserve zero; no
