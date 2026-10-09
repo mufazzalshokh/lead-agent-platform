@@ -1,6 +1,26 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
-## Latest checkpoint - selection succeeded; clarity correction local, 2026-10-09
+## Latest checkpoint - UI rollout plan ready; no apply or paid test, 2026-10-09
+
+The owner authorized plan preparation for the verified selection-clarity fix.
+Exact source `c687dcf` has completed CI **37948879698 PASS**; reused, not rerun.
+Fresh immutable build **37953132266 PASS**, saved plan **37954005150 PASS**,
+independently verified **0 creates / 4 in-place workload updates / 0 destroys /
+0 replacements**, unchanged migration, stable mode/anchor and budget. Apply and
+migration execution were skipped. The [complete approval packet](s22-widget-ui-rollout-plan.md)
+contains exact images/inputs/hash and proof boundaries; the older applied packet
+cannot deploy this new code.
+
+**Next action: "Apply plan 37954005150 only" if the owner approves that exact
+reviewed rollout.** Do not create/select a fresh frame or Send during preparation.
+This rollout does not need another fresh-session binding plan and does not renew
+the 19:40 selection. Following approved apply and exact-runtime/read-only checks,
+observe the corrected UI; any further frame/customer actions remain separately
+gated. No diagnostic, model call, new session action or ledger reset ran here.
+Historical NULL costs remain unknown, Website Chat booking proof is pending,
+and S22 remains unaccepted.
+
+## Previous checkpoint - selection succeeded; clarity correction local, 2026-10-09
 
 The owner supplied a successful selection screenshot for fresh empty session
 `01a1211b-84ef-7d87-b561-91440f04e5a2`, opened at 19:40 Asia/Tashkent.

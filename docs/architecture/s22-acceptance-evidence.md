@@ -3,6 +3,41 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-09 - Selection UI rollout plan reviewed; not applied
+
+The owner authorized **preparing the UI-fix rollout plan**, not deployment or
+paid testing. Exact pushed source `c687dcfb82da64a26d981d793d1611d44c49c593`
+has completed CI **37948879698 PASS**: 3,541 ordinary cases passed / 7 opt-in
+skipped, 517 PostgreSQL cases passed, contract/type/lint/format/boundary/build
+checks passed. Completed checks were reused without a CI rerun.
+
+One immutable all-runtime build **37953132266 PASS** and one saved `full` plan
+**37954005150 PASS**, timestamp **2026-10-09T15:43:53Z**, migration head
+**0031_s22_widget_inbound_route_management**. Independent binary SHA256:
+**82e8062d7e9f8271a91f7b313a5d2f3cc135c642affe75c45f9316a4854f6948**.
+Workflow and independent guard both verify **88 managed resources**, exactly
+**0 creates / 4 in-place workload updates / 0 destroys / 0 replacements**,
+no configurable unknowns or unreviewed changes. All four source/image/timestamp
+bindings match the authenticated manifest. The sole refresh drift is computed
+Artifact Registry `update_time`, with planned `no-op`.
+
+Stable `widget_booking` mode/anchor and migration provenance are unchanged;
+no SQL/IAM/network/scaling/secret-reference/command/retry or budget change.
+Apply and one-shot migrator **SKIPPED**, inventory/booking-evidence jobs **SKIPPED**.
+Plan-captured state lineage `ad1c3000-d52f-06eb-de1b-53ae4d67f63e`, serial `67`.
+At review no active/intervening staging workflow; later out-of-band backend
+state is not independently proven. Future apply retains checksum, configuration,
+state-lock/lineage/serial checks and must stop rather than replace a stale plan.
+
+The [complete new UI approval packet](s22-widget-ui-rollout-plan.md) contains
+build/plan artifact IDs, four immutable images, independently matching hashes,
+validation, unchanged accounting and exact prepared apply inputs without approval
+acknowledgement. The [older applied packet](s22-widget-cohort-rollout-plan.md)
+is preserved, not reused to deploy new code. This checkpoint changes documentation
+only; later documentation commits do not justify rebuilding runtime images.
+No apply, migration, IAM change, diagnostic, chat/session action, customer message
+or model call was executed. Historical NULL costs remain unknown. S22 is unaccepted.
+
 ## 2026-10-09 - Owner selection observed; presentation correction verified locally
 
 **Observed:** the owner's second staff screenshot reports "Test session selected",

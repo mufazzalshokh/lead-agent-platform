@@ -21,6 +21,11 @@ This correction is not deployed or new paid-test authority. A fresh reviewed
 runtime rollout must retain the stable anchor; do not return to fresh-SID plans.
 Full provenance/proof boundaries are in the [evidence register](s22-acceptance-evidence.md).
 
+The separately authorized [UI rollout packet](s22-widget-ui-rollout-plan.md)
+now records source CI **37948879698 PASS**, immutable build **37953132266 PASS**
+and reviewed saved plan **37954005150 PASS**. It preserves this stable envelope
+and budget; it is not applied, a fresh-SID binding or paid-test authority.
+
 ## Confirmed timing failure
 
 The previous Worker configuration selected an anonymous Widget session before
