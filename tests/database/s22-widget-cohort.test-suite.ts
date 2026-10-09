@@ -48,7 +48,8 @@ const FIRST = fixtureId(24008),
 const OTHER_ORG = fixtureId(24012),
   OTHER_CHANNEL = fixtureId(24013),
   OTHER_ORIGIN = fixtureId(24014),
-  OTHER_SESSION = fixtureId(24015);
+  OTHER_SESSION = fixtureId(24015),
+  OTHER_MEMBER = fixtureId(24016);
 const hash = (label: string) => createHash("sha256").update(`synthetic-s22:${label}`).digest();
 const later = (milliseconds: number) => new Date(NOW.getTime() + milliseconds);
 
@@ -189,11 +190,18 @@ export const registerS22WidgetCohortTests = (options: Options): void => {
         Buffer.from("synthetic-owner-display-ciphertext"),
       ],
     );
-    await pool.query(
-      `insert into memberships (id,organization_id,user_id,role,status,location_scope,activated_at)
-      values ($1,$2,$3,'owner','active','all',$4)`,
-      [MEMBER, ORG, USER, NOW],
-    );
+    // Origin creation is tenant-membership-bound even for a global user who
+    // belongs to both organizations. The current tenant context still cannot
+    // read/select the other organization's session.
+    for (const [membership, org] of [
+      [MEMBER, ORG],
+      [OTHER_MEMBER, OTHER_ORG],
+    ])
+      await pool.query(
+        `insert into memberships (id,organization_id,user_id,role,status,location_scope,activated_at)
+        values ($1,$2,$3,'owner','active','all',$4)`,
+        [membership, org, USER, NOW],
+      );
     for (const [org, channel, origin] of [
       [ORG, CHANNEL, ORIGIN],
       [OTHER_ORG, OTHER_CHANNEL, OTHER_ORIGIN],

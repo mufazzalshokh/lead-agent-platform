@@ -48,6 +48,14 @@ plus lint/format/diff PASS; Instagram runtime and eligibility are untouched.
 The failed CI's 3,528 passed ordinary tests do not establish database/live proof.
 The corrected commit's PostgreSQL 17/CI result remains pending at this checkpoint.
 
+CI **37909363632** on `d3fe416` reached PostgreSQL 17, with **456 passed / 5 failed**
+database cases. The five new cases failed during fixture setup: a fictional
+foreign origin creator had no membership in that tenant. The fixture now supplies
+the required separate membership; the existing composite foreign key and all
+tenant/authorization safeguards remain enforced. Touched-file format/lint and
+root TypeScript **PASS**. The corrected SQL cases still require execution in normal
+PR CI; the failed run is retained, not relabeled as successful runtime evidence.
+
 Live selection, dispatch and complete Website Chat booking proof remain pending. Historical
 NULL costs and the visible budget-only exception remain unchanged. **S22 is
 unaccepted.**

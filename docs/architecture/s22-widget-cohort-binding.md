@@ -149,6 +149,18 @@ The failed CI had **3,528 passed / 1 failed / 7 opt-in skipped** ordinary tests;
 these results are not PostgreSQL or paid/provider evidence. PostgreSQL 17 still
 awaits the corrected normal CI, and no deployment is prepared from a failed run.
 
+CI **37909363632**, source `d3fe416ae69904a615f5fe48ae24db4bfd4fbf5c`, reached
+real PostgreSQL 17: **456 passed / 5 failed** database cases. All five new cases
+stopped in fixture setup, before exercising the selection store. The fictional
+foreign origin's global creator user lacked membership in that origin's tenant,
+violating the existing `widget_allowed_origins_creator_membership_fk`.
+The fixture now seeds that separate membership explicitly. The composite
+tenant/user foreign key, RLS, application authorization and runtime source remain
+unchanged. Review of the remaining seed constraints found no further definite
+mismatch. Touched-file formatting/lint and root TypeScript **PASS**; actual
+execution of the five corrected cases awaits the next normal PR CI. This is a
+test-fixture correction, not evidence of a deployed business failure.
+
 The old diagnostic readers' static-SID defaults do not establish readiness for
 this new mode. The authenticated status reader resolves the persisted owner
 selection; an older completed snapshot must not be used as Send authorization.
