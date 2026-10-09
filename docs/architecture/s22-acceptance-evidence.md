@@ -56,6 +56,18 @@ tenant/authorization safeguards remain enforced. Touched-file format/lint and
 root TypeScript **PASS**. The corrected SQL cases still require execution in normal
 PR CI; the failed run is retained, not relabeled as successful runtime evidence.
 
+**Final verification: CI 37910733207 PASS** on exact pushed runtime/test source
+`32e056ab0b33d407df58dc709beef711badcde25`, completed
+`2026-10-09T09:26:57Z`. Authenticated metadata/log inspection confirms the complete
+clean-checkout `pnpm ci:verify` gate: formatting/lint, boundaries, contracts,
+TypeScript, ordinary/database tests and production builds. **3,529 ordinary tests
+passed / 7 opt-in skipped; 517 PostgreSQL database tests passed.** S4a's **461/461**
+includes all five new real selection/locking/RLS/idempotency/unknown-cost cases,
+without skips. The earlier PostgreSQL gap is closed for this source; failed CI
+history stays visible above. This evidence-only update does not alter runtime
+code or justify repeating those passed checks. No live session, model call,
+diagnostic, image build, plan or deployment was performed in this milestone.
+
 Live selection, dispatch and complete Website Chat booking proof remain pending. Historical
 NULL costs and the visible budget-only exception remain unchanged. **S22 is
 unaccepted.**

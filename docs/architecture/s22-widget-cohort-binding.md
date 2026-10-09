@@ -161,6 +161,32 @@ mismatch. Touched-file formatting/lint and root TypeScript **PASS**; actual
 execution of the five corrected cases awaits the next normal PR CI. This is a
 test-fixture correction, not evidence of a deployed business failure.
 
+### Completed clean-checkout and PostgreSQL proof
+
+Automatic PR CI **37910733207 PASS** for exact pushed source
+`32e056ab0b33d407df58dc709beef711badcde25`, completed
+`2026-10-09T09:26:57Z`. Authenticated run metadata and sanitized log inspection
+confirm `pnpm ci:verify` exit 0: clean checkout, frozen dependency install,
+repository format/lint, dependency boundaries, 378-contract snapshot, root and
+workspace TypeScript, all ordinary/database suites and workspace production builds.
+There were **3,529 ordinary tests passed / 7 opt-in skipped**, and **517 database
+tests passed** across the five isolated PostgreSQL suites (461 + 9 + 21 + 12 + 14).
+The S4a suite executed **461/461**, including all five newly registered selection
+cases: CAS/owner attribution, duplicate/lifetime/history preservation, cross-tenant
+RLS, bound-anchor refusal, and independent-guard dispatch/replacement with retained
+unknown-cost reserve. No database case was skipped. This closes the local
+PostgreSQL 17 verification gap; it does not prove a live staging selection or
+provider/channel journey. The earlier failed runs remain preserved above.
+
+This final evidence addition changes documentation only; runtime source and its
+verified checks are unchanged. No image build, plan/apply, session creation,
+diagnostic execution, migration or paid call was dispatched. Next preparation,
+after separate owner authorization, is one all-runtime immutable build and one
+full-runtime reviewed plan. Preserve the existing `widget_booking` mode and
+anchor SID; do not put a fresh browser SID in Terraform. Fresh selection belongs
+in the authenticated staff interface after rollout. Apply and Send remain
+separately gated. Historical NULL costs and budgets are unchanged.
+
 The old diagnostic readers' static-SID defaults do not establish readiness for
 this new mode. The authenticated status reader resolves the persisted owner
 selection; an older completed snapshot must not be used as Send authorization.
