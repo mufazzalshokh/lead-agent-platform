@@ -116,6 +116,27 @@ planning exposure USD4.247838. The USD5 target and USD10 ceiling are unchanged.
   apply was performed. The existing PR is number 17; normal CI can provide the
   required PostgreSQL 17 proof after the verified change is pushed.
 
+### Clean-checkout correction after the first push
+
+The implementation was committed/pushed as `a63094dcfb508d73dfc1ab165df05d6384632c98`.
+Automatic PR CI **37907478143 FAIL** at Web TypeScript, before database tests.
+Repository-wide formatting/lint, 325-file dependency boundaries, 378-contract
+snapshot and root TypeScript passed in that run. The Web package's original
+typecheck lacked workspace source aliases and required generated contract
+declarations, which CI deliberately does not build before typechecking. Existing
+local compiled artifacts had masked this clean-checkout requirement.
+
+The smallest correction adds the same separate source-aware typecheck config
+already used by API/Worker and points the Web package's typecheck script at it.
+Next's production/build config is unchanged. An installed-TypeScript resolver
+regression hides generated contract declarations: the old options cannot resolve
+the bare import, while the actual new config resolves the repository's contract
+source. **25/25 Web cases, source-aware Web TypeScript, scoped lint and formatting
+PASS** after correction. The original 188-case run remains valid; the additional
+case is clean-checkout tooling evidence, not paid/provider or PostgreSQL proof.
+The failed run is retained, not relabeled PASS; PostgreSQL 17 execution awaits
+the corrected commit's normal CI.
+
 The old diagnostic readers' static-SID defaults do not establish readiness for
 this new mode. The authenticated status reader resolves the persisted owner
 selection; an older completed snapshot must not be used as Send authorization.
@@ -149,6 +170,7 @@ Runtime/application and shared contracts:
 - `apps/api/src/staff/s22-widget-cohort-composition.ts`
 - `apps/api/src/staff/s22-widget-cohort-plugin.ts`
 - `apps/web/package.json`
+- `apps/web/tsconfig.typecheck.json`
 - `apps/web/src/app/staff/StaffWorkspace.tsx`
 - `apps/web/src/app/staff/S22WidgetCohort.tsx`
 - `apps/web/src/lib/s22-widget-cohort.ts`
@@ -189,7 +211,7 @@ node node_modules/vitest/vitest.mjs run tests/ai/s22-budget-ledger.test.ts tests
 node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
 node node_modules/typescript/bin/tsc -p apps/api/tsconfig.typecheck.json --noEmit
 node node_modules/typescript/bin/tsc -p apps/worker/tsconfig.typecheck.json --noEmit
-node node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit
+node node_modules/typescript/bin/tsc -p apps/web/tsconfig.typecheck.json --noEmit
 node node_modules/typescript/bin/tsc -p packages/contracts/tsconfig.json --noEmit false --declaration true --declarationMap true --outDir packages/contracts/dist --rootDir packages/contracts/src
 node node_modules/typescript/bin/tsc -p packages/config/tsconfig.json --noEmit false --declaration true --declarationMap true --outDir packages/config/dist --rootDir packages/config/src
 node node_modules/typescript/bin/tsc -p packages/application/tsconfig.build.json --noEmit false --declaration true --declarationMap true --outDir packages/application/dist --rootDir packages/application/src

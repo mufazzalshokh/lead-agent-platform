@@ -30,6 +30,16 @@ unavailable; the canonical major-version safeguard was not bypassed. Scoped
 lint/format checks and final touched-file/build/TypeScript rechecks pass; PR 17
 CI remains pending at this local checkpoint. Local memory/tool invocation failures are
 recorded in the binding design, not represented as live product failures.
+
+Implementation commit `a63094d` is pushed. Its automatic PR CI **37907478143 FAIL**
+stopped before SQL at clean-checkout Web package resolution; local generated
+contract declarations had masked the missing source-aware typecheck config.
+The existing API/Worker approach is now applied to Web without changing Next's
+production configuration. A controlled artifact-free resolver regression,
+**25/25 Web tests**, corrected Web TypeScript and scoped lint/format **PASS**.
+The failed CI result is retained; the corrected commit's PostgreSQL 17/CI proof
+is still pending. No staging or paid action was performed by this correction.
+
 Live selection, dispatch and complete Website Chat booking proof remain pending. Historical
 NULL costs and the visible budget-only exception remain unchanged. **S22 is
 unaccepted.**

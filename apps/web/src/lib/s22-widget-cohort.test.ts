@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { isSchemaValue, S22WidgetCohortCandidateSchema } from "@lead-agent/contracts";
+import { getParsedCommandLineOfConfigFile, resolveModuleName, sys } from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import type { StaffRequest } from "./staff-request";
 
@@ -75,6 +78,60 @@ const harness = () => {
 const receipt = (version = 1) => data({ selection_version: version, selected_session_id: SESSION });
 
 describe("owner S22 Widget cohort presentation workflow", () => {
+  it("resolves the actual Web contracts import without generated workspace declarations", () => {
+    const configPath = fileURLToPath(new URL("../../tsconfig.typecheck.json", import.meta.url));
+    const config = getParsedCommandLineOfConfigFile(configPath, undefined, {
+      ...sys,
+      onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
+        throw new Error(`Cannot parse Web typecheck configuration: ${diagnostic.code}`);
+      },
+    });
+    if (config === undefined) throw new Error("Missing Web typecheck configuration");
+    expect(config.errors).toEqual([]);
+
+    const modulePath = fileURLToPath(new URL("./s22-widget-cohort.ts", import.meta.url));
+    const contractsSource = fileURLToPath(
+      new URL("../../../../packages/contracts/src/index.ts", import.meta.url),
+    );
+    const canonicalPath = (fileName: string) => {
+      const value = path.resolve(sys.realpath?.(fileName) ?? fileName);
+      return sys.useCaseSensitiveFileNames ? value : value.toLowerCase();
+    };
+    const contractsDist = canonicalPath(
+      fileURLToPath(new URL("../../../../packages/contracts/dist", import.meta.url)),
+    );
+    const isGeneratedContractsPath = (fileName: string) => {
+      const value = canonicalPath(fileName);
+      return value === contractsDist || value.startsWith(`${contractsDist}${path.sep}`);
+    };
+    const host = {
+      ...sys,
+      fileExists: (fileName: string) =>
+        !isGeneratedContractsPath(fileName) && sys.fileExists(fileName),
+      directoryExists: (directory: string) =>
+        !isGeneratedContractsPath(directory) && sys.directoryExists(directory),
+      readFile: (fileName: string) =>
+        isGeneratedContractsPath(fileName) ? undefined : sys.readFile(fileName),
+    };
+    expect(config.fileNames.map((fileName) => path.resolve(fileName))).toContain(modulePath);
+    const resolved = resolveModuleName("@lead-agent/contracts", modulePath, config.options, host);
+    expect(path.resolve(resolved.resolvedModule?.resolvedFileName ?? "")).toBe(contractsSource);
+    expect(
+      resolveModuleName("@lead-agent/contracts", modulePath, { ...config.options, paths: {} }, host)
+        .resolvedModule,
+    ).toBeUndefined();
+
+    const manifest: unknown = JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    );
+    if (typeof manifest !== "object" || manifest === null || !("scripts" in manifest))
+      throw new Error("Invalid Web package manifest");
+    const scripts = manifest.scripts;
+    if (typeof scripts !== "object" || scripts === null || !("typecheck" in scripts))
+      throw new Error("Missing Web typecheck script");
+    expect(scripts.typecheck).toBe("tsc -p tsconfig.typecheck.json --noEmit");
+  });
+
   it("does not auto-select a candidate, create sessions, authorize Send or call a provider", async () => {
     const test = harness();
     await test.controller.refresh();
