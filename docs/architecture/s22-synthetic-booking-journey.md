@@ -1,6 +1,30 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
-## Latest checkpoint - owner-selection rollout applied and verified, 2026-10-09
+## Latest checkpoint - selection succeeded; clarity correction local, 2026-10-09
+
+The owner supplied a successful selection screenshot for fresh empty session
+`01a1211b-84ef-7d87-b561-91440f04e5a2`, opened at 19:40 Asia/Tashkent.
+"Test session selected" and budget check ready are owner-observed UI evidence,
+not independently collected selection audit or paid-booking proof. The disabled
+action is expected once selected; it must not be clicked again to renew a chat.
+Choice (radio) and frame confirmation (checkbox) are separate required steps.
+Five-minute selection freshness is distinct from 30-minute idle/two-hour absolute
+session lifetime. Screenshots are completed snapshots, not later Send permission.
+
+The requested presentation correction adds numbered steps, an explicit selection
+deadline, reasoned disabled controls and styled accessible cards. It is locally
+verified: 37 focused cases, type/lint/format checks and production Web build PASS.
+It has **not been deployed**; the previously applied plan cannot be reused for
+changed code. See the [evidence checkpoint](s22-acceptance-evidence.md) for the
+before/after reproduction and proof boundaries.
+
+**Next safe milestone: prepare/review the presentation-only runtime rollout,
+preserving the stable envelope and unchanged budget.** No fresh-SID deployment,
+paid test, session renewal or additional user session preparation is part of
+this code change. Historical NULL costs and the accounting gap remain visible.
+Website Chat booking completion and S22 acceptance remain pending.
+
+## Previous checkpoint - owner-selection rollout applied and verified, 2026-10-09
 
 Exact approved plan **37935626931** is applied: **37938812591 PASS**, actual
 **0 creates / 4 in-place workload updates / 0 destroys**, reviewed zero replacements,

@@ -3,6 +3,70 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-09 - Owner selection observed; presentation correction verified locally
+
+**Observed:** the owner's second staff screenshot reports "Test session selected",
+current selection `01a1211b-84ef-7d87-b561-91440f04e5a2`, budget check ready and
+pending reserve USD0.000000. Its candidate opened at 19:40 Asia/Tashkent, with
+idle deadline 20:10 and absolute expiry 21:40. Known cost USD0.008714 and exposure
+USD1.042110 are that screenshot's snapshot, not an independent new ledger read.
+This is live owner-supplied selection/UI evidence. Direct persisted selection
+audit, paid dispatch and Website Chat booking completion were not collected.
+
+**Confirmed mechanism:** before choosing the radio, the existing client disables
+the confirmation checkbox. After selection, `canSelect()` deliberately rejects
+the already-selected session to prevent reselection being used as renewal.
+Both states previously used the same unexplained disabled action. The default
+unstyled fieldset, raw UUID as the primary label, and separate session deadlines
+without a visible five-minute selection deadline compounded the confusion.
+The latest successful-selection screenshot does not establish another backend
+selection failure; its disabled action is expected. Whether an earlier click
+was also late cannot be established from its screenshot alone.
+
+**Correction:** Web-only presentation now numbers choice and confirmation,
+explains disabled controls, labels "Session already selected", shows the earliest
+selection deadline independently from idle/absolute expiry, and uses scoped,
+keyboard-accessible card labels with larger native inputs. Failed refreshes label
+retained budget data as stale. API/controller commands, membership/CSRF/CAS,
+idempotency, five-minute freshness, idle/absolute lifetime, cohort mutex, ownership,
+routing, reservations and budget limits are unchanged. No automatic selection,
+renewal, retry, message, provider call or budget authorization was added.
+
+**Local verification:** actual React component rendering with the real controller
+and mocked HTTP transport reproduced nine presentation regressions before the
+correction (9/9 FAIL). After correction and three additional replacement/lifetime
+cases, the focused suite is **37/37 PASS**: 12 component cases and 25 existing
+controller/security cases. Scoped ESLint/Prettier, source-aware root/Web TypeScript,
+diff checks, dependency boundaries (326 source files) and production Next Web build
+**PASS**. JSX transformation was enabled
+only in the Node test configuration; Next configuration/dependencies are unchanged.
+The existing real PostgreSQL concurrency/tenant proof at CI **37910733207** is
+reused, not rerun or represented as new live evidence. Component rendering does
+not prove a real browser interaction, persisted audit or provider journey.
+
+Commands (repository root unless stated; no live credentials/provider access):
+
+```text
+node node_modules/vitest/vitest.mjs run apps/web/src/app/staff/S22WidgetCohort.test.ts --maxWorkers=1
+node node_modules/vitest/vitest.mjs run apps/web/src/app/staff/S22WidgetCohort.test.ts apps/web/src/lib/s22-widget-cohort.test.ts --maxWorkers=1
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+node node_modules/typescript/bin/tsc -p apps/web/tsconfig.typecheck.json --noEmit
+node node_modules/eslint/bin/eslint.js apps/web/src/app/staff/S22WidgetCohort.tsx apps/web/src/app/staff/S22WidgetCohort.test.ts vitest.config.ts --max-warnings=0
+node node_modules/eslint/bin/eslint.js apps/web/src/app/staff/S22WidgetCohort.test.ts --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check apps/web/src/app/staff/S22WidgetCohort.tsx apps/web/src/app/staff/S22WidgetCohort.test.ts apps/web/src/app/styles.css vitest.config.ts
+node node_modules/next/dist/bin/next build (working directory apps/web)
+node scripts/check-boundaries.mjs
+git diff --check -- apps/web/src/app/staff/S22WidgetCohort.tsx apps/web/src/app/staff/S22WidgetCohort.test.ts apps/web/src/app/styles.css vitest.config.ts docs/architecture/s22-acceptance-evidence.md docs/architecture/s22-synthetic-booking-journey.md docs/architecture/s22-widget-cohort-binding.md
+```
+
+**Boundary:** this correction is not deployed. A new reviewed immutable rollout
+is required; plan **37935626931** is already applied and cannot deploy changed Web
+code. Keep the stable envelope anchor and select fresh frames through the owner
+UI, not another SID-binding plan. No image build, new plan/apply, diagnostic,
+session action, paid test, migration or IAM change ran in this correction.
+Historical NULL costs remain unknown and S22 is unaccepted. Send remains gated
+by the applicable explicit test authorization and current runtime safeguards.
+
 ## 2026-10-09 - Exact owner-selection plan applied; runtime verification PASS
 
 The owner approved **apply plan 37935626931 only**. One apply

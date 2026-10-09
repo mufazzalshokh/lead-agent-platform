@@ -3,6 +3,24 @@
 Scope: the existing synthetic staging cohort only. This is not production billing,
 general Widget eligibility, a new budget, or S22 acceptance.
 
+## Owner-observed selection and local clarity correction, 2026-10-09
+
+The owner supplied a staff screenshot reporting successful selection of
+`01a1211b-84ef-7d87-b561-91440f04e5a2`, opened at 19:40 Asia/Tashkent.
+This closes the owner-visible UI-selection observation, not the independent
+persisted audit or paid Website Chat booking evidence. The existing controller
+intentionally disables selection of the current SID; it does not renew it.
+Before choosing a candidate radio, its separate confirmation checkbox is disabled.
+
+The requested local Web correction makes these states explicit, replaces the
+native unstyled fieldset border with accessible candidate cards, and displays
+the five-minute selection deadline separately from idle/absolute lifetime.
+37 focused render/controller cases, type/lint/format and production Web build
+pass. Controller/API/budget behavior and all timing limits are unchanged.
+This correction is not deployed or new paid-test authority. A fresh reviewed
+runtime rollout must retain the stable anchor; do not return to fresh-SID plans.
+Full provenance/proof boundaries are in the [evidence register](s22-acceptance-evidence.md).
+
 ## Confirmed timing failure
 
 The previous Worker configuration selected an anonymous Widget session before

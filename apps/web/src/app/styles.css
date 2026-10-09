@@ -362,6 +362,109 @@ input:focus-visible {
   background: white;
   color: var(--ink);
 }
+.s22-widget-cohort {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.s22-widget-cohort h4,
+.s22-widget-cohort h5,
+.s22-widget-cohort p {
+  margin: 0;
+}
+.s22-widget-cohort h4 {
+  font-size: 1rem;
+}
+.s22-widget-cohort h5,
+.s22-widget-cohort__choices legend {
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+.s22-widget-cohort .integration-detail {
+  font-size: 0.8rem;
+}
+.s22-widget-cohort .ghost-button {
+  justify-self: start;
+}
+.s22-widget-cohort__summary {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  border-radius: 0.75rem;
+  background: var(--accent-soft);
+}
+.s22-widget-cohort__summary > span,
+.s22-widget-cohort__candidate-details > span:not(.s22-widget-cohort__availability) {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.s22-widget-cohort code {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+.s22-widget-cohort__choices {
+  display: grid;
+  min-width: 0;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.s22-widget-cohort__choices legend {
+  margin-bottom: 0.4rem;
+  padding: 0;
+}
+.s22-widget-cohort__candidate,
+.s22-widget-cohort__confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  cursor: pointer;
+}
+.s22-widget-cohort__candidate:focus-within {
+  outline: 3px solid #80b7a9;
+  outline-offset: 2px;
+}
+.s22-widget-cohort__candidate:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.s22-widget-cohort__candidate[data-available="false"],
+.s22-widget-cohort__choices:disabled .s22-widget-cohort__candidate,
+.s22-widget-cohort__confirmation[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+.s22-widget-cohort__candidate input,
+.s22-widget-cohort__confirmation input {
+  min-width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  margin: 0.15rem 0 0;
+  accent-color: var(--accent);
+}
+.s22-widget-cohort__candidate-details {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+.s22-widget-cohort__availability {
+  color: var(--accent-dark);
+  font-weight: 650;
+}
+.s22-widget-cohort__help {
+  color: var(--muted);
+}
+.s22-widget-cohort .action-row {
+  margin-top: 0;
+}
 .analytics-overview__heading,
 .analytics-latency {
   display: flex;
