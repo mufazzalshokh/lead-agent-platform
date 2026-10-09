@@ -1,8 +1,50 @@
 # S22 Website Chat selection UI rollout approval
 
-Prepared 2026-10-09. **READY FOR EXACT OWNER APPROVAL; NOT APPLIED.**
-Preparation is not permission to Send, renew a chat or run a model call.
+Prepared 2026-10-09; applied and verified 2026-10-10 (Asia/Tashkent).
+**EXACT APPROVED PLAN APPLIED; RUNTIME VERIFICATION PASS.**
+Apply is not permission to Send, renew a chat or run a model call.
 Historical NULL costs remain unknown; S22 remains unaccepted.
+
+## Applied result
+
+The owner approved **"Apply plan 37954005150 only."** One
+[apply 37987684500](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37987684500)
+passed, completed `2026-10-09T20:33:46Z` (01:33:46 on 2026-10-10 Asia/Tashkent).
+It used the exact source, timestamp, four images and saved-plan hash below.
+Dispatch HEAD `79f26579c60c5559f7ed407a77920f3cbed57514` differs from runtime
+source only by the already-reviewed evidence documents.
+
+Actual Terraform result: **0 creates / 4 in-place workload updates / 0 destroys**.
+All four reviewed workloads completed their modifications. The full approval
+guard passed for 88 managed configurations, zero configurable unknowns,
+**0 replacements**, no IAM or unexpected actions. Integrity and approval checks
+passed; plan creation, one-shot migrator, inventory and booking evidence were
+skipped. No image rebuild, replacement plan, migration or paid call was initiated.
+
+One existing read-only
+[verification 37987879930](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37987879930)
+passed, completed `2026-10-09T20:35:17Z`. Authenticated artifact
+`11644046849`, `s22-api-image-live-evidence-37987879930`, records **16/16 checks
+PASS**: API image/source/timestamp/migration provenance, API/Web ready images and
+revisions, API runtime identity/private VPC/subnet/egress, 15 secret references,
+and whole-runtime convergence **exit 0**. Ready revisions are
+`lead-agent-staging-api-00029-pwp` and `lead-agent-staging-web-00025-jxr`.
+Worker/Migrator bindings are covered by refreshed whole-runtime convergence,
+not separate direct descriptor assertions. Preserved `widget_booking` mode and
+stable anchor were also corroborated from sanitized verification log fields.
+Verification created no saved deployment plan and skipped apply/migration.
+
+Bounded public HTTP reads at `2026-10-09T20:34:48.517Z` returned API `/health`
+**200**, service `api`, status `ok`, and organization-bound Web staff entry
+**200 HTML**. These are runtime/readiness/reachability proofs, not an authenticated
+browser observation of the corrected UI, persisted owner-selection audit, fresh
+session readiness, current ledger read or customer booking proof.
+
+The deployment preserves the existing monetary controls, mode and envelope;
+it does not renew the owner's old browser selection or change historical costs.
+No new chat, diagnostic execution, customer/provider call, ledger reset, budget
+increase or IAM change ran. The source CI and focused checks below were reused,
+not repeated. **Live corrected UI and Website Chat booking proof remain pending.**
 
 ## Change and scope
 
@@ -108,7 +150,7 @@ The independent review used the existing backend-free inspection directory and
 installed provider. Saved-plan JSON/schema stayed in memory; there was no new
 provider/dependency, backend state write or safeguard relaxation.
 
-### Freshness and future apply boundary
+### Saved plan freshness and apply boundary
 
 At review, authenticated all-branch staging workflow history contained no active
 or intervening staging run; this completed plan was newest. The last apply and
@@ -117,11 +159,13 @@ bindings match that reviewed rollout, rather than assuming historical success
 establishes the current state.
 
 Serial `67` and lineage are the plan-captured snapshot, not a later independent
-read of current backend state. Out-of-band subsequent changes and indefinite
-validity are not proven. Future apply must retrieve this exact artifact, verify
-the approved hash and full configuration boundary, and retain Terraform's
-state-lock/lineage/serial stale-plan protection. If stale or any safeguard fails,
-**stop and report it**; approval must not extend to a replacement plan.
+read of current backend state. Before dispatch, authenticated history still
+contained no intervening staging run and the artifact was unexpired. The exact
+saved binary independently matched the approved hash again. The authorized apply
+retained the artifact/configuration checks and Terraform's state-lock/lineage/
+serial stale-plan protection and succeeded without a replacement plan.
+This saved plan is now consumed; **do not apply it again**. The owner approval
+does not extend to any replacement or subsequent plan.
 
 ## Validation reused
 
@@ -167,12 +211,13 @@ or duplicate paid allowance is added.
 - Timeout, unknown cost, pending reserve, exhaustion and any guard failure stop
   paid dispatch. Apply approval remains separate from paid-test approval.
 
-## Prepared exact apply inputs
+## Applied exact inputs
 
 Workflow `staging-terraform.yml`, ref `verify/s22-staging-recovery-capacity`.
-The approval acknowledgement is deliberately absent. Submit nothing until the
-owner approves **this exact saved plan**; do not rebuild/replan or change its
-source, timestamp, images, stable anchor or budget to make a rejected plan apply.
+The approval acknowledgement is deliberately absent from this stored record;
+the workflow's required acknowledgement was supplied only for the owner's exact
+authorized apply. These inputs are retained as execution evidence, not another
+dispatch request. Do not rebuild/replan or reuse this consumed plan.
 
 ```json
 {
@@ -195,9 +240,9 @@ source, timestamp, images, stable anchor or budget to make a rejected plan apply
 
 ## Exactly one next action
 
-If the owner wishes to deploy this reviewed UI correction, approve
-**"Apply plan 37954005150 only."** No Cloud Shell command, new frame, message,
-model call or accounting reset is part of that approval. After a successful
-exact apply, use the existing read-only provenance/health/convergence checks,
-then observe the corrected owner UI. Customer-to-confirmed Website Chat booking,
-delivery/accounting and the other actual S22 acceptance requirements remain pending.
+Refresh the signed-in staff Integrations page and provide a screenshot of the
+**S22 synthetic Website Chat test** section. This establishes whether the corrected
+selection UI is visible in the owner's actual browser. Do not open/select a fresh
+chat, Send or run a Cloud Shell diagnostic yet. Customer-to-confirmed Website Chat
+booking, delivery/accounting and the other actual S22 acceptance requirements
+remain pending.

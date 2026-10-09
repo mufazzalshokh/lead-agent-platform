@@ -3,6 +3,16 @@
 Scope: the existing synthetic staging cohort only. This is not production billing,
 general Widget eligibility, a new budget, or S22 acceptance.
 
+## Selection UI rollout applied and verified, 2026-10-10
+
+Exact plan **37954005150** was applied by **37987684500 PASS**: 0 creates,
+4 in-place updates, 0 destroys/replacements. Runtime source `c687dcf` and build
+**37953132266** are verified by read-only **37987879930 PASS**, 16 assertions
+and whole-runtime convergence exit 0. Mode, stable anchor, monetary controls and
+session limits are unchanged. No migration or paid call. The [applied UI packet](s22-widget-ui-rollout-plan.md)
+records the exact bindings and proof limits. Corrected UI observation in the
+owner's signed-in browser remains pending; no fresh session or Send is authorized.
+
 ## Owner-observed selection and local clarity correction, 2026-10-09
 
 The owner supplied a staff screenshot reporting successful selection of
@@ -17,14 +27,15 @@ native unstyled fieldset border with accessible candidate cards, and displays
 the five-minute selection deadline separately from idle/absolute lifetime.
 37 focused render/controller cases, type/lint/format and production Web build
 pass. Controller/API/budget behavior and all timing limits are unchanged.
-This correction is not deployed or new paid-test authority. A fresh reviewed
-runtime rollout must retain the stable anchor; do not return to fresh-SID plans.
+This correction is now deployed, but is not new paid-test authority. The reviewed
+runtime rollout retained the stable anchor; do not return to fresh-SID plans.
 Full provenance/proof boundaries are in the [evidence register](s22-acceptance-evidence.md).
 
 The separately authorized [UI rollout packet](s22-widget-ui-rollout-plan.md)
 now records source CI **37948879698 PASS**, immutable build **37953132266 PASS**
-and reviewed saved plan **37954005150 PASS**. It preserves this stable envelope
-and budget; it is not applied, a fresh-SID binding or paid-test authority.
+and reviewed saved plan **37954005150 PASS**. Its exact approved apply and runtime
+verification are recorded above. It preserves this stable envelope and budget;
+it is not a fresh-SID binding or paid-test authority.
 
 ## Confirmed timing failure
 

@@ -3,6 +3,51 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-10 - Exact selection UI plan applied and runtime verified
+
+The owner approved **apply plan 37954005150 only**. One apply
+**37987684500 PASS**, completed `2026-10-09T20:33:46Z` (01:33:46 on 2026-10-10
+Asia/Tashkent), used runtime source `c687dcfb82da64a26d981d793d1611d44c49c593`,
+build **37953132266**, timestamp **2026-10-09T15:43:53Z**, unchanged migration
+provenance **0031_s22_widget_inbound_route_management**, and exact saved-plan hash
+**82e8062d7e9f8271a91f7b313a5d2f3cc135c642affe75c45f9316a4854f6948**.
+Dispatch HEAD `79f2657` changes only evidence documents after that runtime source.
+Before the single dispatch, authenticated plan/artifact availability and workflow
+history were checked; the binary checksum independently matched. No intervening
+staging run, rebuild, replacement plan or source-test rerun.
+
+Actual Terraform counts: **0 creates / 4 in-place workload updates / 0 destroys**.
+The exact full-runtime approval guard checked 88 managed configurations and
+confirmed **0 replacements**, no configurable unknowns, IAM or unexpected actions.
+All four intended workload modifications completed. Saved-plan integrity and
+approval boundary passed; `Create reviewed plan` and `Execute one-shot migrator`
+were **SKIPPED**. No migration, SQL/network/scaling or monetary-control change.
+
+One existing read-only `api-image-verify` run **37987879930 PASS**, completed
+`2026-10-09T20:35:17Z`, produced sanitized artifact **11644046849**,
+`s22-api-image-live-evidence-37987879930`. **16/16 checks PASS**: exact API
+image/source/timestamp/migration provenance, API/Web images and ready revisions,
+API identity/private VPC/subnet/egress, 15 secret references and whole-runtime
+convergence **exit 0**. Ready revisions: API **lead-agent-staging-api-00029-pwp**,
+Web **lead-agent-staging-web-00025-jxr**. Worker/Migrator bindings are covered by
+whole-runtime convergence, not independent direct descriptor assertions.
+Sanitized log fields corroborate preserved `widget_booking` mode and stable
+anchor `01a11c48-dbc2-76de-a873-f41664da5ccb`. No saved plan, apply or migration
+execution was performed by verification.
+
+Public HTTP reads at `2026-10-09T20:34:48.517Z`: API `/health` **200** (`api` /
+`ok`), organization-bound Web staff entry **200 HTML**. These checks do not
+establish authenticated UI behavior, fresh selection/session readiness, current
+ledger state or customer E2E. No owner browser automation session was available.
+Next: refresh the signed-in Integrations page and observe the corrected S22 test
+section; do not create/select another frame or Send yet.
+
+The [complete applied UI packet](s22-widget-ui-rollout-plan.md) retains exact
+references, inputs, review and execution evidence. No diagnostic, new session,
+customer/model call, cost reconciliation, ledger reset, budget increase or IAM
+change ran. Historical NULL costs remain unknown. Existing focused/source CI
+proof was reused. Unrelated edits remain untouched. **S22 is unaccepted.**
+
 ## 2026-10-09 - Selection UI rollout plan reviewed; not applied
 
 The owner authorized **preparing the UI-fix rollout plan**, not deployment or

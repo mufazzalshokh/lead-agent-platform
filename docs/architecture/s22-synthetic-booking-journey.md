@@ -1,6 +1,29 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
-## Latest checkpoint - UI rollout plan ready; no apply or paid test, 2026-10-09
+## Latest checkpoint - selection UI deployed and runtime verified, 2026-10-10
+
+The exact owner-approved plan **37954005150** is applied: **37987684500 PASS**,
+actual **0 creates / 4 in-place updates / 0 destroys**, verified zero replacements.
+Runtime source **c687dcf**, immutable build **37953132266**, timestamp
+**2026-10-09T15:43:53Z** and all four reviewed images/migration provenance are
+retained. Stable `widget_booking` mode/envelope and budget are unchanged.
+Plan creation and migrator execution were skipped; no rebuild or paid call.
+
+One read-only verification **37987879930 PASS**, **16/16 checks**, proves exact
+API provenance, API/Web images/ready revisions and whole-runtime convergence
+**exit 0**. Worker/Migrator are covered by refreshed convergence, not separate
+direct descriptor assertions. Public API health and Web reachability returned
+**200**. See the [applied UI rollout packet](s22-widget-ui-rollout-plan.md).
+
+**Next action: refresh the signed-in staff Integrations page and provide a
+screenshot of the S22 synthetic Website Chat test section.** This supplies the
+still-missing live observation of the corrected UI. Do not open/select another
+frame or Send yet; deployment did not renew the old selection or authorize a
+paid test. No diagnostic execution, session mutation, provider call, ledger reset,
+budget increase, migration or IAM change ran. Historical NULL costs remain unknown;
+Website Chat booking/delivery/accounting proof and S22 acceptance remain pending.
+
+## Previous checkpoint - UI rollout plan ready; no apply or paid test, 2026-10-09
 
 The owner authorized plan preparation for the verified selection-clarity fix.
 Exact source `c687dcf` has completed CI **37948879698 PASS**; reused, not rerun.
