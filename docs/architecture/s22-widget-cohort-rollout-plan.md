@@ -1,8 +1,46 @@
 # S22 owner-selected Website Chat binding: reviewed rollout plan
 
-Prepared 2026-10-09. **PLAN READY; NOT APPLIED.** This packet replaces the
+Prepared 2026-10-09; approved, applied and runtime-verified 2026-10-09.
+**APPLIED; LIVE CUSTOMER JOURNEY STILL PENDING.** This packet replaces the
 pre-deployment fresh-session binding sequence, not the existing budget controls.
 It authorizes neither a customer message nor a model call. S22 remains unaccepted.
+
+## Approved apply and deployed-runtime checkpoint
+
+The owner approved **"Apply plan 37935626931 only."** One apply was dispatched
+with the exact preserved inputs below and the repository-required approval
+acknowledgement. No images were rebuilt, replacement plan generated or tests rerun.
+
+- [Apply 37938812591: PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37938812591),
+  completed `2026-10-09T13:44:07Z`. Actual Terraform result:
+  **0 added / 4 changed / 0 destroyed**. All four reviewed workloads report
+  in-place modifications complete; the reviewed guard reports **0 replacements**.
+- Saved-plan integrity and exact full-runtime approval boundary **PASS**:
+  the checksum below is unchanged, all **88 managed resources** checked,
+  no unreviewed/configurably unknown values or unexpected actions.
+  `Create reviewed plan` and `Execute one-shot migrator` were **SKIPPED**.
+- [Read-only verification 37939258506: PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/37939258506),
+  completed `2026-10-09T13:47:28Z`. Downloaded sanitized artifact
+  `s22-api-image-live-evidence-37939258506` contains **16/16 checks PASS**:
+  exact API source/image/timestamp/migration provenance, API/Web ready images,
+  runtime identity, private VPC/subnet/egress, secret-reference count and
+  whole-runtime Terraform convergence **exit 0**. The Worker/Migrator bindings
+  are covered by whole-runtime convergence, not a separate direct metadata report.
+- Ready API revision `lead-agent-staging-api-00028-ghh`; ready Web revision
+  `lead-agent-staging-web-00024-pmb`. Live source, timestamp and migration head
+  match this packet. Preserved gate mode/anchor resolved successfully.
+- Independent public HTTP checks at `2026-10-09T13:47:23.872Z`:
+  API `/health` **200**, response service `api` / status `ok`; organization-bound
+  Web staff entry **200 HTML**. These were unauthenticated reachability checks,
+  not proof of the owner's authenticated UI or a customer booking.
+
+The verification phase is the existing `api-image-verify` read-only profile.
+Its unsaved Terraform convergence read is not a new rollout plan. Apply, saved-plan
+creation and migration execution are **SKIPPED** in that verification run.
+No diagnostic execution, session creation/selection/renewal, customer message,
+paid call, budget increase, IAM or SQL configuration change was performed here.
+Historical NULL costs remain unknown; no new ledger reconciliation/read is claimed.
+The authenticated selection/status UI and real Website Chat journey remain pending.
 
 ## Purpose and authority
 
@@ -21,7 +59,7 @@ consumed or accounting-incomplete lane cannot transfer its allowance to a new SI
 Every physical dispatch still checks the selected session and the monetary guards.
 Unknown social-thread eligibility and all Instagram privacy boundaries are unchanged.
 
-**Owner authority for this packet: preparation only.** One all-runtime image build
+**Original preparation authority: preparation only.** One all-runtime image build
 and one `full` reconciliation plan were dispatched. No apply, diagnostic execution,
 session selection, Send, model call, migration, IAM change or job-command override
 was performed. Updating the migrator image is not executing the migrator.
@@ -179,12 +217,13 @@ post-deployment owner selection. No owner selection means no paid dispatch.
 - Timeout, unknown costs, pending reserve, exhaustion and guard failures retain
   their existing stop behavior. Applying this plan does not authorize Send.
 
-## Prepared exact subsequent apply inputs — NOT dispatched
+## Exact approved apply inputs — preserved from the reviewed packet
 
 Workflow `staging-terraform.yml`, ref `verify/s22-staging-recovery-capacity`.
-The inputs below are preserved, not submitted. The actual workflow field is
-`owner_approval_token`; it is intentionally omitted until separate owner approval
-of this exact saved plan. Do not rebuild, regenerate the plan or replace the anchor.
+The inputs below were submitted unchanged in apply `37938812591`; the owner-approved
+acknowledgement was supplied using the actual `owner_approval_token` field and is
+not persisted in this input block. This is a historical record, **not an instruction
+to dispatch apply again**. Do not rebuild, regenerate the plan or replace the anchor.
 
 ```json
 {
@@ -207,9 +246,10 @@ of this exact saved plan. Do not rebuild, regenerate the plan or replace the anc
 
 ## Exactly one next action
 
-Owner reviews this packet and, if approved, replies **"Apply plan 37935626931 only."**
-That authorizes only the saved plan above, not a replacement plan or paid test.
-After successful apply and exact-runtime verification, fresh-frame selection is
-performed through the authenticated staff UI without another Terraform binding
-plan or temporary diagnostic/upload cycle. Live selection, dispatch and complete
-Website Chat customer-to-confirmed-booking proof remain pending.
+Refresh the authenticated staff workspace and open **Integrations** to check that
+**"S22 synthetic Website Chat test"** is visible. Do not create/select a fresh
+frame or Send yet. This supplies the missing owner-session/UI evidence without
+starting another expiry clock. Subsequent separately approved fresh-frame
+selection uses this UI, not another Terraform binding plan or temporary upload.
+Live selection, dispatch and complete Website Chat customer-to-confirmed-booking
+proof remain pending. The saved plan above has already been applied; do not repeat it.

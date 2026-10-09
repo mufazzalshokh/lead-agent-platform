@@ -3,6 +3,52 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-09 - Exact owner-selection plan applied; runtime verification PASS
+
+The owner approved **apply plan 37935626931 only**. One apply
+**37938812591 PASS**, completed `2026-10-09T13:44:07Z`, used source
+`32e056ab0b33d407df58dc709beef711badcde25`, existing immutable image build
+**37934925171**, timestamp **2026-10-09T13:15:13Z**, unchanged migration provenance
+**0031_s22_widget_inbound_route_management** and exact saved-plan SHA256
+**1758f17366992068803131415284241f6e288ab1979f3a14c04f2c1922177176**.
+Later dispatch HEAD `389c3b8` changes documentation only, not the runtime source.
+Authenticated artifact availability/checksum/source and current workflow history
+were verified before the single dispatch. No rebuild, replacement plan or CI rerun.
+
+Actual Terraform result: **0 creates / 4 in-place workload updates / 0 destroys**.
+All four reviewed workloads report modifications complete; the full-runtime guard
+confirms **0 replacements**, 88 managed configurations checked, no configurable
+unknowns/unreviewed changes, IAM actions or unexpected actions. Saved-plan integrity
+and approval-boundary checks **PASS**. `Create reviewed plan` and
+`Execute one-shot migrator` **SKIPPED**. No SQL/network/scaling change or migration.
+
+One existing read-only `api-image-verify` run **37939258506 PASS**, completed
+`2026-10-09T13:47:28Z`, checked that exact source/images/timestamp and preserved
+`widget_booking` mode/envelope anchor. Authenticated sanitized artifact inspection
+confirms **16/16 checks PASS**: API image/source/timestamp/migration provenance,
+API/Web ready images/revisions, API runtime identity/private VPC/subnet/egress,
+15 secret references and whole-runtime convergence **exit 0**. Worker/Migrator
+bindings are covered by whole-runtime convergence, not a separate direct metadata
+artifact. Ready revisions: API **lead-agent-staging-api-00028-ghh**, Web
+**lead-agent-staging-web-00024-pmb**. Verification created no saved rollout plan;
+apply and migrator execution were skipped. Its convergence read is not a new plan.
+
+Separate bounded public HTTP reads at **2026-10-09T13:47:23.872Z**:
+API `/health` **200** (`api` / `ok`); organization-bound Web staff entry **200 HTML**.
+These reads do not establish authenticated owner UI/status or customer E2E.
+No browser automation interface with the owner's authenticated session was
+available. The next live check is that the newly deployed **S22 synthetic Website
+Chat test** section is visible after refreshing the owner's Integrations page;
+do not open/select a fresh frame or Send yet.
+
+The [reviewed packet and applied evidence](s22-widget-cohort-rollout-plan.md)
+retain exact references/inputs and the preparation record. No diagnostic execution,
+session creation/selection/renewal, customer message, provider call, ledger reset,
+cost reconciliation, budget increase or IAM grant was performed. Historical NULL
+costs and the budget-only exception remain visible. Existing CI/regression proof
+is reused; this checkpoint changes documentation only. Live authenticated selection,
+dispatch and complete Website Chat booking remain pending. **S22 is unaccepted.**
+
 ## 2026-10-09 - Owner-selected Widget rollout plan ready; not applied
 
 The owner requested **rollout preparation**, not apply or a paid test. Exact

@@ -1,6 +1,29 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
-## Latest checkpoint - rollout plan ready, 2026-10-09
+## Latest checkpoint - owner-selection rollout applied and verified, 2026-10-09
+
+Exact approved plan **37935626931** is applied: **37938812591 PASS**, actual
+**0 creates / 4 in-place workload updates / 0 destroys**, reviewed zero replacements,
+no migrations. Runtime source **32e056ab**, build **37934925171**, deployment
+timestamp **2026-10-09T13:15:13Z** and all reviewed images/bindings are retained.
+Read-only verification **37939258506 PASS** proves API/Web ready revisions and
+exact API provenance/security checks plus whole-runtime convergence **exit 0**.
+Separate API health and Web reachability **200** do not establish customer E2E.
+See the [applied rollout packet](s22-widget-cohort-rollout-plan.md).
+
+**Next action: refresh the authenticated staff workspace, open Integrations and
+check for "S22 synthetic Website Chat test".** No authenticated browser automation
+was available to observe that UI here. Do not start/select a fresh frame or Send
+yet. The expired SID is only a preserved deployment anchor, not an authorized chat.
+Once the owner UI is verified, separately approved preparation selects the
+corroborated fresh empty frame directly through the staff UI, within five minutes
+of creation, without another Terraform deployment or diagnostic/upload loop.
+Paid-test approval remains separate. No new message/provider call, DB diagnostic,
+selection, renewal or ledger reset ran in this rollout; budgets and historical
+NULL costs are unchanged. Full Website Chat booking proof and S22 acceptance
+remain pending; the completed Instagram journey is not repeated.
+
+## Previous checkpoint - rollout plan ready, 2026-10-09
 
 The owner-selected binding correction is verified at source `32e056ab` and now
 has a fresh immutable build **37934925171 PASS** and one reviewed staging plan
