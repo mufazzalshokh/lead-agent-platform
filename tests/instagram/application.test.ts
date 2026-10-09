@@ -10,6 +10,7 @@ import {
   type PreparedCanonicalInbound,
   type CredentialSecretStore,
   type InstagramOAuthClient,
+  type InstagramOnboardingFailure,
 } from "../../packages/application/src/index.js";
 import {
   ACCOUNT_ID,
@@ -49,13 +50,14 @@ const fixture = (
     values.delete(key);
     return Promise.resolve();
   });
+  const putCredential = vi.fn<CredentialSecretStore["put"]>((value) => {
+    operations.push("secret.put");
+    const key = `testsecret://instagram/${++secretNumber}`;
+    values.set(key, value);
+    return Promise.resolve(key);
+  });
   const credentials: CredentialSecretStore = {
-    put: vi.fn<CredentialSecretStore["put"]>((value) => {
-      operations.push("secret.put");
-      const key = `testsecret://instagram/${++secretNumber}`;
-      values.set(key, value);
-      return Promise.resolve(key);
-    }),
+    put: putCredential,
     get: vi.fn<CredentialSecretStore["get"]>((key) => Promise.resolve(values.get(key) ?? null)),
     delete: deleteCredential,
   };
@@ -104,7 +106,7 @@ const fixture = (
     return Promise.resolve(true);
   });
   const beginOnboarding = vi.fn<InstagramPersistenceStore["beginOnboarding"]>(() =>
-    Promise.resolve(IDS.channel),
+    Promise.resolve({ channelConnectionId: IDS.channel, retiredCredentialReference: null }),
   );
   const persistence: InstagramPersistenceStore = {
     activate,
@@ -113,6 +115,15 @@ const fixture = (
     replaceCredential,
     loadConnection: (input) =>
       Promise.resolve(input.organizationId === IDS.organization ? connection : null),
+    loadManagementStatus: () =>
+      Promise.resolve({
+        status:
+          connection.status === "active"
+            ? "connected"
+            : connection.status === "pending"
+              ? "connection_pending"
+              : "needs_attention",
+      }),
   };
   const exchangeCode = vi.fn<InstagramOAuthClient["exchangeCode"]>(() => {
     operations.push("provider.exchange");
@@ -182,6 +193,7 @@ const fixture = (
     credentials,
     activate,
     deleteCredential,
+    putCredential,
     beginOnboarding,
     disconnect,
     replaceCredential,
@@ -210,6 +222,40 @@ const message = {
   content: { type: "text" as const, text: "Salom" },
 };
 describe("Instagram application trust and short-transaction choreography", () => {
+  it.each(["code_exchange", "message_subscription", "credential_storage", "activation"] as const)(
+    "reports a sanitized %s failure while preserving cleanup and error behavior",
+    async (stage) => {
+      const test = fixture();
+      const original = Object.assign(new Error(`private ${TOKEN}`), { code: "23505" });
+      if (stage === "code_exchange") test.exchangeCode.mockRejectedValue(original);
+      if (stage === "message_subscription") test.subscribeMessages.mockRejectedValue(original);
+      if (stage === "credential_storage") test.putCredential.mockRejectedValue(original);
+      if (stage === "activation") test.activate.mockRejectedValue(original);
+      const onFailure = vi.fn<(failure: InstagramOnboardingFailure) => void>();
+      await expect(
+        test.useCases.completeOnboarding({ code: "code", state: NONCE, onFailure }),
+      ).rejects.toThrow();
+      expect(onFailure).toHaveBeenCalledOnce();
+      expect(onFailure.mock.calls[0]?.[0]).toMatchObject({
+        stage,
+        failure: "unexpected",
+        databaseCode: "23505",
+      });
+      expect(JSON.stringify(onFailure.mock.calls)).not.toContain(TOKEN);
+      expect(JSON.stringify(onFailure.mock.calls)).not.toContain("private");
+      expect(test.values.size).toBe(0);
+      if (stage === "activation") expect(test.deleteCredential).toHaveBeenCalledOnce();
+      else expect(test.activate).not.toHaveBeenCalled();
+    },
+  );
+  it("reports only the finite tenant-scoped connection state", async () => {
+    const test = fixture();
+    await expect(
+      test.useCases.getStatus({ authorization: await authorization() }),
+    ).resolves.toEqual({
+      status: "connection_pending",
+    });
+  });
   it("binds ten-minute SHA-256 state to a server-authorized tenant and returns only the official URL", async () => {
     const test = fixture();
     const result = await test.useCases.beginOnboarding({
@@ -227,6 +273,18 @@ describe("Instagram application trust and short-transaction choreography", () =>
     const input = test.beginOnboarding.mock.calls[0]?.[0];
     expect(input?.stateHash).toEqual(digest(NONCE));
     expect((input?.expiresAt.getTime() ?? 0) - (input?.now.getTime() ?? 0)).toBe(600000);
+  });
+  it("retires the prior credential after a tenant-scoped reconnect is persisted", async () => {
+    const test = fixture();
+    test.beginOnboarding.mockResolvedValue({
+      channelConnectionId: IDS.channel,
+      retiredCredentialReference: "testsecret://instagram/old",
+    });
+    await test.useCases.beginOnboarding({
+      authorization: await authorization(),
+      displayName: "Clinic Instagram",
+    });
+    expect(test.deleteCredential).toHaveBeenCalledWith("testsecret://instagram/old");
   });
   it("requires integrations.manage before touching persistence or provider", async () => {
     const test = fixture();
@@ -262,6 +320,16 @@ describe("Instagram application trust and short-transaction choreography", () =>
       expect(test.resolver).not.toHaveBeenCalled();
     },
   );
+  it("resolves a valid pending callback to its tenant without provider or secret access", async () => {
+    const test = fixture();
+    await expect(test.useCases.resolveOnboardingOrganization({ state: NONCE })).resolves.toEqual({
+      organizationId: IDS.organization,
+    });
+    expect(test.resolver).toHaveBeenCalledWith("instagram_webhook", digest(NONCE));
+    expect(test.exchangeCode).not.toHaveBeenCalled();
+    expect(test.subscribeMessages).not.toHaveBeenCalled();
+    expect(test.values.size).toBe(0);
+  });
   it("rejects expired state and replay without re-exchanging code or creating another secret", async () => {
     const expired = fixture();
     expired.setNow(new Date(NOW.getTime() + 600001));

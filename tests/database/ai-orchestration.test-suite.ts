@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { COMMERCIAL_V1_AI_PROFILE } from "../../packages/config/src/index.js";
+import { COMMERCIAL_V1_AI_PROFILE, S22_BOOKING_COHORT } from "../../packages/config/src/index.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAIOrchestrator,
@@ -24,6 +24,7 @@ import {
 } from "../../packages/contracts/src/index.js";
 import {
   createAIOrchestrationStore,
+  createAIJourneyBudgetGuard,
   createConversationKnowledgeReader,
   createCanonicalInboundPersistenceStore,
   createThreadAutomationControlStore,
@@ -87,6 +88,7 @@ const accept = async (
     sequence?: number;
     text?: string;
     receivedAt?: string;
+    widgetThread?: string;
     channelType?: "widget" | "telegram" | "instagram";
   }> = {},
 ): Promise<CanonicalInboundReceipt> => {
@@ -99,7 +101,7 @@ const accept = async (
       ? "ig:900001:700001"
       : channelType === "telegram"
         ? "700001"
-        : "s12:thread";
+        : (options.widgetThread ?? "s12:thread");
   const event: unknown = {
     channel: channelType,
     channel_connection_id: channel,
@@ -113,7 +115,7 @@ const accept = async (
         ? "ig:900001:700001"
         : channelType === "telegram"
           ? "700001"
-          : "s12:participant",
+          : (options.widgetThread ?? "s12:participant"),
     kind: "text",
     occurred_at: options.receivedAt ?? "2026-09-15T08:00:00.000Z",
     received_at: options.receivedAt ?? "2026-09-15T08:00:00.000Z",
@@ -449,6 +451,7 @@ const submissionFlow = (
   });
 const acceptSubmission = (harness: Harness, text: string, sequence = 1, tenant: "a" | "b" = "a") =>
   accept(harness, { text, sequence, tenant, receivedAt: GROUNDING_NOW });
+// staff_tasks counts appointment notifications; Handoff persistence is checked separately.
 const submissionCounts = async (harness: Harness) =>
   (
     await harness.privilegedPool().query<Record<string, number>>(`select
@@ -464,6 +467,41 @@ const submissionCounts = async (harness: Harness) =>
   ).rows[0];
 
 const registerAppointmentSubmissionTests = (harness: Harness): void => {
+  const expectRejectedProposalAudit = async (
+    reference: AIWorkReference,
+    rejection: string,
+    fields: readonly string[],
+  ): Promise<void> => {
+    const audit = await harness.privilegedPool().query<{
+      status: string;
+      policy_allowed: boolean;
+      rejection: string;
+      fields: string[];
+      reply: string;
+      result: string;
+    }>(
+      `select r.status,r.policy_allowed,
+        a.metadata_redacted_jsonb->>'policy_rejection_code' as rejection,
+        a.metadata_redacted_jsonb->'extraction_rejection_fields' as fields,
+        a.metadata_redacted_jsonb->>'reply_disposition' as reply,
+        a.metadata_redacted_jsonb->>'sales_result_kind' as result
+      from ai_runs r join audit_events a
+        on a.organization_id=r.organization_id and a.target_id=r.id
+      where r.organization_id=$1 and r.trigger_message_id=$2
+        and a.event_type='ai_run.policy_denied' and a.correlation_id=$3`,
+      [reference.organizationId, reference.messageId, reference.correlationId],
+    );
+    expect(audit.rows).toEqual([
+      {
+        status: "policy_denied",
+        policy_allowed: false,
+        rejection,
+        fields,
+        reply: "queued",
+        result: "handoff_requested",
+      },
+    ]);
+  };
   describe("S16 fixed-profile appointment request persistence", () => {
     it("price → ertaga → 5larda atomically creates requested + provenance + durable staff task, without a phone", async () => {
       await seedSales(harness);
@@ -713,8 +751,24 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
         await submissionFlow(harness, {
           action: { type: "confirm_appointment", appointment_request_id: fixtureId(44000) },
         }).run(referenceFor(receipt)),
-      ).toMatchObject({ kind: "grounding_insufficient", reason: "policy_denied" });
-      expect(await submissionCounts(harness)).toMatchObject({ requests: 0, outbound: 0 });
+      ).toMatchObject({ kind: "handoff_requested", reason: "policy_blocked" });
+      expect(await submissionCounts(harness)).toMatchObject({
+        requests: 0,
+        preferences: 0,
+        transitions: 0,
+        request_outbox: 0,
+        lead_outbox: 0,
+        request_audits: 0,
+        outbound: 1,
+        staff_tasks: 0,
+      });
+      expect(await salesCounts(harness)).toMatchObject({
+        handoffs: 1,
+        handoff_outbox: 1,
+        qualifications: 0,
+        appointments: 0,
+      });
+      await expectRejectedProposalAudit(referenceFor(receipt), "confirmation_not_authorized", []);
     });
     it.each(["telegram", "instagram"] as const)(
       "trusted bound %s identity uses the same path without phone or Widget session",
@@ -855,7 +909,7 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
               service_id: groundingId(tenant === "a" ? 110 : 10),
             },
           }).run(reference),
-        ).toMatchObject({ kind: "grounding_insufficient", reason: "policy_denied" });
+        ).toMatchObject({ kind: "handoff_requested", reason: "policy_blocked" });
         expect(
           await submissionStore(harness).load({
             ...reference,
@@ -864,9 +918,34 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
         ).toBeNull();
         expect(await submissionCounts(harness)).toMatchObject({
           requests: 0,
-          outbound: 0,
+          preferences: 0,
+          transitions: 0,
+          request_outbox: 0,
+          lead_outbox: 0,
+          request_audits: 0,
+          outbound: 1,
           staff_tasks: 0,
         });
+        expect(await salesCounts(harness)).toMatchObject({
+          handoffs: 1,
+          handoff_outbox: 1,
+          qualifications: 0,
+          appointments: 0,
+        });
+        await expectRejectedProposalAudit(reference, "untrusted_extraction", ["service_id"]);
+        const foreignOrganization = tenant === "a" ? tenantB : AI_REFERENCE.organizationId;
+        expect(
+          (
+            await harness.privilegedPool().query<Record<string, number>>(
+              `select
+                (select count(*)::int from handoffs where organization_id=$1) as handoffs,
+                (select count(*)::int from messages where organization_id=$1 and direction='outbound') as outbound,
+                (select count(*)::int from lead_qualification_evaluations where organization_id=$1) as qualifications,
+                (select count(*)::int from appointment_requests where organization_id=$1) as appointments`,
+              [foreignOrganization],
+            )
+          ).rows[0],
+        ).toEqual({ handoffs: 0, outbound: 0, qualifications: 0, appointments: 0 });
       },
     );
     it("a legitimate later request is distinct after a prior terminal request and trusted Lead retry", async () => {
@@ -1194,6 +1273,88 @@ const registerSalesFlowTests = (harness: Harness): void => {
         appointments: 0,
       });
     });
+    it.each(["handoff", "extraction"] as const)(
+      "S22 rejected model %s atomically queues a safe policy fallback and preserves run denial",
+      async (proposal) => {
+        await seedSales(harness);
+        const receipt = await accept(harness, {
+          text: "Salom, konsultatsiya narxi qancha va qancha davom etadi?",
+        });
+        await bindWidget(harness, receipt, GROUNDING_NOW);
+        const provider = salesProvider({
+          action:
+            proposal === "handoff"
+              ? { type: "request_handoff", reason: "customer_requested" }
+              : { type: "none" },
+          ...(proposal === "extraction"
+            ? {
+                extracted_facts: {
+                  ...validDecision().extracted_facts,
+                  display_name: "PRIVATE_NAME",
+                  phone_raw: "+998900000000",
+                },
+              }
+            : {}),
+        });
+        const flow = createSalesFlowOrchestrator({
+          provider,
+          store: salesStore(harness),
+          timeoutMs: 5000,
+        });
+        expect(await flow.run(referenceFor(receipt))).toMatchObject({
+          kind: "handoff_requested",
+          reason: "policy_blocked",
+        });
+        expect(await salesCounts(harness)).toMatchObject({
+          handoffs: 1,
+          outbound: 1,
+          handoff_outbox: 1,
+          qualified: 0,
+          qualifications: 0,
+          appointments: 0,
+        });
+        const run = (
+          await harness.privilegedPool().query<{
+            status: string;
+            schema_valid: boolean;
+            policy_allowed: boolean;
+            estimated_cost_micros: string | null;
+          }>(`select status,schema_valid,policy_allowed,estimated_cost_micros from ai_runs where trigger_message_id=$1`, [receipt.messageId])
+        ).rows[0];
+        expect(run).toMatchObject({
+          status: "policy_denied",
+          schema_valid: true,
+          policy_allowed: false,
+        });
+        expect(run?.["estimated_cost_micros"]).not.toBeNull();
+        const audit = (
+          await harness.privilegedPool().query<{
+            rejection: string | null;
+            fields: string[];
+            reply: string | null;
+            result: string | null;
+          }>(
+            `select metadata_redacted_jsonb->>'policy_rejection_code' as rejection,
+        metadata_redacted_jsonb->'extraction_rejection_fields' as fields,
+        metadata_redacted_jsonb->>'reply_disposition' as reply,
+        metadata_redacted_jsonb->>'sales_result_kind' as result
+        from audit_events where event_type='ai_run.policy_denied' and correlation_id=$1`,
+            [referenceFor(receipt).correlationId],
+          )
+        ).rows[0];
+        expect(audit).toEqual({
+          rejection: proposal === "handoff" ? "handoff_not_authorized" : "untrusted_extraction",
+          fields: proposal === "handoff" ? [] : ["display_name", "phone_raw"],
+          reply: "queued",
+          result: "handoff_requested",
+        });
+        expect(await lastReply(harness)).toContain("xodimga so'rov yuborildi");
+        expect(await lastReply(harness)).not.toMatch(/Hello|reserved|confirmed/u);
+        await flow.run(referenceFor(receipt));
+        expect(provider.decide).toHaveBeenCalledOnce();
+        expect(await salesCounts(harness)).toMatchObject({ handoffs: 1, outbound: 1 });
+      },
+    );
     it("foreign-tenant facts and conversation references fail closed", async () => {
       await seedSales(harness);
       await seedGrounding(harness, "b");
@@ -1440,6 +1601,368 @@ const registerSalesFlowTests = (harness: Harness): void => {
   });
 };
 export const registerAIOrchestrationTests = (harness: Harness): void => {
+  describe("S22 durable synthetic booking budget", () => {
+    const now = () => new Date("2026-10-05T20:00:00Z");
+    const prepare = async () => {
+      await seed(harness);
+      const receipt = await accept(harness, { receivedAt: now().toISOString() });
+      const reference = referenceFor(receipt);
+      const cohort = {
+        ...S22_BOOKING_COHORT,
+        mode: "booking" as const,
+        organizationId: reference.organizationId,
+        conversationId: reference.conversationId,
+        historicalRunIds: [],
+      };
+      const persistence = createAIOrchestrationStore(harness.runtime(), {
+        requestedModel: COMMERCIAL_V1_AI_PROFILE.model,
+        providerId: "gemini",
+        journeyCohort: cohort,
+        clock: now,
+        dataProtection,
+        protectProposal: proposalProtection.protect,
+      });
+      const snapshot = await persistence.load(reference);
+      if (snapshot === null) throw new Error("Missing synthetic budget context");
+      const reserve = async () => {
+        const reservation = await persistence.reserve({
+          reference,
+          snapshot,
+          inputHash: new Uint8Array(32).fill(19),
+        });
+        if (reservation === null) throw new Error("Missing synthetic AI run");
+        return reservation;
+      };
+      return { reference, cohort, persistence, snapshot, reserve };
+    };
+    const prepareWidget = async () => {
+      const original = await prepare();
+      const pool = harness.privilegedPool();
+      const oldGuard = createAIJourneyBudgetGuard(harness.runtime(), original.cohort, now);
+      for (let index = 0; index < 4; index++) {
+        const receipt =
+          index === 0
+            ? null
+            : await accept(harness, {
+                sequence: index + 1,
+                receivedAt: now().toISOString(),
+              });
+        const reference = receipt === null ? original.reference : referenceFor(receipt);
+        const snapshot = await original.persistence.load(reference);
+        if (snapshot === null) throw new Error("Missing original cohort fixture");
+        const reservation = await original.persistence.reserve({
+          reference,
+          snapshot,
+          inputHash: new Uint8Array(32).fill(19),
+        });
+        if (reservation === null) throw new Error("Missing original fixture run");
+        expect(await oldGuard.authorizeDispatch({ reference, reservation })).toBe(true);
+        // Isolated PostgreSQL fixture setup only; never live usage reconciliation.
+        await pool.query(
+          `update ai_runs set status='succeeded',schema_valid=true,policy_allowed=true,
+          provider_resolved_model_id='gemini-3.8-flash',output_hash=$2,finished_at=$3,latency_ms=1,
+          estimated_cost_micros=$4,input_units=520,output_units=217,total_units=737,cached_input_units=0
+          where id=$1`,
+          [reservation.runId, Buffer.alloc(32, 19), now(), [1950, 1792, 2465, 2507][index]],
+        );
+      }
+      const receipt = await accept(harness, {
+        sequence: 100,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      await bindWidget(harness, receipt, now().toISOString());
+      await pool.query("update widget_sessions set version=2 where id=$1", [fixtureId(13006)]);
+      const reference = referenceFor(receipt);
+      const cohort = {
+        ...original.cohort,
+        mode: "widget_booking" as const,
+        widgetSessionId: fixtureId(13006),
+      };
+      const persistence = createAIOrchestrationStore(harness.runtime(), {
+        requestedModel: COMMERCIAL_V1_AI_PROFILE.model,
+        providerId: "gemini",
+        journeyCohort: cohort,
+        clock: now,
+        dataProtection,
+        protectProposal: proposalProtection.protect,
+      });
+      const snapshot = await persistence.load(reference);
+      if (snapshot === null) throw new Error("Missing selected Widget fixture");
+      const reserve = async () => {
+        const reservation = await persistence.reserve({
+          reference,
+          snapshot,
+          inputHash: new Uint8Array(32).fill(19),
+        });
+        if (reservation === null) throw new Error("Missing Widget fixture run");
+        return reservation;
+      };
+      return { reference, cohort, persistence, snapshot, reserve, original };
+    };
+    it("Widget binding and first reservation commit atomically under concurrent runtime-role gates", async () => {
+      const { reference, cohort, reserve, original } = await prepareWidget();
+      const reservations = await Promise.all([reserve(), reserve()]);
+      const results = await Promise.all(
+        reservations.map((reservation) =>
+          createAIJourneyBudgetGuard(harness.runtime(), cohort, now).authorizeDispatch({
+            reference,
+            reservation,
+          }),
+        ),
+      );
+      expect(results.filter(Boolean)).toHaveLength(1);
+      const persisted = await harness.privilegedPool().query<{ bindings: number; slots: number }>(
+        `select count(*) filter(where action='ai_run.widget_journey_bound')::int as bindings,
+          count(*) filter(where action='ai_run.dispatch_reserved'
+            and metadata_redacted_jsonb->>'widget_session_id'=$2)::int as slots
+          from audit_events where organization_id=$1`,
+        [reference.organizationId, cohort.widgetSessionId],
+      );
+      expect(persisted.rows[0]).toEqual({ bindings: 1, slots: 1 });
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.read(reference.organizationId)).toMatchObject({
+        knownCostMicros: "8714",
+        unresolvedReserveMicros: "801432",
+        combinedExposureMicros: "1843542",
+        widget: { physicalCalls: 1, logicalMessages: 1, conversationId: reference.conversationId },
+      });
+      const first = reservations[0];
+      if (first === undefined) throw new Error("Missing concurrent fixture reservation");
+      expect(
+        await guard.authorizeDispatch({ reference: original.reference, reservation: first }),
+      ).toBe(false);
+    });
+    it("Widget timeout keeps the new reserve across process restarts without changing the old ledger", async () => {
+      const { reference, cohort, persistence, snapshot, reserve } = await prepareWidget();
+      const first = await reserve();
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.authorizeDispatch({ reference, reservation: first })).toBe(true);
+      await persistence.finish({
+        reference,
+        snapshot,
+        reservation: first,
+        provider: null,
+        dispatchAuthorized: true,
+        outcome: { kind: "fallback_required", reason: "timeout", applied: false },
+        allowRepair: false,
+      });
+      // A terminal timeout cannot create a repair attempt for the same message.
+      expect(
+        await persistence.reserve({ reference, snapshot, inputHash: new Uint8Array(32).fill(19) }),
+      ).toBeNull();
+      const receipt = await accept(harness, {
+        sequence: 101,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      const nextReference = referenceFor(receipt);
+      const nextSnapshot = await persistence.load(nextReference);
+      if (nextSnapshot === null) throw new Error("Missing subsequent Widget context");
+      const next = await persistence.reserve({
+        reference: nextReference,
+        snapshot: nextSnapshot,
+        inputHash: new Uint8Array(32).fill(19),
+      });
+      if (next === null) throw new Error("Missing subsequent Widget fixture run");
+      const restarted = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(
+        await restarted.authorizeDispatch({ reference: nextReference, reservation: next }),
+      ).toBe(false);
+      expect(await restarted.read(reference.organizationId)).toMatchObject({
+        blocked: true,
+        reason: "cost_unknown",
+        knownCostMicros: "8714",
+        historicalReserveMicros: "1033396",
+        widget: { unresolvedReserveMicros: "801432" },
+      });
+      const previous = await harness.privilegedPool().query<{ cost: string; calls: number }>(
+        `select sum(estimated_cost_micros)::text as cost,count(*)::int as calls from ai_runs
+          where organization_id=$1 and conversation_id=$2`,
+        [reference.organizationId, cohort.conversationId],
+      );
+      expect(previous.rows[0]).toEqual({ cost: "8714", calls: 4 });
+    });
+    it("Widget authority expiry, disabled origin and foreign tenant fail before any dispatch latch", async () => {
+      const { reference, cohort, reserve } = await prepareWidget();
+      const reservation = await reserve();
+      await seed(harness, "b");
+      const foreign = await accept(harness, { tenant: "b", receivedAt: now().toISOString() });
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(
+        await guard.authorizeDispatch({
+          reference: { ...referenceFor(foreign), organizationId: tenantB },
+          reservation,
+        }),
+      ).toBe(false);
+      await harness
+        .privilegedPool()
+        .query(
+          "update contacts set status='blocked' where organization_id=$1 and id=(select contact_id from conversations where organization_id=$1 and id=$2)",
+          [reference.organizationId, reference.conversationId],
+        );
+      expect(await guard.authorizeDispatch({ reference, reservation })).toBe(false);
+      await harness
+        .privilegedPool()
+        .query(
+          "update contacts set status='active' where organization_id=$1 and id=(select contact_id from conversations where organization_id=$1 and id=$2)",
+          [reference.organizationId, reference.conversationId],
+        );
+      await harness.privilegedPool().query("update widget_allowed_origins set status='disabled'");
+      expect(await guard.authorizeDispatch({ reference, reservation })).toBe(false);
+      await harness.privilegedPool().query("update widget_allowed_origins set status='active'");
+      const expired = createAIJourneyBudgetGuard(
+        harness.runtime(),
+        cohort,
+        () => new Date(now().getTime() + 1_800_000),
+      );
+      expect(await expired.authorizeDispatch({ reference, reservation })).toBe(false);
+      const records = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          "select count(*)::int as count from audit_events where action='ai_run.widget_journey_bound'",
+        );
+      expect(records.rows[0]?.count).toBe(0);
+    });
+    it("a non-paid second Widget inbound still exhausts the customer-message scope", async () => {
+      const { reference, cohort, persistence } = await prepareWidget();
+      await accept(harness, {
+        sequence: 101,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.read(reference.organizationId)).toMatchObject({
+        blocked: true,
+        reason: "message_limit",
+        widget: { customerMessages: 2, logicalMessages: 0, physicalCalls: 0 },
+      });
+      const receipt = await accept(harness, {
+        sequence: 102,
+        widgetThread: "s22:widget:approved",
+        receivedAt: now().toISOString(),
+      });
+      const nextReference = referenceFor(receipt);
+      const snapshot = await persistence.load(nextReference);
+      if (snapshot === null) throw new Error("Missing third Widget context");
+      const reservation = await persistence.reserve({
+        reference: nextReference,
+        snapshot,
+        inputHash: new Uint8Array(32).fill(19),
+      });
+      if (reservation === null) throw new Error("Missing third Widget fixture run");
+      expect(await guard.authorizeDispatch({ reference: nextReference, reservation })).toBe(false);
+      expect(await guard.read(reference.organizationId)).toMatchObject({
+        reason: "message_limit",
+        widget: { customerMessages: 3, logicalMessages: 0, physicalCalls: 0 },
+      });
+      const records = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          "select count(*)::int as count from audit_events where action='ai_run.widget_journey_bound'",
+        );
+      expect(records.rows[0]?.count).toBe(0);
+    });
+    it("serializes two independent dispatch gates and persists one committed reservation", async () => {
+      const { reference, cohort, reserve } = await prepare();
+      const reservations = await Promise.all([reserve(), reserve()]);
+      const results = await Promise.all(
+        reservations.map((reservation) =>
+          createAIJourneyBudgetGuard(harness.runtime(), cohort, now).authorizeDispatch({
+            reference,
+            reservation,
+          }),
+        ),
+      );
+      expect(results.filter(Boolean)).toHaveLength(1);
+      const reader = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await reader.read(reference.organizationId)).toMatchObject({
+        physicalCalls: 1,
+        unresolvedReserveMicros: "801432",
+        combinedExposureMicros: "1834828",
+        blocked: true,
+        reason: "dispatch_in_flight",
+        accountingComplete: false,
+      });
+      const counts = await harness.privilegedPool().query<{ starts: number; reservations: number }>(
+        `select count(*) filter (where action='ai_run.journey_started')::int as starts,
+          count(*) filter (where action='ai_run.dispatch_reserved')::int as reservations
+          from audit_events where organization_id=$1 and target_type='ai_run'`,
+        [reference.organizationId],
+      );
+      expect(counts.rows[0]).toEqual({ starts: 2, reservations: 1 });
+    });
+    it("unknown timeout costs retain their reserve and prevent a new process authorizing a retry", async () => {
+      const { reference, cohort, persistence, snapshot, reserve } = await prepare();
+      const reservation = await reserve();
+      const guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.authorizeDispatch({ reference, reservation })).toBe(true);
+      await persistence.finish({
+        reference,
+        snapshot,
+        reservation,
+        provider: null,
+        dispatchAuthorized: true,
+        outcome: { kind: "fallback_required", reason: "timeout", applied: false },
+        allowRepair: false,
+      });
+      const reader = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await reader.read(reference.organizationId)).toMatchObject({
+        unresolvedReserveMicros: "801432",
+        blocked: true,
+        reason: "cost_unknown",
+      });
+      expect(await reader.authorizeDispatch({ reference, reservation })).toBe(false);
+      const record = await harness
+        .privilegedPool()
+        .query<{ estimated_cost_micros: null }>(
+          `select estimated_cost_micros from ai_runs where organization_id=$1 and id=$2`,
+          [reference.organizationId, reservation.runId],
+        );
+      expect(record.rows[0]?.estimated_cost_micros).toBeNull();
+    });
+    it("a priced schema repair consumes its own physical authorization without leaking another tenant", async () => {
+      const { reference, cohort, persistence, snapshot, reserve } = await prepare();
+      await seed(harness, "b");
+      const hostile = await accept(harness, { tenant: "b", receivedAt: now().toISOString() });
+      const first = await reserve(),
+        guard = createAIJourneyBudgetGuard(harness.runtime(), cohort, now);
+      expect(await guard.authorizeDispatch({ reference, reservation: first })).toBe(true);
+      await persistence.finish({
+        reference,
+        snapshot,
+        reservation: first,
+        dispatchAuthorized: true,
+        provider: {
+          ...AI_METADATA,
+          model: "gemini-3.8-flash",
+          kind: "invalid_output",
+          outputHash: new Uint8Array(32).fill(12),
+        },
+        outcome: { kind: "fallback_required", reason: "invalid_output", applied: false },
+        allowRepair: true,
+      });
+      const second = await reserve();
+      expect(await guard.authorizeDispatch({ reference, reservation: second })).toBe(true);
+      expect((await guard.read(reference.organizationId)).physicalCalls).toBe(2);
+      expect(
+        await guard.authorizeDispatch({
+          reference: { ...referenceFor(hostile), organizationId: tenantB },
+          reservation: second,
+        }),
+      ).toBe(false);
+      await expect(guard.read(tenantB)).rejects.toMatchObject({
+        code: "repository_data_integrity_error",
+      });
+      const audits = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          `select count(*)::int as count from audit_events where organization_id=$1 and action='ai_run.dispatch_reserved'`,
+          [tenantB],
+        );
+      expect(audits.rows[0]?.count).toBe(0);
+    });
+  });
   const seedRequest = async (
     tenant: "a" | "b",
     channelType: "widget" | "telegram" | "instagram" = "widget",

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   AI_CONTEXT_LIMITS,
+  AI_EXTRACTION_REJECTION_FIELDS,
   aiFallback,
   validateAgentDecision,
   type AIContextSnapshot,
@@ -32,6 +33,7 @@ import {
 } from "@lead-agent/contracts";
 import { createSecurityIdentifierFactory, type CustomerDataProtection } from "@lead-agent/security";
 import { estimateAIUsageCost, resolveAIPrice } from "@lead-agent/observability";
+import type { AIJourneyCohortConfig } from "@lead-agent/config";
 import type { QueryResultRow } from "pg";
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
 import { createConversationRepository } from "./conversations.js";
@@ -58,6 +60,7 @@ import {
   appointmentSubmissionState,
   persistAppointmentSubmission,
 } from "./appointment-submission.js";
+import { createAIJourneyBudgetGuard } from "./ai-journey-budget.js";
 
 type SourceRow = QueryResultRow & {
   id: unknown;
@@ -90,6 +93,8 @@ type AIStoreOptions = Readonly<{
   salesFlow?: boolean;
   /** S16 fixed deterministic submission profile; includes the S15 qualification flow. */
   appointmentSubmission?: boolean;
+  /** Explicit staging owner-selection lane; default static SID behavior is preserved. */
+  widgetOwnerSelection?: boolean;
   /** Optional approved knowledge seam. S12 defaults to no facts; S14 owns grounded product behavior. */
   knowledge?: (
     session: TenantDbSession,
@@ -101,6 +106,8 @@ type AIStoreOptions = Readonly<{
     }>,
   ) => Promise<readonly AIFact[]>;
   clock?: () => Date;
+  /** Private staging cohort only; no model/customer-authored budget authority. */
+  journeyCohort?: AIJourneyCohortConfig;
 }>;
 const hash = (value: unknown): Uint8Array =>
   createHash("sha256").update(JSON.stringify(value)).digest();
@@ -172,6 +179,17 @@ export const createAIOrchestrationStore = (
   const identifiers = createSecurityIdentifierFactory();
   const now = options.clock ?? (() => new Date());
   const nextId = (): string => identifiers.issueResourceId(now());
+  const journey =
+    options.journeyCohort === undefined
+      ? null
+      : createAIJourneyBudgetGuard(runtime, options.journeyCohort, now, {
+          ownerSelection: options.widgetOwnerSelection === true,
+        });
+  if (
+    journey !== null &&
+    (providerId !== "gemini" || options.requestedModel !== "gemini-3.8-flash")
+  )
+    throw new TypeError("Journey cohort requires the approved provider/model");
   const load = async (reference: AIWorkReference): Promise<AIContextSnapshot | null> => {
     requireReference(reference);
     return await runtime.withTenantTransaction(reference.organizationId, async (session) => {
@@ -328,6 +346,7 @@ export const createAIOrchestrationStore = (
   };
   return Object.freeze<AIOrchestrationStore>({
     load,
+    ...(journey === null ? {} : { authorizeDispatch: journey.authorizeDispatch }),
     reserve: async (input) => {
       requireReference(input.reference);
       if (
@@ -387,6 +406,8 @@ export const createAIOrchestrationStore = (
               initialPrice?.version ?? "not-priced.v1",
             ],
           );
+          if (journey !== null)
+            await journey.recordStart(session, { reference: input.reference, runId });
           return Object.freeze({ runId, attemptNo });
         },
       );
@@ -572,7 +593,11 @@ const finishAIRun = async (
         nextId,
         finishedAt,
       );
-    outcome = Object.freeze({ ...outcome, salesResult: appointment?.result ?? persisted.result });
+    outcome = Object.freeze({
+      ...outcome,
+      salesResult: appointment?.result ?? persisted.result,
+      replyDisposition: plan.text === null ? "suppressed" : "queued",
+    });
   }
   const usage = input.provider?.usage;
   const resolvedModel = input.provider?.model ?? null;
@@ -692,7 +717,26 @@ const finishAIRun = async (
       category,
       `ai-run:${input.reservation.runId}`,
       input.reference.correlationId,
-      JSON.stringify({ status, attempt_no: input.reservation.attemptNo }),
+      JSON.stringify({
+        status,
+        attempt_no: input.reservation.attemptNo,
+        policy_rejection_code:
+          outcome.kind === "fallback_required" ? (outcome.modelRejection ?? null) : null,
+        extraction_rejection_fields: AI_EXTRACTION_REJECTION_FIELDS.filter(
+          (field) =>
+            outcome.kind === "fallback_required" &&
+            outcome.modelRejection === "untrusted_extraction" &&
+            outcome.extractionRejectionFields?.includes(field),
+        ),
+        sales_result_kind: outcome.salesResult?.kind ?? null,
+        reply_disposition: outcome.replyDisposition ?? "not_planned",
+        ...(options.journeyCohort === undefined
+          ? {}
+          : {
+              journey_profile: options.journeyCohort.profile,
+              dispatch_authorized: input.dispatchAuthorized === true,
+            }),
+      }),
       finishedAt,
     ],
   );

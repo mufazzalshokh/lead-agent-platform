@@ -49,20 +49,23 @@ export const buildWidgetLoader = (apiOrigin: string): string => {
   const instance = crypto.randomUUID().replaceAll("-", "");
   const launcher = document.createElement("button");
   launcher.type = "button";
-  launcher.textContent = script.dataset.label || "Chat with us";
+  const launcherLabel = script.dataset.label || "Chat with us";
+  launcher.textContent = launcherLabel;
   launcher.setAttribute("aria-label", script.dataset.label || "Open customer chat");
   Object.assign(launcher.style, { position: "fixed", right: "20px", bottom: "20px", zIndex: "2147483000", minHeight: "52px", padding: "0 20px", border: "0", borderRadius: "999px", background: "#276153", color: "#fff", boxShadow: "0 12px 32px rgba(20,45,38,.24)", cursor: "pointer", font: "700 15px system-ui,sans-serif" });
   let frame = null;
   let frameOrigin = null;
   let opening = false;
-  const showLauncher = () => { launcher.hidden = false; if (frame) frame.style.display = "none"; };
-  const showError = () => { launcher.disabled = false; launcher.textContent = "Try chat again"; opening = false; };
+  const showLauncher = () => { launcher.hidden = false; launcher.disabled = false; if (frame) frame.style.display = "none"; };
+  const discardFrame = () => { if (frame) frame.remove(); frame = null; frameOrigin = null; opening = false; };
+  const showError = () => { discardFrame(); launcher.hidden = false; launcher.disabled = false; launcher.textContent = "Try chat again"; };
   const open = async () => {
     if (frame) { frame.style.display = "block"; launcher.hidden = true; return; }
     if (opening) return;
     opening = true;
     launcher.disabled = true;
     launcher.textContent = "Opening…";
+    let handoff = null;
     try {
       const response = await fetch(API_ORIGIN + "/v1/widget/embed-grants", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ widget_key: widgetKey, requested_locale: locale, page_url: location.href }) });
       if (!response.ok) throw new Error("unavailable");
@@ -81,7 +84,7 @@ export const buildWidgetLoader = (apiOrigin: string): string => {
       Object.assign(next.style, { position: "fixed", right: "20px", bottom: "20px", zIndex: "2147483001", width: "min(390px, calc(100vw - 24px))", height: "min(680px, calc(100vh - 24px))", border: "0", borderRadius: "18px", background: "#fff", boxShadow: "0 22px 70px rgba(20,45,38,.28)" });
       frame = next;
       document.body.append(next);
-      const handoff = document.createElement("form");
+      handoff = document.createElement("form");
       handoff.method = "POST";
       handoff.action = frameUrl.toString();
       handoff.target = next.name;
@@ -89,9 +92,9 @@ export const buildWidgetLoader = (apiOrigin: string): string => {
       for (const [name, value] of [["exchange_grant", data.exchange_grant], ["instance", instance]]) { const field = document.createElement("input"); field.type = "hidden"; field.name = name; field.value = value; handoff.append(field); }
       document.body.append(handoff);
       handoff.submit();
-      handoff.remove();
       launcher.hidden = true;
     } catch { showError(); }
+    finally { if (handoff) handoff.remove(); }
   };
   launcher.addEventListener("click", () => { void open(); });
   window.addEventListener("message", (event) => {
@@ -99,8 +102,8 @@ export const buildWidgetLoader = (apiOrigin: string): string => {
     const data = event.data;
     if (!data || typeof data !== "object" || data.version !== VERSION || data.instance !== instance || typeof data.type !== "string") return;
     if (data.type === "CLOSE" && Object.keys(data).length === 3) showLauncher();
-    else if (data.type === "EXPIRED" && Object.keys(data).length === 3) { frame.remove(); frame = null; frameOrigin = null; launcher.textContent = "Start a new chat"; launcher.disabled = false; launcher.hidden = false; }
-    else if (data.type === "READY" && Object.keys(data).length === 3) { opening = false; launcher.disabled = false; }
+    else if (data.type === "EXPIRED" && Object.keys(data).length === 3) { discardFrame(); launcher.textContent = "Start a new chat"; launcher.disabled = false; launcher.hidden = false; }
+    else if (data.type === "READY" && Object.keys(data).length === 3) { opening = false; launcher.disabled = false; launcher.textContent = launcherLabel; }
     else if (data.type === "RESIZE" && Object.keys(data).length === 4 && Number.isInteger(data.height) && data.height >= 320 && data.height <= 800) frame.style.height = Math.min(data.height, window.innerHeight - 24) + "px";
   });
   document.body.append(launcher);

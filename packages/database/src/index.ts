@@ -96,4 +96,9 @@ export * from "./repositories/index.js";
 export * from "./schema/index.js";
 export { createStaffOperationsStore } from "./repositories/staff-operations.js";
 export { createAIOrchestrationStore } from "./repositories/ai-orchestration.js";
+export {
+  createAIJourneyBudgetGuard,
+  createS22WidgetCohortStore,
+  type AIJourneyBudgetSnapshot,
+} from "./repositories/ai-journey-budget.js";
 export { createCustomerConfirmationStore } from "./repositories/customer-confirmation.js";

@@ -216,7 +216,7 @@ const createFixture = (withOperations = false) => {
   };
   const web = createStaffWebAuthConfig({
     browserEnvelopeKey: Buffer.alloc(32, 41).toString("base64url"),
-    callbackUri: "https://api.example.test/v1/staff/auth/callback",
+    callbackUri: "https://staff.example.test/v1/staff/auth/callback",
     clientId: "staff-client",
     clientSecret: "synthetic-test-value",
     environment: "production",

@@ -221,12 +221,34 @@ describe("S13 Gemini untrusted provider boundary", () => {
   ])("unknown/inconsistent usage is not free %j", (value) =>
     expect(parseGeminiUsage(value).output).toBeNull(),
   );
-  it("unreported cache/reasoning stays unknown; total proves billable output", () =>
+  it("valid ProtoJSON omission means zero cached input; total proves billable output", () =>
     expect(parseGeminiUsage({ promptTokenCount: 10, totalTokenCount: 30 })).toEqual({
       input: 10,
       output: 20,
       total: 30,
-      cachedInput: null,
+      cachedInput: 0,
       reasoning: null,
     }));
+  it.each([null, undefined, "0", -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 10_000_001])(
+    "explicitly invalid cached usage stays unknown: %s",
+    (cachedContentTokenCount) =>
+      expect(
+        parseGeminiUsage({ promptTokenCount: 10, totalTokenCount: 30, cachedContentTokenCount })
+          .cachedInput,
+      ).toBeNull(),
+  );
+  it.each([undefined, null, {}, { promptTokenCount: 10 }, { totalTokenCount: 30 }])(
+    "absent/incomplete usage cannot become a known zero-cache report: %j",
+    (value) => expect(parseGeminiUsage(value).cachedInput).toBeNull(),
+  );
+  it("the actual adapter preserves a completed zero-cache ProtoJSON response", async () => {
+    const result = await provider(
+      envelope({ usageMetadata: { promptTokenCount: 520, totalTokenCount: 737 } }),
+    ).decide(input());
+    expect(result).toMatchObject({
+      kind: "completed",
+      model: config.model,
+      usage: { input: 520, output: 217, total: 737, cachedInput: 0, reasoning: null },
+    });
+  });
 });

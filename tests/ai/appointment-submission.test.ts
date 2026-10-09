@@ -106,6 +106,28 @@ const plan = (snapshot: AIContextSnapshot, extra: Readonly<Record<string, unknow
 };
 
 describe("S16 deterministic submission profile", () => {
+  it("a rejected model handoff preserves denial and cannot create a booking even with complete preferences", () => {
+    const snapshot = context("ertaga soat 17:00"),
+      decision = validDecision({
+        language: snapshot.locale,
+        intent: "booking_request",
+        action: { type: "request_handoff", reason: "customer_requested" },
+      }),
+      outcome = evaluateSalesDecision(decision, snapshot),
+      value = planAppointmentSubmission(snapshot, outcome);
+    expect(outcome).toMatchObject({
+      reason: "policy_denied",
+      modelRejection: "handoff_not_authorized",
+      applied: false,
+    });
+    expect(value).toMatchObject({
+      handoffReason: "policy_blocked",
+      submission: null,
+      result: { kind: "handoff_requested" },
+    });
+    expect(value.qualification.handoffReason).toBe("policy_blocked");
+    expect(value.text).not.toMatch(/17:00|confirmed|STAFF CONFIRMED/u);
+  });
   it.each([
     "ertaga soat 17:00",
     "Эртага соат 17:00",

@@ -27,10 +27,26 @@ on:
           - migration
           - migration-resume
           - migration-validate
+          - api-image-update
+          - api-image-verify
           - migrator-image-update
+          - migrator-image-verify
           - migration-diagnose
           - migration-wiring-diagnose
           - migration-error-read
+          - runtime-preflight
+          - runtime-diagnose
+          - auth-callback-diagnose
+          - instagram-verify-access
+          - instagram-verify
+          - instagram-verify-access-remove
+          - telegram-verify-access
+          - telegram-verify
+          - telegram-verify-access-remove
+          - owner-workspace-bootstrap
+          - owner-workspace-verify
+          - acceptance-inventory
+          - booking-evidence
           - full
           - load
           - dormant
@@ -46,6 +62,18 @@ on:
         description: Immutable API image reference by digest
         required: false
         type: string
+      api_git_commit_sha:
+        description: Exact source commit used to build the immutable API image
+        required: false
+        type: string
+      api_deployment_timestamp:
+        description: Exact deployment timestamp currently on the API for isolated migrator update/resume
+        required: false
+        type: string
+      api_migration_head:
+        description: Exact migration head packaged in the immutable API image
+        required: false
+        type: string
       web_image:
         description: Immutable Web image reference by digest
         required: false
@@ -54,8 +82,53 @@ on:
         description: Immutable worker image reference by digest (full phase)
         required: false
         type: string
+      ai_journey_mode:
+        description: Preserve current mode by default; booking requires separate historical-reserve approval plus the exact full-runtime saved plan
+        required: false
+        default: preserve
+        type: choice
+        options:
+          - preserve
+          - paused
+          - booking
+          - widget_booking
+      ai_journey_widget_session_id:
+        description: Exact owner-selected Widget session UUIDv7; required for widget_booking, otherwise preserve the prior binding or leave empty
+        required: false
+        default: ""
+        type: string
+      booking_evidence_stage:
+        description: Read-only cohort evidence; initial baseline, observe progress, first-turn or final-turn exact metadata trace
+        required: false
+        default: initial
+        type: choice
+        options:
+          - initial
+          - observe
+          - first-turn
+          - final-turn
       migrator_image:
         description: Immutable migrator image reference by digest (migration and later phases)
+        required: false
+        type: string
+      migrator_git_commit_sha:
+        description: Exact source commit used to build the immutable migrator image
+        required: false
+        type: string
+      migrator_deployment_timestamp:
+        description: Exact deployment timestamp currently on the migrator for isolated API updates
+        required: false
+        type: string
+      runtime_git_commit_sha:
+        description: Exact commit currently deployed to API, Web, and Worker; required for isolated migrator update/resume
+        required: false
+        type: string
+      runtime_deployment_timestamp:
+        description: Exact deployment timestamp currently on API, Web, and Worker; required for isolated migrator update/resume
+        required: false
+        type: string
+      runtime_migration_head:
+        description: Exact migration provenance currently on API, Web, and Worker; required for isolated migrator update/resume
         required: false
         type: string
       owner_approval_token:
@@ -74,6 +147,10 @@ on:
         description: Exact failed Cloud Run migrator execution for sanitized diagnostic reads
         required: false
         type: string
+      auth_callback_request_id:
+        description: Public request ID for sanitized callback diagnostics; use instagram:req-ID for Instagram
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -85,19 +162,136 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  acceptance-inventory:
+    name: Read S22 acceptance inventory
+    if: inputs.phase == 'acceptance-inventory'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REQUESTED_SHA: ${{ inputs.commit_sha }}
+    steps:
+      - name: Enforce read-only staging boundary
+        env:
+          ACTION: ${{ inputs.action }}
+          DISPATCH_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ACTION" == "plan" ]]
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          case "$DISPATCH_REF" in
+            refs/heads/main|refs/heads/verify/s22-staging-recovery-capacity) ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Check out exact evidence tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Prove evidence commit is preserved on the dispatched branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$GITHUB_REF"
+          git merge-base --is-ancestor "$REQUESTED_SHA" FETCH_HEAD
+
+      - name: Authenticate through existing staging WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Read backup and alert metadata without secret access
+        shell: bash
+        run: |
+          bash .github/scripts/s22-acceptance-inventory.sh
+
+      - name: Preserve allowlisted acceptance inventory
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-acceptance-inventory-${{ github.run_id }}
+          path: s22-acceptance-inventory.json
+          if-no-files-found: error
+          retention-days: 7
+
+  booking-evidence:
+    name: Read bounded S22 booking evidence
+    if: inputs.phase == 'booking-evidence'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 8
+    steps:
+      - name: Enforce read-only evidence boundary
+        env:
+          ACTION: ${{ inputs.action }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
+        run: |
+          set -euo pipefail
+          [[ "$ACTION" == "plan" && -z "$APPROVAL_TOKEN" ]]
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$GITHUB_REF" == "refs/heads/verify/s22-staging-recovery-capacity" ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - name: Check out exact evidence tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+      - name: Prove tooling commit is on the approved branch
+        run: |
+          git fetch --no-tags origin "$GITHUB_REF"
+          git merge-base --is-ancestor HEAD FETCH_HEAD
+      - name: Authenticate through existing staging WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      - name: Set up existing Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+      - name: Read exact cohort with the runtime role
+        env:
+          BOOKING_EVIDENCE_STAGE: ${{ inputs.booking_evidence_stage || 'initial' }}
+        run: node .github/scripts/s22-booking-evidence.mjs
+      - name: Preserve sanitized evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-booking-evidence-${{ github.run_id }}
+          path: s22-booking-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+
   terraform:
+    if: inputs.phase != 'acceptance-inventory' && inputs.phase != 'booking-evidence'
     name: Terraform ${{ inputs.action }} / ${{ inputs.phase }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
     env:
       S22_ACTION: ${{ inputs.action }}
+      S22_AUTH_CALLBACK_REQUEST_ID: ${{ inputs.auth_callback_request_id }}
+      S22_API_DEPLOYMENT_TIMESTAMP: ${{ inputs.api_deployment_timestamp }}
+      S22_API_GIT_COMMIT_SHA: ${{ inputs.api_git_commit_sha }}
       S22_APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
       S22_APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
       S22_COMMIT_SHA: ${{ inputs.commit_sha }}
+      S22_MIGRATOR_GIT_COMMIT_SHA: ${{ inputs.migrator_git_commit_sha }}
+      S22_MIGRATOR_DEPLOYMENT_TIMESTAMP: ${{ inputs.migrator_deployment_timestamp }}
       S22_MIGRATOR_EXECUTION_ID: ${{ inputs.migrator_execution_id }}
       S22_PHASE: ${{ inputs.phase }}
+      S22_AI_JOURNEY_MODE: ${{ inputs.ai_journey_mode || 'preserve' }}
+      S22_AI_JOURNEY_WIDGET_SESSION_ID: ${{ inputs.ai_journey_widget_session_id || '' }}
       S22_PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+      S22_RUNTIME_DEPLOYMENT_TIMESTAMP: ${{ inputs.runtime_deployment_timestamp }}
+      S22_RUNTIME_GIT_COMMIT_SHA: ${{ inputs.runtime_git_commit_sha }}
       TF_IN_AUTOMATION: true
       TF_INPUT: false
       TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
@@ -105,9 +299,11 @@ jobs:
       TF_VAR_git_commit_sha: ${{ inputs.commit_sha }}
       TF_VAR_deployment_timestamp: ${{ inputs.deployment_timestamp }}
       TF_VAR_api_image: ${{ inputs.api_image }}
+      TF_VAR_api_migration_head: ${{ inputs.api_migration_head }}
       TF_VAR_web_image: ${{ inputs.web_image }}
       TF_VAR_worker_image: ${{ inputs.worker_image }}
       TF_VAR_migrator_image: ${{ inputs.migrator_image }}
+      TF_VAR_runtime_migration_head: ${{ inputs.runtime_migration_head }}
       TF_VAR_api_public_origin: ${{ vars.STAGING_API_ORIGIN }}
       TF_VAR_web_public_origin: ${{ vars.STAGING_WEB_ORIGIN }}
       TF_VAR_auth0_issuer: ${{ vars.STAGING_AUTH0_ISSUER }}
@@ -121,6 +317,8 @@ jobs:
       TF_VAR_monitoring_notification_channel_ids: ${{ vars.STAGING_MONITORING_NOTIFICATION_CHANNEL_IDS_JSON }}
       TF_VAR_state_bucket_name: ${{ vars.GCP_TERRAFORM_STATE_BUCKET }}
       TF_VAR_temporary_logging_viewer_enabled: ${{ inputs.phase == 'bootstrap-log-viewer' }}
+      TF_VAR_temporary_instagram_verifier_access_enabled: ${{ inputs.phase == 'instagram-verify-access' }}
+      TF_VAR_temporary_telegram_verifier_access_enabled: ${{ inputs.phase == 'telegram-verify-access' }}
     steps:
       - name: Validate request boundary
         env:
@@ -139,6 +337,17 @@ jobs:
             *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
           esac
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$S22_AI_JOURNEY_MODE" == "preserve" || "$S22_AI_JOURNEY_MODE" == "paused" || "$S22_AI_JOURNEY_MODE" == "booking" || "$S22_AI_JOURNEY_MODE" == "widget_booking" ]]
+          if [[ "$S22_AI_JOURNEY_MODE" != "preserve" ]]; then
+            [[ "$PHASE" == "full" ]]
+          fi
+          if [[ -n "$S22_AI_JOURNEY_WIDGET_SESSION_ID" ]]; then
+            [[ "$S22_AI_JOURNEY_WIDGET_SESSION_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]
+            [[ "$S22_AI_JOURNEY_MODE" == "widget_booking" || "$S22_AI_JOURNEY_MODE" == "preserve" ]]
+          fi
+          if [[ "$S22_AI_JOURNEY_MODE" == "widget_booking" ]]; then
+            [[ -n "$S22_AI_JOURNEY_WIDGET_SESSION_ID" ]]
+          fi
           if [[ "$PHASE" == "migration-error-read" ]]; then
             [[ "$ACTION" == "plan" ]]
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
@@ -146,14 +355,80 @@ jobs:
           if [[ "$PHASE" == "migration-validate" ]]; then
             [[ "$ACTION" == "plan" ]]
           fi
+          if [[ "$PHASE" == "owner-workspace-bootstrap" ]]; then
+            [[ "$ACTION" == "apply" ]]
+            [[ "$APPROVAL_TOKEN" == "S22-APPLY-APPROVED" ]]
+            [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
+            [[ "$TF_VAR_region" == "me-central1" ]]
+            [[ -z "$PLAN_RUN_ID" ]]
+            [[ -z "$APPROVED_PLAN_SHA256" ]]
+          fi
+          if [[ "$PHASE" == "owner-workspace-verify" ]]; then
+            [[ "$ACTION" == "plan" ]]
+            [[ "$TF_VAR_project_id" == "lead-agent-stg-739284" ]]
+            [[ "$TF_VAR_region" == "me-central1" ]]
+            [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+            [[ -z "$PLAN_RUN_ID" ]]
+            [[ -z "$APPROVED_PLAN_SHA256" ]]
+          fi
+          if [[ "$PHASE" == "runtime-preflight" ]]; then
+            [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "runtime-diagnose" ]]; then
+            [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "auth-callback-diagnose" ]]; then
+            [[ "$ACTION" == "plan" ]]
+            [[ "$S22_AUTH_CALLBACK_REQUEST_ID" == "request:latest" || "$S22_AUTH_CALLBACK_REQUEST_ID" =~ ^(request|instagram):req-[A-Za-z0-9_-]{1,64}$ ]]
+          fi
+          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
+            [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$TF_VAR_api_migration_head" == "0031_s22_widget_inbound_route_management" ]]
+            [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$TF_VAR_deployment_timestamp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$TF_VAR_runtime_migration_head" =~ ^[0-9]{4}_[a-z0-9_]+$ ]]
+            [[ "$TF_VAR_api_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/api@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_web_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/web@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_worker_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_migrator_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:[0-9a-f]{64}$ ]]
+          fi
+          if [[ "$PHASE" == "api-image-verify" ]]; then
+            [[ "$ACTION" == "plan" ]]
+          fi
+          if [[ "$PHASE" == "instagram-verify" ]]; then
+            [[ "$ACTION" == "plan" ]]
+            [[ "$TF_VAR_api_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/api@sha256:[0-9a-f]{64}$ ]]
+          fi
+          if [[ "$PHASE" == "telegram-verify" ]]; then
+            [[ "$ACTION" == "plan" ]]
+            [[ "$TF_VAR_api_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/api@sha256:[0-9a-f]{64}$ ]]
+          fi
           if [[ "$PHASE" == "migration-wiring-diagnose" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
             [[ "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          fi
+          if [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" ]]; then
+            [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$S22_API_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$TF_VAR_api_migration_head" =~ ^[0-9]{4}_[a-z0-9_]+$ ]]
+            [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+            [[ "$TF_VAR_runtime_migration_head" =~ ^[0-9]{4}_[a-z0-9_]+$ ]]
+            [[ "$TF_VAR_api_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/api@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_web_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/web@sha256:[0-9a-f]{64}$ ]]
+            [[ "$TF_VAR_worker_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]
+          fi
+          if [[ "$PHASE" == "migrator-image-verify" ]]; then
+            [[ "$ACTION" == "plan" ]]
           fi
           if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]; then
             echo "Apply requires the exact owner approval token." >&2
             exit 1
           fi
-          if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+          if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && "$PHASE" != "owner-workspace-bootstrap" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
             echo "Apply requires the exact reviewed plan run ID." >&2
             exit 1
           fi
@@ -244,9 +519,9 @@ jobs:
               ;;
             migration-resume)
               DEPLOY_RUNTIME=true
-              BOOTSTRAP_RUNTIME=true
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
               ;;
             migration-validate)
               DEPLOY_RUNTIME=true
@@ -254,11 +529,29 @@ jobs:
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
               ;;
-            migrator-image-update)
+            api-image-update)
               DEPLOY_RUNTIME=true
-              BOOTSTRAP_RUNTIME=true
               PREPARE_MIGRATION=true
               SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
+            api-image-verify)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
+            migrator-image-update)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
+            migrator-image-verify)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
               ;;
             migration-diagnose)
               DEPLOY_RUNTIME=true
@@ -276,6 +569,31 @@ jobs:
               DEPLOY_RUNTIME=true
               BOOTSTRAP_RUNTIME=true
               PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              ;;
+            runtime-preflight)
+              SQL_POLICY=ALWAYS
+              ;;
+            runtime-diagnose)
+              SQL_POLICY=ALWAYS
+              ;;
+            auth-callback-diagnose) ;;
+            instagram-verify-access)
+              SQL_POLICY=ALWAYS
+              ;;
+            instagram-verify)
+              SQL_POLICY=ALWAYS
+              ;;
+            instagram-verify-access-remove)
+              SQL_POLICY=ALWAYS
+              ;;
+            telegram-verify-access)
+              SQL_POLICY=ALWAYS
+              ;;
+            telegram-verify)
+              SQL_POLICY=ALWAYS
+              ;;
+            telegram-verify-access-remove)
               SQL_POLICY=ALWAYS
               ;;
             full)
@@ -311,12 +629,25 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
+          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
+            API_DEPLOYMENT_TIMESTAMP="$TF_VAR_deployment_timestamp"
+            echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_git_commit_sha=$S22_API_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_deployment_timestamp=$API_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+            echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_migrator_deployment_timestamp=$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+          elif [[ "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" ]]; then
+            echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_git_commit_sha=$S22_API_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_deployment_timestamp=$S22_API_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+          elif [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
             echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
             echo "TF_VAR_deployment_timestamp=2026-09-26T09:53:56Z" >> "$GITHUB_ENV"
           fi
-          if [[ "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" ]]; then
-            echo "TF_VAR_migrator_git_commit_sha=$REQUESTED_SHA" >> "$GITHUB_ENV"
+          if [[ "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" ]]; then
+            echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_migrator_deployment_timestamp=$TF_VAR_deployment_timestamp" >> "$GITHUB_ENV"
           fi
 
@@ -524,18 +855,33 @@ jobs:
           retention-days: 7
 
       - name: Initialize staging Terraform
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_PHASE != 'owner-workspace-verify'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: terraform init -backend-config="bucket=${{ vars.GCP_TERRAFORM_STATE_BUCKET }}"
 
+      - name: Preserve or explicitly select the private AI journey gate
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_PHASE != 'owner-workspace-verify'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Resolve only the validated, non-secret mode/session from authoritative state.
+          SETTINGS="$(terraform -chdir=infra/deploy/gcp/staging state pull | node .github/scripts/s22-ai-journey-mode.mjs "$S22_PHASE" "$S22_AI_JOURNEY_MODE" "$S22_AI_JOURNEY_WIDGET_SESSION_ID" json)"
+          MODE="$(jq -r '.mode' <<< "$SETTINGS")"
+          SESSION_ID="$(jq -r '.widgetSessionId' <<< "$SETTINGS")"
+          [[ "$MODE" == "paused" || "$MODE" == "booking" || "$MODE" == "widget_booking" ]]
+          {
+            echo "TF_VAR_ai_journey_mode=$MODE"
+            echo "TF_VAR_ai_journey_widget_session_id=$SESSION_ID"
+          } >> "$GITHUB_ENV"
+
       - name: Validate staging Terraform
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_PHASE != 'owner-workspace-verify'
         working-directory: infra/deploy/gcp/staging
         run: terraform validate
 
       - name: Set up Google Cloud CLI for reconciliation inspection
-        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
+        if: env.S22_PHASE == 'foundation-reconcile' || env.S22_PHASE == 'foundation-reconcile-verify' || env.S22_PHASE == 'cloud-sql-start' || env.S22_PHASE == 'cloud-sql-phase-b' || env.S22_PHASE == 'migration' || env.S22_PHASE == 'migration-resume' || env.S22_PHASE == 'migration-validate' || env.S22_PHASE == 'api-image-update' || env.S22_PHASE == 'api-image-verify' || env.S22_PHASE == 'migrator-image-update' || env.S22_PHASE == 'migrator-image-verify' || env.S22_PHASE == 'migration-diagnose' || env.S22_PHASE == 'migration-wiring-diagnose' || env.S22_PHASE == 'migration-error-read' || env.S22_PHASE == 'runtime-preflight' || env.S22_PHASE == 'runtime-diagnose' || env.S22_PHASE == 'auth-callback-diagnose' || env.S22_PHASE == 'instagram-verify' || env.S22_PHASE == 'telegram-verify' || env.S22_PHASE == 'owner-workspace-bootstrap' || env.S22_PHASE == 'owner-workspace-verify' || (env.S22_PHASE == 'bootstrap' && env.S22_ACTION == 'apply')
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Verify database secret version metadata
@@ -563,6 +909,805 @@ jobs:
             [[ "$ENABLED_COUNT" == "1" ]]
             echo "$secret: enabled_versions=1"
           done
+
+      - name: Execute bounded first-owner workspace bootstrap
+        if: env.S22_PHASE == 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
+        env:
+          AUTH0_ISSUER: ${{ vars.STAGING_AUTH0_ISSUER }}
+          OWNER_SUBJECT: ${{ secrets.STAGING_OWNER_AUTH0_SUBJECT }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$AUTH0_ISSUER" =~ ^https://[^/[:space:]]+/$ ]]
+          [[ "$OWNER_SUBJECT" =~ ^google-oauth2\|[0-9]{1,128}$ ]]
+          BOOTSTRAP_B64="$(base64 -w0 .github/scripts/s22-staging-owner-bootstrap.mjs)"
+          set +e
+          gcloud run jobs execute lead-agent-staging-migrator \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --args='--input-type=module,-e,eval(atob(process.env.S22_OWNER_BOOTSTRAP_B64))' \
+            --update-env-vars="S22_OWNER_BOOTSTRAP_B64=$BOOTSTRAP_B64,STAGING_AUTH0_ISSUER=$AUTH0_ISSUER,STAGING_OWNER_AUTH0_SUBJECT=$OWNER_SUBJECT" \
+            --wait
+          BOOTSTRAP_STATUS=$?
+          set -e
+          unset BOOTSTRAP_B64 OWNER_SUBJECT
+          EXECUTION_ID="$(
+            gcloud run jobs executions list \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --job=lead-agent-staging-migrator \
+              --sort-by='~metadata.creationTimestamp' \
+              --limit=1 \
+              --format='value(metadata.name)'
+          )"
+          EXECUTION_ID="${EXECUTION_ID##*/}"
+          [[ "$EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          TASK_EXIT_CODE="$(
+            gcloud run jobs executions tasks list \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --execution="$EXECUTION_ID" \
+              --limit=1 \
+              --format='value(lastAttemptResult.exitCode)'
+          )"
+          if [[ -z "$TASK_EXIT_CODE" && "$BOOTSTRAP_STATUS" == "0" ]]; then
+            TASK_EXIT_CODE=0
+          fi
+          case "$TASK_EXIT_CODE" in
+            0) FAILURE_STAGE=none ;;
+            70) FAILURE_STAGE=bootstrap_entry ;;
+            71) FAILURE_STAGE=dependency_load ;;
+            72) FAILURE_STAGE=input_validation ;;
+            73) FAILURE_STAGE=database_connect ;;
+            74) FAILURE_STAGE=transaction_start ;;
+            75) FAILURE_STAGE=bootstrap_capability ;;
+            76) FAILURE_STAGE=stored_identity_validation ;;
+            77) FAILURE_STAGE=replay_protection ;;
+            78) FAILURE_STAGE=success_evidence ;;
+            *) FAILURE_STAGE=runtime_unclassified ;;
+          esac
+          if [[ "$BOOTSTRAP_STATUS" == "0" && "$TASK_EXIT_CODE" == "0" ]]; then
+            BOOTSTRAP_PROOF=PASS
+          else
+            BOOTSTRAP_PROOF=NOT_VERIFIED
+          fi
+          {
+            echo "organization_id=01a0ee39-91a9-7293-82c0-5b7046c10115"
+            echo "organization_slug=lead-agent-staging"
+            echo "organization_display_name=Lead Agent Staging"
+            echo "membership_status=active"
+            echo "membership_role=owner"
+            echo "identity_binding=exact_issuer_subject"
+            echo "audit_event_id=01a0ee39-91b0-7cb5-9bb6-bc34d73137f2"
+            echo "audit_proof=$BOOTSTRAP_PROOF"
+            echo "replay_protection=$BOOTSTRAP_PROOF"
+            echo "integration_cards=Website Chat|Telegram Business|Instagram Professional"
+            echo "execution_id=$EXECUTION_ID"
+            echo "task_exit_code=${TASK_EXIT_CODE:-unavailable}"
+            echo "failure_stage=$FAILURE_STAGE"
+          } | tee s22-staging-owner-workspace-evidence.txt
+          [[ "$BOOTSTRAP_STATUS" == "0" ]]
+          [[ "$TASK_EXIT_CODE" == "0" ]]
+
+      - name: Verify existing first-owner workspace read-only
+        if: env.S22_PHASE == 'owner-workspace-verify' && env.S22_ACTION == 'plan'
+        env:
+          AUTH0_ISSUER: ${{ vars.STAGING_AUTH0_ISSUER }}
+          OWNER_SUBJECT: ${{ secrets.STAGING_OWNER_AUTH0_SUBJECT }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SOURCE_EXECUTION_ID: ${{ env.S22_MIGRATOR_EXECUTION_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
+          [[ "$AUTH0_ISSUER" =~ ^https://[^/[:space:]]+/$ ]]
+          [[ "$OWNER_SUBJECT" =~ ^google-oauth2\|[0-9]{1,128}$ ]]
+          [[ "$SOURCE_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          SOURCE_TASKS="$(mktemp)"
+          CURRENT_TASKS="$(mktemp)"
+          trap 'rm -f "$SOURCE_TASKS" "$CURRENT_TASKS"' EXIT
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/me-central1/jobs/lead-agent-staging-migrator/executions/${SOURCE_EXECUTION_ID}/tasks?pageSize=1" \
+            > "$SOURCE_TASKS"
+          unset ACCESS_TOKEN
+          jq -e '
+            (.tasks | length) == 1
+              and (.tasks[0].completionTime // "") != ""
+              and (
+                .tasks[0].lastAttemptResult.exitCode == 0
+                or (
+                  (.tasks[0].lastAttemptResult | has("exitCode") | not)
+                  and (.tasks[0].lastAttemptResult.status.code // 0) == 0
+                )
+              )
+          ' "$SOURCE_TASKS" > /dev/null
+          VERIFY_B64="$(base64 -w0 .github/scripts/s22-staging-owner-bootstrap.mjs)"
+          set +e
+          gcloud run jobs execute lead-agent-staging-migrator \
+            --project="$PROJECT_ID" \
+            --region=me-central1 \
+            --args='--input-type=module,-e,eval(atob(process.env.S22_OWNER_BOOTSTRAP_B64))' \
+            --update-env-vars="S22_OWNER_BOOTSTRAP_B64=$VERIFY_B64,S22_OWNER_BOOTSTRAP_MODE=verify,STAGING_AUTH0_ISSUER=$AUTH0_ISSUER,STAGING_OWNER_AUTH0_SUBJECT=$OWNER_SUBJECT" \
+            --wait
+          VERIFY_STATUS=$?
+          set -e
+          unset VERIFY_B64 OWNER_SUBJECT
+          EXECUTION_ID="$(
+            gcloud run jobs executions list \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --job=lead-agent-staging-migrator \
+              --sort-by='~metadata.creationTimestamp' \
+              --limit=1 \
+              --format='value(metadata.name)'
+          )"
+          EXECUTION_ID="${EXECUTION_ID##*/}"
+          [[ "$EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/me-central1/jobs/lead-agent-staging-migrator/executions/${EXECUTION_ID}/tasks?pageSize=1" \
+            > "$CURRENT_TASKS"
+          unset ACCESS_TOKEN
+          TASK_EXIT_CODE="$(
+            jq -r '
+              .tasks[0].lastAttemptResult.exitCode
+                // .tasks[0].status.lastAttemptResult.exitCode
+                // empty
+            ' "$CURRENT_TASKS"
+          )"
+          if [[ -z "$TASK_EXIT_CODE" && "$VERIFY_STATUS" == "0" ]]; then
+            TASK_EXIT_CODE=0
+          fi
+          case "$TASK_EXIT_CODE" in
+            0) FAILURE_STAGE=none ;;
+            70) FAILURE_STAGE=bootstrap_entry ;;
+            71) FAILURE_STAGE=dependency_load ;;
+            72) FAILURE_STAGE=input_validation ;;
+            73) FAILURE_STAGE=database_connect ;;
+            74) FAILURE_STAGE=transaction_start ;;
+            75) FAILURE_STAGE=bootstrap_capability ;;
+            76) FAILURE_STAGE=stored_identity_validation ;;
+            77) FAILURE_STAGE=replay_protection ;;
+            78) FAILURE_STAGE=success_evidence ;;
+            79) FAILURE_STAGE=auth_role_identity_validation ;;
+            80) FAILURE_STAGE=identity_row_count ;;
+            81) FAILURE_STAGE=issuer_mismatch ;;
+            82) FAILURE_STAGE=subject_mismatch ;;
+            83) FAILURE_STAGE=issuer_and_subject_mismatch ;;
+            84) FAILURE_STAGE=identity_shape ;;
+            85) FAILURE_STAGE=owner_membership ;;
+            86) FAILURE_STAGE=bootstrap_audit ;;
+            87) FAILURE_STAGE=auth_connection_shape ;;
+            88) FAILURE_STAGE=auth_identity_unmapped ;;
+            89) FAILURE_STAGE=auth_identity_invalid ;;
+            *) FAILURE_STAGE=runtime_unclassified ;;
+          esac
+          if [[ "$VERIFY_STATUS" == "0" && "$TASK_EXIT_CODE" == "0" ]]; then
+            VERIFY_PROOF=PASS
+          else
+            VERIFY_PROOF=FAILED
+          fi
+          {
+            echo "organization_id=01a0ee39-91a9-7293-82c0-5b7046c10115"
+            echo "organization_slug=lead-agent-staging"
+            echo "organization_display_name=Lead Agent Staging"
+            echo "membership_status=active"
+            echo "membership_role=owner"
+            echo "identity_binding=exact_issuer_subject"
+            echo "audit_event_id=01a0ee39-91b0-7cb5-9bb6-bc34d73137f2"
+            echo "audit_proof=$VERIFY_PROOF"
+            echo "replay_protection=$VERIFY_PROOF"
+            echo "database_state_proof=$VERIFY_PROOF"
+            echo "bootstrap_source_execution_proof=PASS"
+            echo "bootstrap_source_execution_id=$SOURCE_EXECUTION_ID"
+            echo "integration_cards=Website Chat|Telegram Business|Instagram Professional"
+            echo "execution_id=$EXECUTION_ID"
+            echo "task_exit_code=${TASK_EXIT_CODE:-unavailable}"
+            echo "failure_stage=$FAILURE_STAGE"
+          } | tee s22-staging-owner-workspace-evidence.txt
+          [[ "$VERIFY_STATUS" == "0" ]]
+          [[ "$TASK_EXIT_CODE" == "0" ]]
+
+      - name: Upload non-secret owner-workspace evidence
+        if: always() && ((env.S22_PHASE == 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply') || (env.S22_PHASE == 'owner-workspace-verify' && env.S22_ACTION == 'plan'))
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-staging-owner-workspace-${{ github.run_id }}
+          path: s22-staging-owner-workspace-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify full runtime configuration metadata
+        if: env.S22_PHASE == 'runtime-preflight'
+        env:
+          API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+          AUTH0_CLIENT_ID: ${{ vars.STAGING_AUTH0_CLIENT_ID }}
+          AUTH0_ISSUER: ${{ vars.STAGING_AUTH0_ISSUER }}
+          INSTAGRAM_APP_ID: ${{ vars.STAGING_INSTAGRAM_APP_ID }}
+          INSTAGRAM_GRAPH_API_VERSION: ${{ vars.STAGING_INSTAGRAM_GRAPH_API_VERSION }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          TELEGRAM_BOT_USERNAME: ${{ vars.STAGING_TELEGRAM_BOT_USERNAME }}
+          WEB_ORIGIN: ${{ vars.STAGING_WEB_ORIGIN }}
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE=s22-runtime-preflight-evidence.txt
+          REQUIRED_SECRETS=(
+            lead-agent-staging-auth0-client-secret
+            lead-agent-staging-auth-browser-envelope-key
+            lead-agent-staging-auth-database-url
+            lead-agent-staging-customer-data-encryption-key
+            lead-agent-staging-customer-data-lookup-key
+            lead-agent-staging-gemini-api-key
+            lead-agent-staging-ingress-database-url
+            lead-agent-staging-instagram-app-secret
+            lead-agent-staging-instagram-webhook-verify-token
+            lead-agent-staging-invitation-target-encryption-key
+            lead-agent-staging-invitation-target-lookup-key
+            lead-agent-staging-migration-database-url
+            lead-agent-staging-queue-database-url
+            lead-agent-staging-runtime-database-url
+            lead-agent-staging-telegram-bot-token
+            lead-agent-staging-telegram-webhook-secret
+            lead-agent-staging-widget-exchange-encryption-key
+            lead-agent-staging-widget-signing-key
+          )
+          : > "$EVIDENCE"
+          for secret in "${REQUIRED_SECRETS[@]}"; do
+            gcloud secrets describe "$secret" --project="$PROJECT_ID" --format='value(name)' > /dev/null
+            ENABLED_COUNT="$(
+              gcloud secrets versions list "$secret" \
+                --project="$PROJECT_ID" \
+                --filter='state=ENABLED' \
+                --format='value(name)' | sed '/^$/d' | wc -l | tr -d '[:space:]'
+            )"
+            [[ "$ENABLED_COUNT" =~ ^[1-9][0-9]*$ ]]
+            echo "$secret: enabled_versions=$ENABLED_COUNT" | tee -a "$EVIDENCE"
+          done
+          CHANNEL_SECRET=lead-agent-staging-channel-credentials
+          gcloud secrets describe "$CHANNEL_SECRET" --project="$PROJECT_ID" --format='value(name)' > /dev/null
+          CHANNEL_ENABLED_COUNT="$(
+            gcloud secrets versions list "$CHANNEL_SECRET" \
+              --project="$PROJECT_ID" \
+              --filter='state=ENABLED' \
+              --format='value(name)' | sed '/^$/d' | wc -l | tr -d '[:space:]'
+          )"
+          [[ "$CHANNEL_ENABLED_COUNT" == "0" ]]
+          echo "$CHANNEL_SECRET: enabled_versions=0 (application-managed)" | tee -a "$EVIDENCE"
+
+          [[ "$API_ORIGIN" == "https://lead-agent-staging-api-uj7pjzpksq-ww.a.run.app" ]]
+          [[ "$WEB_ORIGIN" == "https://lead-agent-staging-web-uj7pjzpksq-ww.a.run.app" ]]
+          [[ "$AUTH0_ISSUER" =~ ^https://[^/?#]+/$ ]]
+          [[ -n "$AUTH0_CLIENT_ID" && ${#AUTH0_CLIENT_ID} -le 512 && ! "$AUTH0_CLIENT_ID" =~ [[:space:]] ]]
+          [[ "$TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z][A-Za-z0-9_]{4,31}$ ]]
+          [[ "$INSTAGRAM_APP_ID" =~ ^[1-9][0-9]{3,31}$ ]]
+          [[ "$INSTAGRAM_GRAPH_API_VERSION" == "v24.0" ]]
+          {
+            echo "required_runtime_secrets=${#REQUIRED_SECRETS[@]}"
+            echo "required_runtime_secrets_ready=true"
+            echo "application_managed_channel_secret_empty=true"
+            echo "runtime_nonsecret_configuration_ready=true"
+            echo "secret_payloads_read=false"
+          } | tee -a "$EVIDENCE"
+
+      - name: Upload full runtime configuration metadata
+        if: env.S22_PHASE == 'runtime-preflight'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-runtime-preflight-${{ env.S22_COMMIT_SHA }}
+          path: infra/deploy/gcp/staging/s22-runtime-preflight-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Diagnose failed API revision read-only
+        if: env.S22_PHASE == 'runtime-diagnose' && env.S22_ACTION == 'plan'
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIAGNOSTIC_DIRECTORY="$(mktemp -d)"
+          trap 'rm -rf "$DIAGNOSTIC_DIRECTORY"' EXIT
+          REVISION_NAME="$(
+            gcloud run revisions list \
+              --project="$PROJECT_ID" \
+              --region="$REGION" \
+              --service=lead-agent-staging-api \
+              --sort-by='~metadata.creationTimestamp' \
+              --limit=1 \
+              --format='value(metadata.name)'
+          )"
+          [[ "$REVISION_NAME" =~ ^lead-agent-staging-api-[a-z0-9-]+$ ]]
+          gcloud run revisions describe "$REVISION_NAME" \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --format=json > "$DIAGNOSTIC_DIRECTORY/revision.json"
+
+          set +e
+          gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND resource.labels.revision_name=\"$REVISION_NAME\" AND severity>=ERROR" \
+            --project="$PROJECT_ID" \
+            --freshness=6h \
+            --limit=100 \
+            --format=json > "$DIAGNOSTIC_DIRECTORY/logs.json" \
+            2> "$DIAGNOSTIC_DIRECTORY/logging-error.txt"
+          LOGGING_EXIT_CODE=$?
+          set -e
+
+          node .github/scripts/s22-runtime-diagnose.mjs \
+            "$DIAGNOSTIC_DIRECTORY/revision.json" \
+            "$DIAGNOSTIC_DIRECTORY/logs.json" \
+            "$LOGGING_EXIT_CODE" \
+            | tee s22-runtime-diagnostic-evidence.json
+
+      - name: Upload sanitized runtime diagnostic evidence
+        if: always() && env.S22_PHASE == 'runtime-diagnose' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-runtime-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-runtime-diagnostic-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Read request-scoped sanitized Instagram callback failure
+        if: env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_ID="${S22_AUTH_CALLBACK_REQUEST_ID#instagram:}"
+          RAW_LOGS="$(mktemp)"
+          trap 'rm -f "$RAW_LOGS"' EXIT
+          gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND jsonPayload.instagramCallbackFailure:* AND jsonPayload.requestId=\"$REQUEST_ID\"" \
+            --project="$PROJECT_ID" \
+            --freshness=24h \
+            --limit=20 \
+            --format=json > "$RAW_LOGS"
+          node .github/scripts/s22-instagram-callback-diagnose.mjs "$RAW_LOGS" "$REQUEST_ID" \
+            | tee s22-instagram-callback-diagnostic-evidence.json
+          if jq -e 'any(.entries[]; .stage == "credential_storage")' s22-instagram-callback-diagnostic-evidence.json > /dev/null; then
+            PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+            [[ "$PROJECT_NUMBER" =~ ^[1-9][0-9]+$ ]]
+            CANONICAL_SECRET="$(gcloud secrets describe lead-agent-staging-channel-credentials --project="$PROJECT_ID" --format='value(name)')"
+            [[ "$CANONICAL_SECRET" == "projects/$PROJECT_NUMBER/secrets/lead-agent-staging-channel-credentials" ]]
+            gcloud secrets versions list lead-agent-staging-channel-credentials \
+              --project="$PROJECT_ID" --limit=10 --sort-by='~createTime' \
+              --format='json(name,createTime,state)' > s22-instagram-credential-version-metadata.json
+            jq -n --arg canonical_secret "$CANONICAL_SECRET" --slurpfile versions s22-instagram-credential-version-metadata.json \
+              '{canonical_secret: $canonical_secret, versions: $versions[0], secret_payloads_read: false}' \
+              > s22-instagram-credential-metadata-evidence.json
+            rm -f s22-instagram-credential-version-metadata.json
+          fi
+
+      - name: Upload sanitized Instagram callback diagnostic evidence
+        if: always() && env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-callback-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: |
+            s22-instagram-callback-diagnostic-evidence.json
+            s22-instagram-credential-metadata-evidence.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Read request-scoped sanitized auth callback failure
+        if: env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && !startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_ID="${S22_AUTH_CALLBACK_REQUEST_ID#request:}"
+          RAW_LOGS="$(mktemp)"
+          RAW_TIMELINE="$(mktemp)"
+          trap 'rm -f "$RAW_LOGS" "$RAW_TIMELINE"' EXIT
+          gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lead-agent-staging-api\" AND jsonPayload.authCallbackFailure:*" \
+            --project="$PROJECT_ID" \
+            --freshness=2h \
+            --limit=10 \
+            --format=json > "$RAW_LOGS"
+          gcloud logging read \
+            "resource.type=\"cloud_run_revision\" AND (resource.labels.service_name=\"lead-agent-staging-api\" OR resource.labels.service_name=\"lead-agent-staging-web\") AND (httpRequest.requestUrl:\"/v1/staff/auth/login\" OR httpRequest.requestUrl:\"/v1/staff/auth/callback\")" \
+            --project="$PROJECT_ID" \
+            --freshness=2h \
+            --limit=50 \
+            --format=json > "$RAW_TIMELINE"
+          jq -e --arg request_id "$S22_AUTH_CALLBACK_REQUEST_ID" '
+            def allowed:
+              . == "transaction_cookie_missing"
+              or . == "transaction_envelope_invalid_or_expired"
+              or . == "provider_authorization_error"
+              or . == "state_mismatch"
+              or . == "authorization_code_missing"
+              or . == "state_replay"
+              or . == "token_exchange_or_oidc_response_validation"
+              or . == "token_endpoint_invalid_client"
+              or . == "token_endpoint_invalid_grant"
+              or . == "token_endpoint_invalid_request"
+              or . == "token_endpoint_invalid_scope"
+              or . == "token_endpoint_rejected"
+              or . == "token_endpoint_unauthorized_client"
+              or . == "token_endpoint_unsupported_grant_type"
+              or . == "oidc_claim_validation_failed"
+              or . == "oidc_timestamp_validation_failed"
+              or . == "oidc_response_invalid"
+              or . == "callback_authentication_methods_invalid"
+              or . == "callback_authentication_time_invalid"
+              or . == "callback_id_token_invalid"
+              or . == "oidc_provider_unavailable"
+              or . == "mfa_required"
+              or . == "id_token_validation"
+              or . == "external_identity_resolution"
+              or . == "external_identity_unmapped"
+              or . == "external_identity_denied"
+              or . == "session_issuance"
+              or . == "session_issuance_rejected";
+            [
+              .[]
+              | {
+                  auth_callback_failure: .jsonPayload.authCallbackFailure,
+                  request_id: ("request:" + .jsonPayload.requestId),
+                  revision: .resource.labels.revision_name,
+                  timestamp
+                }
+            ] as $entries
+            | (($request_id == "request:latest" and ($entries | length) > 0)
+                or any($entries[]; .request_id == $request_id))
+              and all($entries[]; .auth_callback_failure | allowed)
+          ' "$RAW_LOGS" > /dev/null
+          jq -n \
+            --slurpfile failures "$RAW_LOGS" \
+            --slurpfile timeline "$RAW_TIMELINE" '
+              {
+                failure_entries: [
+                  $failures[0][]
+                  | {
+                      auth_callback_failure: .jsonPayload.authCallbackFailure,
+                      request_id: ("request:" + .jsonPayload.requestId),
+                      revision: .resource.labels.revision_name,
+                      timestamp
+                    }
+                ],
+                request_timeline: [
+                  $timeline[0][]
+                  | select((.httpRequest.requestUrl // "") | test("/v1/staff/auth/(login|callback)"))
+                  | {
+                      method: .httpRequest.requestMethod,
+                      path: ((.httpRequest.requestUrl | split("?")[0]) | sub("^https?://[^/]+"; "")),
+                      revision: .resource.labels.revision_name,
+                      service: .resource.labels.service_name,
+                      status: .httpRequest.status,
+                      timestamp
+                    }
+                ] | sort_by(.timestamp)
+              }
+            ' > s22-auth-callback-diagnostic-evidence.json
+
+      - name: Upload sanitized auth callback diagnostic evidence
+        if: always() && env.S22_PHASE == 'auth-callback-diagnose' && env.S22_ACTION == 'plan' && !startsWith(env.S22_AUTH_CALLBACK_REQUEST_ID, 'instagram:')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-auth-callback-diagnostic-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-auth-callback-diagnostic-evidence.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Create reviewed Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          ! terraform state list | grep -Fqx "$RESOURCE"
+          terraform plan -lock-timeout=5m -target="$RESOURCE" -out=s22-instagram-verify-access.tfplan
+          sha256sum s22-instagram-verify-access.tfplan > s22-instagram-verify-access.tfplan.sha256
+          terraform show -json s22-instagram-verify-access.tfplan > s22-instagram-verify-access.tfplan.json
+          jq -e --arg resource "$RESOURCE" --arg member "serviceAccount:$TF_VAR_deployer_service_account_email" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 1
+              and $changes[0].address == $resource
+              and $changes[0].change.actions == ["create"]
+              and $changes[0].change.after.project == "lead-agent-stg-739284"
+              and $changes[0].change.after.secret_id == "lead-agent-staging-instagram-webhook-verify-token"
+              and $changes[0].change.after.role == "roles/secretmanager.secretAccessor"
+              and $changes[0].change.after.member == $member
+          ' s22-instagram-verify-access.tfplan.json > /dev/null
+          {
+            echo "instagram_verify_access_plan_action=create:$RESOURCE"
+            echo "instagram_verify_access_plan_sha256=$(awk '{print $1}' s22-instagram-verify-access.tfplan.sha256)"
+            echo "instagram_verify_access_plan_creates=1"
+            echo "instagram_verify_access_plan_changes=0"
+            echo "instagram_verify_access_plan_destroys=0"
+            echo "instagram_verify_access_plan_replacements=0"
+            echo "instagram_verify_access_scope=single_secret_only"
+          } | tee s22-instagram-verify-access-plan-evidence.txt
+          rm -f s22-instagram-verify-access.tfplan.json
+
+      - name: Upload exact Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/staging/s22-instagram-verify-access.tfplan
+            infra/deploy/gcp/staging/s22-instagram-verify-access.tfplan.sha256
+            infra/deploy/gcp/staging/s22-instagram-verify-access-plan-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Create reviewed Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          terraform state list | grep -Fqx "$RESOURCE"
+          terraform plan -lock-timeout=5m -target="$RESOURCE" -out=s22-instagram-verify-access-remove.tfplan
+          sha256sum s22-instagram-verify-access-remove.tfplan > s22-instagram-verify-access-remove.tfplan.sha256
+          terraform show -json s22-instagram-verify-access-remove.tfplan > s22-instagram-verify-access-remove.tfplan.json
+          jq -e --arg resource "$RESOURCE" --arg member "serviceAccount:$TF_VAR_deployer_service_account_email" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 1
+              and $changes[0].address == $resource
+              and $changes[0].change.actions == ["delete"]
+              and $changes[0].change.before.project == "lead-agent-stg-739284"
+              and $changes[0].change.before.secret_id == "projects/lead-agent-stg-739284/secrets/lead-agent-staging-instagram-webhook-verify-token"
+              and $changes[0].change.before.role == "roles/secretmanager.secretAccessor"
+              and $changes[0].change.before.member == $member
+          ' s22-instagram-verify-access-remove.tfplan.json > /dev/null
+          {
+            echo "instagram_verify_access_removal_plan_action=delete:$RESOURCE"
+            echo "instagram_verify_access_removal_plan_sha256=$(awk '{print $1}' s22-instagram-verify-access-remove.tfplan.sha256)"
+            echo "instagram_verify_access_removal_plan_creates=0"
+            echo "instagram_verify_access_removal_plan_changes=0"
+            echo "instagram_verify_access_removal_plan_destroys=1"
+            echo "instagram_verify_access_removal_plan_replacements=0"
+            echo "instagram_verify_access_removal_scope=single_secret_only"
+          } | tee s22-instagram-verify-access-remove-plan-evidence.txt
+          rm -f s22-instagram-verify-access-remove.tfplan.json
+
+      - name: Upload exact Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-remove-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/staging/s22-instagram-verify-access-remove.tfplan
+            infra/deploy/gcp/staging/s22-instagram-verify-access-remove.tfplan.sha256
+            infra/deploy/gcp/staging/s22-instagram-verify-access-remove-plan-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Verify Instagram webhook challenge without exposing its token
+        if: env.S22_PHASE == 'instagram-verify' && env.S22_ACTION == 'plan'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_REVISION="$(
+            gcloud run services describe lead-agent-staging-api \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --format='value(status.latestReadyRevisionName)'
+          )"
+          if [[ ! "$API_REVISION" =~ ^lead-agent-staging-api-[a-z0-9-]+$ ]]; then
+            echo "::error title=Instagram verifier preflight::S22I101_INVALID_API_REVISION" >&2
+            exit 1
+          fi
+          LIVE_IMAGE="$(
+            gcloud run revisions describe "$API_REVISION" \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --format='value(spec.containers[0].image)'
+          )"
+          if [[ "$LIVE_IMAGE" != "$API_IMAGE" ]]; then
+            echo "::error title=Instagram verifier preflight::S22I102_API_IMAGE_MISMATCH live=$LIVE_IMAGE expected=$API_IMAGE" >&2
+            exit 1
+          fi
+          VERIFY_TOKEN=""
+          for ATTEMPT in 1 2 3; do
+            if VERIFY_TOKEN="$(
+              gcloud secrets versions access latest \
+                --secret=lead-agent-staging-instagram-webhook-verify-token \
+                --project="$PROJECT_ID" \
+                2>/dev/null
+            )"; then
+              break
+            fi
+            if [[ "$ATTEMPT" == "3" ]]; then
+              echo "::error title=Instagram verifier preflight::S22I103_SECRET_ACCESS_FAILED" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          if [[ -z "$VERIFY_TOKEN" || ${#VERIFY_TOKEN} -gt 256 ]]; then
+            echo "::error title=Instagram verifier preflight::S22I104_INVALID_SECRET_VALUE" >&2
+            exit 1
+          fi
+          echo "::add-mask::$VERIFY_TOKEN"
+          trap 'unset VERIFY_TOKEN' EXIT
+          S22_API_ORIGIN="$API_ORIGIN" \
+          S22_API_REVISION="$API_REVISION" \
+          S22_API_IMAGE="$LIVE_IMAGE" \
+            INSTAGRAM_WEBHOOK_VERIFY_TOKEN="$VERIFY_TOKEN" \
+            node .github/scripts/s22-instagram-webhook-verify.mjs \
+            | tee s22-instagram-webhook-verification-evidence.json
+
+      - name: Upload sanitized Instagram webhook verification evidence
+        if: env.S22_PHASE == 'instagram-verify' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-webhook-verification-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-instagram-webhook-verification-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Create reviewed Telegram verifier access plan
+        if: env.S22_PHASE == 'telegram-verify-access' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access'
+          ! terraform state list | grep -Fq "$RESOURCE"
+          terraform plan -lock-timeout=5m -target="$RESOURCE" -out=s22-telegram-verify-access.tfplan
+          sha256sum s22-telegram-verify-access.tfplan > s22-telegram-verify-access.tfplan.sha256
+          terraform show -json s22-telegram-verify-access.tfplan > s22-telegram-verify-access.tfplan.json
+          jq -e --arg member "serviceAccount:$TF_VAR_deployer_service_account_email" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 2
+              and ([$changes[].address] | sort) == [
+                "google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access[\"telegram-bot-token\"]",
+                "google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access[\"telegram-webhook-secret\"]"
+              ]
+              and all($changes[];
+                .change.actions == ["create"]
+                and .change.after.project == "lead-agent-stg-739284"
+                and (.change.after.secret_id == "lead-agent-staging-telegram-bot-token"
+                  or .change.after.secret_id == "lead-agent-staging-telegram-webhook-secret")
+                and .change.after.role == "roles/secretmanager.secretAccessor"
+                and .change.after.member == $member)
+          ' s22-telegram-verify-access.tfplan.json > /dev/null
+          {
+            echo "telegram_verify_access_plan_sha256=$(awk '{print $1}' s22-telegram-verify-access.tfplan.sha256)"
+            echo "telegram_verify_access_plan_creates=2"
+            echo "telegram_verify_access_plan_changes=0"
+            echo "telegram_verify_access_plan_destroys=0"
+            echo "telegram_verify_access_plan_replacements=0"
+            echo "telegram_verify_access_scope=two_telegram_secrets_only"
+          } | tee s22-telegram-verify-access-plan-evidence.txt
+          rm -f s22-telegram-verify-access.tfplan.json
+
+      - name: Upload exact Telegram verifier access plan
+        if: env.S22_PHASE == 'telegram-verify-access' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-telegram-verify-access-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/staging/s22-telegram-verify-access.tfplan
+            infra/deploy/gcp/staging/s22-telegram-verify-access.tfplan.sha256
+            infra/deploy/gcp/staging/s22-telegram-verify-access-plan-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Create reviewed Telegram verifier access removal plan
+        if: env.S22_PHASE == 'telegram-verify-access-remove' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access'
+          [[ "$(terraform state list | grep -Fc "$RESOURCE")" == "2" ]]
+          terraform plan -lock-timeout=5m -target="$RESOURCE" -out=s22-telegram-verify-access-remove.tfplan
+          sha256sum s22-telegram-verify-access-remove.tfplan > s22-telegram-verify-access-remove.tfplan.sha256
+          terraform show -json s22-telegram-verify-access-remove.tfplan > s22-telegram-verify-access-remove.tfplan.json
+          jq -e --arg member "serviceAccount:$TF_VAR_deployer_service_account_email" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 2
+              and ([$changes[].address] | sort) == [
+                "google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access[\"telegram-bot-token\"]",
+                "google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access[\"telegram-webhook-secret\"]"
+              ]
+              and all($changes[];
+                .change.actions == ["delete"]
+                and (.change.before.secret_id == "projects/lead-agent-stg-739284/secrets/lead-agent-staging-telegram-bot-token"
+                  or .change.before.secret_id == "projects/lead-agent-stg-739284/secrets/lead-agent-staging-telegram-webhook-secret")
+                and .change.before.role == "roles/secretmanager.secretAccessor"
+                and .change.before.member == $member)
+          ' s22-telegram-verify-access-remove.tfplan.json > /dev/null
+          {
+            echo "telegram_verify_access_removal_plan_sha256=$(awk '{print $1}' s22-telegram-verify-access-remove.tfplan.sha256)"
+            echo "telegram_verify_access_removal_plan_creates=0"
+            echo "telegram_verify_access_removal_plan_changes=0"
+            echo "telegram_verify_access_removal_plan_destroys=2"
+            echo "telegram_verify_access_removal_plan_replacements=0"
+            echo "telegram_verify_access_removal_scope=two_telegram_secrets_only"
+          } | tee s22-telegram-verify-access-remove-plan-evidence.txt
+          rm -f s22-telegram-verify-access-remove.tfplan.json
+
+      - name: Upload exact Telegram verifier access removal plan
+        if: env.S22_PHASE == 'telegram-verify-access-remove' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-telegram-verify-access-remove-plan-${{ env.S22_COMMIT_SHA }}
+          path: |
+            infra/deploy/gcp/staging/s22-telegram-verify-access-remove.tfplan
+            infra/deploy/gcp/staging/s22-telegram-verify-access-remove.tfplan.sha256
+            infra/deploy/gcp/staging/s22-telegram-verify-access-remove-plan-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Verify Telegram webhook without exposing credentials
+        if: env.S22_PHASE == 'telegram-verify' && env.S22_ACTION == 'plan'
+        env:
+          API_IMAGE: ${{ inputs.api_image }}
+          API_ORIGIN: ${{ vars.STAGING_API_ORIGIN }}
+          BOT_USERNAME: ${{ vars.STAGING_TELEGRAM_BOT_USERNAME }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_REVISION="$(
+            gcloud run services describe lead-agent-staging-api \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --format='value(status.latestReadyRevisionName)'
+          )"
+          [[ "$API_REVISION" =~ ^lead-agent-staging-api-[a-z0-9-]+$ ]]
+          LIVE_IMAGE="$(
+            gcloud run revisions describe "$API_REVISION" \
+              --project="$PROJECT_ID" \
+              --region=me-central1 \
+              --format='value(spec.containers[0].image)'
+          )"
+          if [[ "$LIVE_IMAGE" != "$API_IMAGE" ]]; then
+            echo "::error title=Telegram verifier preflight::S22T102_API_IMAGE_MISMATCH live=$LIVE_IMAGE expected=$API_IMAGE" >&2
+            exit 1
+          fi
+          BOT_TOKEN="$(gcloud secrets versions access latest --secret=lead-agent-staging-telegram-bot-token --project="$PROJECT_ID" 2>/dev/null)" || {
+            echo "::error title=Telegram verifier preflight::S22T103_BOT_TOKEN_ACCESS_FAILED" >&2
+            exit 1
+          }
+          WEBHOOK_SECRET="$(gcloud secrets versions access latest --secret=lead-agent-staging-telegram-webhook-secret --project="$PROJECT_ID" 2>/dev/null)" || {
+            echo "::error title=Telegram verifier preflight::S22T104_WEBHOOK_SECRET_ACCESS_FAILED" >&2
+            exit 1
+          }
+          echo "::add-mask::$BOT_TOKEN"
+          echo "::add-mask::$WEBHOOK_SECRET"
+          trap 'unset BOT_TOKEN WEBHOOK_SECRET' EXIT
+          S22_API_ORIGIN="$API_ORIGIN" \
+          S22_API_REVISION="$API_REVISION" \
+          S22_API_IMAGE="$LIVE_IMAGE" \
+          TELEGRAM_BOT_TOKEN="$BOT_TOKEN" \
+          TELEGRAM_BOT_USERNAME="$BOT_USERNAME" \
+          TELEGRAM_WEBHOOK_SECRET="$WEBHOOK_SECRET" \
+          TELEGRAM_WEBHOOK_URL="$API_ORIGIN/v1/webhooks/telegram" \
+            node .github/scripts/s22-telegram-webhook-verify.mjs \
+            | tee s22-telegram-webhook-verification-evidence.json
+
+      - name: Upload sanitized Telegram webhook verification evidence
+        if: env.S22_PHASE == 'telegram-verify' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-telegram-webhook-verification-${{ env.S22_COMMIT_SHA }}-${{ github.run_id }}
+          path: s22-telegram-webhook-verification-evidence.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Inspect partial foundation state and Google Cloud resources
         if: env.S22_PHASE == 'foundation-reconcile' && env.S22_ACTION == 'plan'
@@ -670,7 +1815,7 @@ jobs:
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'auth-callback-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -767,6 +1912,14 @@ jobs:
             echo "migration_plan_unexpected_actions=NONE"
           } | tee s22-migration-plan-evidence.txt
 
+      - name: Verify full runtime plan safety
+        if: env.S22_PHASE == 'full' && env.S22_ACTION == 'plan'
+        shell: bash
+        run: >-
+          bash .github/scripts/s22-full-runtime-plan-check.sh
+          infra/deploy/gcp/staging/s22.tfplan
+          | tee infra/deploy/gcp/staging/s22-full-runtime-plan-evidence.txt
+
       - name: Verify migrator image-only plan safety
         if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'plan'
         shell: bash
@@ -775,11 +1928,43 @@ jobs:
           bash .github/scripts/s22-migrator-image-plan-check.sh \
             infra/deploy/gcp/staging/s22.tfplan \
             "$TF_VAR_migrator_image" \
-            "$S22_COMMIT_SHA" \
+            "$S22_MIGRATOR_GIT_COMMIT_SHA" \
             "$TF_VAR_migrator_deployment_timestamp" \
+            "$S22_RUNTIME_GIT_COMMIT_SHA" \
+            "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_runtime_migration_head" \
+            "$TF_VAR_api_image" \
+            "$S22_API_GIT_COMMIT_SHA" \
+            "$S22_API_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_api_migration_head" \
+            "$TF_VAR_web_image" \
+            "$TF_VAR_worker_image" \
             | tee infra/deploy/gcp/staging/s22-migrator-image-plan-evidence.txt
           echo "migrator_image_plan_sha256=$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)" \
             | tee -a infra/deploy/gcp/staging/s22-migrator-image-plan-evidence.txt
+
+      - name: Verify API image-only plan safety
+        if: env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'plan'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/s22-api-image-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan \
+            "$TF_VAR_api_image" \
+            "$S22_API_GIT_COMMIT_SHA" \
+            "$TF_VAR_api_deployment_timestamp" \
+            "$TF_VAR_api_migration_head" \
+            "$S22_RUNTIME_GIT_COMMIT_SHA" \
+            "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_runtime_migration_head" \
+            "$TF_VAR_web_image" \
+            "$TF_VAR_worker_image" \
+            "$TF_VAR_migrator_image" \
+            "$S22_MIGRATOR_GIT_COMMIT_SHA" \
+            "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" \
+            | tee infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
+          echo "api_image_plan_sha256=$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)" \
+            | tee -a infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
 
       - name: Verify Cloud SQL start-only plan safety
         if: env.S22_PHASE == 'cloud-sql-start' && env.S22_ACTION == 'plan'
@@ -1100,13 +2285,15 @@ jobs:
           [[ "$REPLACE_COUNT" == "0" ]]
 
       - name: Upload exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_ACTION == 'plan'
+        if: always() && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'bootstrap' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'auth-callback-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: s22-terraform-plan-${{ env.S22_PHASE }}-${{ env.S22_COMMIT_SHA }}
           path: |
             infra/deploy/gcp/staging/s22.tfplan
             infra/deploy/gcp/staging/s22.tfplan.sha256
+            infra/deploy/gcp/staging/s22-full-runtime-plan-evidence.txt
+            infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -1599,8 +2786,238 @@ jobs:
           } | tee s22-phase-b-apply-evidence.txt
           rm -f "$PLAN_JSON"
 
+      - name: Download exact Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$S22_PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "s22-instagram-verify-access-plan-$S22_COMMIT_SHA" \
+            --dir infra/deploy/gcp/staging
+
+      - name: Verify and apply exact Instagram verifier access plan
+        if: env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          PLAN=s22-instagram-verify-access.tfplan
+          RECORDED_SHA="$(awk '{print $1}' "$PLAN.sha256")"
+          ACTUAL_SHA="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA" == "$RECORDED_SHA" ]]
+          [[ "$ACTUAL_SHA" == "$S22_APPROVED_PLAN_SHA256" ]]
+          terraform show -json "$PLAN" > s22-instagram-verify-access.apply.json
+          jq -e --arg resource "$RESOURCE" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])]
+            | length == 1 and .[0].address == $resource and .[0].change.actions == ["create"]
+          ' s22-instagram-verify-access.apply.json > /dev/null
+          rm -f s22-instagram-verify-access.apply.json
+          STATE_COUNT_BEFORE="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          terraform apply -lock-timeout=5m -auto-approve "$PLAN"
+          terraform state list | grep -Fqx "$RESOURCE"
+          STATE_COUNT_AFTER="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT_AFTER" == "$((STATE_COUNT_BEFORE + 1))" ]]
+          set +e
+          terraform plan -target="$RESOURCE" -detailed-exitcode -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "instagram_verify_access_applied=true"
+            echo "instagram_verify_access_plan_sha256=$ACTUAL_SHA"
+            echo "instagram_verify_access_state_count_before=$STATE_COUNT_BEFORE"
+            echo "instagram_verify_access_state_count_after=$STATE_COUNT_AFTER"
+            echo "instagram_verify_access_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-instagram-verify-access-apply-evidence.txt
+
+      - name: Upload Instagram verifier access apply evidence
+        if: always() && env.S22_PHASE == 'instagram-verify-access' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-apply-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-instagram-verify-access-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download exact Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$S22_PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "s22-instagram-verify-access-remove-plan-$S22_COMMIT_SHA" \
+            --dir infra/deploy/gcp/staging
+
+      - name: Verify and apply exact Instagram verifier access removal plan
+        if: env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_instagram_verify_access[0]'
+          PLAN=s22-instagram-verify-access-remove.tfplan
+          RECORDED_SHA="$(awk '{print $1}' "$PLAN.sha256")"
+          ACTUAL_SHA="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA" == "$RECORDED_SHA" ]]
+          [[ "$ACTUAL_SHA" == "$S22_APPROVED_PLAN_SHA256" ]]
+          terraform show -json "$PLAN" > s22-instagram-verify-access-remove.apply.json
+          jq -e --arg resource "$RESOURCE" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])]
+            | length == 1 and .[0].address == $resource and .[0].change.actions == ["delete"]
+          ' s22-instagram-verify-access-remove.apply.json > /dev/null
+          rm -f s22-instagram-verify-access-remove.apply.json
+          STATE_COUNT_BEFORE="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          terraform apply -lock-timeout=5m -auto-approve "$PLAN"
+          ! terraform state list | grep -Fqx "$RESOURCE"
+          STATE_COUNT_AFTER="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT_AFTER" == "$((STATE_COUNT_BEFORE - 1))" ]]
+          set +e
+          terraform plan -target="$RESOURCE" -detailed-exitcode -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "instagram_verify_access_removed=true"
+            echo "instagram_verify_access_removal_plan_sha256=$ACTUAL_SHA"
+            echo "instagram_verify_access_removal_state_count_before=$STATE_COUNT_BEFORE"
+            echo "instagram_verify_access_removal_state_count_after=$STATE_COUNT_AFTER"
+            echo "instagram_verify_access_removal_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-instagram-verify-access-remove-apply-evidence.txt
+
+      - name: Upload Instagram verifier access removal evidence
+        if: always() && env.S22_PHASE == 'instagram-verify-access-remove' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-instagram-verify-access-remove-apply-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-instagram-verify-access-remove-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download exact Telegram verifier access plan
+        if: env.S22_PHASE == 'telegram-verify-access' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$S22_PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "s22-telegram-verify-access-plan-$S22_COMMIT_SHA" \
+            --dir infra/deploy/gcp/staging
+
+      - name: Verify and apply exact Telegram verifier access plan
+        if: env.S22_PHASE == 'telegram-verify-access' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access'
+          PLAN=s22-telegram-verify-access.tfplan
+          RECORDED_SHA="$(awk '{print $1}' "$PLAN.sha256")"
+          ACTUAL_SHA="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA" == "$RECORDED_SHA" ]]
+          [[ "$ACTUAL_SHA" == "$S22_APPROVED_PLAN_SHA256" ]]
+          terraform show -json "$PLAN" > s22-telegram-verify-access.apply.json
+          jq -e --arg resource "$RESOURCE" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 2 and all($changes[];
+                (.address | startswith($resource)) and .change.actions == ["create"])
+          ' s22-telegram-verify-access.apply.json > /dev/null
+          rm -f s22-telegram-verify-access.apply.json
+          STATE_COUNT_BEFORE="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          terraform apply -lock-timeout=5m -auto-approve "$PLAN"
+          [[ "$(terraform state list | grep -Fc "$RESOURCE")" == "2" ]]
+          STATE_COUNT_AFTER="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT_AFTER" == "$((STATE_COUNT_BEFORE + 2))" ]]
+          set +e
+          terraform plan -target="$RESOURCE" -detailed-exitcode -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "telegram_verify_access_applied=true"
+            echo "telegram_verify_access_plan_sha256=$ACTUAL_SHA"
+            echo "telegram_verify_access_state_count_before=$STATE_COUNT_BEFORE"
+            echo "telegram_verify_access_state_count_after=$STATE_COUNT_AFTER"
+            echo "telegram_verify_access_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-telegram-verify-access-apply-evidence.txt
+
+      - name: Upload Telegram verifier access apply evidence
+        if: always() && env.S22_PHASE == 'telegram-verify-access' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-telegram-verify-access-apply-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-telegram-verify-access-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download exact Telegram verifier access removal plan
+        if: env.S22_PHASE == 'telegram-verify-access-remove' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$S22_PLAN_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "s22-telegram-verify-access-remove-plan-$S22_COMMIT_SHA" \
+            --dir infra/deploy/gcp/staging
+
+      - name: Verify and apply exact Telegram verifier access removal plan
+        if: env.S22_PHASE == 'telegram-verify-access-remove' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESOURCE='google_secret_manager_secret_iam_member.deployer_temporary_telegram_verify_access'
+          PLAN=s22-telegram-verify-access-remove.tfplan
+          RECORDED_SHA="$(awk '{print $1}' "$PLAN.sha256")"
+          ACTUAL_SHA="$(sha256sum "$PLAN" | awk '{print $1}')"
+          [[ "$ACTUAL_SHA" == "$RECORDED_SHA" ]]
+          [[ "$ACTUAL_SHA" == "$S22_APPROVED_PLAN_SHA256" ]]
+          terraform show -json "$PLAN" > s22-telegram-verify-access-remove.apply.json
+          jq -e --arg resource "$RESOURCE" '
+            [.resource_changes[] | select(.change.actions != ["no-op"])] as $changes
+            | ($changes | length) == 2 and all($changes[];
+                (.address | startswith($resource)) and .change.actions == ["delete"])
+          ' s22-telegram-verify-access-remove.apply.json > /dev/null
+          rm -f s22-telegram-verify-access-remove.apply.json
+          STATE_COUNT_BEFORE="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          terraform apply -lock-timeout=5m -auto-approve "$PLAN"
+          ! terraform state list | grep -Fq "$RESOURCE"
+          STATE_COUNT_AFTER="$(terraform state list | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          [[ "$STATE_COUNT_AFTER" == "$((STATE_COUNT_BEFORE - 2))" ]]
+          set +e
+          terraform plan -target="$RESOURCE" -detailed-exitcode -lock-timeout=5m > /dev/null
+          PLAN_EXIT_CODE=$?
+          set -e
+          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          {
+            echo "telegram_verify_access_removed=true"
+            echo "telegram_verify_access_removal_plan_sha256=$ACTUAL_SHA"
+            echo "telegram_verify_access_removal_state_count_before=$STATE_COUNT_BEFORE"
+            echo "telegram_verify_access_removal_state_count_after=$STATE_COUNT_AFTER"
+            echo "telegram_verify_access_removal_convergence_exit_code=$PLAN_EXIT_CODE"
+          } | tee s22-telegram-verify-access-remove-apply-evidence.txt
+
+      - name: Upload Telegram verifier access removal evidence
+        if: always() && env.S22_PHASE == 'telegram-verify-access-remove' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-telegram-verify-access-remove-apply-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-telegram-verify-access-remove-apply-evidence.txt
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Download exact owner-reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN_RUN_ID: ${{ env.S22_PLAN_RUN_ID }}
@@ -1618,9 +3035,19 @@ jobs:
             --dir infra/deploy/gcp/staging
 
       - name: Verify reviewed plan integrity
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: sha256sum --check s22.tfplan.sha256
+
+      - name: Verify exact full runtime approval boundary
+        if: env.S22_PHASE == 'full' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_PLAN_SHA256="$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)"
+          [[ "$ACTUAL_PLAN_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
+          bash .github/scripts/s22-full-runtime-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan
 
       - name: Verify exact migrator image update approval boundary
         if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'apply'
@@ -1632,8 +3059,39 @@ jobs:
           bash .github/scripts/s22-migrator-image-plan-check.sh \
             infra/deploy/gcp/staging/s22.tfplan \
             "$TF_VAR_migrator_image" \
-            "$S22_COMMIT_SHA" \
-            "$TF_VAR_migrator_deployment_timestamp"
+            "$S22_MIGRATOR_GIT_COMMIT_SHA" \
+            "$TF_VAR_migrator_deployment_timestamp" \
+            "$S22_RUNTIME_GIT_COMMIT_SHA" \
+            "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_runtime_migration_head" \
+            "$TF_VAR_api_image" \
+            "$S22_API_GIT_COMMIT_SHA" \
+            "$S22_API_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_api_migration_head" \
+            "$TF_VAR_web_image" \
+            "$TF_VAR_worker_image"
+
+      - name: Verify exact API image update approval boundary
+        if: env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_PLAN_SHA256="$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)"
+          [[ "$ACTUAL_PLAN_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
+          bash .github/scripts/s22-api-image-plan-check.sh \
+            infra/deploy/gcp/staging/s22.tfplan \
+            "$TF_VAR_api_image" \
+            "$S22_API_GIT_COMMIT_SHA" \
+            "$TF_VAR_api_deployment_timestamp" \
+            "$TF_VAR_api_migration_head" \
+            "$S22_RUNTIME_GIT_COMMIT_SHA" \
+            "$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" \
+            "$TF_VAR_runtime_migration_head" \
+            "$TF_VAR_web_image" \
+            "$TF_VAR_worker_image" \
+            "$TF_VAR_migrator_image" \
+            "$S22_MIGRATOR_GIT_COMMIT_SHA" \
+            "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP"
 
       - name: Verify exact migration plan approval boundary
         if: env.S22_PHASE == 'migration' && env.S22_ACTION == 'apply'
@@ -2038,7 +3496,7 @@ jobs:
           rm -f "$PLAN_JSON"
 
       - name: Apply exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 
@@ -2047,50 +3505,71 @@ jobs:
         working-directory: infra/deploy/gcp/staging
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
         shell: bash
         run: |
-          set -euo pipefail
-          LIVE_JOB="$(mktemp)"
-          trap 'rm -f "$LIVE_JOB"' EXIT
-          gcloud run jobs describe lead-agent-staging-migrator \
-            --project="$PROJECT_ID" \
-            --region=me-central1 \
-            --format=json > "$LIVE_JOB"
-          jq -e \
-            --arg commit "$S22_COMMIT_SHA" \
-            --arg image "$TF_VAR_migrator_image" \
-            --arg timestamp "$TF_VAR_migrator_deployment_timestamp" '
-            .template.template.serviceAccount == "lead-agent-staging-migrator@lead-agent-stg-739284.iam.gserviceaccount.com"
-              and .template.template.containers[0].image == $image
-              and .template.template.containers[0].command == ["node"]
-              and .template.template.containers[0].args == ["dist/index.js"]
-              and (.template.template.vpcAccess.networkInterfaces[0].network | endswith("/networks/lead-agent-staging-vpc"))
-              and (.template.template.vpcAccess.networkInterfaces[0].subnetwork | endswith("/subnetworks/lead-agent-staging-cloud-run"))
-              and .template.template.vpcAccess.egress == "PRIVATE_RANGES_ONLY"
-              and any(.template.template.containers[0].env[]; .name == "DEPLOYMENT_GIT_SHA" and .value == $commit)
-              and any(.template.template.containers[0].env[]; .name == "DEPLOYMENT_TIMESTAMP" and .value == $timestamp)
-              and any(.template.template.containers[0].env[]; .name == "DEPLOYMENT_IMAGE_DIGEST" and .value == $image)
-              and ([.template.template.containers[0].env[] | select(.valueSource.secretKeyRef != null)] | length) == 5
-              and all(.template.template.containers[0].env[] | select(.valueSource.secretKeyRef != null); .valueSource.secretKeyRef.version == "latest")
-          ' "$LIVE_JOB" > /dev/null
+          bash ../../../../.github/scripts/s22-migrator-image-live-verify.sh
+          cp s22-migrator-image-live-evidence.txt s22-migrator-image-apply-evidence.txt
 
-          STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
-          [[ "$STATE_COUNT" == "88" ]]
+      - name: Verify API image update live state and convergence
+        if: env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: |
           set +e
-          terraform plan -detailed-exitcode -lock-timeout=5m > /dev/null
-          PLAN_EXIT_CODE=$?
+          bash ../../../../.github/scripts/s22-api-image-live-verify.sh
+          VERIFY_EXIT_CODE=$?
           set -e
-          [[ "$PLAN_EXIT_CODE" == "0" ]]
+          cp s22-api-image-live-evidence.txt s22-api-image-apply-evidence.txt
+          exit "$VERIFY_EXIT_CODE"
 
-          {
-            echo "migrator_image_update_commit=$S22_COMMIT_SHA"
-            echo "migrator_image_update_digest=${TF_VAR_migrator_image##*@}"
-            echo "migrator_image_update_live_state=PASS"
-            echo "migrator_image_update_network_unchanged=PASS"
-            echo "migrator_image_update_secret_references_unchanged=PASS"
-            echo "migrator_image_update_state_count=$STATE_COUNT"
-            echo "migrator_image_update_convergence_exit_code=$PLAN_EXIT_CODE"
-          } | tee s22-migrator-image-apply-evidence.txt
+      - name: Upload API image update evidence
+        if: always() && env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-api-image-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-api-image-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Verify applied API image read-only
+        if: env.S22_PHASE == 'api-image-verify' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: bash ../../../../.github/scripts/s22-api-image-live-verify.sh
+
+      - name: Upload read-only API image evidence
+        if: always() && env.S22_PHASE == 'api-image-verify' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-api-image-live-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-api-image-live-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Verify applied migrator image read-only
+        if: env.S22_PHASE == 'migrator-image-verify' && env.S22_ACTION == 'plan'
+        working-directory: infra/deploy/gcp/staging
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: me-central1
+        shell: bash
+        run: bash ../../../../.github/scripts/s22-migrator-image-live-verify.sh
+
+      - name: Upload read-only migrator image evidence
+        if: always() && env.S22_PHASE == 'migrator-image-verify' && env.S22_ACTION == 'plan'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-migrator-image-live-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-migrator-image-live-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload migrator image update evidence
         if: always() && env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'apply'
@@ -3211,22 +4690,32 @@ jobs:
           set -euo pipefail
           LOGS="$(mktemp)"
           EXECUTION="$(mktemp)"
-          trap 'rm -f "$LOGS" "$EXECUTION"' EXIT
-          gcloud beta run jobs executions logs read "$EXECUTION_ID" \
+          TASKS="$(mktemp)"
+          trap 'rm -f "$LOGS" "$EXECUTION" "$TASKS"' EXIT
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/me-central1/jobs/lead-agent-staging-migrator/executions/${EXECUTION_ID}/tasks?pageSize=1" \
+            > "$TASKS"
+          unset ACCESS_TOKEN
+          if ! gcloud beta run jobs executions logs read "$EXECUTION_ID" \
             --project="$PROJECT_ID" \
             --region=me-central1 \
             --limit=200 \
             --order=asc \
-            --format=json > "$LOGS"
+            --format=json > "$LOGS"; then
+            printf '[]\n' > "$LOGS"
+          fi
           gcloud run jobs executions describe "$EXECUTION_ID" \
             --project="$PROJECT_ID" \
             --region=me-central1 \
             --format=json > "$EXECUTION"
-          node - "$LOGS" "$EXECUTION" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
+          node - "$LOGS" "$EXECUTION" "$TASKS" "$EXECUTION_ID" <<'NODE' | tee s22-migrator-root-error.txt
           const fs = require("node:fs");
-          const [logPath, executionPath, executionId] = process.argv.slice(2);
+          const [logPath, executionPath, tasksPath, executionId] = process.argv.slice(2);
           const rawLogs = fs.readFileSync(logPath, "utf8");
           const execution = JSON.parse(fs.readFileSync(executionPath, "utf8"));
+          const tasks = JSON.parse(fs.readFileSync(tasksPath, "utf8"));
           let parsedLogs;
           try {
             parsedLogs = JSON.parse(rawLogs);
@@ -3262,6 +4751,11 @@ jobs:
           const failure = payloads.find(
             (payload) => payload.operation === "database_migration" && payload.outcome === "failed",
           );
+          const identityVerification = payloads.find(
+            (payload) =>
+              payload.operation === "staging_owner_workspace_identity_verify"
+              && (payload.outcome === "PASS" || payload.outcome === "FAIL"),
+          );
 
           const sanitize = (value) =>
             String(value ?? "unavailable")
@@ -3295,6 +4789,52 @@ jobs:
             outcome: "failed",
             retried_count: Number(executionStatus.retriedCount ?? executionStatus.retried_count ?? 0),
           };
+          const task = Array.isArray(tasks)
+            ? tasks[0]
+            : Array.isArray(tasks?.tasks)
+              ? tasks.tasks[0]
+              : undefined;
+          const taskExitCode = task?.lastAttemptResult?.exitCode
+            ?? task?.status?.lastAttemptResult?.exitCode
+            ?? task?.status?.exitCode
+            ?? (
+              (task?.lastAttemptResult?.status?.code
+                ?? task?.status?.lastAttemptResult?.status?.code) === 0
+                && typeof task?.completionTime === "string"
+                && task.completionTime.length > 0
+                ? 0
+                : undefined
+            );
+          const ownerBootstrapStages = new Map([
+            [70, "bootstrap_entry"],
+            [71, "dependency_load"],
+            [72, "input_validation"],
+            [73, "database_connect"],
+            [74, "transaction_start"],
+            [75, "bootstrap_capability"],
+            [76, "stored_identity_validation"],
+            [77, "replay_protection"],
+            [78, "success_evidence"],
+            [79, "auth_role_identity_validation"],
+            [80, "identity_row_count"],
+            [81, "issuer_mismatch"],
+            [82, "subject_mismatch"],
+            [83, "issuer_and_subject_mismatch"],
+            [84, "identity_shape"],
+            [85, "owner_membership"],
+            [86, "bootstrap_audit"],
+            [87, "auth_connection_shape"],
+            [88, "auth_identity_unmapped"],
+            [89, "auth_identity_invalid"],
+          ]);
+          const taskFailure = Number.isInteger(taskExitCode) && {
+            diagnostic_mode: "cloud_run_task_status",
+            execution_id: executionId,
+            failure_stage: ownerBootstrapStages.get(taskExitCode) ?? "runtime_unclassified",
+            operation: "cloud_run_job_execution",
+            outcome: taskExitCode === 0 ? "succeeded" : "failed",
+            task_exit_code: taskExitCode,
+          };
           const structuredEvidence = failure && {
             diagnostic_mode: "structured_application_error",
             error_category: optional(failure.error_category, /^[a-z][a-z0-9_]{0,79}$/u),
@@ -3306,6 +4846,22 @@ jobs:
             migration_identifier: optional(failure.migration_identifier, /^[0-9]{4}_[a-z0-9_]+$/u),
             operation: "database_migration",
             outcome: "failed",
+          };
+          const identityChecks = asObject(identityVerification?.checks);
+          const identityEvidence = identityVerification && identityChecks && {
+            checks: {
+              bootstrap_audit: identityChecks.bootstrap_audit === true,
+              exact_identity: identityChecks.exact_identity === true,
+              identity_row_count: Number.isInteger(identityChecks.identity_row_count)
+                ? identityChecks.identity_row_count
+                : -1,
+              issuer_match: identityChecks.issuer_match === true,
+              subject_match: identityChecks.subject_match === true,
+            },
+            diagnostic_mode: "staging_owner_identity_validation",
+            execution_id: executionId,
+            operation: "staging_owner_workspace_identity_verify",
+            outcome: identityVerification.outcome,
           };
           const diagnosticLogPattern = /(?:stderr|varlog%2Fsystem)$/u;
           const usefulErrorPattern = /(?:error|failed|failure|exception|cannot|denied|refused|timeout|not found|module_not_found|err_)/iu;
@@ -3325,7 +4881,7 @@ jobs:
           const fallback = fallbackMessages.find(
             ({ error_message, is_diagnostic_log }) => is_diagnostic_log && usefulErrorPattern.test(error_message),
           ) ?? fallbackMessages.find(({ error_message }) => usefulErrorPattern.test(error_message));
-          const evidence = structuredEvidence ?? (fallback ? {
+          const evidence = structuredEvidence ?? identityEvidence ?? (fallback ? {
             diagnostic_mode: "sanitized_runtime_fallback",
             error_message: fallback.error_message,
             execution_id: executionId,
@@ -3333,7 +4889,7 @@ jobs:
             operation: "database_migration",
             outcome: "failed",
             severity: fallback.severity,
-          } : executionFailure ?? {
+          } : taskFailure ?? executionFailure ?? {
             diagnostic_mode: "sanitized_metadata_only",
             entry_count: entries.length,
             execution_id: executionId,
@@ -3644,7 +5200,7 @@ jobs:
             try {
               const migrations = await pool.query("select count(*)::integer as count from drizzle.__drizzle_migrations");
               const tables = await pool.query("select count(*)::integer as count from information_schema.tables where table_schema = $$public$$ and table_type = $$BASE TABLE$$");
-              process.exitCode = migrations.rows[0]?.count === 30 && tables.rows[0]?.count === 52 ? 0 : 1;
+              process.exitCode = migrations.rows[0]?.count === 32 && tables.rows[0]?.count === 52 ? 0 : 1;
             } catch {
               process.exitCode = 1;
             } finally {
@@ -3905,7 +5461,7 @@ jobs:
         run: |
           set -euo pipefail
           STATE_COUNT="$(terraform state list | wc -l | tr -d '[:space:]')"
-          [[ "$STATE_COUNT" == "88" ]]
+          [[ "$STATE_COUNT" == "89" ]]
           set +e
           terraform plan -detailed-exitcode -lock-timeout=5m
           PLAN_EXIT_CODE=$?
@@ -3914,8 +5470,8 @@ jobs:
           {
             echo "migration_state_count=$STATE_COUNT"
             echo "migration_convergence_exit_code=$PLAN_EXIT_CODE"
-            echo "migration_head=0029_s21_thread_automation_controls"
-            echo "migration_count=30"
+            echo "migration_head=0031_s22_widget_inbound_route_management"
+            echo "migration_count=32"
             echo "production_table_count=52"
             echo "force_rls_table_count=48"
             echo "application_role_connectivity=PASS"
@@ -3931,7 +5487,7 @@ jobs:
           retention-days: 7
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
@@ -3949,7 +5505,7 @@ jobs:
             echo "- Region: me-central1"
             echo "- Phase: $PHASE"
             echo "- Commit: \`$REQUESTED_SHA\`"
-            echo "- Migration head: \`0029_s21_thread_automation_controls\`"
+            echo "- Migration head: \`0031_s22_widget_inbound_route_management\`"
             echo "- Timestamp: \`$DEPLOYED_AT\`"
             [[ -z "$API_IMAGE" ]] || echo "- API: \`$API_IMAGE\`"
             [[ -z "$WEB_IMAGE" ]] || echo "- Web: \`$WEB_IMAGE\`"

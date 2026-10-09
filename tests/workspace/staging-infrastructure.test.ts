@@ -15,8 +15,8 @@ const repositoryFile = (path: string): Promise<string> =>
 describe("S22 staging infrastructure boundary", () => {
   it("packages the exact current migration chain for the one-shot migrator", async () => {
     const manifest = await readStagingMigrationManifest();
-    expect(manifest.entries).toHaveLength(30);
-    expect(manifest.entries.at(-1)?.tag).toBe("0029_s21_thread_automation_controls");
+    expect(manifest.entries).toHaveLength(32);
+    expect(manifest.entries.at(-1)?.tag).toBe("0031_s22_widget_inbound_route_management");
     expect(manifest.entries.every((entry, index) => entry.idx === index)).toBe(true);
   });
 
@@ -33,6 +33,8 @@ describe("S22 staging infrastructure boundary", () => {
       ["0024_s8_handler_reliability.sql", "lead_agent_async_maintenance_definer"],
       ["0026_s11_telegram_inbound_route_management.sql", "lead_agent_inbound_route_definer"],
       ["0027_s11_instagram_identity_routing.sql", "lead_agent_inbound_route_definer"],
+      ["0030_s22_first_tenant_bootstrap.sql", "lead_agent_first_tenant_bootstrap_definer"],
+      ["0031_s22_widget_inbound_route_management.sql", "lead_agent_inbound_route_definer"],
     ] as const;
     const [roleMigrations, ownerTransferMigrations] = await Promise.all([
       Promise.all(
@@ -43,6 +45,7 @@ describe("S22 staging infrastructure boundary", () => {
           "0021_s8_pgboss_infrastructure.sql",
           "0022_s8_outbox_relay_persistence.sql",
           "0024_s8_handler_reliability.sql",
+          "0030_s22_first_tenant_bootstrap.sql",
         ].map((name) => repositoryFile(`packages/database/drizzle/${name}`)),
       ),
       Promise.all(
@@ -54,7 +57,7 @@ describe("S22 staging infrastructure boundary", () => {
     ]);
     const roleSql = roleMigrations.join("\n");
     expect(roleSql).not.toMatch(/\b(?:NO)?(?:SUPERUSER|REPLICATION|BYPASSRLS)\b/gu);
-    expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(6);
+    expect(roleSql.match(/rolsuper OR rolreplication OR rolbypassrls/gu)).toHaveLength(7);
     for (const { role, sql: ownerTransferSql } of ownerTransferMigrations) {
       const nonInheritedIndex = ownerTransferSql.indexOf(
         `GRANT ${role} TO CURRENT_USER WITH INHERIT FALSE`,
@@ -310,7 +313,14 @@ describe("S22 staging infrastructure boundary", () => {
     expect(variables).toContain('default     = "me-central1"');
     expect(variables).toContain('default     = "db-f1-micro"');
     expect(variables).toContain('default     = "NEVER"');
+    expect(variables).toContain(
+      'can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.run\\\\.app$", var.api_public_origin))',
+    );
+    expect(variables).toContain(
+      'can(regex("^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\\\.run\\\\.app$", var.web_public_origin))',
+    );
     expect(variables).toMatch(/variable "worker_instance_count"[\s\S]*?default\s+= 0/u);
+    expect(variables).toMatch(/variable "runtime_migration_head"[\s\S]*?default\s+= ""/u);
     expect(foundation).toContain('database_version    = "POSTGRES_17"');
     expect(foundation).toContain("tier                        = var.cloud_sql_tier");
     expect(foundation).toContain("activation_policy           = var.cloud_sql_activation_policy");
@@ -321,6 +331,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(foundation).toContain("transaction_log_retention_days = 7");
     expect(runtime).toContain("manual_instance_count = var.worker_instance_count");
     expect(runtime).toContain('egress = "PRIVATE_RANGES_ONLY"');
+    expect(runtime).toContain('HOST                            = "0.0.0.0"');
     expect(runtime).toContain('command = ["node"]');
     expect(runtime).toContain('args    = ["dist/index.js"]');
     expect(runtime).not.toContain(":latest");
@@ -341,6 +352,14 @@ describe("S22 staging infrastructure boundary", () => {
       imagesWorkflow,
       wiringDiagnostic,
       databaseValidator,
+      fullRuntimePlanCheck,
+      apiImagePlanCheck,
+      apiImageLiveVerify,
+      migratorImagePlanCheck,
+      migratorImageLiveVerify,
+      runtimeDiagnostic,
+      instagramWebhookVerifier,
+      telegramWebhookVerifier,
     ] = await Promise.all([
       repositoryFile("infra/deploy/gcp/bootstrap/main.tf"),
       repositoryFile("infra/deploy/gcp/staging/secrets-and-iam.tf"),
@@ -349,6 +368,14 @@ describe("S22 staging infrastructure boundary", () => {
       repositoryFile(".github/workflows/staging-images.yml"),
       repositoryFile(".github/scripts/s22-migration-wiring-diagnose.sh"),
       repositoryFile(".github/scripts/s22-staging-database-validator.mjs"),
+      repositoryFile(".github/scripts/s22-full-runtime-plan-check.sh"),
+      repositoryFile(".github/scripts/s22-api-image-plan-check.sh"),
+      repositoryFile(".github/scripts/s22-api-image-live-verify.sh"),
+      repositoryFile(".github/scripts/s22-migrator-image-plan-check.sh"),
+      repositoryFile(".github/scripts/s22-migrator-image-live-verify.sh"),
+      repositoryFile(".github/scripts/s22-runtime-diagnose.mjs"),
+      repositoryFile(".github/scripts/s22-instagram-webhook-verify.mjs"),
+      repositoryFile(".github/scripts/s22-telegram-webhook-verify.mjs"),
     ]);
     const bootstrapVersions = await repositoryFile("infra/deploy/gcp/bootstrap/versions.tf");
     expect(bootstrapVersions).toContain('backend "gcs"');
@@ -382,10 +409,32 @@ describe("S22 staging infrastructure boundary", () => {
     expect(runtimeIam).toContain(
       'member             = "serviceAccount:${var.deployer_service_account_email}"',
     );
+    expect(runtimeIam).toContain(
+      'resource "google_secret_manager_secret_iam_member" "deployer_temporary_instagram_verify_access"',
+    );
+    expect(runtimeIam).toContain(
+      'secret_id = google_secret_manager_secret.runtime["instagram-webhook-verify-token"].secret_id',
+    );
+    expect(runtimeIam).toContain("count = var.temporary_instagram_verifier_access_enabled ? 1 : 0");
+    expect(runtimeIam).toContain(
+      'resource "google_secret_manager_secret_iam_member" "deployer_temporary_telegram_verify_access"',
+    );
+    expect(runtimeIam).toContain('"telegram-bot-token"');
+    expect(runtimeIam).toContain('"telegram-webhook-secret"');
+    expect(runtimeIam).toContain("var.temporary_telegram_verifier_access_enabled ? toset([");
     expect(workflow).toContain("refs/heads/verify/s22-staging-recovery-capacity");
     expect(imagesWorkflow).toContain("image_scope:");
+    expect(imagesWorkflow).toContain("if: inputs.image_scope == 'api'");
     expect(imagesWorkflow).toContain("if: inputs.image_scope == 'migrator'");
-    expect(imagesWorkflow.match(/if: inputs\.image_scope == 'all'/gu)).toHaveLength(4);
+    expect(imagesWorkflow.match(/if: inputs\.image_scope == 'all'/gu)).toHaveLength(5);
+    expect(imagesWorkflow).toContain(
+      "if: inputs.image_scope == 'all' || inputs.image_scope == 'api'",
+    );
+    expect(imagesWorkflow).toContain(
+      "if: inputs.image_scope == 'all' || inputs.image_scope == 'migrator'",
+    );
+    expect(imagesWorkflow).toContain("Record immutable API image manifest");
+    expect(imagesWorkflow).toContain("image_scope=api");
     expect(imagesWorkflow).toContain("Record immutable migrator image manifest");
     expect(imagesWorkflow).toContain("image_scope=migrator");
     expect(wiringDiagnostic).toContain('mode === "migration_failure_index"');
@@ -478,19 +527,164 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("Upload Cloud SQL start apply evidence");
     expect(workflow).toContain("Verify database secret version metadata");
     expect(workflow).toContain('[[ "$ENABLED_COUNT" == "1" ]]');
+    expect(workflow).toContain("- runtime-preflight");
+    expect(workflow).toContain('[[ "$PHASE" == "runtime-preflight" ]]');
+    expect(workflow).toContain("Verify full runtime configuration metadata");
+    expect(workflow).toContain("required_runtime_secrets_ready=true");
+    expect(workflow).toContain("application_managed_channel_secret_empty=true");
+    expect(workflow).toContain("runtime_nonsecret_configuration_ready=true");
+    expect(workflow).toContain("secret_payloads_read=false");
+    expect(workflow).toContain("Upload full runtime configuration metadata");
+    expect(workflow).toContain("- runtime-diagnose");
+    expect(workflow).toContain("- auth-callback-diagnose");
+    expect(workflow).toContain("Diagnose failed API revision read-only");
+    expect(workflow).toContain("Upload sanitized runtime diagnostic evidence");
+    expect(runtimeDiagnostic).toContain("secret_payloads_read: false");
+    expect(runtimeDiagnostic).toContain("DENIED_OR_UNAVAILABLE");
+    expect(workflow).toContain("Read request-scoped sanitized auth callback failure");
+    expect(workflow).toContain("S22_AUTH_CALLBACK_REQUEST_ID");
+    expect(workflow).toContain("jsonPayload.authCallbackFailure:*");
+    expect(workflow).toContain("s22-auth-callback-diagnostic-evidence.json");
+    expect(workflow).not.toContain("jsonPayload.authorizationCode");
+    expect(workflow).not.toContain("jsonPayload.codeVerifier");
+    expect(workflow).toContain("- instagram-verify-access");
+    expect(workflow).toContain("- instagram-verify");
+    expect(workflow).toContain("- instagram-verify-access-remove");
+    expect(workflow).toContain("Verify Instagram webhook challenge without exposing its token");
+    expect(workflow).toContain("::add-mask::$VERIFY_TOKEN");
+    expect(workflow).toContain("gcloud secrets versions access latest");
+    expect(workflow).toContain("S22I101_INVALID_API_REVISION");
+    expect(workflow).toContain("S22I102_API_IMAGE_MISMATCH");
+    expect(workflow).toContain("S22I103_SECRET_ACCESS_FAILED");
+    expect(workflow).toContain("S22I104_INVALID_SECRET_VALUE");
+    expect(workflow).toContain("instagram_verify_access_removal_scope=single_secret_only");
+    expect(instagramWebhookVerifier).toContain('correct_token_challenge: "PASS"');
+    expect(instagramWebhookVerifier).toContain("secret_value_exposed: false");
+    expect(instagramWebhookVerifier).toContain('wrong_token_rejected: "PASS"');
+    expect(instagramWebhookVerifier).not.toContain("console.log(verifyToken");
+    expect(workflow).toContain("- telegram-verify-access");
+    expect(workflow).toContain("- telegram-verify");
+    expect(workflow).toContain("- telegram-verify-access-remove");
+    expect(workflow).toContain("Verify Telegram webhook without exposing credentials");
+    expect(workflow).toContain('echo "::add-mask::$BOT_TOKEN"');
+    expect(workflow).toContain('echo "::add-mask::$WEBHOOK_SECRET"');
+    expect(workflow).toContain("telegram_verify_access_scope=two_telegram_secrets_only");
+    expect(workflow).toContain("telegram_verify_access_removal_scope=two_telegram_secrets_only");
+    expect(telegramWebhookVerifier).toContain('webhook_configured: "PASS"');
+    expect(telegramWebhookVerifier).toContain('bot_business_capable: "PASS"');
+    expect(telegramWebhookVerifier).toContain('wrong_secret_rejected: "PASS"');
+    expect(telegramWebhookVerifier).toContain('correct_secret_probe: "PASS"');
+    expect(telegramWebhookVerifier).toContain("secret_value_exposed: false");
+    expect(telegramWebhookVerifier).not.toContain("console.log(botToken");
+    expect(telegramWebhookVerifier).not.toContain("console.log(webhookSecret");
+    expect(workflow).toContain("env.S22_PHASE != 'runtime-preflight'");
+    expect(workflow).toContain("Verify full runtime plan safety");
+    expect(workflow).toContain("Verify exact full runtime approval boundary");
+    expect(workflow).toContain("s22-full-runtime-plan-check.sh");
+    expect(fullRuntimePlanCheck).toContain("PLAN_MODE=initial");
+    expect(fullRuntimePlanCheck).toContain("PLAN_MODE=reconciliation");
+    expect(fullRuntimePlanCheck).toContain(
+      'RECONCILIATION_ACTIONS=\'["update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]","update:google_cloud_run_v2_worker_pool.worker[0]"]\'',
+    );
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_creates=$CREATE_COUNT");
+    expect(fullRuntimePlanCheck).toContain('terraform -chdir="$PLAN_DIRECTORY" show -json');
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_changes=$UPDATE_COUNT");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_destroys=0");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_plan_replacements=0");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_public_iam_changes=NONE");
+    expect(fullRuntimePlanCheck).toContain("full_runtime_migrator_execution=DISABLED");
     expect(workflow).toContain("Verify migration plan safety");
     expect(workflow).toContain("- migration-resume");
     expect(workflow).toContain("- migration-validate");
     expect(workflow).toContain('[[ "$PHASE" == "migration-validate" ]]');
     expect(workflow).toContain('[[ "$ACTION" == "plan" ]]');
     expect(workflow).toContain("- migrator-image-update");
+    expect(workflow).toContain("- migrator-image-verify");
     expect(workflow).toContain("Verify migrator image-only plan safety");
     expect(workflow).toContain("s22-migrator-image-plan-check.sh");
+    expect(workflow).toContain("- api-image-update");
+    expect(workflow).toContain("- api-image-verify");
+    expect(workflow).toContain("Verify API image-only plan safety");
+    expect(workflow).toContain("Verify exact API image update approval boundary");
+    expect(workflow).toContain("Verify API image update live state and convergence");
+    expect(workflow).toContain("s22-api-image-plan-check.sh");
+    expect(workflow).toContain("s22-api-image-live-verify.sh");
+    expect(workflow).toContain("runtime_git_commit_sha:");
+    expect(workflow).toContain("api_git_commit_sha:");
+    expect(workflow).toContain("api_deployment_timestamp:");
+    expect(workflow).toContain("api_migration_head:");
+    expect(workflow).toContain("migrator_git_commit_sha:");
+    expect(workflow).toContain("runtime_deployment_timestamp:");
+    expect(workflow).toContain("runtime_migration_head:");
+    expect(workflow).toContain(
+      "TF_VAR_runtime_migration_head: ${{ inputs.runtime_migration_head }}",
+    );
+    expect(workflow).toContain('echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA"');
+    expect(workflow).toContain(
+      'echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA"',
+    );
+    expect(workflow).toContain(
+      'echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP"',
+    );
+    expect(workflow).toContain('echo "TF_VAR_api_git_commit_sha=$S22_API_GIT_COMMIT_SHA"');
+    expect(workflow).toContain(
+      'echo "TF_VAR_api_deployment_timestamp=$S22_API_DEPLOYMENT_TIMESTAMP"',
+    );
+    expect(workflow).toContain(
+      '[[ "$TF_VAR_worker_image" =~ ^me-central1-docker\\.pkg\\.dev/lead-agent-stg-739284/lead-agent/worker@sha256:[0-9a-f]{64}$ ]]',
+    );
+    for (const phase of [
+      "api-image-update",
+      "api-image-verify",
+      "migration-resume",
+      "migrator-image-update",
+      "migrator-image-verify",
+    ]) {
+      const profile = workflow.match(new RegExp(`${phase}\\)([\\s\\S]*?)\\n\\s*;;`, "u"))?.[1];
+      expect(profile).toContain("DEPLOY_RUNTIME=true");
+      expect(profile).toContain("PREPARE_MIGRATION=true");
+      expect(profile).toContain("WORKER_COUNT=1");
+      expect(profile).not.toContain("BOOTSTRAP_RUNTIME=true");
+    }
     expect(workflow).toContain("Verify exact migrator image update approval boundary");
     expect(workflow).toContain("Verify migrator image update live state and convergence");
-    expect(workflow).toContain("migrator_image_update_convergence_exit_code=$PLAN_EXIT_CODE");
+    expect(workflow).toContain("Verify applied migrator image read-only");
+    expect(workflow).toContain("s22-migrator-image-live-verify.sh");
+    expect(migratorImageLiveVerify).toContain("terraform_convergence_exit_code");
+    expect(migratorImageLiveVerify).toContain("migrator_image_live_verification=PASS");
+    expect(migratorImageLiveVerify).toContain("'89'");
+    expect(migratorImageLiveVerify).toContain("https://run.googleapis.com/v2/projects/");
     expect(runtime).toContain("migrator_provenance_env");
+    expect(runtime).toContain("api_provenance_env");
+    expect(runtime).toContain("api_deployment_labels");
+    expect(runtime).toContain("api_migration_head");
     expect(runtime).toContain("migrator_deployment_labels");
+    expect(runtime).toContain("runtime_migration_head");
+    expect(runtime).toContain("DEPLOYMENT_MIGRATION_HEAD = var.migration_head");
+    expect(migratorImagePlanCheck).toContain('ACTUAL_ACTIONS="$(\n  jq -c');
+    expect(migratorImagePlanCheck).toContain(
+      '[[ "$ACTUAL_ACTIONS" == \'["update:google_cloud_run_v2_job.migrator[0]"]\' ]]',
+    );
+    expect(migratorImagePlanCheck).toContain('.variables.bootstrap_runtime.value == "false"');
+    expect(migratorImagePlanCheck).toContain('.variables.worker_instance_count.value == "1"');
+    expect(migratorImagePlanCheck).toContain(".variables.api_git_commit_sha.value == $api_commit");
+    expect(migratorImagePlanCheck).toContain(
+      ".variables.api_deployment_timestamp.value == $api_timestamp",
+    );
+    expect(migratorImagePlanCheck).toContain(
+      ".variables.api_migration_head.value == $api_migration_head",
+    );
+    expect(apiImagePlanCheck).toContain(
+      '[[ "$ACTUAL_ACTIONS" == \'["update:google_cloud_run_v2_service.api[0]"]\' ]]',
+    );
+    expect(apiImagePlanCheck).toContain('.variables.bootstrap_runtime.value == "false"');
+    expect(apiImagePlanCheck).toContain('.variables.worker_instance_count.value == "1"');
+    expect(apiImageLiveVerify).toContain("terraform_convergence_exit_code");
+    expect(apiImageLiveVerify).toContain("api_image_live_verification=PASS");
+    expect(apiImageLiveVerify).toContain(".terminalCondition.state");
+    expect(apiImageLiveVerify).toContain("web_latest_ready_revision");
+    expect(workflow).toContain("Verify applied API image read-only");
+    expect(workflow).toContain("Upload read-only API image evidence");
     expect(workflow).toContain('"$PHASE" != "migration-resume"');
     expect(workflow).toContain("env.S22_PHASE == 'migration-resume'");
     expect(workflow.match(/env\.S22_PHASE != 'migration-resume'/gu)).toHaveLength(3);
@@ -519,7 +713,7 @@ describe("S22 staging infrastructure boundary", () => {
       /console\.(?:info|error)\([^)]*(?:password|token|secret|authorization|database[_-]?url)/iu,
     );
     expect(workflow).toContain("Verify migration Terraform convergence");
-    expect(workflow).toContain('[[ "$STATE_COUNT" == "88" ]]');
+    expect(workflow).toContain('[[ "$STATE_COUNT" == "89" ]]');
     expect(workflow).toContain("migration_convergence_exit_code=$PLAN_EXIT_CODE");
     expect(workflow).toContain("- migration-diagnose");
     expect(workflow).toContain("- migration-wiring-diagnose");
@@ -565,13 +759,13 @@ describe("S22 staging infrastructure boundary", () => {
     );
     expect(wiringDiagnostic).toContain("runtime_admin_role_superuser");
     expect(wiringDiagnostic).toContain("runtime_admin_role_bypassrls");
-    expect(wiringDiagnostic).toContain("runtime_migration_count_30");
+    expect(wiringDiagnostic).toContain("runtime_migration_count_32");
     expect(wiringDiagnostic).toContain("runtime_production_table_count_52");
     expect(wiringDiagnostic).toContain("runtime_required_bypassrls_role_present");
     expect(wiringDiagnostic).toContain("runtime_cloudsql_superuser_role_bypassrls");
     expect(wiringDiagnostic).toContain("runtime_cloudsql_superuser_role_superuser");
     expect(wiringDiagnostic).toContain("runtime_admin_has_cloudsql_superuser_usage");
-    expect(wiringDiagnostic).toContain("packaged_manifest_head_0029");
+    expect(wiringDiagnostic).toContain("packaged_manifest_head_0031");
     expect(wiringDiagnostic).toContain("TLS_CERT_ALTNAME_INVALID");
     expect(workflow).toContain("- bootstrap-log-viewer");
     expect(workflow).toContain("- bootstrap-log-viewer-remove");
@@ -601,12 +795,12 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain("diagnosticLogPattern");
     expect(workflow).toContain("usefulErrorPattern");
     const diagnosticScript = workflow.match(
-      /node - "\$LOGS" "\$EXECUTION" "\$EXECUTION_ID" <<'NODE' \| tee s22-migrator-root-error\.txt\n([\s\S]*?)\n          NODE/u,
+      /node - "\$LOGS" "\$EXECUTION" "\$TASKS" "\$EXECUTION_ID" <<'NODE' \| tee s22-migrator-root-error\.txt\n([\s\S]*?)\n          NODE/u,
     )?.[1];
     expect(diagnosticScript).toBeDefined();
     expect(() => new Script(diagnosticScript ?? "")).not.toThrow();
-    expect(workflow).toContain(".template.template.serviceAccount");
-    expect(workflow).toContain(".template.template.containers[0].image == $image");
+    expect(migratorImageLiveVerify).toContain(".template.template.serviceAccount");
+    expect(migratorImageLiveVerify).toContain(".template.template.containers[0].image");
     expect(workflow).toContain("Inspect partial foundation state and Google Cloud resources");
     expect(workflow).toContain("terraform_managed_resource_count=$STATE_COUNT");
     expect(workflow).toContain('gh run view 36224692606 --repo "$GITHUB_REPOSITORY" --log');
@@ -656,7 +850,7 @@ describe("S22 staging infrastructure boundary", () => {
       'if [[ "$ACTION" == "apply" && "$APPROVAL_TOKEN" != "S22-APPLY-APPROVED" ]]',
     );
     expect(workflow).toContain(
-      'if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+      'if [[ "$ACTION" == "apply" && "$PHASE" != "migration-resume" && "$PHASE" != "owner-workspace-bootstrap" && ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
     );
     expect(workflow).toContain("google-github-actions/auth@");
     expect(workflow).toContain("TF_VAR_deployer_service_account_email");

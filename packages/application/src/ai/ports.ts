@@ -158,6 +158,23 @@ export type AIFallbackReason =
   | "booking_availability_unapproved"
   | "staff_requested"
   | "stale_context";
+/** Internal policy diagnostics, never model-authored authority or a public contract. */
+export type AIModelPolicyRejection =
+  | "untrusted_extraction"
+  | "unsafe_response"
+  | "untrusted_citation"
+  | "handoff_not_authorized"
+  | "confirmation_not_authorized";
+/** Finite field names only: never extraction values, IDs, or customer content. */
+export const AI_EXTRACTION_REJECTION_FIELDS = Object.freeze([
+  "service_id",
+  "location_id",
+  "display_name",
+  "phone_raw",
+  "email_raw",
+] as const);
+export type AIExtractionRejectionField = (typeof AI_EXTRACTION_REJECTION_FIELDS)[number];
+type AIReplyDisposition = "queued" | "suppressed" | "not_planned";
 export type AIOutcome =
   | Readonly<{
       kind: "decision";
@@ -165,12 +182,16 @@ export type AIOutcome =
       disposition: "candidate" | "suppress";
       applied: false;
       salesResult?: SalesResult;
+      replyDisposition?: AIReplyDisposition;
     }>
   | Readonly<{
       kind: "fallback_required";
       reason: AIFallbackReason;
       applied: false;
       salesResult?: SalesResult;
+      replyDisposition?: AIReplyDisposition;
+      modelRejection?: AIModelPolicyRejection;
+      extractionRejectionFields?: readonly AIExtractionRejectionField[];
     }>;
 export type AIWorkReference = Readonly<{
   organizationId: OrganizationId;
@@ -185,11 +206,18 @@ export type AIRunFinish = Readonly<{
   reservation: AIRunReservation;
   snapshot: AIContextSnapshot;
   provider: AIProviderResult | null;
+  /** Direct execution-path fact, not proof a request reached the provider. */
+  dispatchAuthorized?: boolean;
   outcome: AIOutcome;
   allowRepair: boolean;
 }>;
 export interface AIOrchestrationStore {
   load(reference: AIWorkReference): Promise<AIContextSnapshot | null>;
+  /** Optional private monetary gate. A durable authorization is consumed once,
+   * before each physical call; errors deny dispatch and are not retried here. */
+  authorizeDispatch?(
+    input: Readonly<{ reference: AIWorkReference; reservation: AIRunReservation }>,
+  ): Promise<boolean>;
   reserve(
     input: Readonly<{
       reference: AIWorkReference;
@@ -213,6 +241,20 @@ export type AITelemetry = Readonly<{
       latencyMs: number;
       usage: AIUsage | null;
       repair: boolean;
+      organizationId: OrganizationId;
+      conversationId: ConversationId;
+      messageId: MessageId;
+      correlationId: CorrelationId;
+      runId: string;
+      attemptNo: number;
+      proposedAction: AgentDecisionV1["action"]["type"] | null;
+      schemaValid: boolean | null;
+      modelRejection: AIModelPolicyRejection | null;
+      extractionRejectionFields?: readonly AIExtractionRejectionField[];
+      /** Counts against the inference snapshot, not raw claims or refreshed DB state. */
+      citationCounts?: Readonly<{ supplied: number; proposed: number; unmatched: number }> | null;
+      salesResultKind: SalesResult["kind"] | null;
+      replyDisposition: AIReplyDisposition;
     }>,
   ): void;
 }>;

@@ -10,6 +10,7 @@ import { canonicalStringify, type JsonValue } from "../../scripts/contracts/cano
 import {
   getPublicContractCatalog,
   PUBLIC_STATIC_SCHEMA_NAMES,
+  S22_WIDGET_COHORT_SCHEMA_NAMES,
   S17_STAFF_SCHEMA_NAMES,
   S19_STAFF_SCHEMA_NAMES,
   S19_WIDGET_SCHEMA_NAMES,
@@ -156,10 +157,10 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(372);
+    expect(snapshot.contracts).toHaveLength(378);
     expect(counts).toEqual({
       ai: 16,
-      api: 38,
+      api: 44,
       channel: 24,
       configuration: 65,
       conversation: 37,
@@ -180,6 +181,7 @@ describe("public contract inventory and snapshot", () => {
       ...S20_ANALYTICS_SCHEMA_NAMES,
       ...S20_WIDGET_SCHEMA_NAMES,
       ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
+      ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     ]);
     const candidate = {
       ...full,
@@ -210,6 +212,7 @@ describe("public contract inventory and snapshot", () => {
       ...S20_ANALYTICS_SCHEMA_NAMES,
       ...S20_WIDGET_SCHEMA_NAMES,
       ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
+      ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     ]);
     const candidate = {
       ...full,
@@ -290,6 +293,7 @@ describe("public contract inventory and snapshot", () => {
       ...S20_ANALYTICS_SCHEMA_NAMES,
       ...S20_WIDGET_SCHEMA_NAMES,
       ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
+      ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     ]);
     const candidate = {
       ...full,
@@ -312,6 +316,7 @@ describe("public contract inventory and snapshot", () => {
       ...full,
       contracts: full.contracts.filter(
         (contract) =>
+          !S22_WIDGET_COHORT_SCHEMA_NAMES.some((name) => name === contract.export_name) &&
           !S21_THREAD_AUTOMATION_SCHEMA_NAMES.includes(
             contract.export_name as (typeof S21_THREAD_AUTOMATION_SCHEMA_NAMES)[number],
           ),
@@ -326,10 +331,26 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S21 private thread-automation contracts", () => {
-    const candidate = buildContractSnapshot();
+    const full = buildContractSnapshot();
+    const candidate = {
+      ...full,
+      contracts: full.contracts.filter(
+        (contract) => !S22_WIDGET_COHORT_SCHEMA_NAMES.some((name) => name === contract.export_name),
+      ),
+    };
     const additions = new Set<string>(S21_THREAD_AUTOMATION_SCHEMA_NAMES);
     const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
     expect(legacy).toHaveLength(366);
+    const findings = compareContractSnapshots({ ...candidate, contracts: legacy }, candidate);
+    expect(findings).toHaveLength(6);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("adds only six S22 staging cohort contracts, preserving all 372 accepted contracts", () => {
+    const candidate = buildContractSnapshot();
+    const additions = new Set<string>(S22_WIDGET_COHORT_SCHEMA_NAMES);
+    const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
+    expect(legacy).toHaveLength(372);
     const findings = compareContractSnapshots({ ...candidate, contracts: legacy }, candidate);
     expect(findings).toHaveLength(6);
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);

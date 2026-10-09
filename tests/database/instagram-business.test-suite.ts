@@ -172,7 +172,7 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
               "select count(*)::integer as count from drizzle.__drizzle_migrations",
             )
           ).rows[0]?.count,
-        ).toBe(30);
+        ).toBe(32);
       } finally {
         await pool.end();
         await options.privilegedPool().query(`drop database "${name}"`);
@@ -385,11 +385,12 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
         return Promise.resolve();
       },
     };
+    let stateSequence = 0;
     const useCases = createInstagramBusinessUseCases({
       appId: instagramConfig.appId,
       oauthRedirectUri: instagramConfig.oauthRedirectUri,
       clock: () => NOW,
-      randomState: () => NONCE,
+      randomState: () => (stateSequence++ === 0 ? NONCE : "r".repeat(43)),
       dataProtector: dataProtection,
       eligibilityStore: createThreadAutomationControlStore(options.runtime()),
       canonicalStore: createCanonicalInboundPersistenceStore(options.runtime()),
@@ -421,7 +422,13 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
       authorization: await authorization(),
       displayName: "Instagram Professional",
     });
+    await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+      status: "connection_pending",
+    });
     await useCases.completeOnboarding({ code: "synthetic-code", state: NONCE });
+    await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+      status: "connected",
+    });
     const activeChannelValue = (
       await pool.query<{ id: unknown }>(
         `select id::text as id from channel_connections
@@ -455,6 +462,48 @@ export const registerInstagramBusinessPersistenceTests = (options: Options): voi
     content: { type: "text", text: "Salom" },
   };
   describe("S11.B real canonical Instagram atomic persistence", () => {
+    it("reuses the tenant connection and rotates stale onboarding state on reconnect", async () => {
+      const { pool, useCases } = await boundFixture();
+      const reconnect = await useCases.beginOnboarding({
+        authorization: await authorization(),
+        displayName: "Instagram Professional",
+      });
+      expect(new URL(reconnect.authorizationUrl).searchParams.get("state")).toBe("r".repeat(43));
+      await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+        status: "connection_pending",
+      });
+      const state = await pool.query<{
+        active_routes: number;
+        connection_count: number;
+        credential_secret_ref: string | null;
+        status: string;
+      }>(
+        `select
+           (select count(*)::int from channel_connections
+             where organization_id=$1 and channel_type='instagram'
+               and display_name='Instagram Professional') as connection_count,
+           (select count(*)::int from inbound_routes route
+             join channel_connections connection
+               on connection.organization_id=route.organization_id
+              and connection.id=route.channel_connection_id
+            where route.organization_id=$1 and connection.display_name='Instagram Professional'
+              and route.route_type='instagram_webhook' and route.status='active') as active_routes,
+           credential_secret_ref,status
+          from channel_connections
+         where organization_id=$1 and channel_type='instagram'
+           and display_name='Instagram Professional'`,
+        [IDS.organization],
+      );
+      expect(state.rows).toEqual([
+        {
+          active_routes: 1,
+          connection_count: 1,
+          credential_secret_ref: null,
+          status: "pending",
+        },
+      ]);
+    });
+
     it("deduplicates concurrent mids, reuses active grouping and does not regress reordered activity", async () => {
       const { pool, useCases } = await boundFixture();
       expect(
