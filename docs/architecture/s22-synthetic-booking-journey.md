@@ -1,5 +1,25 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Latest checkpoint - rollout plan ready, 2026-10-09
+
+The owner-selected binding correction is verified at source `32e056ab` and now
+has a fresh immutable build **37934925171 PASS** and one reviewed staging plan
+**37935626931 PASS**. Scope is **0 creates / 4 in-place workload updates /
+0 destroys / 0 replacements**, with unchanged budgets and migration head and no
+migrator execution. Nothing is applied and no new chat, message or provider call
+was created. See the [complete approval packet](s22-widget-cohort-rollout-plan.md).
+
+**Next action is approval of that exact saved plan, not another session/reload.**
+After apply and exact-runtime verification, the authenticated staff interface
+selects the owner's corroborated fresh empty frame within five minutes of creation.
+That selection uses existing audited authorization and does not require another
+Terraform binding plan or extend the browser lifetime. A separate paid-test
+authorization remains necessary before Send; do not use old static-SID diagnostic
+snapshots as authority. The bounded Website Chat journey still requires grounded
+request, staff acceptance, actual customer confirmation, delivery and accounting
+proof. The completed Instagram journey is not repeated. Historical NULL costs
+stay unknown and S22 remains unaccepted.
+
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
 **Latest checkpoint: stop the session/deployment loop; local correction approved.**

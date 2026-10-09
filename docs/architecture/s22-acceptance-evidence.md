@@ -3,6 +3,53 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-09 - Owner-selected Widget rollout plan ready; not applied
+
+The owner requested **rollout preparation**, not apply or a paid test. Exact
+verified runtime source `32e056ab0b33d407df58dc709beef711badcde25` is on
+`verify/s22-staging-recovery-capacity`; later dispatch HEAD `3f9633b` changes only
+evidence/binding documentation. Existing successful CI **37910733207** is reused:
+3,529 ordinary tests passed / 7 opt-in skipped, 517 PostgreSQL cases passed,
+contracts/TypeScript/lint/format/boundaries/builds PASS. No CI was repeated.
+
+Fresh all-runtime immutable build **37934925171 PASS** produced all four images
+from that exact source. One `full` reconciliation plan **37935626931 PASS** uses
+those images, deployment timestamp **2026-10-09T13:15:13Z**, unchanged migration
+head **0031_s22_widget_inbound_route_management**, and the existing stable anchor
+`01a11c48-dbc2-76de-a873-f41664da5ccb`; **no fresh browser session was selected**.
+The Worker remains in `widget_booking` mode. The correction reads a separately
+audited post-deployment owner selection rather than reviving the expired anchor.
+
+Authenticated artifacts were downloaded. Independent saved-plan SHA256 is
+**1758f17366992068803131415284241f6e288ab1979f3a14c04f2c1922177176**, matching
+the artifact checksum. Workflow safety and independent provider-schema review
+agree: **0 creates / 4 in-place workload updates / 0 destroys / 0 replacements**;
+all **88 managed resources** checked, no configurable unknowns or unreviewed
+configuration changes, and no SQL/IAM/network/scaling actions. Refresh-only
+Artifact Registry timestamp, migrator execution metadata and Cloud SQL settings
+version are computed-only observations, not additional planned actions. Apply and
+one-shot migrator steps are **SKIPPED**; no DB diagnostic or inventory ran.
+
+Plan-captured state lineage `ad1c3000-d52f-06eb-de1b-53ae4d67f63e`, serial **66**;
+all-branch staging workflow history shows no intervening/active workflow. This
+is not a fresh direct backend-state comparison: local `gcloud` is unavailable.
+Saved-plan checksum/configuration and Terraform locking/staleness safeguards must
+still pass at apply; a rejection does not authorize generating another plan.
+
+The [complete approval packet](s22-widget-cohort-rollout-plan.md) preserves the
+four exact image references, build/plan artifacts, timestamp/migration provenance,
+scope, reviewed drift and exact subsequent apply inputs without an approval token.
+The packet's JSON inputs were checked against the actual workflow, manifest and
+saved plan **PASS**, including exact image/provenance bindings and checksums;
+installed-formatter and scoped diff checks **PASS**. No new runtime tests were
+necessary for this documentation-only update.
+Only documentation is updated here. No message, model call, apply, migration,
+IAM change, session renewal/selection or budget increase was performed.
+Historical NULL costs stay unknown; the budget-only exception remains visible.
+
+**Next action: owner approval of plan 37935626931 only.** Live authenticated
+selection and Website Chat booking remain pending. **S22 is unaccepted.**
+
 ## 2026-10-08 — Owner-approved correction of the session/deployment loop
 
 The owner supplied successful download verification and current-runtime
