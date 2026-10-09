@@ -40,6 +40,14 @@ production configuration. A controlled artifact-free resolver regression,
 The failed CI result is retained; the corrected commit's PostgreSQL 17/CI proof
 is still pending. No staging or paid action was performed by this correction.
 
+Follow-up `09d66dd` passed clean-checkout TypeScript in CI **37908637083**, which
+then stopped before SQL on an older Instagram legacy-catalog filter. All six S22
+additions are now recognized through the existing shared allowlist, with the
+historical 319-entry count/SHA256 unchanged. Focused compatibility **46/46 PASS**
+plus lint/format/diff PASS; Instagram runtime and eligibility are untouched.
+The failed CI's 3,528 passed ordinary tests do not establish database/live proof.
+The corrected commit's PostgreSQL 17/CI result remains pending at this checkpoint.
+
 Live selection, dispatch and complete Website Chat booking proof remain pending. Historical
 NULL costs and the visible budget-only exception remain unchanged. **S22 is
 unaccepted.**

@@ -137,6 +137,18 @@ case is clean-checkout tooling evidence, not paid/provider or PostgreSQL proof.
 The failed run is retained, not relabeled PASS; PostgreSQL 17 execution awaits
 the corrected commit's normal CI.
 
+Follow-up source `09d66dd97c9d47fa1a395a97cb2e6a5dbdb934cd` fixed the clean-checkout
+typecheck. CI **37908637083** passed all TypeScript but failed ordinary tests
+before SQL: the older Instagram compatibility filter did not yet recognize the
+six new S22 schema names, producing 325 entries where the protected historical
+set must remain 319. Its 319-entry count and original SHA256 are unchanged.
+Only the shared, explicit S22 addition list is now included in that filter.
+Focused legacy/additive checks **46/46 PASS**, lint/format/diff PASS; no Instagram
+runtime behavior, events, privacy eligibility or old schemas were changed.
+The failed CI had **3,528 passed / 1 failed / 7 opt-in skipped** ordinary tests;
+these results are not PostgreSQL or paid/provider evidence. PostgreSQL 17 still
+awaits the corrected normal CI, and no deployment is prepared from a failed run.
+
 The old diagnostic readers' static-SID defaults do not establish readiness for
 this new mode. The authenticated status reader resolves the persisted owner
 selection; an older completed snapshot must not be used as Send authorization.
@@ -197,6 +209,7 @@ Regression/evidence files:
 - `tests/application/s22-widget-cohort.test.ts`
 - `tests/contracts/s22-widget-cohort.test.ts`
 - `tests/contracts/contract-compatibility.test.ts`
+- `tests/instagram/identity-contracts.test.ts`
 - `tests/database/s22-widget-cohort.test-suite.ts`
 - `tests/database/s4a-schema.test.ts`
 - `docs/architecture/s22-widget-cohort-binding.md`
@@ -208,6 +221,8 @@ launcher problems; no live DB or model credentials are used):
 
 ```text
 node node_modules/vitest/vitest.mjs run tests/ai/s22-budget-ledger.test.ts tests/application/s22-widget-cohort.test.ts tests/contracts/s22-widget-cohort.test.ts tests/contracts/contract-compatibility.test.ts apps/api/tests/s22-widget-cohort.test.ts apps/web/src/lib/s22-widget-cohort.test.ts --maxWorkers=1 --testTimeout=120000 --hookTimeout=120000
+node node_modules/vitest/vitest.mjs run apps/web/src/lib/s22-widget-cohort.test.ts --maxWorkers=1 --testTimeout=120000 --hookTimeout=120000
+node node_modules/vitest/vitest.mjs run tests/instagram/identity-contracts.test.ts tests/contracts/contract-compatibility.test.ts --maxWorkers=1 --testTimeout=120000 --hookTimeout=120000
 node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
 node node_modules/typescript/bin/tsc -p apps/api/tsconfig.typecheck.json --noEmit
 node node_modules/typescript/bin/tsc -p apps/worker/tsconfig.typecheck.json --noEmit
