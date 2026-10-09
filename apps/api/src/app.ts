@@ -21,3 +21,4 @@ export {
 } from "./widget/management-plugin.js";
 export * from "./telegram/index.js";
 export * from "./instagram/index.js";
+export type { StaffS22WidgetCohortDependencies } from "./staff/s22-widget-cohort-plugin.js";

@@ -11,6 +11,16 @@ export const S22_WIDGET_ALLOWANCE = Object.freeze({
   previousMessages: 4,
 } as const);
 
+/** Stable, reviewed staging authorization envelope. The old unused SID is an
+ * anchor only: it never renews or authenticates a browser. A fresh SID must be
+ * explicitly selected by the owner through the audited application command. */
+export const S22_WIDGET_SELECTION_ENVELOPE = Object.freeze({
+  profile: "s22-widget-selection.v1",
+  anchorSessionId: "01a11c48-dbc2-76de-a873-f41664da5ccb",
+  channelConnectionId: "01a11771-2c02-7240-86f7-19f95690d22e",
+  allowedOriginId: "01a11771-2c02-7765-b999-7dc9895ee49d",
+} as const);
+
 /** Internal, one-off staging profile; not a tenant billing/booking policy. */
 export const S22_BOOKING_COHORT = Object.freeze({
   profile: "s22-synthetic-booking.v1",

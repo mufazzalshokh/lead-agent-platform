@@ -3,11 +3,13 @@ import type * as Pg from "pg";
 import {
   S22_BOOKING_COHORT,
   S22_WIDGET_ALLOWANCE,
+  S22_WIDGET_SELECTION_ENVELOPE,
   createTenantDatabaseRuntimeConfig,
 } from "../../packages/config/src/index.js";
 import { AI_REFERENCE, fixtureId } from "./fixtures.js";
 import {
   createAIJourneyBudgetGuard,
+  createS22WidgetCohortStore,
   createTenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import {
@@ -15,7 +17,14 @@ import {
   OrganizationIdSchema,
   MessageIdSchema,
   ConversationIdSchema,
+  MembershipIdSchema,
+  UserIdSchema,
+  ResourceIdSchema,
 } from "../../packages/contracts/src/index.js";
+import {
+  resolveAuthorizationContext,
+  type MembershipRole,
+} from "../../packages/security/src/index.js";
 
 // The real tenant runtime/session/query guards are used. Only pg transport is
 // modelled here; this is NOT PostgreSQL/RLS/row-lock execution evidence.
@@ -34,6 +43,10 @@ const transport = vi.hoisted(() => {
     widgetContactStatus: "active",
     widgetBindings: [] as Record<string, unknown>[],
     widgetInboundMessages: [] as Record<string, unknown>[],
+    ownerSelections: [] as Record<string, unknown>[],
+    widgetSessions: [] as Record<string, unknown>[],
+    anchorSession: null as Record<string, unknown> | null,
+    memberships: [] as Record<string, unknown>[],
   };
 });
 vi.mock("pg", async (originalImport) => {
@@ -83,6 +96,89 @@ vi.mock("pg", async (originalImport) => {
               return { rows: [] };
             }
             transport.reads.push(sql);
+            if (/from memberships/iu.test(sql))
+              return {
+                rows: transport.memberships
+                  .filter(
+                    (row) => row["organization_id"] === organization && row["id"] === values[1],
+                  )
+                  .map((row) => ({ ...row })),
+              };
+            if (/from audit_events/iu.test(sql) && values.includes("ai_run.widget_cohort_selected"))
+              return {
+                rows: transport.ownerSelections
+                  .filter(
+                    (row) =>
+                      row["organization_id"] === organization &&
+                      row["target_id"] === values[2] &&
+                      row["profile"] === values[3],
+                  )
+                  .map((row) => ({ ...row })),
+              };
+            if (/from widget_sessions/iu.test(sql) && /as session_version/iu.test(sql)) {
+              const freshBoundary = values[3],
+                at = values[4],
+                idleBoundary = values[5];
+              if (
+                !(freshBoundary instanceof Date) ||
+                !(at instanceof Date) ||
+                !(idleBoundary instanceof Date)
+              )
+                throw new Error("Missing bounded Widget selection time");
+              return {
+                rows: transport.widgetSessions
+                  .filter(
+                    (row) =>
+                      row["organization_id"] === organization &&
+                      row["channel_connection_id"] === values[1] &&
+                      row["widget_allowed_origin_id"] === values[2] &&
+                      (values[6] === undefined || row["id"] === values[6]) &&
+                      row["status"] === "active" &&
+                      row["revoked_at"] === null &&
+                      (row["version"] === 2 || row["version"] === "2" || row["version"] === 2n) &&
+                      row["conversation_id"] === null &&
+                      row["contact_id"] === null &&
+                      row["issued_at"] instanceof Date &&
+                      row["issued_at"] > freshBoundary &&
+                      row["issued_at"] <= at &&
+                      row["expires_at"] instanceof Date &&
+                      row["expires_at"] > at &&
+                      row["last_seen_at"] instanceof Date &&
+                      row["last_seen_at"] > idleBoundary &&
+                      row["channel_status"] === "active" &&
+                      row["channel_type"] === "widget" &&
+                      row["origin_status"] === "active",
+                  )
+                  .slice(0, 5)
+                  .map((row) => ({
+                    session_id: row["id"],
+                    session_version: row["version"],
+                    issued_at: row["issued_at"],
+                    idle_deadline: new Date(
+                      row["last_seen_at"] instanceof Date
+                        ? row["last_seen_at"].getTime() + 1_800_000
+                        : 0,
+                    ),
+                    expires_at: row["expires_at"],
+                  })),
+              };
+            }
+            if (/from widget_sessions/iu.test(sql) && !/join channel_connections/iu.test(sql))
+              return {
+                rows: [
+                  ...transport.widgetSessions,
+                  ...(transport.anchorSession === null ? [] : [transport.anchorSession]),
+                ]
+                  .filter(
+                    (row) =>
+                      row["organization_id"] === organization &&
+                      row["id"] === values[1] &&
+                      row["channel_connection_id"] === values[2] &&
+                      row["widget_allowed_origin_id"] === values[3],
+                  )
+                  .slice(0, 1)
+                  .map((row) => ({ ...row })),
+              };
             if (/as markers/iu.test(sql))
               return {
                 rows: [
@@ -97,7 +193,9 @@ vi.mock("pg", async (originalImport) => {
             if (values.includes("ai_run.widget_journey_bound") && /^\s*select/iu.test(sql))
               return { rows: transport.widgetBindings.map((row) => ({ ...row })) };
             if (/from widget_sessions/iu.test(sql)) {
-              const widget = transport.widgetSession;
+              const widget =
+                transport.widgetSessions.find((row) => row["id"] === values[1]) ??
+                transport.widgetSession;
               const queryRequiresActiveConnection = /cc\.status\s*=\s*'active'/iu.test(sql);
               const queryRequiresWidget = /cc\.channel_type\s*=\s*'widget'/iu.test(sql);
               const queryRequiresActiveOrigin = /wao\.status\s*=\s*'active'/iu.test(sql);
@@ -108,6 +206,8 @@ vi.mock("pg", async (originalImport) => {
                   widget !== null &&
                   widget["organization_id"] === organization &&
                   widget["id"] === values[1] &&
+                  (values[4] === undefined || widget["channel_connection_id"] === values[4]) &&
+                  (values[5] === undefined || widget["widget_allowed_origin_id"] === values[5]) &&
                   (!/ws\.status\s*=\s*'active'/iu.test(sql) || widget["status"] === "active") &&
                   (!/ws\.revoked_at\s+is\s+null/iu.test(sql) || widget["revoked_at"] === null) &&
                   (!(at instanceof Date) ||
@@ -172,6 +272,32 @@ vi.mock("pg", async (originalImport) => {
               };
             if (/^insert into audit_events/iu.test(sql.trim())) {
               const action = values[2];
+              if (action === "ai_run.widget_cohort_selected") {
+                const encoded = values[8];
+                if (typeof encoded !== "string") throw new Error("Invalid selection metadata");
+                const metadata: unknown = JSON.parse(encoded);
+                if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata))
+                  throw new Error("Invalid selection metadata");
+                const selection = Object.fromEntries(
+                  Object.entries(metadata).map(([key, value]) => [
+                    key,
+                    typeof value === "number" ? String(value) : value,
+                  ]),
+                );
+                writes.push(() => {
+                  transport.ownerSelections.push({
+                    ...selection,
+                    organization_id: organization,
+                    target_id: values[5],
+                    actor_type: "member",
+                    actor_id: values[3],
+                    actor_membership_id: values[4],
+                    request_id: values[6],
+                    correlation_id: values[7],
+                  });
+                });
+                return { rows: [], rowCount: 1 };
+              }
               const text = values[6];
               if (typeof text !== "string") throw new Error("Invalid synthetic metadata");
               const metadata: unknown = JSON.parse(text);
@@ -397,6 +523,482 @@ beforeEach(() => {
   transport.widgetContactStatus = "active";
   transport.widgetBindings = [];
   transport.widgetInboundMessages = [];
+  transport.ownerSelections = [];
+  transport.widgetSessions = [];
+  transport.anchorSession = null;
+  transport.memberships = [];
+});
+
+const selectionClock = () => new Date("2026-10-08T17:50:00Z");
+const selectedConfig = () => ({
+  ...S22_BOOKING_COHORT,
+  mode: "widget_booking" as const,
+  widgetSessionId: S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId,
+});
+const owner = async (index = 19701, role: MembershipRole = "owner") => {
+  const organizationId = S22_BOOKING_COHORT.organizationId,
+    userId = fixtureId(index),
+    membershipId = fixtureId(index + 100);
+  if (
+    !isSchemaValue(OrganizationIdSchema, organizationId) ||
+    !isSchemaValue(UserIdSchema, userId) ||
+    !isSchemaValue(MembershipIdSchema, membershipId)
+  )
+    throw new Error("Invalid owner fixture");
+  transport.memberships.push({
+    organization_id: organizationId,
+    id: membershipId,
+    user_id: userId,
+    role,
+    status: "active",
+    location_scope: "all",
+  });
+  const at = selectionClock();
+  return resolveAuthorizationContext(
+    {
+      absoluteExpiresAt: new Date(at.getTime() + 3_600_000),
+      authenticationLevel: "mfa",
+      authenticationTime: at,
+      createdAt: at,
+      idleExpiresAt: new Date(at.getTime() + 3_600_000),
+      lastSeenAt: at,
+      rotatedAt: at,
+      rotationDue: false,
+      sessionId: fixtureId(index + 200),
+      userId,
+    },
+    organizationId,
+    {
+      resolveCurrentMembership: () =>
+        Promise.resolve({
+          organizationId,
+          userId,
+          membershipId,
+          role,
+          status: "active",
+          locationScope: "all",
+          allowedLocationIds: [],
+        }),
+    },
+  );
+};
+const initializeSelectionLedger = () => {
+  transport.anchorSession = {
+    ...freshSelectionSession(S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId),
+    issued_at: new Date("2026-10-08T16:11:39Z"),
+    last_seen_at: new Date("2026-10-08T16:11:40Z"),
+    expires_at: new Date("2026-10-08T18:11:39Z"),
+  };
+  transport.mutexConversationId = S22_BOOKING_COHORT.conversationId;
+  transport.rows = originalLedger().map((value, index) => ({
+    ...value,
+    id: index < 2 ? S22_BOOKING_COHORT.historicalRunIds[index] : value["id"],
+    organization_id: S22_BOOKING_COHORT.organizationId,
+    conversation_id: S22_BOOKING_COHORT.conversationId,
+  }));
+  transport.widgetConversation = {
+    ...activeWidgetConversation(),
+    organization_id: S22_BOOKING_COHORT.organizationId,
+  };
+};
+const freshSelectionSession = (id: string = widgetSessionId): Record<string, unknown> => ({
+  ...activeWidgetSession(),
+  id,
+  organization_id: S22_BOOKING_COHORT.organizationId,
+  channel_connection_id: S22_WIDGET_SELECTION_ENVELOPE.channelConnectionId,
+  widget_allowed_origin_id: S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId,
+  conversation_id: null,
+  contact_id: null,
+  version: 2,
+  issued_at: new Date("2026-10-08T17:49:00Z"),
+  last_seen_at: new Date("2026-10-08T17:49:01Z"),
+  expires_at: new Date("2026-10-08T19:49:00Z"),
+});
+const selectionBody = (sessionId: unknown = widgetSessionId, version = 0) => {
+  if (!isSchemaValue(ResourceIdSchema, sessionId)) throw new Error("Invalid selection fixture");
+  return {
+    session_id: sessionId,
+    expected_session_version: 2 as const,
+    expected_selection_version: version,
+  };
+};
+const selectCommand = async (sessionId: string = widgetSessionId, version = 0) => ({
+  actor: await owner(),
+  body: selectionBody(sessionId, version),
+  requestId: "test:selection",
+  correlationId: fixtureId(19981),
+});
+const selectedCall = () => {
+  const organizationId = S22_BOOKING_COHORT.organizationId;
+  if (!isSchemaValue(OrganizationIdSchema, organizationId))
+    throw new Error("Invalid organization fixture");
+  return { ...widgetCall(), reference: { ...widgetCall().reference, organizationId } };
+};
+const bindSelectedSession = () => {
+  const selected = transport.widgetSessions[0];
+  if (selected === undefined) throw new Error("Missing selected session");
+  Object.assign(selected, {
+    conversation_id: otherConversation,
+    contact_id: widgetContactId,
+    version: 3,
+  });
+  setWidgetInboundMessages(message(19501));
+  transport.widgetInboundMessages = transport.widgetInboundMessages.map((value) => ({
+    ...value,
+    organization_id: S22_BOOKING_COHORT.organizationId,
+  }));
+  transport.rows.push({ ...widgetRow(), organization_id: S22_BOOKING_COHORT.organizationId });
+};
+
+describe("S22 audited owner selection — modelled pg transport, no live/provider calls", () => {
+  it("blocks before selection; a fresh session created after Worker startup can be selected without redeployment", async () => {
+    initializeSelectionLedger();
+    const db = runtime(),
+      guard = createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+        ownerSelection: true,
+      });
+    expect(await guard.read((await owner()).organizationId)).toMatchObject({
+      blocked: true,
+      reason: "widget_selection_required",
+    });
+    transport.widgetSessions = [freshSelectionSession()];
+    const before = structuredClone(transport.rows),
+      sessionBefore = structuredClone(transport.widgetSessions);
+    const command = await selectCommand();
+    expect(await guard.widgetCohortStore.select(command)).toEqual({
+      selection_version: 1,
+      selected_session_id: widgetSessionId,
+    });
+    expect(transport.rows).toEqual(before);
+    expect(transport.widgetSessions).toEqual(sessionBefore);
+    expect(transport.ownerSelections[0]).toMatchObject({
+      actor_type: "member",
+      actor_id: command.actor.userId,
+      actor_membership_id: command.actor.membershipId,
+      request_id: "test:selection",
+      correlation_id: fixtureId(19981),
+    });
+    expect(await guard.widgetCohortStore.get({ actor: command.actor })).toMatchObject({
+      blocked: false,
+      can_select: true,
+      selected_session_id: widgetSessionId,
+      known_cost_micros: "8714",
+      combined_exposure_micros: "1042110",
+      unresolved_reserve_micros: "0",
+    });
+    bindSelectedSession();
+    // Old unchanged static binding cannot spend on the later, explicitly selected SID.
+    expect(
+      await createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock).authorizeDispatch(
+        selectedCall(),
+      ),
+    ).toBe(false);
+    expect(await guard.authorizeDispatch(selectedCall())).toBe(true);
+    expect(transport.widgetBindings).toHaveLength(1);
+    expect(await guard.widgetCohortStore.get({ actor: command.actor })).toMatchObject({
+      can_select: false,
+      blocked: true,
+      reason: "dispatch_in_flight",
+    });
+    expect(
+      transport.rows.slice(0, 2).every((value) => value["estimated_cost_micros"] === null),
+    ).toBe(true);
+    await db.close();
+  });
+  it.each(["2", 2n])(
+    "normalizes PostgreSQL candidate version %s without changing the session",
+    async (version) => {
+      initializeSelectionLedger();
+      transport.widgetSessions = [{ ...freshSelectionSession(), version }];
+      const db = runtime(),
+        store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock),
+        command = await selectCommand(),
+        before = structuredClone(transport.widgetSessions);
+      const status = await store.get({ actor: command.actor });
+      expect(status.candidates).toEqual([
+        {
+          session_id: widgetSessionId,
+          session_version: 2,
+          issued_at: "2026-10-08T17:49:00.000Z",
+          idle_deadline: "2026-10-08T18:19:01.000Z",
+          expires_at: "2026-10-08T19:49:00.000Z",
+        },
+      ]);
+      expect(await store.select(command)).toEqual({
+        selection_version: 1,
+        selected_session_id: widgetSessionId,
+      });
+      expect(transport.widgetSessions).toEqual(before);
+      expect(transport.ownerSelections).toHaveLength(1);
+      await db.close();
+    },
+  );
+  it("same-actor duplicate acknowledges exactly one audit, without renewing or reselecting", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession()];
+    const db = runtime(),
+      store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock),
+      command = await selectCommand();
+    const receipt = await store.select(command);
+    const before = structuredClone(transport.widgetSessions);
+    expect(await store.select({ ...command, requestId: "test:retry" })).toEqual(receipt);
+    expect(transport.ownerSelections).toHaveLength(1);
+    expect(transport.widgetSessions).toEqual(before);
+    await expect(
+      store.select({ ...command, body: selectionBody(widgetSessionId, 1) }),
+    ).rejects.toMatchObject({ code: "selection_conflict" });
+    await db.close();
+  });
+  it("concurrent owners with the same predecessor cannot both select", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession(), freshSelectionSession(fixtureId(19801))];
+    const db = runtime(),
+      store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock);
+    const first = await selectCommand(),
+      second = { ...(await selectCommand(fixtureId(19801))), actor: await owner(19901) };
+    const result = await Promise.allSettled([store.select(first), store.select(second)]);
+    expect(result.filter((value) => value.status === "fulfilled")).toHaveLength(1);
+    expect(transport.ownerSelections).toHaveLength(1);
+    await db.close();
+  });
+  it("allows explicit unused expired selection replacement, but never revival or automatic newest selection", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession()];
+    const db = runtime(),
+      store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock),
+      command = await selectCommand();
+    await store.select(command);
+    const old = transport.widgetSessions[0];
+    if (old === undefined) throw new Error("Missing fixture");
+    old["last_seen_at"] = new Date("2026-10-08T17:19:00Z");
+    transport.widgetSessions.push(freshSelectionSession(fixtureId(19801)));
+    expect(await store.get({ actor: command.actor })).toMatchObject({
+      blocked: true,
+      reason: "widget_session_unavailable",
+      can_select: true,
+      selected_session_id: widgetSessionId,
+    });
+    const oldBefore = structuredClone(old);
+    await store.select({ ...command, body: selectionBody(fixtureId(19801), 1) });
+    expect(old).toEqual(oldBefore);
+    expect(transport.ownerSelections).toHaveLength(2);
+    await db.close();
+  });
+  it.each([
+    ["foreign tenant", { organization_id: fixtureId(19801) }],
+    ["foreign channel", { channel_connection_id: fixtureId(19801) }],
+    ["foreign origin", { widget_allowed_origin_id: fixtureId(19801) }],
+    ["expired", { expires_at: new Date("2026-10-08T17:50:00Z") }],
+    ["idle boundary", { last_seen_at: new Date("2026-10-08T17:20:00Z") }],
+    ["stale creation", { issued_at: new Date("2026-10-08T17:45:00Z") }],
+    ["future creation", { issued_at: new Date("2026-10-08T17:51:00Z") }],
+    ["bound", { conversation_id: otherConversation, contact_id: widgetContactId }],
+    ["unredeemed", { version: 1 }],
+    ["revoked", { revoked_at: selectionClock() }],
+    ["inactive channel", { channel_status: "disconnected" }],
+    ["inactive origin", { origin_status: "revoked" }],
+  ])("rejects %s without selection or ledger writes", async (_label, override) => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [{ ...freshSelectionSession(), ...override }];
+    const db = runtime(),
+      store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock),
+      before = structuredClone(transport.rows);
+    await expect(store.select(await selectCommand())).rejects.toMatchObject({
+      code: "selection_conflict",
+    });
+    expect(transport.ownerSelections).toHaveLength(0);
+    expect(transport.rows).toEqual(before);
+    await db.close();
+  });
+  it("blocks replacement once intake bound a conversation, even before a paid reservation", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession(), freshSelectionSession(fixtureId(19801))];
+    const db = runtime(),
+      store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock),
+      command = await selectCommand();
+    await store.select(command);
+    bindSelectedSession();
+    await expect(
+      store.select({ ...command, body: selectionBody(fixtureId(19801), 1) }),
+    ).rejects.toMatchObject({ code: "cohort_blocked" });
+    expect(transport.ownerSelections).toHaveLength(1);
+    await db.close();
+  });
+  it("does not select on unknown original cost, mutated historical cost, pending reserve or missing baseline", async () => {
+    const db = runtime();
+    for (const fault of ["unknown", "historical", "pending", "missing"]) {
+      initializeSelectionLedger();
+      transport.widgetSessions = [freshSelectionSession()];
+      const target = transport.rows[fault === "historical" ? 0 : 2];
+      if (target === undefined) throw new Error("Missing fixture");
+      if (fault === "unknown") target["estimated_cost_micros"] = null;
+      if (fault === "historical") target["estimated_cost_micros"] = "0";
+      if (fault === "pending") target["finished_at"] = null;
+      if (fault === "missing") transport.rows.shift();
+      await expect(
+        createS22WidgetCohortStore(db, selectedConfig(), selectionClock).select(
+          await selectCommand(),
+        ),
+      ).rejects.toMatchObject({ code: "cohort_blocked" });
+      expect(transport.ownerSelections).toHaveLength(0);
+    }
+    await db.close();
+  });
+  it("rechecks live owner membership and rejects admin, revoked owner and forged actor", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession()];
+    const db = runtime(),
+      store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock);
+    await expect(
+      store.select({ ...(await selectCommand()), actor: await owner(19901, "admin") }),
+    ).rejects.toMatchObject({ code: "permission_denied" });
+    const command = await selectCommand();
+    transport.memberships = transport.memberships.map((value) => ({ ...value, status: "revoked" }));
+    await expect(store.select(command)).rejects.toMatchObject({ code: "permission_denied" });
+    await expect(
+      store.get({ actor: { ...command.actor, organizationId: AI_REFERENCE.organizationId } }),
+    ).rejects.toMatchObject({ code: "permission_denied" });
+    expect(transport.ownerSelections).toHaveLength(0);
+    await db.close();
+  });
+  it("selection commit uncertainty never returns success or changes authority", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession()];
+    transport.commitFails = true;
+    const db = runtime();
+    await expect(
+      createS22WidgetCohortStore(db, selectedConfig(), selectionClock).select(
+        await selectCommand(),
+      ),
+    ).rejects.toThrow();
+    expect(transport.ownerSelections).toHaveLength(0);
+    await db.close();
+  });
+});
+
+describe("S22 selected dispatch contention — modelled transport, not PostgreSQL locks", () => {
+  it("does not abandon an already-bound anchor before its first provider reservation", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession()];
+    const anchor = transport.anchorSession;
+    if (anchor === null) throw new Error("Missing anchor fixture");
+    Object.assign(anchor, {
+      conversation_id: otherConversation,
+      contact_id: widgetContactId,
+      version: 3,
+    });
+    const before = structuredClone(transport.rows),
+      db = runtime(),
+      store = createS22WidgetCohortStore(db, selectedConfig(), selectionClock);
+    const command = await selectCommand();
+    await expect(store.select(command)).rejects.toMatchObject({ code: "cohort_blocked" });
+    expect(await store.get({ actor: command.actor })).toMatchObject({
+      can_select: false,
+      blocked: true,
+      reason: "widget_already_bound",
+    });
+    expect(transport.ownerSelections).toHaveLength(0);
+    expect(transport.rows).toEqual(before);
+    await db.close();
+  });
+  it("missing owner audit never falls back to a live configured anchor", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [
+      freshSelectionSession(S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId),
+    ];
+    bindSelectedSession();
+    const db = runtime();
+    expect(
+      await createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+        ownerSelection: true,
+      }).authorizeDispatch(selectedCall()),
+    ).toBe(false);
+    expect(transport.rows.at(-1)?.["reservations"]).toBe(0);
+    await db.close();
+  });
+  it("duplicate concurrent dispatch reserves one physical attempt under the same owner-selection mutex", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession()];
+    const db = runtime(),
+      guard = createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+        ownerSelection: true,
+      });
+    await guard.widgetCohortStore.select(await selectCommand());
+    bindSelectedSession();
+    const result = await Promise.all([
+      guard.authorizeDispatch(selectedCall()),
+      createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+        ownerSelection: true,
+      }).authorizeDispatch(selectedCall()),
+    ]);
+    expect(result.filter(Boolean)).toHaveLength(1);
+    expect(transport.widgetBindings).toHaveLength(1);
+    expect(transport.rows.at(-1)?.["reservations"]).toBe(1);
+    await db.close();
+  });
+  it("concurrent replacement cannot retarget a bound dispatch or reset consumed accounting", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession(), freshSelectionSession(fixtureId(19801))];
+    const db = runtime(),
+      guard = createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+        ownerSelection: true,
+      }),
+      command = await selectCommand();
+    await guard.widgetCohortStore.select(command);
+    bindSelectedSession();
+    const result = await Promise.allSettled([
+      guard.widgetCohortStore.select({ ...command, body: selectionBody(fixtureId(19801), 1) }),
+      guard.authorizeDispatch(selectedCall()),
+    ]);
+    expect(result[0]).toMatchObject({ status: "rejected", reason: { code: "cohort_blocked" } });
+    expect(result[1]).toMatchObject({ status: "fulfilled", value: true });
+    expect(transport.ownerSelections).toHaveLength(1);
+    expect(transport.widgetBindings).toHaveLength(1);
+    const paid = transport.rows.at(-1);
+    if (paid === undefined) throw new Error("Missing fixture");
+    settled(paid, "1000");
+    expect(await guard.widgetCohortStore.get({ actor: command.actor })).toMatchObject({
+      can_select: false,
+      known_cost_micros: "9714",
+      unresolved_reserve_micros: "0",
+    });
+    await expect(
+      guard.widgetCohortStore.select({ ...command, body: selectionBody(fixtureId(19801), 1) }),
+    ).rejects.toMatchObject({ code: "cohort_blocked" });
+    await db.close();
+  });
+  it("corrupt or ambiguous audit version chains fail closed without provider reservation", async () => {
+    initializeSelectionLedger();
+    transport.widgetSessions = [freshSelectionSession()];
+    const db = runtime(),
+      guard = createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+        ownerSelection: true,
+      });
+    await guard.widgetCohortStore.select(await selectCommand());
+    bindSelectedSession();
+    const selected = transport.ownerSelections[0];
+    if (selected === undefined) throw new Error("Missing fixture");
+    selected["selection_version"] = "2";
+    await expect(guard.authorizeDispatch(selectedCall())).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    expect(transport.rows.at(-1)?.["reservations"]).toBe(0);
+    await db.close();
+  });
+  it("requires the reviewed org, anchor and original historical reserve for dynamic mode", () => {
+    const db = runtime();
+    for (const override of [
+      { widgetSessionId: widgetSessionId },
+      { organizationId: reference.organizationId },
+      { historicalReserveMicros: 0n },
+      { historicalRunIds: [] },
+    ])
+      expect(() =>
+        createAIJourneyBudgetGuard(db, { ...selectedConfig(), ...override }, selectionClock, {
+          ownerSelection: true,
+        }),
+      ).toThrow("Invalid internal Widget selection envelope");
+  });
 });
 
 describe("S22 durable budget ledger — modelled pg transport", () => {

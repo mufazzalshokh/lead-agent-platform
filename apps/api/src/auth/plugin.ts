@@ -75,9 +75,14 @@ import {
 } from "../widget/management-plugin.js";
 import { registerStaffOperations, type StaffOperationsDependencies } from "../staff/plugin.js";
 import {
+  registerStaffS22WidgetCohort,
+  type StaffS22WidgetCohortDependencies,
+} from "../staff/s22-widget-cohort-plugin.js";
+import {
   AnalyticsApplicationError,
   StaffOperationError,
   ThreadAutomationControlError,
+  S22WidgetCohortError,
 } from "@lead-agent/application";
 import { registerStaffAnalytics, type StaffAnalyticsDependencies } from "../analytics/plugin.js";
 import {
@@ -169,6 +174,7 @@ export type ApiOptions = Readonly<{
   instagramWebhook?: InstagramWebhookDependencies;
   widget?: WidgetDependencies;
   staffWidgetManagement?: StaffWidgetManagementDependencies;
+  staffS22WidgetCohort?: StaffS22WidgetCohortDependencies;
 }>;
 
 type SessionResolution = Readonly<{
@@ -433,6 +439,21 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
           : error.code === "validation_failed"
             ? 400
             : 409;
+  } else if (error instanceof S22WidgetCohortError) {
+    code =
+      error.code === "selection_conflict" || error.code === "cohort_blocked"
+        ? "version_conflict"
+        : error.code === "unavailable"
+          ? "dependency_unavailable"
+          : error.code;
+    status =
+      error.code === "permission_denied"
+        ? 403
+        : error.code === "validation_failed"
+          ? 400
+          : error.code === "unavailable"
+            ? 503
+            : 409;
   } else if (error instanceof AnalyticsApplicationError) {
     code = error.code;
     status = error.code === "permission_denied" ? 403 : 400;
@@ -523,6 +544,7 @@ const registerStaffAuth = async (
   staffOperations?: StaffOperationsDependencies,
   staffAnalytics?: StaffAnalyticsDependencies,
   staffWidgetManagement?: StaffWidgetManagementDependencies,
+  staffS22WidgetCohort?: StaffS22WidgetCohortDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -1019,6 +1041,14 @@ const registerStaffAuth = async (
       resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
+  if (staffS22WidgetCohort !== undefined) {
+    registerStaffS22WidgetCohort(api, staffS22WidgetCohort, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
 };
 
 export const createApi = (options: ApiOptions = {}): FastifyInstance => {
@@ -1039,6 +1069,8 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
     throw new TypeError("Staff Instagram routes require the staff authentication boundary");
   if (options.staffWidgetManagement !== undefined && options.staffAuth === undefined)
     throw new TypeError("Staff Widget routes require the staff authentication boundary");
+  if (options.staffS22WidgetCohort !== undefined && options.staffAuth === undefined)
+    throw new TypeError("S22 Widget cohort routes require the staff authentication boundary");
   const api = Fastify({
     ajv: { customOptions: { removeAdditional: false, strict: false } },
     logController: new LogController({ disableRequestLogging: true }),
@@ -1167,6 +1199,7 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         options.staffOperations,
         options.staffAnalytics,
         options.staffWidgetManagement,
+        options.staffS22WidgetCohort,
       ),
     );
   }

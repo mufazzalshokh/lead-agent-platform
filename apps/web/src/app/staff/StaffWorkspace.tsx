@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/staff-request";
+import { S22WidgetCohort } from "./S22WidgetCohort";
 import {
   buildStaffSignInPath,
   formatStaffDateTime,
@@ -957,6 +958,12 @@ export function StaffWorkspace({
                           ? "Checking the current setup…"
                           : "Current setup could not be loaded."}
                   </p>
+                  {membershipRole === "owner" && (
+                    <S22WidgetCohort
+                      request={request}
+                      onAuthenticationRequired={requireAuthentication}
+                    />
+                  )}
                 </>
               ) : (
                 <p className="integration-permission">Owner or admin access is required.</p>

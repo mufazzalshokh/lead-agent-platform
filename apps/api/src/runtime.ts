@@ -37,6 +37,7 @@ import {
   createStaffWidgetManagementDependencies,
   createWidgetDependencies,
 } from "./widget/composition.js";
+import { createStaffS22WidgetCohortDependencies } from "./staff/s22-widget-cohort-composition.js";
 import { createTelegramApiComposition } from "./telegram/composition.js";
 import { createInstagramApiComposition } from "./instagram/composition.js";
 import type { CredentialSecretStore } from "@lead-agent/application";
@@ -155,6 +156,9 @@ export const createApiFromEnvironment = (
     staffOperations: createStaffOperationsDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffAnalytics: createStaffAnalyticsDependencies(tenantRuntime, metrics),
     staffWidgetManagement: createStaffWidgetManagementDependencies(tenantRuntime),
+    ...(environment["DEPLOYMENT_ENVIRONMENT"] === "staging"
+      ? { staffS22WidgetCohort: createStaffS22WidgetCohortDependencies(tenantRuntime) }
+      : {}),
     staffConversations: conversations.staff,
     staffTelegram: telegram.staff,
     telegramWebhook: telegram.webhook,

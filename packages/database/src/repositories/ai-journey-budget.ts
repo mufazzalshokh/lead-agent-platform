@@ -1,7 +1,15 @@
-import type { AIWorkReference, AIRunReservation } from "@lead-agent/application";
+import {
+  S22WidgetCohortError,
+  StaffOperationError,
+  type AIWorkReference,
+  type AIRunReservation,
+  type S22WidgetCohortStore,
+} from "@lead-agent/application";
 import {
   COMMERCIAL_V1_AI_PROFILE,
   S22_WIDGET_ALLOWANCE,
+  S22_BOOKING_COHORT,
+  S22_WIDGET_SELECTION_ENVELOPE,
   type AIJourneyCohortConfig,
 } from "@lead-agent/config";
 import {
@@ -9,23 +17,41 @@ import {
   MessageIdSchema,
   OrganizationIdSchema,
   ResourceIdSchema,
+  S22WidgetCohortCandidateSchema,
+  S22WidgetCohortSelectInputSchema,
+  S22WidgetCohortStatusSchema,
+  S22WidgetCohortSelectionReceiptSchema,
   isSchemaValue,
   type OrganizationId,
 } from "@lead-agent/contracts";
 import { resolveAIPrice } from "@lead-agent/observability";
-import { createSecurityIdentifierFactory } from "@lead-agent/security";
+import {
+  createSecurityIdentifierFactory,
+  isAuthorizationContext,
+  type AuthorizationContext,
+} from "@lead-agent/security";
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
 import {
   executeTenantRead,
   executeTenantWrite,
   mapSafeBigInt,
   mapString,
+  mapUtcTimestamp,
   RepositoryDataIntegrityError,
 } from "./shared.js";
+import { requireStaffActor } from "./staff-work.js";
 
 const RESERVED = "ai_run.dispatch_reserved";
 const STARTED = "ai_run.journey_started";
 const WIDGET_BOUND = "ai_run.widget_journey_bound";
+const OWNER_SELECTED = "ai_run.widget_cohort_selected";
+type OwnerSelection = Readonly<{
+  sessionId: string;
+  version: number;
+  predecessor: number;
+  actorId: string;
+  membershipId: string;
+}>;
 type WidgetBinding = Readonly<{
   conversationId: string | null;
   contactId: string | null;
@@ -65,6 +91,7 @@ export const createAIJourneyBudgetGuard = (
   runtime: TenantDatabaseRuntime,
   configuration: AIJourneyCohortConfig,
   clock: () => Date = () => new Date(),
+  options: Readonly<{ ownerSelection?: boolean }> = {},
 ) => {
   const config = Object.freeze({
     ...configuration,
@@ -96,6 +123,18 @@ export const createAIJourneyBudgetGuard = (
   // Copy trusted configuration so mutation by a caller cannot reset/widen a cohort.
   const baseline = Object.freeze([...config.historicalRunIds]);
   const widgetSessionId = config.widgetSessionId;
+  const ownerSelection = options.ownerSelection === true;
+  if (
+    ownerSelection &&
+    (config.mode !== "widget_booking" ||
+      widgetSessionId !== S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId ||
+      config.organizationId !== S22_BOOKING_COHORT.organizationId ||
+      config.conversationId !== S22_BOOKING_COHORT.conversationId ||
+      JSON.stringify(baseline) !== JSON.stringify(S22_BOOKING_COHORT.historicalRunIds) ||
+      config.historicalReserveMicros !== S22_BOOKING_COHORT.historicalReserveMicros ||
+      config.hardCeilingMicros !== S22_BOOKING_COHORT.hardCeilingMicros)
+  )
+    throw new TypeError("Invalid internal Widget selection envelope");
   const identifiers = createSecurityIdentifierFactory();
   const reserveAt = (at: Date): bigint | null => {
     const price = resolveAIPrice("gemini", "gemini-3.8-flash", at);
@@ -118,8 +157,9 @@ export const createAIJourneyBudgetGuard = (
   const widgetBinding = async (
     session: TenantDbSession,
     lock = false,
+    selectedSessionId: string | undefined = ownerSelection ? undefined : widgetSessionId,
   ): Promise<WidgetBinding | null> => {
-    if (widgetSessionId === undefined) return null;
+    if (selectedSessionId === undefined) return null;
     const at = clock();
     const rows = await executeTenantRead(
       session,
@@ -131,8 +171,19 @@ export const createAIJourneyBudgetGuard = (
        where ws.organization_id=$1 and ws.id=$2 and ws.status='active' and ws.revoked_at is null
          and ws.expires_at>$3 and ws.last_seen_at>$4
          and cc.status='active' and cc.channel_type='widget' and wao.status='active'
+         ${ownerSelection ? "and ws.channel_connection_id=$5 and ws.widget_allowed_origin_id=$6" : ""}
        ${lock ? "for update of ws" : ""}`,
-      [widgetSessionId, at, new Date(at.getTime() - 1_800_000)],
+      [
+        selectedSessionId,
+        at,
+        new Date(at.getTime() - 1_800_000),
+        ...(ownerSelection
+          ? [
+              S22_WIDGET_SELECTION_ENVELOPE.channelConnectionId,
+              S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId,
+            ]
+          : []),
+      ],
     );
     if (rows.length !== 1) return null;
     const row = rows[0];
@@ -162,7 +213,12 @@ export const createAIJourneyBudgetGuard = (
     }
     return { conversationId, contactId, inboundMessageIds: Object.freeze(inboundMessageIds) };
   };
-  const inspect = async (session: TenantDbSession, binding: WidgetBinding | null = null) => {
+  const inspect = async (
+    session: TenantDbSession,
+    binding: WidgetBinding | null = null,
+    selectedSessionId: string | undefined = ownerSelection ? undefined : widgetSessionId,
+  ) => {
+    const widgetSessionId = selectedSessionId;
     const reserve = reserveAt(clock());
     // Bounded metadata only: no bodies, account identifiers, hashes or snapshots.
     const rows = await executeTenantRead(
@@ -363,7 +419,284 @@ export const createAIJourneyBudgetGuard = (
       latchCount,
     };
   };
+  const lockCohort = async (session: TenantDbSession) => {
+    const rows = await executeTenantRead(
+      session,
+      `select id,status,automation_mode,version from conversations where organization_id=$1 and id=$2 for update`,
+      [config.conversationId],
+    );
+    if (rows.length !== 1) throw new S22WidgetCohortError("unavailable");
+    return rows[0];
+  };
+  const selections = async (session: TenantDbSession): Promise<readonly OwnerSelection[]> => {
+    const rows = await executeTenantRead(
+      session,
+      `select actor_type,actor_id::text,actor_membership_id::text,
+        metadata_redacted_jsonb->>'selected_session_id' as selected_session_id,
+        metadata_redacted_jsonb->>'selection_version' as selection_version,
+        metadata_redacted_jsonb->>'expected_selection_version' as expected_selection_version,
+        metadata_redacted_jsonb->>'expected_session_version' as expected_session_version,
+        metadata_redacted_jsonb->>'channel_connection_id' as channel_connection_id,
+        metadata_redacted_jsonb->>'allowed_origin_id' as allowed_origin_id
+       from audit_events where organization_id=$1 and action=$2 and result='succeeded'
+        and target_type='widget_session' and target_id=$3
+        and metadata_redacted_jsonb->>'profile'=$4
+       order by occurred_at,id limit 17`,
+      [
+        OWNER_SELECTED,
+        S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId,
+        S22_WIDGET_SELECTION_ENVELOPE.profile,
+      ],
+    );
+    if (rows.length > 16) throw new S22WidgetCohortError("unavailable");
+    // Persisted CAS versions define order, not wall-clock/UUID ordering. Equal
+    // timestamps or clock correction cannot reverse the selection authority.
+    return [...rows]
+      .sort(
+        (left, right) =>
+          mapSafeBigInt(left["selection_version"]) - mapSafeBigInt(right["selection_version"]),
+      )
+      .map((row, index) => {
+        const sessionId: unknown = row["selected_session_id"];
+        const actorId: unknown = row["actor_id"];
+        const membershipId: unknown = row["actor_membership_id"];
+        if (
+          !isSchemaValue(ResourceIdSchema, sessionId) ||
+          !isSchemaValue(ResourceIdSchema, actorId) ||
+          !isSchemaValue(ResourceIdSchema, membershipId) ||
+          row["actor_type"] !== "member" ||
+          row["selection_version"] !== String(index + 1) ||
+          row["expected_selection_version"] !== String(index) ||
+          row["expected_session_version"] !== "2" ||
+          row["channel_connection_id"] !== S22_WIDGET_SELECTION_ENVELOPE.channelConnectionId ||
+          row["allowed_origin_id"] !== S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId
+        )
+          throw new S22WidgetCohortError("unavailable");
+        return { sessionId, version: index + 1, predecessor: index, actorId, membershipId };
+      });
+  };
+  const requireOwner = async (session: TenantDbSession, actor: AuthorizationContext) => {
+    if (
+      !ownerSelection ||
+      !isAuthorizationContext(actor) ||
+      actor.organizationId !== organizationId ||
+      actor.role !== "owner" ||
+      actor.locationScope !== "all"
+    )
+      throw new S22WidgetCohortError("permission_denied");
+    try {
+      await requireStaffActor(session, actor, "integrations.manage");
+    } catch (error) {
+      if (error instanceof StaffOperationError && error.code === "permission_denied")
+        throw new S22WidgetCohortError("permission_denied");
+      throw error;
+    }
+  };
+  const candidates = async (session: TenantDbSession, id?: string, lock = false) => {
+    const at = clock();
+    const rows = await executeTenantRead(
+      session,
+      `select ws.id::text as session_id,ws.version as session_version,ws.issued_at,
+        ws.last_seen_at + interval '30 minutes' as idle_deadline,ws.expires_at
+       from widget_sessions ws
+       join channel_connections cc on cc.organization_id=$1 and cc.id=ws.channel_connection_id
+       join widget_allowed_origins wao on wao.organization_id=$1 and wao.id=ws.widget_allowed_origin_id
+         and wao.channel_connection_id=ws.channel_connection_id
+       where ws.organization_id=$1 and ws.channel_connection_id=$2 and ws.widget_allowed_origin_id=$3
+         and ws.status='active' and ws.revoked_at is null and ws.version=2
+         and ws.contact_id is null and ws.conversation_id is null
+         and ws.issued_at>$4 and ws.issued_at<=$5 and ws.expires_at>$5 and ws.last_seen_at>$6
+         and cc.status='active' and cc.channel_type='widget' and wao.status='active'
+         ${id === undefined ? "" : "and ws.id=$7"}
+       order by ws.issued_at desc,ws.id desc limit 5 ${lock ? "for update of ws" : ""}`,
+      [
+        S22_WIDGET_SELECTION_ENVELOPE.channelConnectionId,
+        S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId,
+        new Date(at.getTime() - 300_000),
+        at,
+        new Date(at.getTime() - 1_800_000),
+        ...(id === undefined ? [] : [id]),
+      ],
+    );
+    return rows.map((row) => {
+      const sessionId: unknown = row["session_id"];
+      const version = mapSafeBigInt(row["session_version"]);
+      const candidate = {
+        session_id: sessionId,
+        session_version: version,
+        issued_at: mapUtcTimestamp(row["issued_at"]),
+        idle_deadline: mapUtcTimestamp(row["idle_deadline"]),
+        expires_at: mapUtcTimestamp(row["expires_at"]),
+      };
+      if (!isSchemaValue(S22WidgetCohortCandidateSchema, candidate))
+        throw new S22WidgetCohortError("unavailable");
+      return candidate;
+    });
+  };
+  const selectionReadiness = async (
+    session: TenantDbSession,
+    selected: OwnerSelection | undefined,
+  ) => {
+    // This path must not require the previous unused SID to be alive. Replacing
+    // it never revives it, and cannot erase any existing Widget binding/spend.
+    const state = await inspect(session, null, undefined);
+    const latches = await executeTenantRead(
+      session,
+      `select id from audit_events where organization_id=$1 and action=$2
+        and target_type='widget_session' and metadata_redacted_jsonb->>'profile'=$3 limit 2`,
+      [WIDGET_BOUND, config.profile],
+    );
+    let reason = state.reason;
+    if (
+      state.calls !== S22_WIDGET_ALLOWANCE.previousCalls ||
+      state.messages.size !== S22_WIDGET_ALLOWANCE.previousMessages ||
+      state.known !== S22_WIDGET_ALLOWANCE.previousKnownCostMicros ||
+      state.pending !== 0n
+    )
+      reason = reason ?? "widget_baseline_mismatch";
+    if (latches.length !== 0) reason = "widget_already_bound";
+    {
+      const previous = await executeTenantRead(
+        session,
+        `select conversation_id::text,contact_id::text from widget_sessions
+         where organization_id=$1 and id=$2 and channel_connection_id=$3 and widget_allowed_origin_id=$4
+         limit 1 for update`,
+        [
+          selected?.sessionId ?? S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId,
+          S22_WIDGET_SELECTION_ENVELOPE.channelConnectionId,
+          S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId,
+        ],
+      );
+      if (
+        previous.length !== 1 ||
+        previous[0]?.["conversation_id"] !== null ||
+        previous[0]["contact_id"] !== null
+      )
+        reason = "widget_already_bound";
+    }
+    if (
+      state.reserve === null ||
+      state.exposure + (state.reserve ?? 0n) >= config.hardCeilingMicros ||
+      state.exposure + (state.reserve ?? 0n) > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros
+    )
+      reason = reason ?? "hard_ceiling";
+    return { state, reason };
+  };
+  const cohortStore: S22WidgetCohortStore = {
+    get: async ({ actor }) => {
+      if (!isAuthorizationContext(actor) || actor.organizationId !== organizationId)
+        throw new S22WidgetCohortError("permission_denied");
+      return runtime.withTenantTransaction(actor.organizationId, async (session) => {
+        await requireOwner(session, actor);
+        await lockCohort(session);
+        const selected = (await selections(session)).at(-1);
+        const ready = await selectionReadiness(session, selected);
+        const binding = await widgetBinding(session, false, selected?.sessionId);
+        const state =
+          selected === undefined
+            ? ready.state
+            : await inspect(session, binding, selected.sessionId);
+        let reason =
+          selected === undefined ? (ready.reason ?? "widget_selection_required") : state.reason;
+        if (reason === null) {
+          if (state.widgetCalls >= S22_WIDGET_ALLOWANCE.maximumCalls) reason = "attempt_limit";
+          else if ((binding?.inboundMessageIds.length ?? 0) >= S22_WIDGET_ALLOWANCE.maximumMessages)
+            reason = "message_limit";
+          else if (
+            state.reserve !== null &&
+            state.exposure + state.reserve >= config.hardCeilingMicros
+          )
+            reason = "hard_ceiling";
+          else if (
+            state.reserve !== null &&
+            (state.widgetKnown + state.widgetPending + state.reserve >
+              S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+              state.exposure + state.reserve > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros)
+          )
+            reason = "widget_allowance";
+        }
+        const result = {
+          selection_version: selected?.version ?? 0,
+          selected_session_id: selected?.sessionId ?? null,
+          candidates: ready.reason === null ? await candidates(session) : [],
+          can_select: ready.reason === null && (selected?.version ?? 0) < 16,
+          blocked: reason !== null,
+          reason,
+          known_cost_micros: state.known.toString(),
+          combined_exposure_micros: state.exposure.toString(),
+          unresolved_reserve_micros: state.pending.toString(),
+        };
+        if (!isSchemaValue(S22WidgetCohortStatusSchema, result))
+          throw new S22WidgetCohortError("unavailable");
+        return result;
+      });
+    },
+    select: async ({ actor, body, requestId, correlationId }) => {
+      if (!isAuthorizationContext(actor) || actor.organizationId !== organizationId)
+        throw new S22WidgetCohortError("permission_denied");
+      if (
+        !isSchemaValue(S22WidgetCohortSelectInputSchema, body) ||
+        !/^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$/u.test(requestId) ||
+        !isSchemaValue(ResourceIdSchema, correlationId)
+      )
+        throw new S22WidgetCohortError("validation_failed");
+      return runtime.withTenantTransaction(actor.organizationId, async (session) => {
+        await requireOwner(session, actor);
+        await lockCohort(session);
+        const selected = (await selections(session)).at(-1);
+        const version = selected?.version ?? 0;
+        const duplicate =
+          selected?.sessionId === body.session_id &&
+          selected.predecessor === body.expected_selection_version &&
+          selected.actorId === actor.userId &&
+          selected.membershipId === actor.membershipId;
+        if (!duplicate && version !== body.expected_selection_version)
+          throw new S22WidgetCohortError("selection_conflict");
+        if (!duplicate) {
+          if (version >= 16 || selected?.sessionId === body.session_id)
+            throw new S22WidgetCohortError("selection_conflict");
+          const ready = await selectionReadiness(session, selected);
+          if (ready.reason !== null) throw new S22WidgetCohortError("cohort_blocked");
+          if ((await candidates(session, body.session_id, true)).length !== 1)
+            throw new S22WidgetCohortError("selection_conflict");
+          await executeTenantWrite(
+            session,
+            `insert into audit_events (organization_id,id,event_type,actor_type,actor_id,actor_membership_id,
+              target_type,target_id,action,result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
+             values ($1,$2,$3,'member',$4,$5,'widget_session',$6,$3,'succeeded',$7,$8,$9::jsonb,$10)`,
+            [
+              identifiers.issueResourceId(clock()),
+              OWNER_SELECTED,
+              actor.userId,
+              actor.membershipId,
+              S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId,
+              requestId,
+              correlationId,
+              JSON.stringify({
+                profile: S22_WIDGET_SELECTION_ENVELOPE.profile,
+                selected_session_id: body.session_id,
+                selection_version: version + 1,
+                expected_selection_version: version,
+                expected_session_version: 2,
+                channel_connection_id: S22_WIDGET_SELECTION_ENVELOPE.channelConnectionId,
+                allowed_origin_id: S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId,
+              }),
+              clock(),
+            ],
+          );
+        }
+        const receipt = {
+          selection_version: duplicate ? version : version + 1,
+          selected_session_id: body.session_id,
+        };
+        if (!isSchemaValue(S22WidgetCohortSelectionReceiptSchema, receipt))
+          throw new S22WidgetCohortError("unavailable");
+        return receipt;
+      });
+    },
+  };
   return Object.freeze({
+    widgetCohortStore: Object.freeze(cohortStore),
     recordStart: async (
       session: TenantDbSession,
       input: Readonly<{ reference: AIWorkReference; runId: string }>,
@@ -397,16 +730,15 @@ export const createAIJourneyBudgetGuard = (
         return false;
       return runtime.withTenantTransaction(input.reference.organizationId, async (session) => {
         // Same lock for every Worker/process. No lock is held during provider I/O.
-        const locked = await executeTenantRead(
-          session,
-          `select id,status,automation_mode,version from conversations where organization_id=$1 and id=$2 for update`,
-          [config.conversationId],
-        );
-        if (locked.length !== 1) return false;
+        const locked = await lockCohort(session);
+        const widgetSessionId = ownerSelection
+          ? (await selections(session)).at(-1)?.sessionId
+          : config.widgetSessionId;
+        if (ownerSelection && widgetSessionId === undefined) return false;
         // The original conversation remains the shared mutex across old/new Workers.
         // Widget intake and this gate both lock its session before its conversation.
-        const binding = await widgetBinding(session, true);
-        let currentConversation = locked[0];
+        const binding = await widgetBinding(session, true, widgetSessionId);
+        let currentConversation = locked;
         if (widgetSessionId !== undefined) {
           if (
             binding?.conversationId !== input.reference.conversationId ||
@@ -432,7 +764,7 @@ export const createAIJourneyBudgetGuard = (
           currentConversation["automation_mode"] !== "ai"
         )
           return false;
-        const state = await inspect(session, binding);
+        const state = await inspect(session, binding, widgetSessionId);
         const calls = widgetSessionId === undefined ? state.calls : state.widgetCalls;
         const messages = widgetSessionId === undefined ? state.messages : state.widgetMessages;
         const maximumCalls =
@@ -518,9 +850,18 @@ export const createAIJourneyBudgetGuard = (
     read: async (tenant: OrganizationId): Promise<AIJourneyBudgetSnapshot> => {
       if (tenant !== organizationId) throw new RepositoryDataIntegrityError();
       return runtime.withTenantTransaction(tenant, async (session) => {
-        const binding = await widgetBinding(session);
-        const state = await inspect(session, binding);
-        let reason = config.mode === "paused" ? "paused" : state.reason;
+        if (ownerSelection) await lockCohort(session);
+        const widgetSessionId = ownerSelection
+          ? (await selections(session)).at(-1)?.sessionId
+          : config.widgetSessionId;
+        const binding = await widgetBinding(session, false, widgetSessionId);
+        const state = await inspect(session, binding, widgetSessionId);
+        let reason =
+          config.mode === "paused"
+            ? "paused"
+            : ownerSelection && widgetSessionId === undefined
+              ? "widget_selection_required"
+              : state.reason;
         if (reason === null) {
           const calls = widgetSessionId === undefined ? state.calls : state.widgetCalls;
           const messages = widgetSessionId === undefined ? state.messages : state.widgetMessages;
@@ -582,3 +923,18 @@ export const createAIJourneyBudgetGuard = (
     },
   });
 };
+
+/** Staging-only composition: no arbitrary tenant or money profile can be supplied
+ * by an HTTP/browser caller. Selection commits an attributed audit, not a paid
+ * dispatch permission, session refresh, migration or provider call. */
+export const createS22WidgetCohortStore = (
+  runtime: TenantDatabaseRuntime,
+  configuration: AIJourneyCohortConfig = {
+    ...S22_BOOKING_COHORT,
+    mode: "widget_booking",
+    widgetSessionId: S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId,
+  },
+  clock: () => Date = () => new Date(),
+): S22WidgetCohortStore =>
+  createAIJourneyBudgetGuard(runtime, configuration, clock, { ownerSelection: true })
+    .widgetCohortStore;

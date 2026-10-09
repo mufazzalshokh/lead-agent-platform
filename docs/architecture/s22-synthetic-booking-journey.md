@@ -2,7 +2,18 @@
 
 ## Current preparation — separate Website Chat journey (2026-10-08)
 
-**Latest checkpoint: replacement preparation approved; current/future tooling ready.**
+**Latest checkpoint: stop the session/deployment loop; local correction approved.**
+The owner-confirmed current-runtime preflight passed without creating a session.
+The owner then approved implementation/local testing of explicit authenticated,
+audited selection **after deployment**, within the same approved organization,
+Widget channel, allowed origin and unchanged budget. No fresh frame or Send is
+requested while implementing this change. The earlier replacement-plan
+preparation is superseded, not a usable approval packet for the new runtime.
+See [owner-selected test binding](s22-widget-cohort-binding.md). Deployment and
+paid customer execution still require their separate exact approvals. The
+Instagram confirmed journey is not repeated; S22 remains unaccepted.
+
+**Superseded checkpoint: replacement preparation approved; current/future tooling ready.**
 The owner approved one replacement session/binding with **no budget increase**,
 not apply or Send. Current selector pins are corrected to deployed source
 `1ecd729`, existing image build 37797125277 and **15:08:01Z**; future readiness
@@ -18,13 +29,13 @@ session binding. No plan is dispatched until that exact selection exists. The
 USD3.205728 allowance/USD4.247838 maximum combined planning exposure and existing
 USD10 ceiling remain unchanged; historical NULL costs stay unknown.
 
-**Next: checksum-verified current-runtime preflight in Cloud Shell only.** Finish
-that metadata/Logging check before opening a fresh frame or starting its 30-minute
-idle clock. No uploads, diagnostic execution, new chat, Send or deployment is
-requested yet. Then coordinate one real-frame selection, exact plan review/approval,
-apply and current readiness promptly. Separately bounded execution authority is
-still required and may be explicitly requested with exact-plan approval to avoid
-an additional timed handoff. Do not infer it from apply-only approval. See the
+**Superseded next action — do not execute: Cloud Shell preflight and pre-deploy selection.**
+The prior packet required a metadata/Logging check before starting the 30-minute
+idle clock, followed by selection, plan, approval, apply and readiness. That
+sequence is replaced by the correction above: deploy the stable envelope first,
+then explicitly select the fresh empty frame through the staff interface.
+Deployment and paid-test authority remain separate. The old preparation is
+retained only as history; do not infer authority from it. See the
 [replacement preparation packet](s22-acceptance-evidence.md#2026-10-08--replacement-sessionbinding-preparation-approved-tools-ready).
 
 **Previous checkpoint: owner-supplied correction readiness PASS, but its idle deadline elapsed.**

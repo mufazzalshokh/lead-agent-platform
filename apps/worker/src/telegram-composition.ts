@@ -132,7 +132,14 @@ export const composeProductionWorkerRuntime = (
               appointmentSubmission: true,
               dataProtection: createCustomerDataProtection(protectionConfig),
               protectProposal: createAIProposalProtection(protectionConfig).protect,
-              ...(journeyCohort === null ? {} : { journeyCohort }),
+              ...(journeyCohort === null
+                ? {}
+                : {
+                    journeyCohort,
+                    // The reviewed SID now anchors an owner-selected staging
+                    // envelope; a deployment alone never selects a fresh chat.
+                    widgetOwnerSelection: journeyCohort.mode === "widget_booking",
+                  }),
             }),
             timeoutMs: aiConfig.requestTimeoutMs,
             telemetry: createStructuredAITelemetry(),

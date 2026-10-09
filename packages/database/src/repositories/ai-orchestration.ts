@@ -93,6 +93,8 @@ type AIStoreOptions = Readonly<{
   salesFlow?: boolean;
   /** S16 fixed deterministic submission profile; includes the S15 qualification flow. */
   appointmentSubmission?: boolean;
+  /** Explicit staging owner-selection lane; default static SID behavior is preserved. */
+  widgetOwnerSelection?: boolean;
   /** Optional approved knowledge seam. S12 defaults to no facts; S14 owns grounded product behavior. */
   knowledge?: (
     session: TenantDbSession,
@@ -180,7 +182,9 @@ export const createAIOrchestrationStore = (
   const journey =
     options.journeyCohort === undefined
       ? null
-      : createAIJourneyBudgetGuard(runtime, options.journeyCohort, now);
+      : createAIJourneyBudgetGuard(runtime, options.journeyCohort, now, {
+          ownerSelection: options.widgetOwnerSelection === true,
+        });
   if (
     journey !== null &&
     (providerId !== "gemini" || options.requestedModel !== "gemini-3.8-flash")

@@ -3,6 +3,37 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-08 — Owner-approved correction of the session/deployment loop
+
+The owner supplied successful download verification and current-runtime
+**preflight-only PASS** from `/tmp/s22-widget-next.KeotoV`. That check created
+no session or diagnostic execution. No subsequent fresh-frame selection was
+reported. Do not repeat this preflight or ask for another frame while fixing
+the structural coupling.
+
+Source and the preserved `f57lg` snapshot confirm that the 30-minute anonymous
+session was selected **before** the deployment/approval/readiness chain. A fresh
+SID then required another Terraform binding update. This is a test-authorization
+timing defect, not new evidence of provider failure or recurrence of the corrected
+gateway 403. The previous replacement-only preparation packet is superseded;
+its prepared timestamp/images cannot describe this new runtime source.
+
+The owner now approved **implementation and local testing** of authenticated,
+audited post-deployment selection. No apply or additional paid call is authorized.
+The [binding design](s22-widget-cohort-binding.md) records exact authority,
+concurrency, irreversible consumption, expiry and monetary boundaries. Local
+verification on 2026-10-09 now includes **188/188 deterministic tests PASS**, four
+changed package builds, source-aware root/API/Worker/Web TypeScript and a
+production Web build **PASS**. Five real PostgreSQL 17 cases are authored but
+not yet executed: the installed local server is major 18 and Docker was
+unavailable; the canonical major-version safeguard was not bypassed. Scoped
+lint/format checks and final touched-file/build/TypeScript rechecks pass; PR 17
+CI remains pending at this local checkpoint. Local memory/tool invocation failures are
+recorded in the binding design, not represented as live product failures.
+Live selection, dispatch and complete Website Chat booking proof remain pending. Historical
+NULL costs and the visible budget-only exception remain unchanged. **S22 is
+unaccepted.**
+
 ## 2026-10-08 — Replacement session/binding preparation approved; tools ready
 
 The owner explicitly approved **preparing one replacement session and binding,
