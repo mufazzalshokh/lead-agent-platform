@@ -521,8 +521,10 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
         kind: "appointment_requested",
         missing: [],
       });
-      expect(await lastReply(harness)).toContain("19-09-2026 soat 17:00 uchun so'rov qoldirildi");
-      expect(await lastReply(harness)).not.toMatch(
+      const reply = await lastReply(harness);
+      expect(reply).toContain("19-09-2026 soat 17:00 uchun so'rov");
+      expect(reply).toContain("Xodim ko'rib chiqqach shu yerda xabar beramiz.");
+      expect(reply).not.toMatch(
         /telefon|tasdiqlandi|yozildingiz|bo'sh|confirmed|reserved|booked|\?/u,
       );
       expect(await submissionCounts(harness)).toMatchObject({

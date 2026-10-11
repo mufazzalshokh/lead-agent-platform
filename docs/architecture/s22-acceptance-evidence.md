@@ -3,6 +3,31 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Wording rollout preparation: stale integration assertion corrected
+
+The owner authorized **"Prepare the wording rollout plan."**, not deployment or
+another paid message. Source CI **38126415120** for `9e0e6a1` failed one
+PostgreSQL integration assertion that hardcoded the previous passive request
+sentence. Actual output contained the intended new request acknowledgment;
+ordinary tests were **3564 PASS / 7 skipped**, and the first stateful suite was
+**460 PASS / 1 FAIL**. This is a verified stale wording assertion, not evidence
+of a new transport or booking-state failure. No image build or plan was dispatched
+from that failed source.
+
+The affected assertion in `tests/database/ai-orchestration.test-suite.ts` now
+checks the same exact local date/time and request stem, requires the staff-review
+notice and retains all prohibited-confirmation/availability checks. Persisted
+request/preference/transition/outbox/audit/task counts, requested state, UTC
+preference, policy/source provenance, lead state and no-phone assertions are
+unchanged. No application implementation or provider behavior changes in this
+follow-up. Its isolated stateful run must pass in fresh CI before building.
+Local Docker checks found no running engine; no local PostgreSQL pass is claimed,
+and Docker/Desktop or a database was not started as a workaround.
+
+Follow-up local checks PASS: root `tsc --noEmit`, focused wording suite **20/20**,
+ESLint for the changed integration suite, scoped Prettier and `git diff --check`.
+These do not substitute for the pending isolated PostgreSQL execution.
+
 ## 2026-10-11 - First Widget reply observed; shared wording correction verified locally
 
 **Observation:** the owner reported receipt of the first real reply in selected
