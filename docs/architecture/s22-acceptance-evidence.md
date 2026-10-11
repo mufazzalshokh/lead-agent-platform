@@ -44,10 +44,74 @@ node node_modules/eslint/bin/eslint.js .github/scripts/s22-widget-attempt.mjs .g
 node node_modules/prettier/bin/prettier.cjs --check .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt-readonly.mjs .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs .github/workflows/staging-terraform.yml
 ```
 
-**Live collection pending at this preparation checkpoint.** Collection PASS would
-not itself mean a confirmed booking, independent customer delivery receipt or
-cost reconciliation. Do not rerun a failed/uncertain execution blindly, select a
-new chat or resend. The reviewed booking/request accounting boundary is unchanged.
+### Live read blocked before any database execution
+
+Verified tooling milestone **`9a2361965c067b62710b6b74adca306146dd91d9`** was committed,
+pushed and matched the remote branch. Exactly one read-only workflow
+[38130210876](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38130210876)
+ran **09:57:32–09:57:54 UTC** and failed at the read step, with preserved artifact
+**11698778454**, `s22-widget-progress-38130210876`. Plaintext SHA256:
+`04ff82216b1cf3a80daf8278553db9899a8c116c07d104ecc67043571ad09a38`.
+The sanitized result is **BLOCKED: CLOUD_READ_PERMISSION_UNAVAILABLE**; no
+execution ID or database assertion exists. The launcher checks cloud/log access
+before dispatch, so **no database execution, message, provider call, session
+mutation, migration or job-configuration change was initiated**. Terraform,
+older Instagram booking evidence and acceptance inventory jobs were skipped.
+The workflow was not rerun, and IAM was not broadened.
+
+This receipt does not independently identify whether the denied REST read was
+Worker metadata or Logging; it must not be mislabeled a booking/provider failure.
+Previously observed deployer Logging denial and the absence of permanent
+`roles/logging.viewer` are consistent with an access blocker, not authorization
+to add that role. Current booking state, provider usage and costs remain unread.
+Tooling-source [CI 38130192043 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38130192043)
+subsequently completed for exact `9a23619`, including clean-checkout
+`pnpm ci:verify`. This is separate from the local **169/169** native-Node evidence
+tests and scoped lint/format/whitespace checks. CI success does not grant cloud
+log access or supply the missing live database assertions.
+
+Historical dispatch/receipt commands (not instructions to repeat the failed run):
+
+```text
+gh workflow run staging-terraform.yml --repo mufazzalshokh/lead-agent-platform --ref verify/s22-staging-recovery-capacity -f action=plan -f phase=widget-evidence -f commit_sha=9a2361965c067b62710b6b74adca306146dd91d9
+gh run download 38130210876 --repo mufazzalshokh/lead-agent-platform --name s22-widget-progress-38130210876 --dir .cache/s22-widget-progress/38130210876
+gh run view 38130192043 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,headSha
+```
+
+**Next safe step requires the owner's existing Cloud Shell authentication.**
+Run the following once in that terminal and supply only its sanitized output.
+This verifies five pinned public files before executing the same bounded reader;
+it is not a re-run of an existing database job (none was created), a new chat,
+paid approval or Send. Native Git Bash `bash -n` checked the prepared command;
+the pinned public wrapper download returned HTTP 200. The exact documented Bash
+block also passed a syntax-only check and independent comparison of all five
+SHA256 values against the pinned Git blobs. This owner-authenticated
+path has not been executed by Codex. Do not reload the frame or resend.
+
+```bash
+(
+  set -euo pipefail
+  trace_dir=$(mktemp -d /tmp/s22-widget-progress.XXXXXX)
+  trace_source=9a2361965c067b62710b6b74adca306146dd91d9
+  for trace_file in s22-widget-progress.mjs s22-widget-attempt.mjs s22-widget-attempt-readonly.mjs s22-widget-readiness.mjs s22-widget-readiness-readonly.mjs; do
+    curl -fsS --connect-timeout 5 --max-time 20 "https://raw.githubusercontent.com/mufazzalshokh/lead-agent-platform/$trace_source/.github/scripts/$trace_file" -o "$trace_dir/$trace_file"
+  done
+  cd "$trace_dir"
+  printf '%s\n' \
+    '0efee08a14a54fa8b119aac140d260ba552b482121c1044c88c58751ea7f704d  s22-widget-progress.mjs' \
+    '80b32a8916e14e6506c58dff8dc574d89c6bdf671e989fbae6e7a79e42c1e617  s22-widget-attempt.mjs' \
+    '92105e586f219ff261b4240c38997b7849b95270e89684188d3ed3cb472f3323  s22-widget-attempt-readonly.mjs' \
+    'dea200cfcc6401071742c2115de0d0d35aef400305b9cf51aaaf3745e4099fd8  s22-widget-readiness.mjs' \
+    '7b45ff56c9bdf468a8ac7ace4159360f54428b818bb88140560567e4cd43a971  s22-widget-readiness-readonly.mjs' \
+    | sha256sum --check
+  printf 'TOOLING_DIRECTORY=%s\n' "$trace_dir"
+  node s22-widget-progress.mjs
+)
+```
+
+Collection PASS would not itself mean a confirmed booking, independent customer
+delivery receipt or historical cost reconciliation. Do not rerun a failed/uncertain
+execution blindly, select a new chat or resend. **S22 remains unaccepted.**
 
 ## 2026-10-11 - Wording release exact saved plan applied and runtime verified
 
