@@ -3,6 +3,108 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Website Chat arrow blocked before the send handler
+
+**Status: cause confirmed in the owner's browser and reproduced locally;
+local correction and verification PASS, not deployed.**
+
+Observations and authority:
+
+- The owner selected `01a129bc-8c45-7b0c-ba6c-183fc784f760`, opened at
+  11:53 Asia/Tashkent, idle deadline 12:23, absolute expiry 13:53. The staff
+  screenshot reported budget ready, known cost USD0.008714, reserved exposure
+  USD1.042110 and pending reserve USD0.000000. This is a screenshot snapshot,
+  not a later database read or reconciled historical accounting.
+- The owner explicitly approved this selected session's bounded booking test:
+  two total customer messages including confirmation, four provider attempts,
+  maximum two per message, no budget increase. The owner then reported multiple
+  arrow clicks with the draft still present and no visible change. Further Send,
+  reload and replacement were stopped; no additional customer action was requested.
+- The owner supplied the exact browser error: `Blocked form submission to ''
+  because the form's frame is sandboxed and the 'allow-forms' permission is not set.`
+  This establishes the failed browser boundary, not an AI rejection or delivery
+  failure. It does not independently establish the whole session's database ledger.
+- Local HEAD before correction was `c7e4bf8beda8b31c2592dbc2a4e896278eab784a`.
+  `widget-embed.ts` had no changes relative to last verified deployed source
+  `c687dcfb82da64a26d981d793d1611d44c49c593`. Prior exact runtime/migration proof
+  remains recorded below; no fresh runtime descriptors were collected this turn.
+
+Mechanism and distinguishing evidence:
+
+1. **Confirmed: native form submission blocked by the sandbox.** Loader grants
+   only `allow-scripts allow-same-origin`. The arrow was `type="submit"` and
+   relied on the form's submit event; browser sandbox checks prevent that event.
+   Enter instead calls the JavaScript sender directly. A real headless Edge
+   fixture executing the generated document with the same sandbox and
+   `form-action 'none'` reproduced three arrow clicks, zero mocked API sends,
+   unchanged draft and zero customer bubbles. The first failed assertion was
+   expected sends 1 / actual 0. After correction that same fixture passed.
+2. **Confirmed layout defect:** textarea stayed 44px high, with 112px content
+   height and browser-default monospace. Its CSS maximum did not make it grow.
+3. Expired session, network failure and provider rejection predict a dispatched
+   request or the handler's failure/expiry state, rather than this browser error.
+   They are not needed to explain these clicks. They remain independently guarded;
+   no absence of historical provider activity is inferred from local mocks.
+
+Last confirmed successful boundary: owner-visible fresh frame and selected-session
+readiness. First confirmed failed boundary: arrow activation to JavaScript send
+handler. The intended downstream path remains Widget POST -> tenant/session
+authorization -> transactional message/conversation persistence and outbox ->
+Worker/policy -> reply or handoff -> channel delivery -> staff projection. No
+downstream success is inferred for this attempt.
+
+Small correction: explicit `type="button"` and click listener reuse the existing
+sender; a synchronous in-flight guard protects click/Enter/retry concurrency;
+expired controls stay disabled; composition Enter remains editing. Composer uses
+inherited readable 16px text, grows from 52px to 160px, then scrolls, resets after
+Send and fits narrow screens. Sandbox/CSP, endpoint/body/IDs, idempotency keys,
+session lifetimes, tenant routing, budget and booking policy are unchanged. No
+migration, dependency, staging diagnostic, provider call or deployment ran.
+
+Regression protection: ordinary generated-client tests cover arrow/Enter,
+concurrent activation, IME/Shift+Enter, pre-redemption and expiry. The opt-in
+`scripts/test/widget-browser.test.mjs` exercises actual browser default actions,
+phone layout and same-ID/key retry with synthetic APIs only; it is not live
+provider evidence or a full cross-origin embedding test. An initial separate-origin
+dump-DOM harness did not report reliably; the final same-origin sandbox fixture
+tests form restrictions without weakening them. Browser startup timeouts under
+concurrent local checks were tooling failures, not passing application checks.
+
+Completed verification (repository root unless noted):
+
+```text
+node node_modules/vitest/vitest.mjs run apps/web/src/lib/widget-embed.test.ts apps/web/src/lib/widget-frame.test.ts apps/web/src/lib/product-ux.test.ts apps/web/src/lib/api-gateway.test.ts --maxWorkers=1
+  PASS: 124/124; 20 client, 26 frame, 16 UX, 62 gateway tests.
+node node_modules/vitest/vitest.mjs run apps/web/src/lib/widget-embed.test.ts --maxWorkers=1
+  PASS: 20/20 after final typed test-body refinement.
+node --test scripts/test/widget-browser.test.mjs
+  PASS: 5/5 with S22_BROWSER_EXECUTABLE set to local headless Edge.
+node node_modules/typescript/bin/tsc -p apps/web/tsconfig.typecheck.json --noEmit
+  PASS.
+node node_modules/eslint/bin/eslint.js apps/web/src/lib/widget-embed.ts apps/web/src/lib/widget-embed.test.ts scripts/test/widget-browser.test.mjs --max-warnings=0
+  PASS after replacing an unsafe test-only body stringification with a type guard.
+node node_modules/prettier/bin/prettier.cjs --check apps/web/src/lib/widget-embed.ts apps/web/src/lib/widget-embed.test.ts scripts/test/widget-browser.test.mjs
+  PASS.
+node scripts/check-boundaries.mjs
+  PASS: 327 source files.
+node node_modules/next/dist/bin/next build
+  PASS from apps/web, including TypeScript and route generation.
+```
+
+The ordinary client regressions run in existing CI; the real-browser check is
+opt-in and uses no new dependency. Database/provider integrations were not rerun
+for this browser-only change. The original tests exercised mocked DOM events and
+frame setup, not a native arrow activation under an actual browser sandbox; this
+coverage gap allowed the defect through. Related Widget native-form handling was
+inspected; only the composer depended on that blocked event. The loader's existing
+host-side grant handoff is unchanged.
+
+Remaining: obtain a new reviewed rollout approval, verify the exact deployed
+revision, then perform the
+separately gated live booking journey. Do not renew this session or silently
+transfer its paid authorization. Historical NULL costs stay unknown; S22 remains
+unaccepted. The earlier copy-button correction is still undeployed.
+
 ## 2026-10-11 - Installation code copy feedback verified locally
 
 **Status: PASS for local implementation; not deployed.** The owner reported that

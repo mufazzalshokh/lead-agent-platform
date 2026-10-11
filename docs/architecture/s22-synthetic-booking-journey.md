@@ -1,5 +1,32 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Latest checkpoint - native arrow submission blocked by sandbox, 2026-10-11
+
+The owner selected the fresh 11:53 Asia/Tashkent session
+`01a129bc-8c45-7b0c-ba6c-183fc784f760` and approved its bounded booking test:
+two customer messages including confirmation, four provider attempts, maximum
+two per message, no budget increase. Multiple arrow clicks left the draft visible.
+The owner's browser explicitly reported blocked form submission because the
+sandbox lacks `allow-forms`. The generated client's submit-type arrow relied on
+an event the sandbox prevents; Enter had a separate direct JavaScript path.
+
+The same failure was reproduced in real local Chromium: three clicks, zero mocked
+sends, unchanged draft. The focused correction directly connects the button to
+the existing sender, preserves sandbox/CSP, prevents concurrent sends and makes
+the composer grow with its text. Local verification: 124 focused cases, 5 actual
+browser scenarios, type/lint/format/boundaries and production Web build PASS.
+Full observations, rejected alternatives, commands and proof limits are in the
+[evidence register](s22-acceptance-evidence.md#2026-10-11---website-chat-arrow-blocked-before-the-send-handler).
+
+**Not deployed. No more Send, reload, new frame or replacement selection now.**
+Next safe milestone is one reviewed correction rollout, also carrying the already
+requested and locally verified copy-button feedback. Existing consumed deployment
+plans cannot apply this changed source. Do not create a session before rollout or
+silently transfer the session-specific paid approval. A later real booking journey
+still needs exact deployed-revision, eligibility, delivery, confirmation and
+accounting evidence. No extra diagnostic/model call, budget change or migration
+was performed. Historical NULL costs remain unknown; S22 remains unaccepted.
+
 ## Latest checkpoint - selection UI deployed and runtime verified, 2026-10-10
 
 The exact owner-approved plan **37954005150** is applied: **37987684500 PASS**,

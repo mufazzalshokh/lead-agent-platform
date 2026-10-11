@@ -99,6 +99,8 @@ type FrameSession = Readonly<{
   instance: string;
   close: Element;
   input: Element;
+  send: Element;
+  status: Element;
   timers: Map<number, () => void>;
 }>;
 
@@ -107,6 +109,7 @@ type SetupOptions = Readonly<{
   grantFailure?: "http" | "malformed" | "network";
   redeem?: "success" | "failure" | "pending";
   submitFailures?: number;
+  messageResponse?: "success" | "expired";
 }>;
 
 const settle = async (): Promise<void> => {
@@ -131,6 +134,7 @@ const setup = (options: SetupOptions = {}) => {
   const listeners: Handler[] = [];
   const sessions: FrameSession[] = [];
   const requests: { realm: "host" | "frame"; path: string }[] = [];
+  const messageRequests: RequestInit[] = [];
   const posts: { type: string; target: string; keys: string[] }[] = [];
   let grantRequests = 0;
   let redeemRequests = 0;
@@ -178,7 +182,15 @@ const setup = (options: SetupOptions = {}) => {
     };
     const timers = new Map<number, () => void>();
     let timerSequence = 0;
-    sessions.push({ element, instance, close: node("close"), input: node("input"), timers });
+    sessions.push({
+      element,
+      instance,
+      close: node("close"),
+      input: node("input"),
+      send: node("send"),
+      status: node("status"),
+      timers,
+    });
     runInNewContext(
       generated,
       {
@@ -201,9 +213,27 @@ const setup = (options: SetupOptions = {}) => {
             dispatchMessage({ source: element.contentWindow, origin: API, data });
           },
         },
-        fetch: async (url: string) => {
+        fetch: async (url: string, init?: RequestInit) => {
           const path = new URL(url).pathname;
           requests.push({ realm: "frame", path });
+          if (options.messageResponse !== undefined && path === "/v1/widget/conversations") {
+            messageRequests.push(init ?? {});
+            if (options.messageResponse === "expired")
+              return response({ code: "token_invalid" }, 401);
+            return response(
+              {
+                data: {
+                  bearer_token: "synthetic-bound-bearer",
+                  expires_at: new Date(Date.now() + 60_000).toISOString(),
+                  conversation: { id: "synthetic-conversation" },
+                  message: { id: "synthetic-message", sequence_no: 1 },
+                },
+              },
+              201,
+            );
+          }
+          if (options.messageResponse !== undefined && path.endsWith("/messages"))
+            return response({ data: [] });
           if (path !== "/v1/widget/embed-sessions/redeem") {
             throw new TypeError("Unexpected synthetic message/provider dispatch");
           }
@@ -303,6 +333,7 @@ const setup = (options: SetupOptions = {}) => {
     sessions,
     posts,
     requests,
+    messageRequests,
     liveFrames,
     latest,
     mount,
@@ -340,6 +371,67 @@ const setup = (options: SetupOptions = {}) => {
 };
 
 describe("generated Widget loader/frame handshake and lifecycle", () => {
+  it("routes arrow clicks directly to one send and blocks concurrent click/Enter dispatch", async () => {
+    const state = setup({ messageResponse: "success" });
+    await state.click();
+    const frame = state.latest();
+    frame.input.value = "Synthetic consultation question";
+    frame.input.dispatch("input");
+    frame.send.dispatch("click");
+    frame.input.value = "Do not dispatch a second request while the first is pending";
+    frame.input.dispatch("input");
+    frame.send.dispatch("click");
+    frame.input.dispatch("keydown", { key: "Enter", preventDefault() {} });
+    expect(frame.send.disabled).toBe(true);
+    expect(frame.send.attributes["aria-busy"]).toBe("true");
+    await settle();
+    expect(state.messageRequests).toHaveLength(1);
+    const body = state.messageRequests[0]?.body;
+    if (typeof body !== "string") throw new TypeError("Expected synthetic JSON request body");
+    expect(JSON.parse(body)).toMatchObject({
+      text: "Synthetic consultation question",
+    });
+    expect(frame.send.attributes["aria-busy"]).toBe("false");
+    expect(frame.input.value).toContain("Do not dispatch");
+  });
+
+  it("keeps Shift+Enter and composition Enter as editing, and regular Enter sends", async () => {
+    const state = setup({ messageResponse: "success" });
+    await state.click();
+    const frame = state.latest();
+    frame.input.value = "Synthetic multilingual draft";
+    frame.input.dispatch("input");
+    frame.input.dispatch("keydown", { key: "Enter", shiftKey: true });
+    frame.input.dispatch("keydown", { key: "Enter", isComposing: true });
+    expect(state.messageRequests).toHaveLength(0);
+    frame.input.dispatch("keydown", { key: "Enter", preventDefault() {} });
+    await settle();
+    expect(state.messageRequests).toHaveLength(1);
+    expect(frame.input.value).toBe("");
+    expect(frame.input.style["height"]).toBe("52px");
+  });
+
+  it("does not send before redemption or re-enable Send after an expired response", async () => {
+    const state = setup({ messageResponse: "expired", redeem: "pending" });
+    await state.click();
+    const frame = state.latest();
+    frame.input.value = "Synthetic question";
+    frame.input.dispatch("input");
+    frame.send.dispatch("click");
+    expect(state.messageRequests).toHaveLength(0);
+    await state.completeRedeem();
+    frame.input.dispatch("input");
+    frame.send.dispatch("click");
+    await settle();
+    frame.input.value = "Do not send after expiry";
+    frame.input.dispatch("input");
+    frame.send.dispatch("click");
+    expect(state.messageRequests).toHaveLength(1);
+    expect(frame.send.disabled).toBe(true);
+    expect(frame.input.disabled).toBe(true);
+    expect(state.posts.at(-1)?.type).toBe("EXPIRED");
+  });
+
   it.each([undefined, "Talk to the synthetic clinic"])(
     "restores label %s after the exact frame READY and CLOSE, then reuses that session",
     async (label) => {
