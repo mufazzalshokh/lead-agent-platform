@@ -3,6 +3,50 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Exact Send correction plan applied; live runtime verified
+
+The owner approved **"Apply plan 38121689049 only."** One apply
+**38122198305 PASS**, completed `2026-10-11T07:42:11Z`, consumed the exact
+saved plan with SHA256
+`7e17a4da491de83471b56e23cca2a217b53d8111bb3aefbaf02f1392ec115eee`.
+The freshly downloaded binary matched before dispatch, with no intervening
+staging apply. Runtime source remains `084cb5a`; dispatch HEAD `0a58414` adds
+only the approval documentation. Actual Terraform result: **0 creates / 4
+in-place updates / 0 destroys / 0 replacements**. Integrity, exact approval and
+all 88 managed configuration checks passed. No new plan or migrator executed.
+
+One read-only **api-image-verify 38122313367 PASS**, completed
+`2026-10-11T07:44:00Z`, yielded authenticated sanitized artifact
+**11695452839**, `s22-api-image-live-evidence-38122313367`.
+Independent download asserted **16/16 PASS**, no FAIL rows and final
+`api_image_live_verification=PASS failures=0`. API/Web exact images and ready
+revisions, API source/timestamp/migration provenance, identity, private VPC/subnet,
+egress, 15 secret references and whole-runtime convergence **exit 0** passed.
+Ready revisions: **lead-agent-staging-api-00030-rr8** and
+**lead-agent-staging-web-00026-gp8**. Worker/Migrator desired bindings are covered
+by refreshed convergence, not separate direct ready-revision reads.
+
+Public API health reports `api` / `ok`. The live Widget loader exactly matches
+reviewed source, SHA256
+`9174e16a48d3bb1620d20e8854a774f78daac22d5d917b8ea7744cc2f7eaea0a`, with the
+existing sandbox. The staff entry's eight public scripts contain the Copied
+feedback and clipboard handler in one bundle. This confirms served assets, not
+authenticated clipboard behavior or real customer Send. No grant/frame/session,
+customer message or paid model endpoint was called. One local Node Web connect
+timeout was resolved by a bounded IPv4 curl read. The first verification dispatch
+returned HTTP 422 because a local helper dropped stdin; that request created no
+run. Correcting stdin forwarding produced the single successful verification.
+
+The [applied packet](s22-widget-send-rollout-plan.md) retains exact references,
+inputs, verification and proof limits. This milestone changes only three S22
+evidence documents; existing source/browser regressions were reused. No budget,
+ledger, session selection, secret/IAM, database or migration change. The prior
+test session's recorded idle deadline passed before rollout completion; no fresh
+database session eligibility read or paid authority transfer is implied.
+Next acceptance item: prepare one fresh eligible owner-confirmed Widget session,
+then obtain its bounded paid approval and verify the real booking journey.
+Historical NULL costs remain unknown; **S22 remains unaccepted**.
+
 ## 2026-10-11 - Send correction rollout plan prepared and independently reviewed
 
 The owner authorized rollout preparation only. Exact source `084cb5a` has

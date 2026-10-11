@@ -1,5 +1,25 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Latest checkpoint - Send correction applied and runtime verified, 2026-10-11
+
+The owner's **"Apply plan 38121689049 only"** approval is fulfilled:
+**apply 38122198305 PASS**, **read-only verification 38122313367 PASS**.
+Runtime source `084cb5a`, all reviewed images and deployment timestamp
+`2026-10-11T07:31:30Z` are retained in the
+[applied packet](s22-widget-send-rollout-plan.md). All four updates completed;
+16 live checks and whole-runtime convergence **exit 0** passed. API ready
+revision **lead-agent-staging-api-00030-rr8**, Web
+**lead-agent-staging-web-00026-gp8**. The public loader matches source and the
+served staff bundle contains Copied feedback. Real customer Send/composer and
+booking behavior remain unverified on this deployment.
+
+No migration, diagnostic, new chat, selection, customer/model call, budget change
+or ledger reset ran. The saved plan is consumed; do not reapply it. The previous
+session's recorded idle deadline passed before deployment completed, and its paid
+approval is not transferred. **Next: prepare one fresh eligible, owner-confirmed
+test session, then separately approve and verify its bounded booking journey.**
+Historical NULL costs remain unknown; S22 remains unaccepted.
+
 ## Latest checkpoint - Send correction rollout ready for approval, 2026-10-11
 
 The owner approved preparation, not deployment. Source `084cb5a` has completed

@@ -1,12 +1,53 @@
 # S22 Website Chat send correction rollout approval
 
-Prepared 2026-10-11, Asia/Tashkent. **READY FOR EXACT PLAN APPROVAL; NOT APPLIED.**
+Prepared and applied 2026-10-11, Asia/Tashkent. **APPLY AND LIVE RUNTIME
+VERIFICATION PASS; SAVED PLAN CONSUMED.**
 
 Plan **38121689049** packages the confirmed Send-button correction, the larger
 auto-growing composer, and the previously requested installation-code **Copied!**
-feedback. Approving this plan permits only its saved four-workload update. It does
+feedback. The owner's exact approval permitted its saved four-workload update. It does
 not authorize a migration, another chat session, a customer message, or a paid AI
 call. Historical NULL costs remain unknown; S22 remains unaccepted.
+
+## Applied result
+
+The owner approved **"Apply plan 38121689049 only."** Single apply
+[38122198305 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38122198305)
+completed `2026-10-11T07:42:11Z`. The artifact was freshly downloaded and its
+binary checksum matched the approved value before dispatch. Workflow history
+showed no intervening apply. Dispatch HEAD `0a58414` contains only the approval
+documentation after runtime source `084cb5a`; workflow, tooling and infrastructure
+were unchanged. Actual result: **0 added / 4 changed / 0 destroyed**, with
+**0 replacements** and the full-runtime configuration guard passing. Plan
+creation and one-shot migrator execution were skipped.
+
+Single read-only verification
+[38122313367 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38122313367)
+completed `2026-10-11T07:44:00Z`. Authenticated sanitized artifact
+`11695452839`, `s22-api-image-live-evidence-38122313367`, independently collected
+**16/16 PASS**: exact API source/image/timestamp/migration provenance, API/Web
+images and ready revisions, API identity/private VPC/subnet/egress, 15 secret
+references and whole-runtime Terraform convergence **exit 0**. Ready revisions:
+**lead-agent-staging-api-00030-rr8** and **lead-agent-staging-web-00026-gp8**.
+Worker/Migrator desired bindings are covered by refreshed whole-runtime
+convergence rather than separate direct revision assertions. The verification
+created no saved deployment plan, apply, database diagnostic or migration.
+
+Public reads confirmed API `/health` reports `api` / `ok`; the served loader
+exactly equals the reviewed `buildWidgetLoader` output, SHA256
+`9174e16a48d3bb1620d20e8854a774f78daac22d5d917b8ea7744cc2f7eaea0a`.
+Its sandbox remains `allow-scripts allow-same-origin`. Reading the staff entry
+and its eight public script assets found the Copied feedback and clipboard
+handler in exactly one bundle. These are public asset checks, not authenticated
+clipboard interaction or a rendered real customer frame. No grant/frame/session,
+message or model endpoint was called. The local Node Web connection timed out;
+one bounded IPv4 curl alternative completed these Web checks.
+
+No customer test authority was transferred. The previous selected session's
+recorded idle deadline was 12:23 Asia/Tashkent; deployment completed at 12:42.
+Current database eligibility was not reread. The next acceptance item is one
+fresh eligible, owner-confirmed Website Chat booking journey, with separate
+session-specific paid approval before Send and unchanged budget limits.
 
 ## Change and scope
 
@@ -85,7 +126,7 @@ Refresh recorded Artifact Registry `update_time` and Cloud SQL
 classifies both as **computed-only**; both resources have planned action `no-op`.
 They are not extra updates or configurable drift.
 
-`Create reviewed plan`, `Verify full runtime plan safety` and `Upload exact reviewed
+During plan preparation, `Create reviewed plan`, `Verify full runtime plan safety` and `Upload exact reviewed
 plan` passed. `Apply exact reviewed plan` and `Execute one-shot migrator` were
 **SKIPPED**; booking evidence and inventory jobs were also skipped. There was no
 database diagnostic, session mutation or paid customer execution.
@@ -130,12 +171,12 @@ live customer message persistence, provider completion, booking confirmation,
 delivery or exact historical accounting. No new application tests or migrations
 were added in this plan-preparation milestone.
 
-## Exact inputs for a future approved apply
+## Recorded inputs for the approved apply
 
 Workflow `staging-terraform.yml`, ref `verify/s22-staging-recovery-capacity`.
-The approval acknowledgement is deliberately absent. Supply it only after the
-owner explicitly approves this exact saved plan. Do not rebuild, replan or reuse
-an older consumed plan in place of this artifact.
+The approval acknowledgement is deliberately absent from this recorded packet.
+It was supplied to the apply only after the owner's exact approval. The saved
+plan is consumed; these inputs are retained as evidence and must not be rerun.
 
 ```json
 {
@@ -158,13 +199,14 @@ an older consumed plan in place of this artifact.
 
 ## Approval and next step
 
-At review, this plan was the newest staging workflow, with no active or intervening
-apply. Before an approved dispatch, recheck artifact availability/checksum and
-workflow history. Preserve Terraform's state lock and stale-plan lineage/serial
-guard. If state changed, stop; approval does not extend to a replacement plan.
+The exact owner approval has been fulfilled and the runtime verification passed.
+Artifact checksum and workflow history were checked before dispatch; Terraform's
+state lock and stale-plan lineage/serial guard remained enabled. No replacement
+plan or rebuild was made. Do not apply this consumed plan again.
 
-The owner's next action is **"Apply plan 38121689049 only."** After an approved
-apply, verify the exact runtime revision before any separately authorized fresh
-frame or customer action. Do not prepare a session while deployment is pending.
-If post-deployment checks fail, stop customer testing; rollback requires a newly
-reviewed plan rather than reapplying an old consumed artifact.
+Next: prepare one fresh eligible test session and confirm its exact owner
+selection before a separately approved bounded booking journey. Source tests,
+deployment and runtime readiness do not replace customer Send, persistence,
+reply, staff acceptance, customer confirmation and delivery evidence. If those
+checks fail, trace the first failed boundary before another attempt. Rollback
+would require a newly reviewed plan.
