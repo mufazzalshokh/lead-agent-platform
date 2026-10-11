@@ -6478,3 +6478,34 @@ question does not independently establish the live persisted request/run state.
 The remaining customer message cannot be used as a style/date retry under an
 approval reserving it for confirmation after an actual staff offer.
 **S22 remains unaccepted.**
+
+## 2026-10-11 - Exact named-date and copy-label rollout prepared
+
+The correction was committed/pushed as
+`1a910f097709a0e20b8d153bf482f470e1d631be`. Its
+[CI 38164821614](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38164821614)
+passed the full `pnpm ci:verify` gate: **4,200 tests**, including **542 actual
+PostgreSQL tests**, seven opt-in skips, types/lint/format, boundaries, canonical
+contracts and production builds. This replaces the preceding local-only CI
+boundary, not the live acceptance boundary.
+
+One consolidated [exact rollout packet](s22-widget-date-rollout-plan.md) now
+binds successful image build **38165559088** to saved plan **38165971091**.
+It includes the already verified copy-label correction without a separate UI
+deployment. Saved binary SHA256:
+`d8cfd8ba5311f5a74becc895562e51271f9f7f036ac054f7c0081f7f913e4a45`.
+Workflow and separate installed-provider inspection passed **88/88** managed
+configurations: **0 creates / 4 in-place updates / 0 destroys / 0 replacements**.
+The plan's 15 preparation steps passed, 126 steps and all three evidence jobs
+were skipped. Guard regressions passed **16/16**.
+
+**PREPARED ONLY; NOT APPLIED; NO SEND.** Runtime remains `2055ab2`.
+Existing binding, session selection, caps, unknown historical costs, security,
+private networking, zero job retries and migration head `0032_s22_widget_recovery`
+are unchanged. No session creation/renewal/recovery, selection, database/job
+execution, replay, customer message, provider-test call, IAM change or budget
+increase was initiated. Previously delivered prose is not rewritten; the current
+request/attempt/accounting state has not been independently collected here.
+The old snapshot must not be reported as a refreshed balance after the current
+first-message response. The preserved last-turn/actual-offer restriction still
+applies. **S22 remains unaccepted.**
