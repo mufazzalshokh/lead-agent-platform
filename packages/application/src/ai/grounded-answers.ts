@@ -3,6 +3,7 @@ import { createAIOrchestrator } from "./orchestrate.js";
 import { aiFallback, evaluateAIDecision } from "./policy.js";
 import { groundingLocale, groundingNeeds, groundingPreflight } from "./grounding-query.js";
 import type { AIContextSnapshot, AIFallbackReason, AIOutcome } from "./ports.js";
+import { initialGroundingGreeting, renderGroundedFacts } from "./grounded-wording.js";
 
 export const GROUNDED_ANSWER_PROMPT_VERSION = "s14-grounded-answers.v1";
 export type GroundedAnswerResult =
@@ -66,7 +67,9 @@ export const evaluateGroundedDecision = (
     )
   )
     return aiFallback("grounding_insufficient");
-  const text = facts.map((entry) => entry.text).join("\n");
+  const text = [initialGroundingGreeting(snapshot, locale), renderGroundedFacts(facts, locale)]
+    .filter(Boolean)
+    .join(" ");
   if (
     text.length === 0 ||
     new TextEncoder().encode(text).length > 1_000 ||

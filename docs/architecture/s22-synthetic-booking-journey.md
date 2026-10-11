@@ -1,5 +1,38 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Latest checkpoint - first reply received; wording verified locally, 2026-10-11
+
+The owner's real Widget screenshot shows receipt of the first price/duration
+answer and booking-request acknowledgment in selected session
+`01a12a04-d2ae-7cba-aded-0c48a410be0c`. The prior "Send once" step below has
+therefore advanced; **do not send that request again to test style**. Persisted
+booking, delivery/provider trace, post-Send accounting, staff offer and customer
+confirmation still need evidence. The pre-Send cost/activity snapshot is not a
+current balance or session eligibility reading.
+
+Repeated name/price text comes from deterministic fact/template composition,
+not an established model-generation defect. The shared application renderer now
+combines the same service's approved price/duration, preserves pricing conditions
+and the synthetic-test notice, and uses a brief initial greeting plus a separate
+staff-review acknowledgment. Raw model prose is still rejected; references,
+money, safety, tenant and booking policy are unchanged. This covers the shared
+Widget/Instagram path without channel-specific business logic.
+
+Local checks: new wording **20/20 PASS**; broader AI/mock-evals **807 PASS /
+7 skipped** (overlapping counts); root TypeScript, application build, scoped
+lint/format, **328-file** boundary check, **378-contract** snapshot and whitespace
+check PASS. The [evidence register](s22-acceptance-evidence.md#2026-10-11---first-widget-reply-observed-shared-wording-correction-verified-locally)
+contains the reproduced cause, example, exact commands and proof limits.
+
+**Not deployed:** runtime remains verified source `1210c25`. No paid test,
+diagnostic job, new session, budget increase, prompt/model or migration change
+ran for this correction. A release changes future replies, not the delivered
+message already shown. **Next: prepare one wording-rollout plan**, preserving the
+existing session-specific two-message/four-attempt approval and stop guards.
+Do not use its remaining confirmation message for a style retry. Real booking
+acceptance/accounting and fluent live-style review remain pending; historical
+NULL costs remain unknown. **S22 remains unaccepted.**
+
 ## Latest checkpoint - copy icon deployed; selected booking test approved, 2026-10-11
 
 Runtime source **1210c25**, timestamp **2026-10-11T08:15:07Z**; source CI

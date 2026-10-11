@@ -12,6 +12,7 @@ import type {
   LeadId,
   LocationId,
   ServiceId,
+  ServicePriceType,
   ResourceId,
   PublishedBusinessKnowledgeV2,
 } from "@lead-agent/contracts";
@@ -45,11 +46,35 @@ export type AIProviderResult = AIProviderMetadata &
       }>
   );
 export type GroundingNeed = "price" | "hours" | "duration" | "location" | "service" | "faq";
+/** Derived only from validated published records, never from a model draft. */
+export type GroundingPresentation =
+  | Readonly<{
+      kind: "price";
+      locale: Locale;
+      serviceId: ServiceId;
+      name: string;
+      value: string;
+      priceType: ServicePriceType;
+      qualifier: string;
+      duplicateHeaders: readonly string[];
+    }>
+  | Readonly<{
+      kind: "duration";
+      locale: Locale;
+      serviceId: ServiceId;
+      name: string;
+      minutes: number;
+    }>;
 export type AIFact = Readonly<{
   reference: AgentFactualClaim;
   text: string;
   /** Application-only approved rendering metadata; NEVER projected into provider input. */
-  grounding?: Readonly<{ locale: Locale; need: GroundingNeed; subject: string }>;
+  grounding?: Readonly<{
+    locale: Locale;
+    need: GroundingNeed;
+    subject: string;
+    presentation?: Readonly<{ sourceText: string; value: GroundingPresentation }>;
+  }>;
 }>;
 export type AIHistoryEntry = Readonly<{
   sequence: number;

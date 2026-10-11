@@ -3,6 +3,88 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - First Widget reply observed; shared wording correction verified locally
+
+**Observation:** the owner reported receipt of the first real reply in selected
+Widget session `01a12a04-d2ae-7cba-aded-0c48a410be0c`. The screenshot answers
+price/duration and acknowledges a request for October 12 at 17:00, but repeats
+the consultation name three times and price twice. The owner also reports similar
+robotic Instagram wording. This advances the visible product boundary to a
+received customer reply; it does not independently prove the persisted request,
+provider attempt count, costs, delivery trace, staff offer or confirmed booking.
+The older pre-Send budget/activity snapshot below is not fresh post-Send evidence.
+
+**Confirmed source mechanism:** `selectGroundingFacts` emits canonical price
+text followed by approved published display text, which already repeats that
+same price/name in the S22 fixture. A separate duration fact repeats the name
+again. `evaluateGroundedDecision` replaces all raw model prose with these facts,
+and appointment submission appends a passive acknowledgment. Production model
+instructions already request concise natural language and disclose this template
+replacement; changing the prompt alone would not change this sent wording.
+The shared worker reply/outbox path has no Widget/Instagram wording branch.
+
+The application-only renderer now composes matched price/duration facts into one
+sentence, adds an initial greeting only when the customer greeted with no prior
+history, and separates a more direct request acknowledgment into its own paragraph.
+Only a complete leading price sentence identical to a canonical header may be
+removed from the published qualifier. Other conditions, different values/currencies,
+embedded statements and the synthetic-test notice remain verbatim. Metadata is
+bound to its exact approved source text and locale; unmatched/default-language
+facts keep their original text. It is never projected into provider input.
+Fixed/from/range/quote-required meanings, integer-only money formatting, references,
+UTF-8 limits, safety gates and staff-review requirements remain intact.
+
+Local deterministic example, **not a newly sent or deployed reply**:
+
+```text
+Salom! S22 sinov konsultatsiyasi — 100 000 UZS, taxminan 30 daqiqa. Faqat sintetik sinov narxi.
+
+12-10-2026 soat 17:00 uchun so'rovingizni yubordik. Xodim ko'rib chiqqach shu yerda xabar beramiz.
+```
+
+Initial reproduction: **4 failing / 1 passing** new cases exposed repeated facts
+in Uzbek, Russian and English. Final focused suite: **20/20 PASS**, including the
+reported question through the real deterministic appointment planner. Broader
+AI/mock-eval suites: **32 files PASS / 2 skipped; 807 tests PASS / 7 skipped**,
+before adding the twentieth focused case (counts overlap, not an additive total).
+An unchanged existing byte-limit regression caught stale presentation metadata;
+the source-text binding corrected it without weakening existing assertions.
+Coverage also exercises price qualifications/precision, service pairing, language
+fallback, raw-draft rejection, no repeated greeting and no premature confirmation.
+
+Exact local verification (all final checks PASS; repository root):
+
+```text
+node node_modules/vitest/vitest.mjs run tests/ai --maxWorkers=1
+node node_modules/vitest/vitest.mjs run tests/ai/grounded-wording.test.ts --maxWorkers=1
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+node node_modules/typescript/bin/tsc -p packages/application/tsconfig.build.json --noEmit false --declaration true --declarationMap true --outDir packages/application/dist --rootDir packages/application/src
+node node_modules/eslint/bin/eslint.js packages/application/src/ai/ports.ts packages/application/src/ai/grounding-facts.ts packages/application/src/ai/grounded-wording.ts packages/application/src/ai/grounded-answers.ts packages/application/src/ai/appointment-submission.ts tests/ai/grounded-wording.test.ts --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check packages/application/src/ai/ports.ts packages/application/src/ai/grounding-facts.ts packages/application/src/ai/grounded-wording.ts packages/application/src/ai/grounded-answers.ts packages/application/src/ai/appointment-submission.ts tests/ai/grounded-wording.test.ts docs/architecture/s22-acceptance-evidence.md docs/architecture/s22-synthetic-booking-journey.md
+node scripts/check-boundaries.mjs
+node node_modules/tsx/dist/cli.mjs scripts/contracts/snapshot.ts --check
+git diff --check -- packages/application/src/ai/ports.ts packages/application/src/ai/grounding-facts.ts packages/application/src/ai/grounded-wording.ts packages/application/src/ai/grounded-answers.ts packages/application/src/ai/appointment-submission.ts tests/ai/grounded-wording.test.ts docs/architecture/s22-acceptance-evidence.md docs/architecture/s22-synthetic-booking-journey.md
+```
+
+Boundaries cover **328 source files**; public contracts **378**, no snapshot drift.
+The read-only contract check needed an unsandboxed retry because the Windows
+sandbox blocked the tsx account lookup before execution; the retry passed. Generated
+application build output is ignored. Files changed: the five application files
+listed above, new wording test, this register and the journey checkpoint.
+No dependency, model/prompt, transport, tenant authorization, budget, migration,
+job configuration or deployment change. No diagnostic execution, message replay,
+provider call or new/replacement session was initiated by this correction.
+
+**Proof limits / next:** runtime remains verified source `1210c25`; these are
+source-level checks, not deployed Widget/Instagram style proof or a native-speaker
+review. Existing duration-keyword recognition is unchanged. Previously delivered
+messages will not be rewritten by a refresh or release. Prepare one reviewed
+wording-rollout plan for future replies, without repeating the paid request for
+style or transferring its approval. The original two-message/four-attempt bounded
+test envelope remains unchanged; use its confirmation only after a genuine staff
+offer and runtime eligibility checks. Post-Send accounting and booking acceptance
+remain uncollected; historical NULL costs remain unknown. **S22 is unaccepted.**
+
 ## 2026-10-11 - Copy-icon deployment verified; exact test session approved
 
 **Observations:** the owner authorized deployment. Exact runtime source
