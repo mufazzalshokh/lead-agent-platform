@@ -3,6 +3,52 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Selected Widget progress reader prepared after owner continuation
+
+The owner requested autonomous continuation of the existing booking journey,
+not another chat, request, deployment or paid test. Local `gcloud` is unavailable;
+the existing authenticated staging WIF workflow is retained for one bounded read.
+Generic booking evidence is pinned to the older Instagram cohort, and the original
+Widget attempt reader is pinned to an October 8 session. Neither was dispatched
+against this newer chat or repurposed by silently changing its historical pins.
+
+The new internal `widget-evidence` phase runs only with `action=plan`, an empty
+apply token, the approved branch and an exact ancestor tooling commit. It excludes
+the Terraform job entirely. The wrapper pins verified runtime source `68b3011`,
+its reviewed Worker/Migrator digests and timestamp `2026-10-11T09:26:04Z`, stable
+anchor `01a11c48-dbc2-76de-a873-f41664da5ccb`, and owner-selected chat
+`01a12a04-d2ae-7cba-aded-0c48a410be0c`. Its fixed metadata window is October 11
+08:12–10:13 UTC, covering the owner's minute-rounded two-hour session lifetime.
+It is not a readiness reader and can observe an expired, bound session without
+renewing it. No application image, public route, infrastructure or SQL migration changes.
+
+The existing reader now accepts a validated internal scope, preserving historical
+defaults. Before child queries, the progress scope requires the complete bounded,
+attributed owner-selection CAS chain and exact latest selected ID/channel/origin,
+then derives the conversation solely from the ownership-verified session. All
+metadata SQL retains tenant parameters, timeouts, read-only mode, runtime/non-owner
+FORCE-RLS checks, row-limit sentinels, rollback and cleanup. Authenticated log access
+is verified before creating one zero-retry execution with per-execution overrides,
+not updating the job. No HTTP candidate scan, bearer/token, message body or raw
+provider/audit payload is collected. Pending/unknown costs are not rewritten.
+
+Local verification PASS: new progress tests **22/22**, combined progress/attempt/
+readiness/booking-evidence/config-guard tests **169/169**, scoped ESLint, Prettier
+and whitespace checks. Commands use existing installed bins directly after the
+PowerShell pnpm shim and pnpm's install-on-exec checks proved unavailable; no
+execution-policy change, package reinstall or dependency change was performed.
+
+```text
+node --test .github/scripts/s22-widget-progress.test.mjs .github/scripts/s22-widget-attempt.test.mjs .github/scripts/s22-widget-attempt-readonly.test.mjs .github/scripts/s22-widget-readiness.test.mjs .github/scripts/s22-booking-evidence.test.mjs .github/scripts/s22-full-runtime-config-check.test.mjs
+node node_modules/eslint/bin/eslint.js .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt-readonly.mjs .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt-readonly.mjs .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs .github/workflows/staging-terraform.yml
+```
+
+**Live collection pending at this preparation checkpoint.** Collection PASS would
+not itself mean a confirmed booking, independent customer delivery receipt or
+cost reconciliation. Do not rerun a failed/uncertain execution blindly, select a
+new chat or resend. The reviewed booking/request accounting boundary is unchanged.
+
 ## 2026-10-11 - Wording release exact saved plan applied and runtime verified
 
 The owner approved **"Apply plan 38128355452 only."** Exact corrected source **68b3011**

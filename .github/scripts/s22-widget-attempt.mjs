@@ -17,6 +17,7 @@ import {
   attemptForceRlsTableNames,
   attemptOperation,
   attemptScope,
+  copyAttemptScope,
   sanitizeAttemptValue,
 } from "./s22-widget-attempt-readonly.mjs";
 
@@ -78,7 +79,7 @@ const httpPath = (raw) => {
 };
 
 // HTTP candidates are time/path scoped, not bearer/session-correlated proof.
-export function normalizeAttemptHttp(entries) {
+export function normalizeAttemptHttp(entries, scope = attemptScope) {
   requireSafe(Array.isArray(entries) && entries.length <= 40, "HTTP_LOG_METADATA_INVALID");
   return entries.flatMap((entry) => {
     const service = entry?.resource?.labels?.service_name;
@@ -87,8 +88,8 @@ export function normalizeAttemptHttp(entries) {
     if (
       typeof timestamp !== "string" ||
       !Number.isFinite(Date.parse(timestamp)) ||
-      Date.parse(timestamp) < Date.parse(pin.windowStart) ||
-      Date.parse(timestamp) >= Date.parse(pin.windowEnd)
+      Date.parse(timestamp) < Date.parse(scope.windowStart) ||
+      Date.parse(timestamp) >= Date.parse(scope.windowEnd)
     )
       return [];
     const path = httpPath(entry.httpRequest?.requestUrl ?? entry.jsonPayload?.path);
@@ -112,7 +113,8 @@ export function normalizeAttemptHttp(entries) {
   });
 }
 
-export function collectAttemptLogs(entries) {
+export function collectAttemptLogs(entries, expectation = attemptScope) {
+  const scope = copyAttemptScope(expectation);
   requireSafe(Array.isArray(entries) && entries.length <= 12, "LOG_METADATA_INVALID");
   const payloads = entries
     .map((entry) => entry?.jsonPayload)
@@ -163,9 +165,9 @@ export function collectAttemptLogs(entries) {
   );
   const session = find("widget_attempt_session");
   requireSafe(
-    session?.session_id === pin.session &&
-      session.channel_connection_id === attemptScope.channel &&
-      session.allowed_origin_id === attemptScope.origin &&
+    session?.session_id === scope.session &&
+      session.channel_connection_id === scope.channel &&
+      session.allowed_origin_id === scope.origin &&
       session.conversation_ownership_matches === true &&
       ((session.conversation_id === null &&
         session.contact_unbound === true &&
@@ -183,8 +185,8 @@ export function collectAttemptLogs(entries) {
     requireSafe(
       observed?.conversation_id === session.conversation_id &&
         Array.isArray(observed.rows) &&
-        observed.windowStart === pin.windowStart &&
-        observed.windowEnd === pin.windowEnd &&
+        observed.windowStart === scope.windowStart &&
+        observed.windowEnd === scope.windowEnd &&
         observed.query_state ===
           (session.conversation_id === null ? "SKIPPED_UNBOUND_SESSION" : "COLLECTED") &&
         (session.conversation_id !== null || observed.rows.length === 0),
@@ -192,7 +194,9 @@ export function collectAttemptLogs(entries) {
     );
   }
   requireSafe(
-    find("widget_attempt_collection")?.no_message_or_call_triggered === true,
+    find("widget_attempt_collection")?.no_message_or_call_triggered === true &&
+      (scope.anchor === undefined ||
+        find("widget_attempt_collection")?.owner_selection_matches === true),
     "LOG_METADATA_INVALID",
   );
   return rows;
@@ -266,8 +270,11 @@ export function formatAttempt(result) {
 }
 
 export async function runAttempt(overrides = {}) {
+  const scope = copyAttemptScope(overrides.scope);
   requireSafe(
-    attemptScope.session === pin.session &&
+    (overrides.scope === undefined ||
+      (scope.anchor !== undefined && overrides.reviewedRuntime !== undefined)) &&
+      attemptScope.session === pin.session &&
       attemptScope.windowStart === pin.windowStart &&
       attemptScope.windowEnd === pin.windowEnd,
     "ATTEMPT_SCOPE_INVALID",
@@ -308,12 +315,16 @@ export async function runAttempt(overrides = {}) {
       throw Object.assign(new Error(), { code: "CLOUD_RESPONSE_INVALID" });
     }
   };
-  const expectations = { sessionId: pin.session, deploymentTimestamp: pin.timestamp };
+  const expectations = {
+    sessionId: scope.anchor ?? scope.session,
+    deploymentTimestamp: overrides.reviewedRuntime?.timestamp ?? pin.timestamp,
+  };
   verifyReadinessWorker(
     await request(
       `https://run.googleapis.com/v2/projects/${pin.project}/locations/${pin.region}/workerPools/lead-agent-staging-worker`,
     ),
     expectations,
+    overrides.reviewedRuntime,
   );
   verifyReadinessJob(
     JSON.parse(
@@ -328,6 +339,7 @@ export async function runAttempt(overrides = {}) {
       ]),
     ),
     expectations,
+    overrides.reviewedRuntime,
   );
   const logging = (execution) =>
     request("https://logging.googleapis.com/v2/entries:list", {
@@ -337,16 +349,27 @@ export async function runAttempt(overrides = {}) {
       filter: `resource.type="cloud_run_job" AND resource.labels.job_name="${pin.job}" AND timestamp>="${started}" AND jsonPayload.operation="${attemptOperation}"${execution ? ` AND labels."run.googleapis.com/execution_name"="${execution}"` : ""}`,
     });
   await logging(); // Verify authenticated permission before any one-off read execution.
-  const httpLogs = await request("https://logging.googleapis.com/v2/entries:list", {
-    resourceNames: [`projects/${pin.project}`],
-    pageSize: 40,
-    orderBy: "timestamp asc",
-    filter: `resource.type="cloud_run_revision" AND timestamp>="${pin.windowStart}" AND timestamp<"${pin.windowEnd}" AND (resource.labels.service_name="lead-agent-staging-api" OR resource.labels.service_name="lead-agent-staging-web") AND (httpRequest.requestUrl:"/v1/widget/conversations" OR jsonPayload.path:"/v1/widget/conversations")`,
-  });
+  // Progress is bearer-owned persisted evidence, not a broad HTTP candidate scan.
+  const httpLogs =
+    scope.anchor !== undefined
+      ? { entries: [] }
+      : await request("https://logging.googleapis.com/v2/entries:list", {
+          resourceNames: [`projects/${pin.project}`],
+          pageSize: 40,
+          orderBy: "timestamp asc",
+          filter: `resource.type="cloud_run_revision" AND timestamp>="${pin.windowStart}" AND timestamp<"${pin.windowEnd}" AND (resource.labels.service_name="lead-agent-staging-api" OR resource.labels.service_name="lead-agent-staging-web") AND (httpRequest.requestUrl:"/v1/widget/conversations" OR jsonPayload.path:"/v1/widget/conversations")`,
+        });
   requireSafe(!httpLogs.nextPageToken, "HTTP_LOG_ROW_LIMIT_EXCEEDED");
-  const http = normalizeAttemptHttp(httpLogs.entries ?? []);
+  const http = normalizeAttemptHttp(httpLogs.entries ?? [], scope);
   overrides.onPreflight?.();
-  const reader = await readFile(new URL("./s22-widget-attempt-readonly.mjs", import.meta.url));
+  const baseReader = await readFile(new URL("./s22-widget-attempt-readonly.mjs", import.meta.url));
+  const reader =
+    scope.anchor === undefined
+      ? baseReader
+      : Buffer.concat([
+          baseReader,
+          Buffer.from(`\nawait runReadOnlyWidgetAttempt(${JSON.stringify(scope)});\n`, "utf8"),
+        ]);
   const payload = gzipSync(reader).toString("base64");
   requireSafe(payload.length < 32000, "DIAGNOSTIC_PAYLOAD_TOO_LARGE");
   let execution;
@@ -361,7 +384,7 @@ export async function runAttempt(overrides = {}) {
           `--project=${pin.project}`,
           `--region=${pin.region}`,
           `--args=^~^--input-type=module~-e~${moduleBootstrap}`,
-          `--update-env-vars=^~^S22_BOOKING_READ_B64=${payload}~S22_WIDGET_ATTEMPT_READ=execute~S22_WIDGET_ATTEMPT_STARTED_AT=${started}`,
+          `--update-env-vars=^~^S22_BOOKING_READ_B64=${payload}~S22_WIDGET_ATTEMPT_READ=${scope.anchor === undefined ? "execute" : "progress"}~S22_WIDGET_ATTEMPT_STARTED_AT=${started}`,
           "--tasks=1",
           "--task-timeout=65s",
           "--format=value(metadata.name)",
@@ -412,7 +435,7 @@ export async function runAttempt(overrides = {}) {
       const logs = await logging(execution);
       requireSafe(!logs.nextPageToken, "LOG_METADATA_INVALID");
       try {
-        rows = collectAttemptLogs(logs.entries ?? []);
+        rows = collectAttemptLogs(logs.entries ?? [], scope);
         break;
       } catch (error) {
         if (error.code !== "LOG_ASSERTIONS_INCOMPLETE" || attempt === 2) throw error;
@@ -432,7 +455,7 @@ export async function runAttempt(overrides = {}) {
   }
 }
 
-const safeFailures = new Set([
+export const safeFailures = new Set([
   "ATTEMPT_SCOPE_INVALID",
   "AUTHENTICATION_UNAVAILABLE",
   "CLOUD_ACCESS_UNAVAILABLE",

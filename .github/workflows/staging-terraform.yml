@@ -47,6 +47,7 @@ on:
           - owner-workspace-verify
           - acceptance-inventory
           - booking-evidence
+          - widget-evidence
           - full
           - load
           - dormant
@@ -269,8 +270,53 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  widget-evidence:
+    name: Read exact selected Widget progress
+    if: inputs.phase == 'widget-evidence'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 8
+    steps:
+      - name: Enforce read-only Widget evidence boundary
+        env:
+          ACTION: ${{ inputs.action }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
+        run: |
+          set -euo pipefail
+          [[ "$ACTION" == 'plan' && -z "$APPROVAL_TOKEN" ]]
+          [[ "$PROJECT_ID" == 'lead-agent-stg-739284' ]]
+          [[ "$GITHUB_REF" == 'refs/heads/verify/s22-staging-recovery-capacity' ]]
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - name: Check out exact Widget evidence tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+      - name: Prove tooling commit is on the approved branch
+        run: |
+          git fetch --no-tags origin "$GITHUB_REF"
+          git merge-base --is-ancestor HEAD FETCH_HEAD
+      - name: Authenticate through existing staging WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      - name: Set up existing Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+      - name: Read exact selected Widget with the runtime role
+        run: node .github/scripts/s22-widget-progress.mjs
+      - name: Preserve sanitized Widget evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-widget-progress-${{ github.run_id }}
+          path: s22-widget-progress.json
+          if-no-files-found: error
+          retention-days: 7
+
   terraform:
-    if: inputs.phase != 'acceptance-inventory' && inputs.phase != 'booking-evidence'
+    if: inputs.phase != 'acceptance-inventory' && inputs.phase != 'booking-evidence' && inputs.phase != 'widget-evidence'
     name: Terraform ${{ inputs.action }} / ${{ inputs.phase }}
     runs-on: ubuntu-latest
     environment: staging

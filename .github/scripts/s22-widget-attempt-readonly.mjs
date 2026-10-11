@@ -55,6 +55,64 @@ const code = (value) =>
 const fail = (failure) => {
   throw Object.assign(new Error(), { code: failure });
 };
+// Internal evidence scope only: never a browser selector or paid-call authority.
+export const copyAttemptScope = (value = attemptScope) => {
+  const keys = Object.keys(value ?? {})
+    .sort()
+    .join();
+  const baseline = "channel,organization,origin,session,windowEnd,windowStart";
+  if (
+    (keys !== baseline && keys !== `anchor,${baseline}`) ||
+    value.organization !== attemptScope.organization ||
+    value.channel !== attemptScope.channel ||
+    value.origin !== attemptScope.origin ||
+    uuid(value.session) === null ||
+    date(value.windowStart) !== value.windowStart ||
+    date(value.windowEnd) !== value.windowEnd ||
+    Date.parse(value.windowEnd) <= Date.parse(value.windowStart) ||
+    Date.parse(value.windowEnd) - Date.parse(value.windowStart) > 121 * 60000 ||
+    (value.anchor !== undefined && value.anchor !== "01a11c48-dbc2-76de-a873-f41664da5ccb")
+  )
+    fail("ATTEMPT_SCOPE_INVALID");
+  return Object.freeze({ ...value });
+};
+export const ownerSelectionSql = `select
+  metadata_redacted_jsonb->>'selected_session_id' as selected_session_id,
+  metadata_redacted_jsonb->>'selection_version' as selection_version,
+  metadata_redacted_jsonb->>'expected_selection_version' as expected_selection_version,
+  metadata_redacted_jsonb->>'expected_session_version' as expected_session_version,
+  metadata_redacted_jsonb->>'channel_connection_id' as channel_connection_id,
+  metadata_redacted_jsonb->>'allowed_origin_id' as allowed_origin_id,
+  actor_type='member' and actor_id is not null and actor_membership_id is not null as attributed
+  from audit_events where organization_id=$1 and action='ai_run.widget_cohort_selected'
+    and result='succeeded' and target_type='widget_session' and target_id=$2::uuid
+    and metadata_redacted_jsonb->>'profile'='s22-widget-selection.v1'
+  order by occurred_at,id limit 17`;
+export const verifyOwnerSelection = async (read, scope) => {
+  const rows = await read(ownerSelectionSql, [scope.anchor]);
+  if (!Array.isArray(rows) || rows.length === 0 || rows.length > 16)
+    fail("ATTEMPT_OWNER_SELECTION_INVALID");
+  if (rows.some((row) => !/^[1-9][0-9]{0,2}$/u.test(row.selection_version ?? "")))
+    fail("ATTEMPT_OWNER_SELECTION_INVALID");
+  const ordered = [...rows].sort(
+    (a, b) => Number(a.selection_version) - Number(b.selection_version),
+  );
+  if (
+    ordered.some(
+      (row, i) =>
+        row.selection_version !== String(i + 1) ||
+        row.expected_selection_version !== String(i) ||
+        row.expected_session_version !== "2" ||
+        row.channel_connection_id !== scope.channel ||
+        row.allowed_origin_id !== scope.origin ||
+        row.attributed !== true ||
+        uuid(row.selected_session_id) === null,
+    ) ||
+    ordered.at(-1).selected_session_id !== scope.session
+  )
+    fail("ATTEMPT_OWNER_SELECTION_INVALID");
+  return true;
+};
 export const attemptSessionSql = `select s.organization_id::text,s.id::text as session_id,
   s.channel_connection_id::text,s.widget_allowed_origin_id::text as allowed_origin_id,
   s.status,s.version::text,s.issued_at,s.last_seen_at,s.expires_at,s.conversation_id::text,
@@ -263,7 +321,7 @@ export const sanitizeAttemptValue = (value) => {
     query_state: (v) => oneOf(v, ["COLLECTED", "SKIPPED_UNBOUND_SESSION"]),
     status: (v) => oneOf(v, ["active", "expired", "revoked"]) ?? fieldSanitizers.status(v),
     ...Object.fromEntries(
-      "contact_unbound conversation_unbound not_revoked channel_active origin_active absolute_valid idle_valid conversation_ownership_matches observation_only no_message_or_call_triggered historical_costs_not_reconciled accountingComplete blocked runtime staging_database least_privilege read_only row_security tenant_matches collection_window_valid safe"
+      "contact_unbound conversation_unbound not_revoked channel_active origin_active absolute_valid idle_valid conversation_ownership_matches owner_selection_matches observation_only no_message_or_call_triggered historical_costs_not_reconciled accountingComplete blocked runtime staging_database least_privilege read_only row_security tenant_matches collection_window_valid safe"
         .split(" ")
         .map((key) => [key, bool]),
     ),
@@ -279,7 +337,7 @@ export const sanitizeAttemptValue = (value) => {
 };
 const project = (value, fields) =>
   sanitizeAttemptValue(Object.fromEntries(fields.split(" ").map((key) => [key, value?.[key]])));
-export const sanitizeAttemptBudget = (snapshot, conversationId = null) => ({
+export const sanitizeAttemptBudget = (snapshot, conversationId = null, scope = attemptScope) => ({
   ...project(
     snapshot,
     "profile mode physicalCalls logicalMessages knownCostMicros unresolvedReserveMicros historicalReserveMicros combinedExposureMicros perCallReserveMicros accountingComplete blocked reason",
@@ -289,15 +347,16 @@ export const sanitizeAttemptBudget = (snapshot, conversationId = null) => ({
       snapshot?.widget,
       "physicalCalls logicalMessages customerMessages knownCostMicros unresolvedReserveMicros",
     ),
-    sessionId: snapshot?.widget?.sessionId === attemptScope.session ? attemptScope.session : null,
+    sessionId: snapshot?.widget?.sessionId === scope.session ? scope.session : null,
     conversationId:
       conversationId !== null && snapshot?.widget?.conversationId === conversationId
         ? conversationId
         : null,
   },
 });
-export const collectWidgetAttempt = async (read, report) => {
-  const scope = attemptScope;
+export const collectWidgetAttempt = async (read, report, expectation = attemptScope) => {
+  const scope = copyAttemptScope(expectation);
+  if (scope.anchor !== undefined) await verifyOwnerSelection(read, scope);
   const rows = await read(attemptSessionSql, [scope.session, scope.channel, scope.origin]);
   const row = rows.length === 1 ? rows[0] : null;
   if (
@@ -374,6 +433,8 @@ export const attemptFailureCodes = new Set([
   "READ_ONLY_RUNTIME_TENANT_GUARD_FAILED",
   "FORCE_RLS_NOT_OWNER_GUARD_FAILED",
   "ATTEMPT_START_INVALID",
+  "ATTEMPT_SCOPE_INVALID",
+  "ATTEMPT_OWNER_SELECTION_INVALID",
   "ATTEMPT_SESSION_SCOPE_INVALID",
   "ATTEMPT_ROW_LIMIT_EXCEEDED",
   "COHORT_SCOPE_INVALID",
@@ -383,7 +444,7 @@ export const attemptFailureCodes = new Set([
   "DATABASE_CLEANUP_FAILED",
 ]);
 const rollback = new Error("EXPECTED_READ_ONLY_ROLLBACK");
-export const runReadOnlyWidgetAttempt = async () => {
+export const runReadOnlyWidgetAttempt = async (expectation = attemptScope) => {
   let runtime,
     failures = 0,
     stage = "initialize",
@@ -431,7 +492,7 @@ export const runReadOnlyWidgetAttempt = async () => {
     );
   };
   try {
-    const scope = attemptScope;
+    const scope = copyAttemptScope(expectation);
     stage = "collection_window";
     const startedAt = process.env.S22_WIDGET_ATTEMPT_STARTED_AT;
     if (date(startedAt) !== startedAt) fail("ATTEMPT_START_INVALID");
@@ -531,14 +592,18 @@ export const runReadOnlyWidgetAttempt = async () => {
     };
     stage = "widget_attempt_collection";
     const conversationId = await readOnly(scope.organization, async (_session, read) =>
-      collectWidgetAttempt((text, extra) => {
-        stage =
-          text === attemptSessionSql
-            ? "widget_attempt_session"
-            : (Object.entries(attemptQueries).find(([, sql]) => sql === text)?.[0] ??
-              "widget_attempt_collection");
-        return read(text, extra);
-      }, report),
+      collectWidgetAttempt(
+        (text, extra) => {
+          stage =
+            text === attemptSessionSql
+              ? "widget_attempt_session"
+              : (Object.entries(attemptQueries).find(([, sql]) => sql === text)?.[0] ??
+                "widget_attempt_collection");
+          return read(text, extra);
+        },
+        report,
+        scope,
+      ),
     );
     const readOnlyRuntime = {
       withTenantTransaction: readOnly,
@@ -554,13 +619,14 @@ export const runReadOnlyWidgetAttempt = async () => {
     report(
       stage,
       true,
-      sanitizeAttemptBudget(await budget.read(scope.organization), conversationId),
+      sanitizeAttemptBudget(await budget.read(scope.organization), conversationId, scope),
     );
     report("widget_attempt_collection", true, {
       windowStart: scope.windowStart,
       windowEnd: scope.windowEnd,
       conversation_id: conversationId,
       observation_only: true,
+      ...(scope.anchor === undefined ? {} : { owner_selection_matches: true }),
       no_message_or_call_triggered: true,
       historical_costs_not_reconciled: true,
     });
