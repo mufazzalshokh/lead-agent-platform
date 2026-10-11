@@ -49,13 +49,60 @@ const requireSafe = (condition, code) => {
   if (!condition) throw Object.assign(new Error(), { code });
 };
 const execute = promisify(execFile);
-const cloud = async (args, timeout = 10000) => {
-  try {
-    return (await execute("gcloud", args, { encoding: "utf8", timeout, maxBuffer: 262144 })).stdout;
-  } catch {
-    throw Object.assign(new Error(), { code: "CLOUD_ACCESS_UNAVAILABLE" });
-  }
+const cloudBoundaries = new Set([
+  "cloud_authentication",
+  "job_metadata",
+  "diagnostic_execution",
+  "execution_metadata",
+  "authenticated_logging",
+  "worker_metadata",
+]);
+const cloudFailureCategories = new Set([
+  "cli_not_found",
+  "output_limit",
+  "timeout",
+  "permission_denied",
+  "authentication_required",
+  "command_failed",
+]);
+export const cloudFailureDetails = (error) => ({
+  ...(cloudBoundaries.has(error?.readBoundary) ? { read_boundary: error.readBoundary } : {}),
+  ...(cloudFailureCategories.has(error?.failureCategory)
+    ? { failure_category: error.failureCategory }
+    : {}),
+});
+const cloudCommandBoundary = (args) => {
+  const prefix = args.slice(0, 4).join(" ");
+  if (prefix.startsWith("auth print-access-token ")) return "cloud_authentication";
+  if (prefix === "run jobs executions describe") return "execution_metadata";
+  if (prefix.startsWith("run jobs execute ")) return "diagnostic_execution";
+  if (prefix.startsWith("run jobs describe ")) return "job_metadata";
+  return undefined;
 };
+const cloudCommandFailureCategory = (error) => {
+  if (error?.code === "ENOENT") return "cli_not_found";
+  if (error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return "output_limit";
+  if (error?.killed === true) return "timeout";
+  if (/PERMISSION_DENIED|\b403\b/iu.test(error?.stderr ?? "")) return "permission_denied";
+  if (/reauth|no active account|invalid_grant|gcloud auth login/iu.test(error?.stderr ?? ""))
+    return "authentication_required";
+  return "command_failed";
+};
+export const createAttemptCloudRunner =
+  (run = execute) =>
+  async (args, timeout = 30000) => {
+    try {
+      return (await run("gcloud", args, { encoding: "utf8", timeout, maxBuffer: 262144 })).stdout;
+    } catch (error) {
+      // Inspect stderr only to classify; never retain it, stdout, argv, or a cause.
+      throw Object.assign(new Error(), {
+        code: "CLOUD_ACCESS_UNAVAILABLE",
+        readBoundary: cloudCommandBoundary(args),
+        failureCategory: cloudCommandFailureCategory(error),
+      });
+    }
+  };
+const cloud = createAttemptCloudRunner();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const httpPath = (raw) => {
   if (typeof raw !== "string") return null;
@@ -400,8 +447,13 @@ export async function runAttempt(overrides = {}) {
         30000,
       )
     ).trim();
-  } catch {
-    throw Object.assign(new Error(), { code: "EXECUTION_ID_UNAVAILABLE_NO_RERUN" });
+  } catch (error) {
+    const details = cloudFailureDetails(error);
+    throw Object.assign(new Error(), {
+      code: "EXECUTION_ID_UNAVAILABLE_NO_RERUN",
+      readBoundary: details.read_boundary,
+      failureCategory: details.failure_category,
+    });
   }
   requireSafe(
     /^lead-agent-staging-migrator-[a-z0-9]+$/u.test(execution),
@@ -513,6 +565,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log(
       `BLOCKED: ${safeFailures.has(error?.code) ? error.code : "CLOUD_OR_TOOLING_UNAVAILABLE"}`,
     );
+    const details = cloudFailureDetails(error);
+    if (details.read_boundary) console.log(`Read boundary: ${details.read_boundary}`);
+    if (details.failure_category) console.log(`Failure category: ${details.failure_category}`);
     if (error?.code === "READ_ONLY_DIAGNOSTIC_BLOCKED") {
       console.log(`Failure stage: ${error.assertion}`);
       if (error.diagnosticCode !== null) console.log(`Diagnostic reason: ${error.diagnosticCode}`);

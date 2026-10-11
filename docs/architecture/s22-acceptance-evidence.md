@@ -3,6 +3,66 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-12 - Owner access probes pass; CLI failure boundary now observable
+
+The owner ran the five-file, SHA256-verified Cloud Shell command below. All
+five downloads verified, then it printed only **BLOCKED: CLOUD_ACCESS_UNAVAILABLE**:
+no preflight PASS and no execution ID. In that exact launcher this failure before
+preflight can originate from access-token acquisition or the full JSON job metadata
+read. The execution branch has a different `EXECUTION_ID_UNAVAILABLE_NO_RERUN`
+failure. Therefore this owner attempt created no diagnostic execution.
+
+A subsequent bounded, read-only owner probe reported **AUTH: PASS** and
+**JOB_METADATA: PASS**. These are current access observations, not evidence of the
+earlier cause. The probe requested only `metadata.name`; the launcher reads full
+JSON. The old exception discarded the command/error category, so the earlier
+failure's cause remains **unknown**, not a proven timeout, credential failure or
+Widget defect. No IAM change, migration, new session or paid call was requested.
+
+The narrow correction affects diagnostic CLI handling only. Read-only `gcloud`
+commands now have a finite **30-second** limit rather than ten seconds. The
+already-explicit execution limit remains **30 seconds**, the task limit remains
+**65 seconds**, and preflight, exact selected SID/runtime pins, zero retries,
+READ ONLY/FORCE-RLS/non-owner guards and collection scope are unchanged. Errors
+identify allowlisted boundaries (authentication, job metadata, diagnostic execution
+or execution metadata) and safe categories (timeout, missing CLI, output limit,
+permission denial, authentication required or other command failure). Neither
+stdout/stderr, error message/cause, credentials nor command arguments are copied
+into evidence. Authenticated REST permission boundaries remain intact.
+
+An execution submission failure still means **NO_RERUN**, even if its safe category
+is known: submission could have succeeded without a returned ID. After an ID is
+announced, any later failure preserves that same ID and does not launch another
+job. No automatic command retry was added. This correction does not fix or claim
+the earlier unknown cloud failure, rewrite a customer turn or authorize Send.
+
+Verification: **268/268 native tooling tests PASS**, including **18 new tests**
+for bounded command execution, category priority, private-field suppression,
+pre-execution failures, post-execution ID retention, ambiguous submission and
+four actual CLI subprocess/artifact failure paths with mocked cloud calls.
+The seven-file `node --test` command in the previous receipt was rerun unchanged;
+scoped commands for the four changed scripts/tests:
+
+```text
+node node_modules/eslint/bin/eslint.js .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt.test.mjs .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt.test.mjs .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs
+git diff --check -- .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt.test.mjs .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs docs/architecture/s22-acceptance-evidence.md
+```
+
+These are diagnostic regressions, not customer or live PostgreSQL acceptance.
+Prior tooling-source [CI 38168460755](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38168460755)
+at `1384272f0a7435431622609ae46548b5f9f549dd` is now independently confirmed
+**PASS**; it does not validate this later change's source.
+
+The older five-file Cloud Shell block below is retained as a **historical receipt**,
+not the next command. The handoff uses this correction's immutable commit and
+fresh Git-blob SHA256 values, verified against public exact-commit downloads before
+delivery. Run that guarded existing-session read **once** in owner Cloud Shell;
+leave the chat unchanged. If an execution is announced or submission is uncertain,
+recover that execution instead of resubmitting. The known GitHub WIF Logging denial
+must not be retried. Current persisted booking/access/accounting state remains
+uncollected; **S22 remains unaccepted**.
+
 ## 2026-10-12 - Current selected Widget trace prepared; no new booking attempt
 
 After the exact date-fix deployment, the owner requested **"keep going"** with

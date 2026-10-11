@@ -1,7 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runAttempt, formatAttempt, safeFailures } from "./s22-widget-attempt.mjs";
+import {
+  runAttempt,
+  formatAttempt,
+  safeFailures,
+  cloudFailureDetails,
+} from "./s22-widget-attempt.mjs";
 import { copyAttemptScope, attemptFailureCodes } from "./s22-widget-attempt-readonly.mjs";
 
 // Owner-selected session already received its first reply. No fresh selection,
@@ -66,15 +71,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     Object.assign(evidence, {
       code,
       ...(execution ? { execution } : {}),
-      ...(["authenticated_logging", "worker_metadata"].includes(error?.readBoundary)
-        ? { read_boundary: error.readBoundary }
-        : {}),
+      ...cloudFailureDetails(error),
       ...(attemptFailureCodes.has(error?.diagnosticCode)
         ? { diagnostic_code: error.diagnosticCode }
         : {}),
     });
     console.log(`BLOCKED: ${code}`);
     if (evidence.read_boundary) console.log(`Read boundary: ${evidence.read_boundary}`);
+    if (evidence.failure_category) console.log(`Failure category: ${evidence.failure_category}`);
     if (execution) console.log(`Preserved execution: ${execution}; do not rerun blindly.`);
     process.exitCode = 1;
   } finally {

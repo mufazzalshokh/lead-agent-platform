@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import {
   progressScope as scope,
@@ -378,6 +382,111 @@ for (const boundary of ["authenticated_logging", "worker_metadata"])
     });
     assert.ok(!f.calls.some((args) => args.includes("execute")));
   });
+for (const boundary of [
+  "cloud_authentication",
+  "job_metadata",
+  "diagnostic_execution",
+  "execution_metadata",
+])
+  test(`actual progress CLI preserves sanitized ${boundary} evidence and never retries`, () => {
+    const directory = mkdtempSync(join(tmpdir(), "s22-progress-cloud-failure-"));
+    const preload = join(directory, "controlled-preload.mjs");
+    const execution = "lead-agent-staging-migrator-controlled";
+    try {
+      writeFileSync(
+        preload,
+        `
+        import assert from "node:assert/strict";
+        import childProcess from "node:child_process";
+        import {syncBuiltinESMExports} from "node:module";
+        import {promisify} from "node:util";
+        const failedBoundary=${JSON.stringify(boundary)};
+        let auth=0, metadata=0, executed=0, polls=0, logs=0;
+        const fail=()=>{throw Object.assign(new Error("PRIVATE_CLI_FAILURE"),{killed:true,stderr:"PRIVATE_CLI_FAILURE",stdout:"PRIVATE_CLI_FAILURE"});};
+        const controlledExec=()=>{throw Error("UNEXPECTED_PROCESS");};
+        controlledExec[promisify.custom]=async(file,args,options)=>{
+          assert.equal(file,"gcloud");assert.equal(options.timeout,30000);assert.equal(options.maxBuffer,262144);
+          if(args[0]==="auth"){
+            auth++;assert.deepEqual(args,["auth","print-access-token","--quiet"]);
+            if(failedBoundary==="cloud_authentication")fail();
+            return {stdout:"PRIVATE_CLI_FAILURE\\n"};
+          }
+          if(args.slice(0,3).join(" ")==="run jobs describe"){
+            metadata++;if(failedBoundary==="job_metadata")fail();
+            return {stdout:JSON.stringify(${JSON.stringify(job())})};
+          }
+          if(args.slice(0,3).join(" ")==="run jobs execute"){
+            executed++;assert.ok(args.includes("--tasks=1"));assert.ok(args.includes("--task-timeout=65s"));
+            if(failedBoundary==="diagnostic_execution")fail();
+            return {stdout:${JSON.stringify(execution)}};
+          }
+          if(args.slice(0,4).join(" ")==="run jobs executions describe"){
+            polls++;assert.equal(args[4],${JSON.stringify(execution)});fail();
+          }
+          throw Error("UNEXPECTED_PROCESS");
+        };
+        childProcess.execFile=controlledExec;syncBuiltinESMExports();
+        globalThis.fetch=async(url,options)=>{
+          assert.equal(options.headers.Authorization,"Bearer PRIVATE_CLI_FAILURE");
+          if(url.includes("/workerPools/"))return Response.json(${JSON.stringify(worker())});
+          assert.equal(url,"https://logging.googleapis.com/v2/entries:list");logs++;
+          return Response.json({entries:[]});
+        };
+        process.on("exit",()=>{
+          assert.equal(auth,1);assert.equal(metadata,failedBoundary==="cloud_authentication"?0:1);
+          assert.equal(executed,["diagnostic_execution","execution_metadata"].includes(failedBoundary)?1:0);
+          assert.equal(polls,failedBoundary==="execution_metadata"?1:0);
+          assert.equal(logs,["diagnostic_execution","execution_metadata"].includes(failedBoundary)?1:0);
+        });
+      `,
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          pathToFileURL(preload).href,
+          fileURLToPath(new URL("./s22-widget-progress.mjs", import.meta.url)),
+        ],
+        { cwd: directory, encoding: "utf8", timeout: 5000 },
+      );
+      assert.equal(result.status, 1, result.stderr);
+      assert.equal(result.stderr, "");
+      assert.match(result.stdout, new RegExp(`Read boundary: ${boundary}`, "u"));
+      assert.match(result.stdout, /Failure category: timeout/u);
+      assert.doesNotMatch(result.stdout, /PRIVATE_CLI_FAILURE/u);
+      const code =
+        boundary === "diagnostic_execution"
+          ? "EXECUTION_ID_UNAVAILABLE_NO_RERUN"
+          : "CLOUD_ACCESS_UNAVAILABLE";
+      assert.deepEqual(
+        JSON.parse(readFileSync(join(directory, "s22-widget-progress.json"), "utf8")),
+        {
+          outcome: "BLOCKED",
+          runtime_source: runtime.source,
+          session: scope.session,
+          provider_calls_triggered: 0,
+          session_mutations: 0,
+          migration_execution: false,
+          job_configuration_changed: false,
+          code,
+          read_boundary: boundary,
+          failure_category: "timeout",
+          ...(boundary === "execution_metadata" ? { execution } : {}),
+        },
+      );
+      if (boundary === "execution_metadata")
+        assert.match(
+          result.stdout,
+          /Preserved execution: lead-agent-staging-migrator-controlled; do not rerun blindly\./u,
+        );
+      else assert.doesNotMatch(result.stdout, /Read-only execution:|Preserved execution:/u);
+    } finally {
+      assert.equal(dirname(resolve(directory)), resolve(tmpdir()));
+      assert.ok(basename(directory).startsWith("s22-progress-cloud-failure-"));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
 test("read-only workflow is separate from Terraform and requires exact approved branch/tooling", () => {
   const text = readFileSync(new URL("../workflows/staging-terraform.yml", import.meta.url), "utf8");
   const segment = text.split("  widget-evidence:\n")[1].split("  terraform:\n")[0];

@@ -11,6 +11,8 @@ import {
 } from "./s22-widget-attempt-readonly.mjs";
 import {
   collectAttemptLogs,
+  cloudFailureDetails,
+  createAttemptCloudRunner,
   formatAttempt,
   moduleBootstrap,
   normalizeAttemptHttp,
@@ -268,6 +270,121 @@ const fixture = (changes = {}) => {
   };
   return { overrides, calls, requests };
 };
+
+test("cloud reads have a finite 30-second limit; explicit execution limit and stdout stay internal", async () => {
+  const calls = [];
+  const runner = createAttemptCloudRunner(async (command, args, options) => {
+    calls.push({ command, args, options });
+    return { stdout: privateFixture };
+  });
+  assert.equal(await runner(["auth", "print-access-token", "--quiet"]), privateFixture);
+  assert.equal(await runner(["run", "jobs", "execute", pin.job], 30000), privateFixture);
+  assert.equal(await runner(["run", "jobs", "describe", pin.job], 12000), privateFixture);
+  assert.deepEqual(
+    calls.map(({ options }) => options.timeout),
+    [30000, 30000, 12000],
+  );
+  assert.ok(
+    calls.every(({ command, options }) => command === "gcloud" && options.maxBuffer === 262144),
+  );
+});
+
+for (const [category, failure] of [
+  ["cli_not_found", { code: "ENOENT" }],
+  ["output_limit", { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER", killed: true }],
+  ["timeout", { killed: true, signal: "SIGTERM" }],
+  ["permission_denied", { stderr: `PERMISSION_DENIED ${privateFixture}` }],
+  ["permission_denied", { stderr: `HTTPError 403 ${privateFixture}` }],
+  ["authentication_required", { stderr: `Please reauthenticate ${privateFixture}` }],
+  ["authentication_required", { stderr: `invalid_grant ${privateFixture}` }],
+  ["command_failed", { stderr: privateFixture }],
+])
+  test(`cloud command failure reports only safe category ${category}: ${failure.code ?? failure.signal ?? "stderr"}`, async () => {
+    let calls = 0;
+    const runner = createAttemptCloudRunner(async () => {
+      calls++;
+      throw Object.assign(new Error(privateFixture), {
+        stdout: privateFixture,
+        cause: privateFixture,
+        ...failure,
+      });
+    });
+    await assert.rejects(runner(["run", "jobs", "describe", pin.job]), (error) => {
+      assert.deepEqual(cloudFailureDetails(error), {
+        read_boundary: "job_metadata",
+        failure_category: category,
+      });
+      assert.equal(error.code, "CLOUD_ACCESS_UNAVAILABLE");
+      assert.equal(error.message, "");
+      assert.equal(error.cause, undefined);
+      assert.doesNotMatch(JSON.stringify(error), new RegExp(privateFixture, "u"));
+      return true;
+    });
+    assert.equal(calls, 1);
+  });
+
+test("cloud failure evidence rejects unrecognized boundaries and categories", () => {
+  assert.deepEqual(
+    cloudFailureDetails({ readBoundary: privateFixture, failureCategory: privateFixture }),
+    {},
+  );
+  assert.deepEqual(cloudFailureDetails(null), {});
+  assert.deepEqual(cloudFailureDetails({ readBoundary: "authenticated_logging" }), {
+    read_boundary: "authenticated_logging",
+  });
+});
+
+for (const [command, boundary, expectedExecutions] of [
+  ["print-access-token", "cloud_authentication", 0],
+  ["jobs", "job_metadata", 0],
+  ["executions", "execution_metadata", 1],
+])
+  test(`failure at ${boundary} preserves exact phase without retry or another execution`, async () => {
+    const f = fixture();
+    const original = f.overrides.cloud;
+    f.overrides.cloud = createAttemptCloudRunner(async (_command, args, options) => {
+      const stdout = await original(args, options.timeout);
+      const matches =
+        command === "jobs" ? args[1] === "jobs" && args[2] === "describe" : args.includes(command);
+      if (matches)
+        throw Object.assign(new Error(privateFixture), { killed: true, stderr: privateFixture });
+      return { stdout };
+    });
+    await assert.rejects(runAttempt(f.overrides), (error) => {
+      assert.equal(error.code, "CLOUD_ACCESS_UNAVAILABLE");
+      assert.deepEqual(cloudFailureDetails(error), {
+        read_boundary: boundary,
+        failure_category: "timeout",
+      });
+      assert.equal(error.execution, expectedExecutions === 1 ? execution : undefined);
+      assert.doesNotMatch(JSON.stringify(error), new RegExp(privateFixture, "u"));
+      return true;
+    });
+    assert.equal(f.calls.filter(({ args }) => args.includes("execute")).length, expectedExecutions);
+    assert.ok(f.calls.every(({ timeout }) => timeout === 30000));
+  });
+
+test("ambiguous execution failure remains NO_RERUN with a safe category, never polled or repeated", async () => {
+  const f = fixture();
+  const original = f.overrides.cloud;
+  f.overrides.cloud = createAttemptCloudRunner(async (_command, args, options) => {
+    const stdout = await original(args, options.timeout);
+    if (args.includes("execute")) throw Object.assign(new Error(privateFixture), { killed: true });
+    return { stdout };
+  });
+  await assert.rejects(runAttempt(f.overrides), (error) => {
+    assert.equal(error.code, "EXECUTION_ID_UNAVAILABLE_NO_RERUN");
+    assert.deepEqual(cloudFailureDetails(error), {
+      read_boundary: "diagnostic_execution",
+      failure_category: "timeout",
+    });
+    assert.equal(error.execution, undefined);
+    assert.doesNotMatch(JSON.stringify(error), new RegExp(privateFixture, "u"));
+    return true;
+  });
+  assert.equal(f.calls.filter(({ args }) => args.includes("execute")).length, 1);
+  assert.equal(f.calls.filter(({ args }) => args.includes("executions")).length, 0);
+});
 
 test("attempt collection is observation-only when an exact expired session is still unbound", () => {
   const rows = collectAttemptLogs(diagnosticEntries());
