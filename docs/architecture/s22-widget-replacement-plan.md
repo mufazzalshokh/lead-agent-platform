@@ -1,26 +1,31 @@
 # S22 Website Chat replacement-lane preparation
 
-Status: **RUNTIME AND ROLLOUT PREPARATION VERIFIED; NOT DEPLOYED; NO SEND**.
+Status: **REPLACEMENT RUNTIME DEPLOYED AND VERIFIED; LIVE CUSTOMER ACCEPTANCE PENDING**.
 
-The owner subsequently approved rollout preparation only. The
+The owner subsequently approved rollout preparation, then explicitly approved
+applying only plan `38157342630`. The
 [exact saved rollout plan 38157342630](s22-widget-replacement-rollout-plan.md)
 records green runtime source `2055ab2`, immutable image digests, the independently
-reviewed four-update action set and binary checksum. No apply, session or paid
-execution is authorized by that preparation receipt.
+reviewed four-update action set, unchanged binary checksum, completed apply
+`38158050800` and successful read-only runtime postflight. No fresh frame,
+session selection or paid execution is authorized by that deployment receipt.
 
 ## Exact authority and current boundary
 
 On 11 October 2026 the owner approved preparation of one replacement Website
 Chat test lane: two new customer messages, at most three new physical provider
 attempts, at most two per message, retaining all prior costs/counts and the
-existing USD4.247838 combined-exposure cap and USD10 hard ceiling. This is not
-deployment, session creation/selection, provider dispatch or customer-message
-approval. The original two-message lane is not silently reset or transferred.
+existing USD4.247838 combined-exposure cap and USD10 hard ceiling. That preparation
+approval did not authorize deployment, session creation/selection, provider
+dispatch or customer messages. Later exact-plan deployment approval is recorded
+above; it still does not authorize session selection or Send. The original
+two-message lane is not silently reset or transferred.
 
 The [recovery application rollout](s22-widget-recovery-rollout-plan.md#application-apply-and-live-verification-receipt--11-october-2026)
-is already verified. This packet neither repeats it nor substitutes another
-runtime source/image. The replacement-lane runtime transition is now implemented
-and tested locally below, not a claimed completed deployment.
+remains a separately verified historical release. The replacement transition
+below was implemented and tested locally, then deployed through the separately
+approved exact plan linked above. Its pinned images/source do not follow later
+documentation HEADs, and no recovery migration or earlier deployment was replayed.
 
 ## Why another fresh-frame loop would fail
 
@@ -32,9 +37,11 @@ and tested locally below, not a claimed completed deployment.
   offer 0. This is historical evidence, not a fresh database observation.
 - The old chat has no previously saved ownership code. The recovery release
   cannot issue one retroactively. Persisted messages/request remain intact.
-- The live budget guard intentionally refuses replacement once a Widget
-  conversation or dispatch is bound. Fresh frames, refreshing selection and
-  reapplying the recovery release cannot change that invariant.
+- The previously deployed budget guard intentionally refused replacement once
+  a Widget conversation or dispatch was bound. Fresh frames, refreshing selection
+  or reapplying that recovery release could not free the consumed allowance.
+  The now-deployed, separately reviewed exception permits one additive replacement
+  only after exact frozen-retirement checks; it never resets the old lane.
 - Older diagnostic scripts pin other releases/sessions and evaluate original
   expiry. They are preserved as historical tools, not reused for recovery
   readiness. The effective recovered access lease is separate from original
@@ -308,9 +315,11 @@ docs/architecture/s22-widget-cohort-binding.md
 ```
 
 That milestone's next task was clean-checkout CI and one separately approved
-rollout preparation. Both now pass on exact runtime source `2055ab2`; see the
-linked approval packet above. Deployment and bounded execution still require
-separate approval. Do not open a fresh frame before verified deployment.
+rollout preparation. Both passed on exact runtime source `2055ab2`; the owner
+then approved the exact saved plan and deployment/read-only postflight passed.
+See the linked receipts above. Fresh-frame selection and bounded execution still
+require separate approval. Do not replay the consumed saved plan or start another
+build/binding loop.
 
 ### Clean-checkout declaration-build correction
 
