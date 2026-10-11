@@ -1,10 +1,11 @@
 # Website Chat recovery: migration-first rollout packet
 
-Status: **STAGE A APPLIED AND VERIFIED**. The owner approved **plan 38139812141
-only**. Its exact saved binary updated the migrator job definition, without
-executing it. Migration execution, application rollout, session replacement,
-customer messages, provider calls and budget increases remain unapproved and
-unperformed by this rollout. S22 as a whole remains unaccepted.
+Status: **MIGRATION APPLIED AND VERIFIED; APPLICATION ROLLOUT PENDING**.
+The owner approved **plan 38139812141 only** for the migrator job definition,
+then separately approved one migration execution and read-only schema/security
+validation. Both milestones are verified below. Application rollout, session
+replacement, customer messages, provider calls and budget increases remain
+unapproved and unperformed by this rollout. S22 as a whole remains unaccepted.
 
 ## Release and tooling provenance
 
@@ -149,24 +150,27 @@ Do not reapply this now-consumed saved plan.
 
 ## Stage B: migration, then application rollout
 
-Stage A verification is complete. Steps 2–5 remain conditional, **not executed
-or implicitly authorized**:
+Stage A and the migration/schema-security verification are complete. Steps 4–5
+remain conditional, **not executed or implicitly authorized**:
 
 1. **Completed:** exact Stage A apply and live job/configuration convergence
    verification are recorded above. Current application images remain unchanged.
-2. Obtain explicit authority for **one migration execution** of the reviewed
-   job. `0032` adds seven nullable recovery/access fields and bounded checks;
-   no backfill, customer proof issuance, budget/booking changes, historical
-   migration edit or RLS/role/grant change. Preserve the execution ID on failure
-   or timeout; do not blindly rerun or reverse SQL migrations.
-3. Verify packaged/applied head `0032`, **33 migrations**, seven nullable fields
-   with the expected types, four validated Widget shape/lifetime/revocation
-   constraints, and the unchanged 52-table / 48 FORCE-RLS manifest and least-
-   privilege role/connectivity/tenant-denial assertions. Verify authenticated
-   result-log access **before** launching validation. Prior GitHub logging
-   denial is not resolved by CI: use the owner's established Cloud Shell
-   authentication where necessary, without broadening IAM or sharing credentials.
-   Missing results block the application rollout, not permission to repeat jobs.
+2. **Completed:** after explicit owner approval, one execution of the reviewed
+   job applied `0032`, adding seven nullable recovery/access fields and bounded
+   checks. The new SQL has no backfill, customer proof issuance, budget/booking
+   change, historical migration edit or RLS/role/grant change. The ordinary
+   migrator also synchronizes the four existing application-role passwords from
+   their existing secret references; no new secret version or IAM change was
+   made. Preserve the recorded execution IDs; do not rerun or reverse migrations.
+3. **Completed:** the existing read-only validator passed all **23 assertions**,
+   including packaged/applied head `0032`, **33 migrations**, seven nullable
+   fields with expected types, four validated Widget constraints, unchanged
+   52-table / 48 FORCE-RLS manifest and least-privilege role/connectivity/tenant-
+   denial assertions. Result-log access was confirmed in the owner's established
+   Cloud Shell before execution. GitHub's separate log-view permission denial
+   remains unresolved; the owner collected the existing results without changing
+   IAM, sharing credentials or launching another job. Evidence provenance and
+   the workflow collection failure are recorded below.
 4. Only after migration verification, create **one fresh full-runtime saved
    plan** from the updated state. Reuse the four immutable images above, timestamp
    and runtime source `19e7f3c`; use the pinned release tooling separately. Select
@@ -180,6 +184,70 @@ or implicitly authorized**:
    source/time/migration metadata, ready revisions, public health and whole-
    runtime convergence. Worker/Migrator require their own descriptor/readiness
    evidence when not independently covered by the convergence result.
+
+### Migration and schema/security receipt — 11 October 2026
+
+[Preflight 38141753783](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38141753783)
+**PASS**: exact reviewed job/image/source/head, 15 live configuration assertions
+and convergence exit **0**. It created no database execution. The owner had
+already confirmed authenticated log access with `LOG_ACCESS_EXIT=0`.
+
+[Migration workflow 38141852052](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38141852052)
+used `action=apply`, `phase=migration-resume`, immutable release-tooling checkout
+`0949cfd`, runtime image source `19e7f3c`, the reviewed migrator digest and timestamp
+above, and packaged head `0032`. Dispatched branch head was
+`93e19b06825bb87bdd63270c2ac007fb01e2b772`. Application inputs, stable journey
+anchor and budgets were preserved. This phase skipped Terraform apply.
+
+- Migration execution **`lead-agent-staging-migrator-6n5xg`** successfully
+  completed; the one-shot migration workflow step is **SUCCESS**.
+- Read-only validator **`lead-agent-staging-migrator-qv6bn`** was launched once
+  by that workflow. The owner supplied its existing structured check results:
+  **23 individual PASS assertions**, a **PASS summary / total 23 / failures 0**,
+  and **`LOG_READ_EXIT=0`**. All check names match the pinned validator, including
+  ingress direct-table denial, cross-tenant denial and FORCE RLS. This evidence
+  is owner-supplied authenticated Cloud Shell output, not a GitHub log artifact
+  independently downloaded by the agent.
+- Immutable validator source SHA256:
+  **`b99adf59aea13bd97f958a465a9b7c99f22c8f690f4b83715ab1afccce697d1c`**.
+  It performs metadata/connectivity checks and a read-only tenant-denial
+  transaction with rollback; no customer/provider action is invoked.
+- Workflow conclusion remains **FAILURE** because GitHub's deployer received
+  `PERMISSION_DENIED` while reading Cloud Logging. Its artifact **11702404852**,
+  `s22-database-validator-evidence-38141852052`, contains the finite
+  `S22V096_VALIDATOR_HARNESS` missing-evidence fallback, **not a failed database
+  assertion**. The owner-supplied validator results close the schema/security
+  evidence gap without changing that historical workflow conclusion.
+
+The first owner result read timed out after 25 seconds. Its `--freshness` flag
+does not bound ascending reads, as specified by the
+[Google CLI reference](https://docs.cloud.google.com/sdk/gcloud/reference/logging/read).
+The corrected read below explicitly bounded the existing execution's timestamps
+and succeeded. No migration or validator was rerun:
+
+```bash
+timeout 55s gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="lead-agent-staging-migrator" AND labels."run.googleapis.com/execution_name"="lead-agent-staging-migrator-qv6bn" AND timestamp>="2026-10-11T13:07:00Z" AND timestamp<="2026-10-11T13:15:00Z" AND jsonPayload.operation="staging_database_validation"' --project=lead-agent-stg-739284 --limit=100 --order=asc --format='table(jsonPayload.assertion:label=CHECK,jsonPayload.outcome:label=RESULT,jsonPayload.assertion_count:label=TOTAL,jsonPayload.failure_count:label=FAILURES)'
+printf 'LOG_READ_EXIT=%s\n' "$?"
+```
+
+[Postflight 38142095801](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38142095801)
+**PASS**, using `action=plan`, `phase=migrator-image-verify` and the same pinned
+inputs. Authenticated artifact **11703427190**:
+`s22-migrator-image-live-evidence-38142095801`; downloaded plaintext SHA256:
+**`e3202cfb2234da8289c71c800f13ba93dc25547480547b901bbd7064eb7a2375`**.
+Its fresh **15/15 live assertions PASS**, state resource count is **89**, and
+whole-configuration convergence exit is **0**. The receipt matches the earlier
+Stage A configuration receipt byte-for-byte: migration changed the database,
+not managed deployment configuration. This check created no database execution
+and does not itself prove the SQL assertions.
+
+Exactly **one migration and one validator** were launched. Diagnostics,
+booking/Widget progress and acceptance executions were skipped; API/Web/Worker
+images and configuration, IAM, private networking, numeric zero retries, secret
+references, route/session binding and budgets are unchanged. No frame, message,
+provider call, replacement binding or application deployment occurred. This
+receipt completes only the migration/schema-security gate, not live recovery
+or S22 acceptance.
 
 No Stage B saved binary is prepared against the pre-migration state: Stage A
 changes its serial and would make such a plan stale. No new application queries
@@ -235,8 +303,9 @@ the Vitest wrapper reruns native boundaries, so these counts are not claimed
 as disjoint coverage. Tests deny arbitrary/mismatched heads, hidden config or
 secret changes, configurable unknowns, unrelated/no-op drift, replay-like scope
 changes and an incorrectly preserved migrator. Both preparation and apply
-revalidate the selected migration head. The 0032 database observations are
-prepared validators, not live executed assertions in this turn.
+revalidate the selected migration head. At preparation time the 0032 database
+observations were prepared validators, not live executed assertions; the later
+verified execution and owner-supplied results are recorded separately above.
 
 Independent saved-plan inspection requires local provider-plugin execution
 permissions; the restricted attempt returned a finite denial and the authorized
@@ -261,6 +330,27 @@ assertions, convergence and skipped-execution boundaries PASS. No new applicatio
 code/tests or SQL changes were needed for this apply. Only this rollout receipt
 document is changed in the apply milestone; temporary helpers remain ignored.
 
+Migration-receipt verification additionally passed:
+
+```text
+gh run view 38142095801 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,headSha,jobs
+gh api repos/mufazzalshokh/lead-agent-platform/actions/runs/38142095801/artifacts
+gh run download 38142095801 --repo mufazzalshokh/lead-agent-platform --name s22-migrator-image-live-evidence-38142095801 --dir .cache/s22-recovery-rollout/postflight-38142095801
+node .cache/s22-recovery-rollout/verify-migration-receipt.mjs
+node --test .github/scripts/s22-full-runtime-config-check.test.mjs .github/scripts/s22-recovery-rollout.test.mjs
+node node_modules/vitest/vitest.mjs run tests/workspace/staging-infrastructure.test.ts tests/workspace/staging-journey-mode.test.ts --maxWorkers=1 --testTimeout=30000
+git diff --check -- docs/architecture/s22-widget-recovery-rollout-plan.md
+```
+
+Result: owner-supplied **23/23** database assertions and zero-failure summary
+match the immutable validator; authenticated workflow/execution provenance,
+postflight receipt SHA256, **15/15** live configuration assertions and convergence
+**0** pass. Native rollout guards pass **15/15**, and workspace checks pass
+**28/28** (their wrapper also reruns native guards, so counts are not disjoint).
+No new application/SQL changes or tests were required. Only this receipt document
+is changed; ignored owner-output copies and temporary verification helpers are
+not committed. The three unrelated owner files remain byte-for-byte unchanged.
+
 In-scope release-tooling files (no application or SQL edits):
 
 ```text
@@ -282,7 +372,8 @@ Existing owner edits in `README.md`, `docs/architecture/s11-instagram-business.m
 and `s22-public-notices.patch` are preserved and excluded. Temporary reviewers,
 dispatch helpers, downloaded manifests and Terraform binaries remain ignored.
 
-**Exactly one next safe action:** obtain explicit approval for one execution of
-the now-verified migrator job to apply `0032_s22_widget_recovery`, followed by
-read-only schema/security verification with authenticated result-log access.
-That approval must not include application deployment, a new chat or Send.
+**Exactly one next safe action:** obtain approval to prepare one fresh
+full-runtime saved rollout plan from the post-migration state, reusing the
+reviewed immutable images and preserved budgets/binding. Preparation must not
+apply it, rerun migration/validation, open a new chat or authorize Send. Applying
+that future plan requires its own exact-plan approval after review.
