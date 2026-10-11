@@ -1,4 +1,133 @@
-# S22 Website Chat send correction rollout approval
+# S22 Website Chat wording and send rollout approvals
+
+## Latest plan - shared customer wording, prepared 2026-10-11
+
+**PREPARED AND INDEPENDENTLY REVIEWED; NOT APPLIED.** The owner authorized
+"Prepare the wording rollout plan", not deployment, another customer message
+or a paid provider call. This packet supersedes the consumed plans below as the
+candidate release. Current live source remains `1210c25`.
+
+The shared application renderer combines approved price/duration facts without
+repeating the service name or equivalent price header, keeps all non-redundant
+conditions and the synthetic notice, and uses a brief greeting plus a separate
+staff-review request acknowledgment. It affects the common Widget/Instagram
+path without changing prompts, models, routing, domain actions or tenant policy.
+The copy icon, explicit Send handler and larger composer remain unchanged.
+
+Runtime/build/plan source: **`68b3011d26afe1bbb8ef0a32c4efd8f66df7c819`**.
+The implementation is `9e0e6a1`; follow-up `68b3011` changes only one integration
+assertion and its evidence. Relative to live source `1210c25`, there are five
+application files, wording tests, that integration assertion and S22 documents;
+no infrastructure/workflow or migration change. Unrelated local owner edits are
+not packaged. The existing coherent four-image pipeline is retained.
+
+Exact-source [CI 38127776639 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38127776639),
+immutable [build 38128063935 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38128063935)
+and saved [plan 38128355452 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38128355452)
+are separate proofs. CI completed clean-checkout `pnpm ci:verify`: static checks,
+types, **3564 ordinary tests / 7 skipped**, all **517 PostgreSQL tests** across
+five isolated suites, and production builds. Total **4081 PASS / 7 skipped**.
+The initial `9e0e6a1` CI failure was a literal assertion for the old passive
+sentence; it was corrected to verify date/time, request and staff-review meaning
+without removing any persisted-state, tenant, outbox, audit or no-confirmation
+checks. Fresh CI passed the formerly failing suite **461/461**. No failed-source
+build or blind workflow rerun was used.
+
+Project/region: `lead-agent-stg-739284` / `me-central1`. Proposed release metadata
+timestamp: **`2026-10-11T09:26:04Z`** (14:26:04 Asia/Tashkent), not evidence of
+an actual deployment. Migration provenance remains
+`0031_s22_widget_inbound_route_management`.
+
+All references use registry
+`me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent`:
+
+```text
+api@sha256:8ee2a518dfdeda34dc8eff02283f660a1a3735332484c925df0623201e774ca9
+web@sha256:62a9672a56c2ccde54a54cae230f87f918d8e15bd061acfd7403eb5c698e530a
+worker@sha256:d3fa54d67b455b9287e453c6dd1d111f336d7c2e609aea39857d32bbfaeb50b9
+migrator@sha256:95841b30404b3605b3cee9a457bb83b0d29731c5ab3b97aac5dfd78c35c8e260
+```
+
+Authenticated build manifest artifact **11698590185**:
+`s22-image-manifest-68b3011d26afe1bbb8ef0a32c4efd8f66df7c819-38128063935`.
+Plaintext manifest SHA256:
+`a8bc612d1e388306c1bd0d8e9e5c1259d605d5cc78ffbbbbbcde7fca7c097bc0`.
+The exact-source build enabled OCI provenance/SBOM and pulled all four digest
+references to verify `linux/amd64` before publishing this manifest.
+
+Authenticated plan artifact **11697975717**:
+`s22-terraform-plan-full-68b3011d26afe1bbb8ef0a32c4efd8f66df7c819`.
+Saved binary SHA256:
+**`5adf180dfd64fe5ec73290b3ccb9213a5ca1fd4a8761a146a39b6035751508a8`**.
+The downloaded binary matches its recorded checksum. Local Terraform **1.14.7**
+with locked Google provider **7.46.1** inspected plan/schema in memory using the
+existing backend-free directory and `verifyFullRuntimeConfiguration` guard.
+Raw plan/state/schema and generated tooling/artifacts are ignored, not committed
+or printed. The guard passed **88 managed configurations**, no configurable
+unknowns, and exactly the following action set:
+
+| Resource                                    | Action | Permitted changes                                   |
+| ------------------------------------------- | ------ | --------------------------------------------------- |
+| `google_cloud_run_v2_service.api[0]`         | update | Image and source/timestamp provenance               |
+| `google_cloud_run_v2_service.web[0]`         | update | Image and source/timestamp provenance               |
+| `google_cloud_run_v2_worker_pool.worker[0]`  | update | Image and source/timestamp provenance               |
+| `google_cloud_run_v2_job.migrator[0]`        | update | Image and source/timestamp provenance; no execution |
+
+**0 creates / 4 in-place updates / 0 destroys / 0 replacements.** Independent
+before-image/provenance comparisons match the last verified `1210c25` rollout,
+timestamp `2026-10-11T08:15:07Z`. After-image/source/time comparisons match this
+manifest and packet. Only refreshed drift is Artifact Registry `update_time`,
+verified computed-only with planned action `no-op`. Workflow history contains
+no intervening apply. `Create reviewed plan`, `Verify full runtime plan safety`
+and `Upload exact reviewed plan` passed; `Apply exact reviewed plan` and
+`Execute one-shot migrator` were skipped. Inventory/booking-evidence jobs were
+also skipped. No database diagnostic, session mutation or provider call ran.
+
+Mode request **preserve** resolves from authoritative state to unchanged
+`widget_booking`; before/after deployment-envelope anchor remains
+`01a11c48-dbc2-76de-a873-f41664da5ccb`. This is not a new browser session or a
+renewal. The owner-selected session that already received the first reply is
+`01a12a04-d2ae-7cba-aded-0c48a410be0c`; it is not replaced by this plan.
+No selection, counter, budget, grant, session TTL, IAM, identity, private VPC,
+secret reference, command, retry, scaling or resource-limit change is permitted.
+
+The existing test envelope is unchanged: two total customer messages (request,
+then confirmation only after a genuine staff offer), four physical attempts,
+maximum two per message, additional reserve at most USD3.205728, combined planning
+exposure at most USD4.247838 and existing USD10 ceiling. This does not renew an
+expired session or transfer its approval. Post-Send accounting/eligibility have
+not been reread; the older owner-UI costs are not a current balance. Historical
+NULL costs remain unknown. Do not resend the request for a style comparison.
+Existing delivered/persisted wording is not rewritten; only future replies change.
+
+Recorded plan inputs (no apply token or approval authority is embedded):
+
+```json
+{
+  "action": "plan",
+  "phase": "full",
+  "commit_sha": "68b3011d26afe1bbb8ef0a32c4efd8f66df7c819",
+  "deployment_timestamp": "2026-10-11T09:26:04Z",
+  "api_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:8ee2a518dfdeda34dc8eff02283f660a1a3735332484c925df0623201e774ca9",
+  "web_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:62a9672a56c2ccde54a54cae230f87f918d8e15bd061acfd7403eb5c698e530a",
+  "worker_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:d3fa54d67b455b9287e453c6dd1d111f336d7c2e609aea39857d32bbfaeb50b9",
+  "migrator_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:95841b30404b3605b3cee9a457bb83b0d29731c5ab3b97aac5dfd78c35c8e260",
+  "api_migration_head": "0031_s22_widget_inbound_route_management",
+  "runtime_migration_head": "0031_s22_widget_inbound_route_management",
+  "ai_journey_mode": "preserve",
+  "ai_journey_widget_session_id": "01a11c48-dbc2-76de-a873-f41664da5ccb"
+}
+```
+
+Next safe step, if the owner approves: **"Apply plan 38128355452 only."** Recheck
+the authenticated artifact/checksum and absence of intervening apply, then apply
+that saved binary once with identical images/provenance and existing state-lock/
+stale-plan safeguards. Do not rebuild or substitute a new plan. Follow with exact
+read-only runtime verification before relying on the new customer wording. A
+rollback would require a newly reviewed plan using the retained prior digests;
+no automatic rollback, replay, budget/session reset or migration is authorized.
+These are source/CI/build/plan proofs, not live fluent-language, Instagram reply,
+customer-confirmation or accounting acceptance. **S22 remains unaccepted.**
 
 ## Latest rollout - compact copy icon deployed and verified, 2026-10-11
 

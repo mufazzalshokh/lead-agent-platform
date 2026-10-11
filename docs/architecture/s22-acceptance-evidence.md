@@ -3,6 +3,52 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Wording release saved plan prepared; not applied
+
+The owner authorized plan preparation only. Exact corrected source **68b3011**
+passed fresh **CI 38127776639**, one immutable **build 38128063935** and one
+saved **plan 38128355452**. CI passed **4081 tests / 7 skipped**: 3564 ordinary
+and 517 real PostgreSQL cases across five isolated suites, including **461/461**
+in the previously failing suite. Static/type checks and production builds passed.
+No prompt/model live test, failed-source build or blind workflow rerun occurred.
+
+The [wording approval packet](s22-widget-send-rollout-plan.md#latest-plan---shared-customer-wording-prepared-2026-10-11)
+retains all digests, artifact IDs, inputs and rollback/proof limits. Proposed
+timestamp `2026-10-11T09:26:04Z`; migration head unchanged. Binary SHA256
+`5adf180dfd64fe5ec73290b3ccb9213a5ca1fd4a8761a146a39b6035751508a8`
+matched the downloaded checksum. Independent installed Terraform/provider review
+passed **88 managed configurations**, only **0 creates / 4 in-place image and
+provenance updates / 0 destroys / 0 replacements**. Before bindings match verified
+live `1210c25`, after bindings match the manifest and exact source/time. Refreshed
+registry `update_time` is computed-only/no-op; no configurable drift or unknowns.
+Seven existing configuration-guard tests also passed. No intervening apply was
+observed. Apply/migrator execution and diagnostic/booking-evidence jobs were skipped.
+
+Exact preparation verification (repository root; ignored helpers/artifacts):
+
+```text
+gh run view 38127776639 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,headSha
+gh workflow run staging-images.yml --repo mufazzalshokh/lead-agent-platform --ref verify/s22-staging-recovery-capacity -f commit_sha=68b3011d26afe1bbb8ef0a32c4efd8f66df7c819 -f image_scope=all
+gh run download 38128063935 --repo mufazzalshokh/lead-agent-platform --name s22-image-manifest-68b3011d26afe1bbb8ef0a32c4efd8f66df7c819-38128063935 --dir .cache/s22-wording-rollout/build
+node .cache/s22-wording-rollout/prepare.mjs 38128063935 2026-10-11T09:26:04Z
+gh run download 38128355452 --repo mufazzalshokh/lead-agent-platform --name s22-terraform-plan-full-68b3011d26afe1bbb8ef0a32c4efd8f66df7c819 --dir .cache/s22-wording-rollout/plan
+node .cache/s22-wording-rollout/review.mjs 38128063935 2026-10-11T09:26:04Z
+node --test .github/scripts/s22-full-runtime-config-check.test.mjs
+```
+
+All above results PASS; dispatch/download commands are historical receipts, not
+instructions to repeat them. Raw Terraform plan/state/schema stayed private.
+No secret reference, IAM, identity, networking, retry, command, scaling, budget,
+ledger, Widget selection/binding, lifetime or SQL migration change. Existing
+`widget_booking` deployment-envelope anchor and session-specific test authority
+remain unchanged. The first real request must not be replayed for a style test.
+Previously delivered text will not change. Post-Send accounting and confirmed
+booking proof are still pending; historical NULL costs remain unknown.
+
+**Not deployed:** runtime is still verified `1210c25`. Next safe milestone:
+owner approval of **"Apply plan 38128355452 only"**, then exact saved-binary
+apply and read-only runtime verification. **S22 remains unaccepted.**
+
 ## 2026-10-11 - Wording rollout preparation: stale integration assertion corrected
 
 The owner authorized **"Prepare the wording rollout plan."**, not deployment or

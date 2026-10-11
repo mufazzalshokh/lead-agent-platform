@@ -1,5 +1,29 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Latest checkpoint - wording rollout plan ready for approval, 2026-10-11
+
+Exact source **68b3011** passed **CI 38127776639** (4081 tests / 7 skipped,
+including all PostgreSQL suites and production builds), immutable **build
+38128063935**, and saved **plan 38128355452**. The initial stale prose assertion
+was corrected without changing application behavior or booking/tenant invariants;
+the formerly failing stateful suite now passes **461/461**. No failing source
+was built, and no browser or paid request was repeated.
+
+Independent saved-plan review passed 88 managed configurations, exact before/after
+images and provenance, checksum and **0 creates / 4 in-place updates / 0 destroys /
+0 replacements**. Budget, Widget mode/envelope anchor, security configuration and
+migration head remain unchanged. The [approval packet](s22-widget-send-rollout-plan.md#latest-plan---shared-customer-wording-prepared-2026-10-11)
+contains exact artifact IDs, hashes, inputs and proof limits.
+
+**Next: "Apply plan 38128355452 only"**, if the owner approves. This is preparation
+only: nothing is deployed; apply/migrator execution and diagnostic jobs were
+skipped. Current runtime remains `1210c25`. No new/renewed/replacement session,
+message, provider call, budget increase or cost reconciliation occurred.
+Existing messages will not be rewritten by deployment. Do not resend the first
+request for style or transfer its remaining confirmation authority to another
+chat. Confirmed booking, post-Send accounting and fluent live wording proof remain
+pending; historical NULL costs remain unknown. **S22 remains unaccepted.**
+
 ## Latest checkpoint - first reply received; wording verified locally, 2026-10-11
 
 The owner's real Widget screenshot shows receipt of the first price/duration
