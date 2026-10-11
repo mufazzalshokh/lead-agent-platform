@@ -1,11 +1,15 @@
 # S22 Website Chat wording and send rollout approvals
 
-## Latest plan - shared customer wording, prepared 2026-10-11
+## Latest rollout - shared customer wording deployed and verified, 2026-10-11
 
-**PREPARED AND INDEPENDENTLY REVIEWED; NOT APPLIED.** The owner authorized
-"Prepare the wording rollout plan", not deployment, another customer message
-or a paid provider call. This packet supersedes the consumed plans below as the
-candidate release. Current live source remains `1210c25`.
+**APPLIED ONCE AND RUNTIME VERIFIED.** The owner's explicit
+"Apply plan 38128355452 only" approval is fulfilled by
+[apply 38129053516 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38129053516)
+and read-only
+[verification 38129147318 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38129147318).
+The saved plan is consumed; do not reapply it. Current verified runtime source is
+`68b3011`. No replacement plan/build, customer message or paid call was initiated
+by this rollout.
 
 The shared application renderer combines approved price/duration facts without
 repeating the service name or equivalent price header, keeps all non-redundant
@@ -33,9 +37,10 @@ without removing any persisted-state, tenant, outbox, audit or no-confirmation
 checks. Fresh CI passed the formerly failing suite **461/461**. No failed-source
 build or blind workflow rerun was used.
 
-Project/region: `lead-agent-stg-739284` / `me-central1`. Proposed release metadata
-timestamp: **`2026-10-11T09:26:04Z`** (14:26:04 Asia/Tashkent), not evidence of
-an actual deployment. Migration provenance remains
+Project/region: `lead-agent-stg-739284` / `me-central1`. Release metadata
+timestamp: **`2026-10-11T09:26:04Z`** (14:26:04 Asia/Tashkent), retained exactly
+from the approved plan. Apply completed **`2026-10-11T09:38:48Z`**; read-only
+verification completed **`2026-10-11T09:40:13Z`**. Migration provenance remains
 `0031_s22_widget_inbound_route_management`.
 
 All references use registry
@@ -77,11 +82,29 @@ unknowns, and exactly the following action set:
 before-image/provenance comparisons match the last verified `1210c25` rollout,
 timestamp `2026-10-11T08:15:07Z`. After-image/source/time comparisons match this
 manifest and packet. Only refreshed drift is Artifact Registry `update_time`,
-verified computed-only with planned action `no-op`. Workflow history contains
-no intervening apply. `Create reviewed plan`, `Verify full runtime plan safety`
-and `Upload exact reviewed plan` passed; `Apply exact reviewed plan` and
-`Execute one-shot migrator` were skipped. Inventory/booking-evidence jobs were
-also skipped. No database diagnostic, session mutation or provider call ran.
+verified computed-only with planned action `no-op`. Before apply, authenticated
+workflow history showed no intervening apply; a fresh download again matched
+the approved checksum, and independent review again passed all 88 configurations.
+Seven existing configuration-guard tests passed. Preparation passed plan safety
+and upload and skipped apply/migrator execution. The authorized apply then passed
+download, integrity and exact full-runtime approval guards and completed
+**0 added / 4 changed / 0 destroyed**, with no replacements. It skipped creating
+another plan and executing the migrator. Both apply and verification skipped
+inventory/booking-evidence jobs. No database diagnostic, session mutation or
+provider call was initiated by either workflow.
+
+Read-only artifact **11698956388**, `s22-api-image-live-evidence-38129147318`,
+has plaintext SHA256
+`0e019fdbcf7a78dff763e3c348db9c9906c67b643749c1b1a4bb27fa0abd7056`.
+All **16 assertions PASS**, including exact API/Web images, API source/time and
+migration provenance, identity, private VPC/egress, secret-reference count and
+ready revisions. Whole-runtime Terraform convergence is **exit 0**. Independent
+receipt validation matches the approved source, time and digests. API ready:
+**`lead-agent-staging-api-00032-zfj`**; Web ready:
+**`lead-agent-staging-web-00028-7rh`**. Worker/Migrator desired bindings are covered
+by saved-plan inspection, successful apply and whole-runtime convergence, not a
+separate direct ready-revision assertion. No provider/message endpoint or private
+database was queried by this release verification.
 
 Mode request **preserve** resolves from authoritative state to unchanged
 `widget_booking`; before/after deployment-envelope anchor remains
@@ -119,15 +142,19 @@ Recorded plan inputs (no apply token or approval authority is embedded):
 }
 ```
 
-Next safe step, if the owner approves: **"Apply plan 38128355452 only."** Recheck
-the authenticated artifact/checksum and absence of intervening apply, then apply
-that saved binary once with identical images/provenance and existing state-lock/
-stale-plan safeguards. Do not rebuild or substitute a new plan. Follow with exact
-read-only runtime verification before relying on the new customer wording. A
-rollback would require a newly reviewed plan using the retained prior digests;
-no automatic rollback, replay, budget/session reset or migration is authorized.
-These are source/CI/build/plan proofs, not live fluent-language, Instagram reply,
-customer-confirmation or accounting acceptance. **S22 remains unaccepted.**
+The one approved saved-binary apply and read-only verification are complete.
+Dispatch ran from documentation-only branch HEAD `39196ad`; the workflow's
+validated exact checkout and all runtime provenance remain source `68b3011`.
+Do not reapply, rebuild or substitute a plan. A rollback would require a newly
+reviewed plan using the retained prior digests; no automatic rollback, replay,
+budget/session reset or migration is authorized.
+
+**Next safe step: read-only correlation of the already received booking request
+with its persisted booking, delivery/provider trace and staff-review path.**
+Do not resend the request or spend the remaining confirmation message on style.
+Source/CI/build/apply/runtime proof does not establish live fluent-language,
+Instagram reply, customer-confirmation or post-Send accounting acceptance.
+**S22 remains unaccepted.**
 
 ## Latest rollout - compact copy icon deployed and verified, 2026-10-11
 

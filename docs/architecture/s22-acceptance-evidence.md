@@ -3,17 +3,17 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
-## 2026-10-11 - Wording release saved plan prepared; not applied
+## 2026-10-11 - Wording release exact saved plan applied and runtime verified
 
-The owner authorized plan preparation only. Exact corrected source **68b3011**
+The owner approved **"Apply plan 38128355452 only."** Exact corrected source **68b3011**
 passed fresh **CI 38127776639**, one immutable **build 38128063935** and one
 saved **plan 38128355452**. CI passed **4081 tests / 7 skipped**: 3564 ordinary
 and 517 real PostgreSQL cases across five isolated suites, including **461/461**
 in the previously failing suite. Static/type checks and production builds passed.
 No prompt/model live test, failed-source build or blind workflow rerun occurred.
 
-The [wording approval packet](s22-widget-send-rollout-plan.md#latest-plan---shared-customer-wording-prepared-2026-10-11)
-retains all digests, artifact IDs, inputs and rollback/proof limits. Proposed
+The [applied wording packet](s22-widget-send-rollout-plan.md#latest-rollout---shared-customer-wording-deployed-and-verified-2026-10-11)
+retains all digests, artifact IDs, inputs and rollback/proof limits. Release metadata
 timestamp `2026-10-11T09:26:04Z`; migration head unchanged. Binary SHA256
 `5adf180dfd64fe5ec73290b3ccb9213a5ca1fd4a8761a146a39b6035751508a8`
 matched the downloaded checksum. Independent installed Terraform/provider review
@@ -21,10 +21,28 @@ passed **88 managed configurations**, only **0 creates / 4 in-place image and
 provenance updates / 0 destroys / 0 replacements**. Before bindings match verified
 live `1210c25`, after bindings match the manifest and exact source/time. Refreshed
 registry `update_time` is computed-only/no-op; no configurable drift or unknowns.
-Seven existing configuration-guard tests also passed. No intervening apply was
-observed. Apply/migrator execution and diagnostic/booking-evidence jobs were skipped.
+Seven existing configuration-guard tests also passed again before apply. No
+intervening apply was observed; a fresh authenticated download again matched
+the exact approved binary checksum. **Apply 38129053516 PASS** completed
+`2026-10-11T09:38:48Z`, after download/integrity/full-runtime approval guards,
+with **0 added / 4 changed / 0 destroyed**, no replacements. No substitute plan
+was created; one-shot migration, diagnostic and booking-evidence jobs were skipped.
 
-Exact preparation verification (repository root; ignored helpers/artifacts):
+**Read-only verification 38129147318 PASS** completed `2026-10-11T09:40:13Z`.
+Authenticated artifact **11698956388**, `s22-api-image-live-evidence-38129147318`,
+plaintext SHA256 `0e019fdbcf7a78dff763e3c348db9c9906c67b643749c1b1a4bb27fa0abd7056`,
+passed independent receipt validation: **16/16 assertions**, exact approved
+API/Web images, API source/time/migration provenance, identity, private VPC/egress,
+15 secret references and ready revisions. Whole-runtime convergence **exit 0**.
+API ready **lead-agent-staging-api-00032-zfj**; Web ready
+**lead-agent-staging-web-00028-7rh**. Worker/Migrator desired bindings are covered
+by saved-plan review, successful apply and convergence, not a direct ready-state
+read. No customer/provider endpoint or private database query ran for verification.
+Verification skipped apply, saved-plan creation, migration and diagnostic jobs.
+Workflow dispatch HEAD was documentation-only `39196ad`; validated checkout and
+runtime provenance are the exact approved **68b3011** source.
+
+Exact preparation/apply verification (repository root; ignored helpers/artifacts):
 
 ```text
 gh run view 38127776639 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,headSha
@@ -34,20 +52,39 @@ node .cache/s22-wording-rollout/prepare.mjs 38128063935 2026-10-11T09:26:04Z
 gh run download 38128355452 --repo mufazzalshokh/lead-agent-platform --name s22-terraform-plan-full-68b3011d26afe1bbb8ef0a32c4efd8f66df7c819 --dir .cache/s22-wording-rollout/plan
 node .cache/s22-wording-rollout/review.mjs 38128063935 2026-10-11T09:26:04Z
 node --test .github/scripts/s22-full-runtime-config-check.test.mjs
+gh run download 38128355452 --repo mufazzalshokh/lead-agent-platform --name s22-terraform-plan-full-68b3011d26afe1bbb8ef0a32c4efd8f66df7c819 --dir .cache/s22-wording-rollout/pre-apply
+Get-FileHash .cache/s22-wording-rollout/pre-apply/s22.tfplan -Algorithm SHA256
+node --check .cache/s22-wording-rollout/dispatch.mjs
+node .cache/s22-wording-rollout/dispatch.mjs apply
+gh run view 38129053516 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,jobs
+node .cache/s22-wording-rollout/dispatch.mjs verify
+gh run view 38129147318 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,jobs
+gh run download 38129147318 --repo mufazzalshokh/lead-agent-platform --name s22-api-image-live-evidence-38129147318 --dir .cache/s22-wording-rollout/verify
+node .cache/s22-wording-rollout/verify-evidence.mjs
+git diff --check -- docs/architecture/s22-widget-send-rollout-plan.md docs/architecture/s22-acceptance-evidence.md docs/architecture/s22-synthetic-booking-journey.md
 ```
 
 All above results PASS; dispatch/download commands are historical receipts, not
 instructions to repeat them. Raw Terraform plan/state/schema stayed private.
-No secret reference, IAM, identity, networking, retry, command, scaling, budget,
+The deployment includes no secret-reference, IAM, identity, networking, retry, command, scaling, budget,
 ledger, Widget selection/binding, lifetime or SQL migration change. Existing
 `widget_booking` deployment-envelope anchor and session-specific test authority
 remain unchanged. The first real request must not be replayed for a style test.
 Previously delivered text will not change. Post-Send accounting and confirmed
 booking proof are still pending; historical NULL costs remain unknown.
 
-**Not deployed:** runtime is still verified `1210c25`. Next safe milestone:
-owner approval of **"Apply plan 38128355452 only"**, then exact saved-binary
-apply and read-only runtime verification. **S22 remains unaccepted.**
+Documentation-only handoff changes the three S22 evidence files, not runtime
+source. Scoped whitespace checks passed. Whole-worktree `git diff --check`
+reported pre-existing trailing whitespace at `docs/architecture/s11-instagram-business.md:106`;
+that owner change, `README.md` and `s22-public-notices.patch` retain their prior
+SHA256 values and are neither modified nor staged for this task. No formatter
+pass is claimed for ignored architecture Markdown.
+
+**Deployed and runtime verified:** source **68b3011**; saved plan consumed.
+This does not prove newly delivered fluent wording or Instagram E2E, and existing
+messages are not rewritten. **Next safe milestone: read-only correlation of the
+already received request with persisted booking, delivery/provider trace and the
+staff-review path.** No style retry or new chat is needed. **S22 remains unaccepted.**
 
 ## 2026-10-11 - Wording rollout preparation: stale integration assertion corrected
 

@@ -1,6 +1,6 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
-## Latest checkpoint - wording rollout plan ready for approval, 2026-10-11
+## Latest checkpoint - wording deployed and runtime verified, 2026-10-11
 
 Exact source **68b3011** passed **CI 38127776639** (4081 tests / 7 skipped,
 including all PostgreSQL suites and production builds), immutable **build
@@ -12,17 +12,28 @@ was built, and no browser or paid request was repeated.
 Independent saved-plan review passed 88 managed configurations, exact before/after
 images and provenance, checksum and **0 creates / 4 in-place updates / 0 destroys /
 0 replacements**. Budget, Widget mode/envelope anchor, security configuration and
-migration head remain unchanged. The [approval packet](s22-widget-send-rollout-plan.md#latest-plan---shared-customer-wording-prepared-2026-10-11)
+migration head remain unchanged. The [applied packet](s22-widget-send-rollout-plan.md#latest-rollout---shared-customer-wording-deployed-and-verified-2026-10-11)
 contains exact artifact IDs, hashes, inputs and proof limits.
 
-**Next: "Apply plan 38128355452 only"**, if the owner approves. This is preparation
-only: nothing is deployed; apply/migrator execution and diagnostic jobs were
-skipped. Current runtime remains `1210c25`. No new/renewed/replacement session,
-message, provider call, budget increase or cost reconciliation occurred.
+The owner's **"Apply plan 38128355452 only"** approval is fulfilled:
+**apply 38129053516 PASS**, completed `2026-10-11T09:38:48Z`, and read-only
+**verification 38129147318 PASS**, completed `2026-10-11T09:40:13Z`.
+Current verified runtime source **68b3011**, release metadata timestamp
+**2026-10-11T09:26:04Z**. All four updates completed; checksum/approval guards,
+**16 live assertions** and whole-runtime convergence **exit 0** passed. API ready
+**lead-agent-staging-api-00032-zfj**, Web ready **lead-agent-staging-web-00028-7rh**.
+Worker/Migrator desired bindings are proven by saved-plan review, apply and
+convergence, not separate direct ready-revision reads. The saved plan is consumed;
+no replacement plan/build or migration/diagnostic job ran. No new/renewed/replacement
+session, message, provider call, budget increase or cost reconciliation was initiated
+by the rollout workflows.
 Existing messages will not be rewritten by deployment. Do not resend the first
 request for style or transfer its remaining confirmation authority to another
 chat. Confirmed booking, post-Send accounting and fluent live wording proof remain
-pending; historical NULL costs remain unknown. **S22 remains unaccepted.**
+pending; historical NULL costs remain unknown. **Next: read-only correlation of
+the already received request with persisted booking, delivery/provider trace and
+the staff-review path.** Do not open another chat or resend for style.
+**S22 remains unaccepted.**
 
 ## Latest checkpoint - first reply received; wording verified locally, 2026-10-11
 
