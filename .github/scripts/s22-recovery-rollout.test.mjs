@@ -10,6 +10,24 @@ const profile = (head) =>
     head,
   });
 
+test("runtime provenance checks fetch complete history without relaxing exact commit or ancestry guards", () => {
+  const checkout = workflow.match(/- name: Check out exact commit[\s\S]*?(?=\n {6}- name:)/u)?.[0];
+  const proof = workflow.match(
+    /- name: Prove commit is preserved on the dispatched branch[\s\S]*?(?=\n {6}- name:)/u,
+  )?.[0];
+  assert.ok(checkout);
+  assert.ok(proof);
+  assert.ok(checkout.includes("ref: ${{ env.S22_COMMIT_SHA }}"));
+  assert.match(checkout, /^\s+fetch-depth:\s+0\s*$/mu);
+  assert.ok(proof.includes('test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"'));
+  assert.ok(
+    proof.includes('git merge-base --is-ancestor "$REQUESTED_SHA" "origin/$DISPATCH_BRANCH"'),
+  );
+  assert.ok(
+    proof.includes('git merge-base --is-ancestor "$S22_RUNTIME_GIT_COMMIT_SHA" "$REQUESTED_SHA"'),
+  );
+});
+
 test("database validator accepts only the exact approved packaged heads and their journal counts", () => {
   assert.equal(profile("0031_s22_widget_inbound_route_management").count, 32);
   assert.equal(profile("0032_s22_widget_recovery").count, 33);
