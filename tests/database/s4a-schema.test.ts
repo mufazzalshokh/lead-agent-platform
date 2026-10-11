@@ -2924,7 +2924,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(32);
+    expect(migrationCount.rows[0]?.count).toBe(33);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -3371,6 +3371,13 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       "created_at",
       "updated_at",
       "version",
+      "recovery_token_hash",
+      "recovery_issued_at",
+      "recovery_expires_at",
+      "recovery_request_origin",
+      "recovery_embedding_origin",
+      "access_issued_at",
+      "access_expires_at",
     ]);
     expect(namesByTable["contacts"]?.map(({ column_name }) => column_name)).toEqual([
       "id",
@@ -3901,6 +3908,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
       "membership_invitations.token_hash",
       "outbox_events.lease_token",
       "outbox_events.published_claim_token",
+      "widget_sessions.recovery_token_hash",
       "widget_sessions.session_token_jti_hash",
     ]);
     expect(

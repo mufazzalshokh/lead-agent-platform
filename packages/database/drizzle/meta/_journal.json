@@ -225,6 +225,13 @@
       "when": 1791014400000,
       "tag": "0031_s22_widget_inbound_route_management",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791676800000,
+      "tag": "0032_s22_widget_recovery",
+      "breakpoints": true
     }
   ]
 }

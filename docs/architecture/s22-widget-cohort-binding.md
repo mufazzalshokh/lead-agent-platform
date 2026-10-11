@@ -3,6 +3,10 @@
 Scope: the existing synthetic staging cohort only. This is not production billing,
 general Widget eligibility, a new budget, or S22 acceptance.
 
+The separately approved [customer-owned recovery design](s22-widget-recovery.md)
+preserves this identity and all consumed usage; it does not authorize Send or
+retroactive recovery without customer proof.
+
 ## Selection UI rollout applied and verified, 2026-10-10
 
 Exact plan **37954005150** was applied by **37987684500 PASS**: 0 creates,

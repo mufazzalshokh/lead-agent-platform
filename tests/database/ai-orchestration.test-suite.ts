@@ -205,6 +205,23 @@ const store = (harness: Harness, protectProposal = proposalProtection.protect) =
     dataProtection,
     protectProposal,
   });
+// Proof consumption is tested through the real recovery store in Widget intake.
+// These fixtures verify the independent consumers of an authenticated access lease.
+const bindRecoveredWidget = async (
+  harness: Harness,
+  receipt: CanonicalInboundReceipt,
+  instant: string,
+): Promise<void> => {
+  await bindWidget(harness, receipt, new Date(Date.parse(instant) - 10_800_000).toISOString());
+  await harness.privilegedPool().query(
+    `update widget_sessions set recovery_token_hash=$3,recovery_issued_at=issued_at,
+      recovery_expires_at=issued_at+interval '24 hours',
+      recovery_request_origin='https://widget.example',recovery_embedding_origin='https://s12.example.com',
+      access_issued_at=$2,access_expires_at=$2::timestamptz+interval '1 hour',last_seen_at=$2
+      where conversation_id=$1`,
+    [receipt.conversationId, instant, Buffer.alloc(32, 92)],
+  );
+};
 const counts = async (pool: Pool) =>
   (
     await pool.query<Record<string, unknown>>(
@@ -1062,6 +1079,20 @@ const registerAppointmentSubmissionTests = (harness: Harness): void => {
 
 const registerSalesFlowTests = (harness: Harness): void => {
   describe("S15 tenant-bound qualification and Handoff persistence", () => {
+    it("qualifies through a recovered access lease without a new customer identity", async () => {
+      await seedSales(harness);
+      const receipt = await accept(harness, { text: "oka lazer ertaga" });
+      await bindRecoveredWidget(harness, receipt, GROUNDING_NOW);
+      expect(await salesFlow(harness).run(referenceFor(receipt))).toMatchObject({
+        kind: "appointment_boundary",
+        missing: [],
+      });
+      expect(await salesCounts(harness)).toMatchObject({ qualified: 1, qualifications: 1 });
+      expect(
+        (await harness.privilegedPool().query("select count(*)::int as count from widget_sessions"))
+          .rows[0],
+      ).toEqual({ count: 1 });
+    });
     it("visible price → tomorrow → human journey preserves facts, qualifies once, and requests one staff handoff", async () => {
       await seedSales(harness);
       const first = await accept(harness, { text: "oka lazer nechi pul" });
@@ -2704,6 +2735,24 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
           `update widget_sessions set status='revoked',revoked_at=now(),revocation_reason='synthetic-test-revocation'`,
         );
       expect((await store(harness).load(reference))?.policy.contactableWithoutPhone).toBe(false);
+    });
+    it("AI contactability honors the recovered lease but not its expired access", async () => {
+      await seed(harness);
+      const receipt = await accept(harness);
+      const instant = new Date().toISOString();
+      await bindRecoveredWidget(harness, receipt, instant);
+      expect(
+        (await store(harness).load(referenceFor(receipt)))?.policy.contactableWithoutPhone,
+      ).toBe(true);
+      await harness.privilegedPool().query(
+        `update widget_sessions set access_issued_at=$2::timestamptz-interval '2 hours',
+          access_expires_at=$2::timestamptz-interval '1 hour',last_seen_at=$2::timestamptz-interval '2 hours'
+          where conversation_id=$1`,
+        [receipt.conversationId, instant],
+      );
+      expect(
+        (await store(harness).load(referenceFor(receipt)))?.policy.contactableWithoutPhone,
+      ).toBe(false);
     });
     it("unknown usage/cost remain null, not invented zero", async () => {
       await seed(harness);

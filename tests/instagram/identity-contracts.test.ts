@@ -9,6 +9,7 @@ import {
   S20_WIDGET_SCHEMA_NAMES,
   S21_THREAD_AUTOMATION_SCHEMA_NAMES,
   S22_WIDGET_COHORT_SCHEMA_NAMES,
+  WIDGET_RECOVERY_SCHEMA_NAMES,
 } from "../../scripts/contracts/catalog.js";
 import {
   DOMAIN_EVENT_NAMES,
@@ -64,6 +65,7 @@ describe("Instagram additive identity/event version compatibility", () => {
       ...S20_WIDGET_SCHEMA_NAMES,
       ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
       ...S22_WIDGET_COHORT_SCHEMA_NAMES,
+      ...WIDGET_RECOVERY_SCHEMA_NAMES,
       "AppointmentRequestConfirmedDomainEventV2Schema",
       "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
     ]);

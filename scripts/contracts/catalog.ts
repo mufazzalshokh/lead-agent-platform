@@ -65,6 +65,13 @@ export const S22_WIDGET_COHORT_SCHEMA_NAMES = [
   "S22WidgetCohortSelectionResponseSchema",
 ] as const;
 
+export const WIDGET_RECOVERY_SCHEMA_NAMES = [
+  "WidgetRecoveryCodeIssueInputSchema",
+  "WidgetRecoveryCodeResponseSchema",
+  "WidgetRecoveryResumeInputSchema",
+  "WidgetRecoveryResumeResponseSchema",
+] as const;
+
 export const PUBLIC_STATIC_SCHEMA_NAMES = {
   ai: [
     "AgentDecisionLanguageSchema",
@@ -273,6 +280,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "AggregateVersionSchema",
   ],
   widget: [
+    ...WIDGET_RECOVERY_SCHEMA_NAMES,
     "WidgetAcceptedMessageSchema",
     "WidgetConversationCreateInputSchema",
     "WidgetConversationCreateResponseSchema",

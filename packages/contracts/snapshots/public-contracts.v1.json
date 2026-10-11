@@ -64980,6 +64980,178 @@
     },
     {
       "category": "widget",
+      "export_name": "WidgetRecoveryCodeIssueInputSchema",
+      "schema": {
+        "$id": "WidgetRecoveryCodeIssueInput.v1",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "schema_id": "WidgetRecoveryCodeIssueInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetRecoveryCodeResponseSchema",
+      "schema": {
+        "$id": "WidgetRecoveryCodeResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "recovery_code": {
+                "maxLength": 2048,
+                "minLength": 100,
+                "pattern": "^wrc1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "recovery_expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "recovery_code",
+              "recovery_expires_at"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetRecoveryCodeResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetRecoveryResumeInputSchema",
+      "schema": {
+        "$id": "WidgetRecoveryResumeInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "recovery_code": {
+            "maxLength": 2048,
+            "minLength": 100,
+            "pattern": "^wrc1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recovery_code"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetRecoveryResumeInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
+      "export_name": "WidgetRecoveryResumeResponseSchema",
+      "schema": {
+        "$id": "WidgetRecoveryResumeResponse.v1",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "additionalProperties": false,
+            "properties": {
+              "bearer_token": {
+                "maxLength": 4096,
+                "minLength": 80,
+                "pattern": "^[A-Za-z0-9._-]+$",
+                "type": "string"
+              },
+              "conversation_id": {
+                "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                "maxLength": 36,
+                "minLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              },
+              "recovery_code": {
+                "maxLength": 2048,
+                "minLength": 100,
+                "pattern": "^wrc1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              "recovery_expires_at": {
+                "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                "format": "date-time",
+                "maxLength": 30,
+                "minLength": 20,
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "bearer_token",
+              "conversation_id",
+              "expires_at",
+              "recovery_code",
+              "recovery_expires_at"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "WidgetRecoveryResumeResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
       "export_name": "WidgetSessionCreateInputSchema",
       "schema": {
         "$id": "WidgetSessionCreateInput.v1",

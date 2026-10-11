@@ -169,7 +169,7 @@ export const createAIJourneyBudgetGuard = (
        join widget_allowed_origins wao on wao.organization_id=$1 and wao.id=ws.widget_allowed_origin_id
          and wao.channel_connection_id=ws.channel_connection_id
        where ws.organization_id=$1 and ws.id=$2 and ws.status='active' and ws.revoked_at is null
-         and ws.expires_at>$3 and ws.last_seen_at>$4
+         and coalesce(ws.access_expires_at,ws.expires_at)>$3 and ws.last_seen_at>$4
          and cc.status='active' and cc.channel_type='widget' and wao.status='active'
          ${ownerSelection ? "and ws.channel_connection_id=$5 and ws.widget_allowed_origin_id=$6" : ""}
        ${lock ? "for update of ws" : ""}`,

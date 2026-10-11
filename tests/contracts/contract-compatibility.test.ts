@@ -10,6 +10,7 @@ import { canonicalStringify, type JsonValue } from "../../scripts/contracts/cano
 import {
   getPublicContractCatalog,
   PUBLIC_STATIC_SCHEMA_NAMES,
+  WIDGET_RECOVERY_SCHEMA_NAMES,
   S22_WIDGET_COHORT_SCHEMA_NAMES,
   S17_STAFF_SCHEMA_NAMES,
   S19_STAFF_SCHEMA_NAMES,
@@ -145,6 +146,17 @@ const sameVersionDrift = (mutate: (schema: Record<string, unknown>) => void) => 
   );
 };
 
+// Freeze historical stage comparisons independently of the approved recovery addition.
+const buildPreRecoverySnapshot = () => {
+  const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => !WIDGET_RECOVERY_SCHEMA_NAMES.some((name) => name === contract.export_name),
+    ),
+  };
+};
+
 describe("public contract inventory and snapshot", () => {
   it("catalogs every intentional public schema exactly once", () => {
     const snapshot = buildContractSnapshot();
@@ -157,7 +169,7 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(378);
+    expect(snapshot.contracts).toHaveLength(382);
     expect(counts).toEqual({
       ai: 16,
       api: 44,
@@ -166,7 +178,7 @@ describe("public contract inventory and snapshot", () => {
       conversation: 37,
       event: 135,
       shared: 28,
-      widget: 29,
+      widget: 33,
     });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
@@ -174,7 +186,7 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S17 schemas without changing any of the 329 accepted entries", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s19 = new Set<string>([
       ...S19_STAFF_SCHEMA_NAMES,
       ...S19_WIDGET_SCHEMA_NAMES,
@@ -205,7 +217,7 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds only S18 confirmed V2 while preserving all 345 accepted contracts", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s19 = new Set<string>([
       ...S19_STAFF_SCHEMA_NAMES,
       ...S19_WIDGET_SCHEMA_NAMES,
@@ -267,7 +279,7 @@ describe("public contract inventory and snapshot", () => {
   );
 
   it("classifies the S10 Widget contracts as additive only", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s19Widget = new Set<string>([...S19_WIDGET_SCHEMA_NAMES, ...S20_WIDGET_SCHEMA_NAMES]);
     const candidate = {
       ...full,
@@ -288,7 +300,7 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S19 private staff and Widget embed contracts", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s20 = new Set<string>([
       ...S20_ANALYTICS_SCHEMA_NAMES,
       ...S20_WIDGET_SCHEMA_NAMES,
@@ -311,7 +323,7 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S20 private analytics and bounded Widget telemetry contracts", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const candidate = {
       ...full,
       contracts: full.contracts.filter(
@@ -331,7 +343,7 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S21 private thread-automation contracts", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const candidate = {
       ...full,
       contracts: full.contracts.filter(
@@ -347,12 +359,21 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds only six S22 staging cohort contracts, preserving all 372 accepted contracts", () => {
-    const candidate = buildContractSnapshot();
+    const candidate = buildPreRecoverySnapshot();
     const additions = new Set<string>(S22_WIDGET_COHORT_SCHEMA_NAMES);
     const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
     expect(legacy).toHaveLength(372);
     const findings = compareContractSnapshots({ ...candidate, contracts: legacy }, candidate);
     expect(findings).toHaveLength(6);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("adds only four recovery contracts while preserving every accepted pre-recovery schema", () => {
+    const candidate = buildContractSnapshot();
+    const legacy = buildPreRecoverySnapshot();
+    expect(legacy.contracts).toHaveLength(378);
+    const findings = compareContractSnapshots(legacy, candidate);
+    expect(findings).toHaveLength(4);
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 

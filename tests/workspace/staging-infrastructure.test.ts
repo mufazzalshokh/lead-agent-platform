@@ -15,8 +15,8 @@ const repositoryFile = (path: string): Promise<string> =>
 describe("S22 staging infrastructure boundary", () => {
   it("packages the exact current migration chain for the one-shot migrator", async () => {
     const manifest = await readStagingMigrationManifest();
-    expect(manifest.entries).toHaveLength(32);
-    expect(manifest.entries.at(-1)?.tag).toBe("0031_s22_widget_inbound_route_management");
+    expect(manifest.entries).toHaveLength(33);
+    expect(manifest.entries.at(-1)?.tag).toBe("0032_s22_widget_recovery");
     expect(manifest.entries.every((entry, index) => entry.idx === index)).toBe(true);
   });
 

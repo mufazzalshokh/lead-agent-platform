@@ -474,6 +474,46 @@ export const registerS22WidgetCohortTests = (options: Options): void => {
         reason: "cost_unknown",
         unresolvedReserveMicros: "801432",
       });
+      // Model an explicitly authenticated recovery lease after the immutable
+      // original expiry. The durable selected identity and consumed ledger stay put.
+      const original = await options
+        .privilegedPool()
+        .query<{ issued_at: Date; expires_at: Date }>(
+          "select issued_at,expires_at from widget_sessions where id=$1",
+          [FIRST],
+        );
+      await options.privilegedPool().query(
+        `update widget_sessions set recovery_token_hash=$2,recovery_issued_at=$3,recovery_expires_at=$4,
+          recovery_request_origin='https://widget.example',recovery_embedding_origin='https://clinic.example',
+          access_issued_at=$5,access_expires_at=$6,last_seen_at=$5,version=version+1 where id=$1`,
+        [
+          FIRST,
+          hash("recovery-proof"),
+          NOW,
+          later(86_400_000),
+          later(10_800_000),
+          later(18_000_000),
+        ],
+      );
+      const recoveredGuard = createAIJourneyBudgetGuard(
+        options.runtime(),
+        CONFIG,
+        () => later(10_800_000),
+        { ownerSelection: true },
+      );
+      expect(await recoveredGuard.read(ORG)).toMatchObject({
+        blocked: true,
+        reason: "cost_unknown",
+        unresolvedReserveMicros: "801432",
+        widget: { sessionId: FIRST, customerMessages: 1, physicalCalls: 1, logicalMessages: 1 },
+      });
+      expect(
+        (
+          await options
+            .privilegedPool()
+            .query("select issued_at,expires_at from widget_sessions where id=$1", [FIRST])
+        ).rows,
+      ).toEqual(original.rows);
       await expect(guard.widgetCohortStore.select(await command(SECOND, 1))).rejects.toMatchObject({
         code: "cohort_blocked",
       });

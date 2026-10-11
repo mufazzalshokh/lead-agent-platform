@@ -39,13 +39,14 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
   it("has the approved S22 migration head, 52 business tables, and ordered history", async () => {
     const files = (await readdir(folder)).filter((name) => name.endsWith(".sql")).sort();
     expect(files.map((name) => name.slice(0, 4))).toEqual(
-      Array.from({ length: 32 }, (_, index) => String(index).padStart(4, "0")),
+      Array.from({ length: 33 }, (_, index) => String(index).padStart(4, "0")),
     );
-    expect(files.at(-1)).toBe("0031_s22_widget_inbound_route_management.sql");
+    expect(files.at(-1)).toBe("0032_s22_widget_recovery.sql");
     for (const [name, expectedTables] of [
       ["0027", 51],
       ["0028", 51],
       ["0029", 52],
+      ["0032", 52],
     ] as const) {
       const snapshot: unknown = JSON.parse(
         await readFile(new URL(`meta/${name}_snapshot.json`, folder), "utf8"),
@@ -70,7 +71,7 @@ describe("S11.B migration source invariants (real PostgreSQL proof is separate)"
       !Array.isArray(journal.entries)
     )
       throw new Error("Invalid journal");
-    expect(journal.entries).toHaveLength(32);
+    expect(journal.entries).toHaveLength(33);
     let previous = -1;
     const entries: readonly unknown[] = journal.entries;
     for (const [index, entry] of entries.entries()) {

@@ -6,6 +6,7 @@ import type {
 } from "@lead-agent/config";
 import {
   createWidgetPersistenceStore,
+  createWidgetRecoveryStore,
   createWidgetManagementStore,
   type InboundRouteDatabaseRuntime,
   type TenantDatabaseRuntime,
@@ -13,6 +14,7 @@ import {
 import {
   createCustomerDataProtection,
   createWidgetExchangeGrantService,
+  createWidgetRecoveryGrantService,
   createWidgetRateLimiter,
   createWidgetTokenService,
 } from "@lead-agent/security";
@@ -49,6 +51,10 @@ export const createWidgetDependencies = (
         publicApiOrigin: widgetEmbedConfig.publicApiOrigin,
       },
       persistence: createWidgetPersistenceStore(tenantRuntime),
+      recovery: {
+        grants: createWidgetRecoveryGrantService(widgetEmbedConfig),
+        store: createWidgetRecoveryStore(tenantRuntime),
+      },
       rateLimiter: createWidgetRateLimiter(),
       routeResolver: ingressRuntime,
       ...(metrics === undefined

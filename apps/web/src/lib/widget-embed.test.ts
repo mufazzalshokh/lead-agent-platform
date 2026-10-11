@@ -74,6 +74,9 @@ class Element {
   focus(): void {
     this.focused = true;
   }
+  select(): void {
+    this.focused = true;
+  }
 
   submit(): void {
     this.onSubmit?.(this);
@@ -101,6 +104,10 @@ type FrameSession = Readonly<{
   input: Element;
   send: Element;
   status: Element;
+  saveCode: Element;
+  resumeChat: Element;
+  recoveryCode: Element;
+  recoveryNotice: Element;
   timers: Map<number, () => void>;
 }>;
 
@@ -110,6 +117,7 @@ type SetupOptions = Readonly<{
   redeem?: "success" | "failure" | "pending";
   submitFailures?: number;
   messageResponse?: "success" | "expired";
+  recoveryResponse?: "success" | "rejected" | "pending";
 }>;
 
 const settle = async (): Promise<void> => {
@@ -170,10 +178,19 @@ const setup = (options: SetupOptions = {}) => {
     const generated = /<script nonce="[^"]+">([\s\S]*?)<\/script>/u.exec(html)?.[1];
     if (generated === undefined) throw new TypeError("Expected generated frame script");
     const nodes = new Map(
-      ["messages", "composer", "input", "send", "status", "welcome", "close"].map((name) => [
-        name,
-        new Element(name === "composer" ? "form" : "div"),
-      ]),
+      [
+        "messages",
+        "composer",
+        "input",
+        "send",
+        "status",
+        "welcome",
+        "close",
+        "save-code",
+        "resume-chat",
+        "recovery-code",
+        "recovery-notice",
+      ].map((name) => [name, new Element(name === "composer" ? "form" : "div")]),
     );
     const node = (name: string): Element => {
       const found = nodes.get(name);
@@ -189,6 +206,10 @@ const setup = (options: SetupOptions = {}) => {
       input: node("input"),
       send: node("send"),
       status: node("status"),
+      saveCode: node("save-code"),
+      resumeChat: node("resume-chat"),
+      recoveryCode: node("recovery-code"),
+      recoveryNotice: node("recovery-notice"),
       timers,
     });
     runInNewContext(
@@ -216,6 +237,34 @@ const setup = (options: SetupOptions = {}) => {
         fetch: async (url: string, init?: RequestInit) => {
           const path = new URL(url).pathname;
           requests.push({ realm: "frame", path });
+          if (path === "/v1/widget/recovery-codes")
+            return response(
+              {
+                data: {
+                  recovery_code: `wrc1.${"a".repeat(32)}.${"b".repeat(128)}.${"c".repeat(32)}`,
+                  recovery_expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+                },
+              },
+              201,
+            );
+          if (path === "/v1/widget/recovery/resume") {
+            if (options.recoveryResponse === "pending")
+              return new Promise<Response>(() => undefined);
+            if (options.recoveryResponse === "rejected")
+              return response({ code: "token_invalid" }, 401);
+            return response(
+              {
+                data: {
+                  bearer_token: "synthetic-recovered-bearer",
+                  conversation_id: "synthetic-conversation",
+                  expires_at: new Date(Date.now() + 60_000).toISOString(),
+                  recovery_code: `wrc1.${"d".repeat(32)}.${"e".repeat(128)}.${"f".repeat(32)}`,
+                  recovery_expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+                },
+              },
+              201,
+            );
+          }
           if (options.messageResponse !== undefined && path === "/v1/widget/conversations") {
             messageRequests.push(init ?? {});
             if (options.messageResponse === "expired")
@@ -232,7 +281,10 @@ const setup = (options: SetupOptions = {}) => {
               201,
             );
           }
-          if (options.messageResponse !== undefined && path.endsWith("/messages"))
+          if (
+            (options.messageResponse !== undefined || options.recoveryResponse !== undefined) &&
+            path.endsWith("/messages")
+          )
             return response({ data: [] });
           if (path !== "/v1/widget/embed-sessions/redeem") {
             throw new TypeError("Unexpected synthetic message/provider dispatch");
@@ -430,6 +482,72 @@ describe("generated Widget loader/frame handshake and lifecycle", () => {
     expect(frame.send.disabled).toBe(true);
     expect(frame.input.disabled).toBe(true);
     expect(state.posts.at(-1)?.type).toBe("EXPIRED");
+  });
+
+  it("prepares an optional private code without sending another message or posting credentials to the host", async () => {
+    const state = setup({ messageResponse: "success" });
+    await state.click();
+    const frame = state.latest();
+    frame.input.value = "Original request";
+    frame.send.dispatch("click");
+    await settle();
+    frame.saveCode.dispatch("click");
+    await settle();
+    expect(frame.recoveryCode.value).toMatch(/^wrc1\./u);
+    expect(frame.recoveryNotice.textContent).toContain("copy this private code");
+    expect(state.messageRequests).toHaveLength(1);
+    expect(state.posts.every((event) => event.keys.join() === "instance,type,version")).toBe(true);
+  });
+
+  it.each(["success", "rejected", "pending"] as const)(
+    "handles %s recovery without creating or replaying an inbound message",
+    async (recoveryResponse) => {
+      const state = setup({ recoveryResponse });
+      await state.click();
+      const frame = state.latest();
+      frame.recoveryCode.value = `wrc1.${"a".repeat(32)}.${"b".repeat(128)}.${"c".repeat(32)}`;
+      frame.resumeChat.dispatch("click");
+      frame.input.value = "Must not send during recovery";
+      frame.input.dispatch("keydown", { key: "Enter", preventDefault() {} });
+      await settle();
+      expect(state.messageRequests).toHaveLength(0);
+      expect(state.requests.some((r) => r.path === "/v1/widget/conversations")).toBe(false);
+      if (recoveryResponse === "success") {
+        expect(frame.recoveryNotice.textContent).toContain("Chat resumed");
+        expect(frame.recoveryCode.value).toMatch(/^wrc1\.d/u);
+        expect(
+          state.requests.some((r) => r.path.endsWith("/synthetic-conversation/messages")),
+        ).toBe(true);
+        expect(frame.timers.size).toBe(2); // fresh lease and polling, old lease cleared
+      } else if (recoveryResponse === "rejected") {
+        expect(frame.recoveryNotice.textContent).toContain("invalid, used or expired");
+        expect(state.liveFrames()).toHaveLength(1);
+      } else expect(frame.send.disabled).toBe(true);
+      expect(state.posts.every((event) => event.keys.join() === "instance,type,version")).toBe(
+        true,
+      );
+    },
+  );
+
+  it("keeps an ended bound chat visible without renewal or automatic retry", async () => {
+    const state = setup({ messageResponse: "success" });
+    await state.click();
+    const frame = state.latest();
+    frame.input.value = "Original request";
+    frame.send.dispatch("click");
+    await settle();
+    const expiration = frame.timers.values().next().value;
+    if (!expiration) throw new TypeError("Expected expiry callback");
+    expiration();
+    expect(state.posts.at(-1)?.type).toBe("ENDED");
+    expect(state.liveFrames()).toEqual([frame.element]);
+    expect(frame.status.textContent).toContain("do not resend");
+    expect(frame.input.disabled).toBe(true);
+    await state.close();
+    expect(state.launcher.textContent).toBe("View ended chat");
+    await state.click();
+    expect(state.counts()).toEqual({ grant: 1, redeem: 1, submits: 1 });
+    expect(state.messageRequests).toHaveLength(1);
   });
 
   it.each([undefined, "Talk to the synthetic clinic"])(

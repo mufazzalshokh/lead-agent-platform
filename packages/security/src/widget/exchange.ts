@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 
 import type { WidgetEmbedConfig } from "@lead-agent/config";
 import {
@@ -14,10 +14,7 @@ import {
 import { WidgetTokenInvalidError } from "./errors.js";
 import { normalizeWidgetOrigin } from "./origin.js";
 
-const GRANT_PREFIX = "wex1";
 const JTI_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
-const MAXIMUM_GRANT_LIFETIME_MS = 60_000;
-const ADDITIONAL_DATA = Buffer.from("lead-agent:widget-exchange:v1", "utf8");
 
 export type WidgetExchangeGrantClaims = Readonly<{
   channelConnectionId: ChannelConnectionId;
@@ -61,7 +58,11 @@ const serialize = (claims: WidgetExchangeGrantClaims): Buffer =>
     "utf8",
   );
 
-const deserialize = (value: Buffer, now: Date): WidgetExchangeGrantClaims => {
+const deserialize = (
+  value: Buffer,
+  now: Date,
+  maximumLifetime: number,
+): WidgetExchangeGrantClaims => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value.toString("utf8"));
@@ -84,6 +85,7 @@ const deserialize = (value: Buffer, now: Date): WidgetExchangeGrantClaims => {
     "version",
   ];
   if (
+    !Number.isSafeInteger(now.getTime()) ||
     keys.length !== expected.length ||
     keys.some((key, index) => key !== expected[index]) ||
     record.version !== 1 ||
@@ -100,7 +102,7 @@ const deserialize = (value: Buffer, now: Date): WidgetExchangeGrantClaims => {
     !Number.isSafeInteger(record.expires_at) ||
     record.issued_at > now.getTime() ||
     record.expires_at <= record.issued_at ||
-    record.expires_at - record.issued_at > MAXIMUM_GRANT_LIFETIME_MS ||
+    record.expires_at - record.issued_at > maximumLifetime ||
     now.getTime() >= record.expires_at
   ) {
     throw new WidgetTokenInvalidError();
@@ -116,27 +118,39 @@ const deserialize = (value: Buffer, now: Date): WidgetExchangeGrantClaims => {
   });
 };
 
-export const createWidgetExchangeGrantService = (
+const createScopedGrantService = (
   config: WidgetEmbedConfig,
+  profile: Readonly<{
+    prefix: string;
+    maximumLifetime: number;
+    context: string;
+    deriveKey: boolean;
+  }>,
 ): WidgetExchangeGrantService => {
-  const key = new Uint8Array(config.exchangeEncryptionKey);
+  const additionalData = Buffer.from(profile.context, "utf8");
+  const key = profile.deriveKey
+    ? new Uint8Array(
+        hkdfSync("sha256", config.exchangeEncryptionKey, Buffer.alloc(0), additionalData, 32),
+      )
+    : new Uint8Array(config.exchangeEncryptionKey);
   return Object.freeze({
     createJti: () => randomBytes(32).toString("base64url"),
     issue: (claims) => {
       if (
-        claims.expiresAt.getTime() - claims.issuedAt.getTime() > MAXIMUM_GRANT_LIFETIME_MS ||
+        claims.expiresAt.getTime() - claims.issuedAt.getTime() > profile.maximumLifetime ||
         claims.expiresAt <= claims.issuedAt ||
         !JTI_PATTERN.test(claims.jti) ||
         normalizeWidgetOrigin(claims.embeddingOrigin) !== claims.embeddingOrigin
       ) {
         throw new WidgetTokenInvalidError();
       }
+      deserialize(serialize(claims), claims.issuedAt, profile.maximumLifetime);
       const nonce = randomBytes(12);
       const cipher = createCipheriv("aes-256-gcm", key, nonce);
-      cipher.setAAD(ADDITIONAL_DATA);
+      cipher.setAAD(additionalData);
       const ciphertext = Buffer.concat([cipher.update(serialize(claims)), cipher.final()]);
       return [
-        GRANT_PREFIX,
+        profile.prefix,
         nonce.toString("base64url"),
         ciphertext.toString("base64url"),
         cipher.getAuthTag().toString("base64url"),
@@ -148,7 +162,11 @@ export const createWidgetExchangeGrantService = (
           throw new WidgetTokenInvalidError();
         }
         const parts = grant.split(".");
-        if (parts.length !== 4 || parts[0] !== GRANT_PREFIX) {
+        if (
+          parts.length !== 4 ||
+          parts[0] !== profile.prefix ||
+          parts.slice(1).some((part) => !/^[A-Za-z0-9_-]+$/u.test(part))
+        ) {
           throw new WidgetTokenInvalidError();
         }
         const nonce = Buffer.from(parts[1]!, "base64url");
@@ -158,9 +176,13 @@ export const createWidgetExchangeGrantService = (
           throw new WidgetTokenInvalidError();
         }
         const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-        decipher.setAAD(ADDITIONAL_DATA);
+        decipher.setAAD(additionalData);
         decipher.setAuthTag(tag);
-        return deserialize(Buffer.concat([decipher.update(ciphertext), decipher.final()]), now);
+        return deserialize(
+          Buffer.concat([decipher.update(ciphertext), decipher.final()]),
+          now,
+          profile.maximumLifetime,
+        );
       } catch (error) {
         if (error instanceof WidgetTokenInvalidError) throw error;
         throw new WidgetTokenInvalidError();
@@ -168,3 +190,24 @@ export const createWidgetExchangeGrantService = (
     },
   });
 };
+
+export const createWidgetExchangeGrantService = (
+  config: WidgetEmbedConfig,
+): WidgetExchangeGrantService =>
+  createScopedGrantService(config, {
+    prefix: "wex1",
+    maximumLifetime: 60_000,
+    context: "lead-agent:widget-exchange:v1",
+    deriveKey: false,
+  });
+
+/** Independent key/AAD and finite lifetime; database consumption is mandatory. */
+export const createWidgetRecoveryGrantService = (
+  config: WidgetEmbedConfig,
+): WidgetExchangeGrantService =>
+  createScopedGrantService(config, {
+    prefix: "wrc1",
+    maximumLifetime: 86_400_000,
+    context: "lead-agent:widget-recovery:v1",
+    deriveKey: true,
+  });
