@@ -59,6 +59,65 @@ preserve its sanitized failure and any already-created execution. No new frame,
 Send, replay, renewal, recovery, paid call, migration or ledger reset is authorized.
 **S22 remains unaccepted.**
 
+### Exact attempted read: Logging permission denied before execution
+
+Tooling commit `1384272f0a7435431622609ae46548b5f9f549dd` was pushed and matched
+the remote approved branch. Exactly one
+[read-only workflow 38168483457](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38168483457)
+ran **11 October 19:32:58-19:33:19 UTC**, or **12 October 00:32:58-00:33:19
+Asia/Tashkent**. Checkout/branch/WIF/CLI steps passed; the read failed and the
+sanitized artifact was preserved. Terraform, older booking evidence and inventory
+jobs were skipped. No workflow rerun, diagnostic execution or IAM expansion.
+
+Authenticated artifact **11713485073**, `s22-widget-progress-38168483457`, has
+plaintext SHA256 **a73845061ad8c0e684eded1458aef3811533019cedda3cacc1f0e373b1b23999**.
+It reports **BLOCKED: CLOUD_READ_PERMISSION_UNAVAILABLE**, with explicit boundary
+**authenticated_logging**, exact reviewed runtime/selected SID, zero provider calls,
+zero session mutations, no migration and no job configuration change. There is no
+execution ID or database assertion. The launcher verifies log access before
+creating a job; the Worker/Migrator metadata checks precede this denied read.
+This is a diagnostics-access blocker, not a new Widget/provider failure or proof
+of current request/cost/access state. Those live facts remain uncollected.
+
+The next safe step uses the owner's existing authenticated Cloud Shell, whose
+logging access was previously verified. The command below downloads five files
+from that exact tooling commit and checks each Git-blob SHA256 before execution.
+It does not retry an existing database job: none was created by the failed workflow.
+It creates at most one READ ONLY metadata execution after the normal preflight,
+not a chat, paid provider attempt, migration, IAM change or Send authorization.
+If an execution is announced and later collection fails, preserve that name and
+recover its logs; **do not run this command again blindly**.
+
+```bash
+(
+  set -eu
+  trace_source=1384272f0a7435431622609ae46548b5f9f549dd
+  trace_dir=$(mktemp -d /tmp/s22-widget-current.XXXXXX)
+  cd "$trace_dir"
+  printf 'TOOLING_DIRECTORY=%s\n' "$trace_dir"
+  for trace_file in s22-widget-progress.mjs s22-widget-attempt.mjs s22-widget-attempt-readonly.mjs s22-widget-readiness.mjs s22-widget-readiness-readonly.mjs; do
+    curl --fail --silent --show-error --location --max-time 20 "https://raw.githubusercontent.com/mufazzalshokh/lead-agent-platform/$trace_source/.github/scripts/$trace_file" -o "$trace_file"
+  done
+  printf '%s\n' \
+    '3486823c44d3f8b08756e2477c679f168ce120225a0ea7af60c091149679e196  s22-widget-progress.mjs' \
+    'da6d7ecd6c70f8a6ab60845bda32ab84765f932ddd374554adeebcc8e169223f  s22-widget-attempt.mjs' \
+    'e150a1e0637804ffd11cc0dcf081cea2571d75f67c87563209bfe25462878992  s22-widget-attempt-readonly.mjs' \
+    'b15ee435777886b9c39b02cc4762bbb31e280764cc29189878a1c0b16315acd3  s22-widget-readiness.mjs' \
+    '7b45ff56c9bdf468a8ac7ace4159360f54428b818bb88140560567e4cd43a971  s22-widget-readiness-readonly.mjs' | sha256sum -c -
+  node s22-widget-progress.mjs
+)
+```
+
+The command is syntax/hash verified locally. Its five public exact-commit downloads
+were independently fetched and matched the reviewed SHA256 values; downloaded
+files were not executed. Verification command:
+`node .cache/s22-widget-current-trace/verify.mjs --public-download-check` (**PASS**).
+The command was not executed in the owner's Cloud Shell by this milestone.
+Tooling-source CI `38168460755` was still running at this receipt; no clean-CI PASS
+is claimed yet. Leave the test chat unchanged; return only the sanitized
+terminal output, never a recovery code, cookie, bearer or database credential.
+**S22 remains unaccepted.**
+
 ## 2026-10-11 - Selected Widget progress reader prepared after owner continuation
 
 The owner requested autonomous continuation of the existing booking journey,
