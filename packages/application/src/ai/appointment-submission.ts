@@ -11,6 +11,7 @@ import {
 } from "./sales-flow.js";
 import type { AIContextSnapshot, AIFallbackReason, AIOutcome, SalesResult } from "./ports.js";
 import {
+  appointmentDateMentioned,
   appointmentTimeMentioned,
   parseAppointmentDate,
   resolveAppointmentTime,
@@ -248,12 +249,7 @@ export const planAppointmentSubmission = (
     if (parsed !== null) {
       date = parsed;
       dateMessageId = entry.messageId;
-    } else if (
-      /\b(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})\b/u.test(entry.text) ||
-      /\b(ertaga|bugun|indin|zavtra|poslezavtra|tomorrow|today|segodnya)\b/u.test(
-        normalizeGroundingQuery(entry.text),
-      )
-    ) {
+    } else if (appointmentDateMentioned(entry.text)) {
       date = null;
       dateMessageId = null;
     }

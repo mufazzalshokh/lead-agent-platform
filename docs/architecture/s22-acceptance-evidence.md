@@ -6389,3 +6389,92 @@ The next safe task is to inspect the status of the existing owner's authenticate
 cohort GET, then diagnose that exact failure. Reloading only the staff tab with
 Network open is a read-only observation; leave the test chat unchanged, do not
 resend, create another chat or replace setup. **S22 remains unaccepted.**
+
+## 2026-10-11 - Named customer date rejected; shared parser correction
+
+Subsequent owner screenshots show the S22 section, selection
+`01a12c02-3e50-7663-99f4-c35024796c23`, and **budget check ready**. The earlier
+missing-panel crop did not demonstrate an authenticated API failure; no
+authorization fix or permission relaxation is justified by it. This is an
+owner-UI observation, not a current independent database/budget trace.
+
+The owner then received a real customer reply asking **Qaysi kunga
+rejalashtiryapsiz?** despite the instructed first message containing
+**12-oktabr kuni soat 17:00 ga yozilmoqchiman**. Inspection found that the shared
+deterministic parser recognized numeric and relative dates only. The assistant
+had supplied a named-month format outside that implementation's accepted input.
+The cause is application input normalization, not evidence of slow AI, expired
+access, an unavailable provider or poor model prose.
+
+Local regression uses the exact synthetic S22 price/duration plus named-date
+message, published fixture knowledge, explicit customer receipt/processing
+clocks, and a mock structured decision. Before the production correction, the
+three-file run produced **27 failed / 111 passed**: named dates were rejected;
+an invalid/competing named date could also reuse earlier valid customer date
+evidence and plan the wrong request. No real messages, provider or database
+writes were used to reproduce these results.
+
+The local correction adds full named months for Uzbek Latin/Cyrillic, Russian
+and English to one validator. Numeric/relative formats retain their existing
+behavior. Omitted years use the original receipt's year in the authoritative
+Location timezone, never the next occurrence. Invalid calendar dates,
+competing dates, shared-month day ranges, unsupported adjacent years and
+incomplete named-month dates require clarification and invalidate earlier
+customer date evidence. English modal **may** is not treated as a month.
+Authoritative duration/hours/closures, future-time validation, service offerings,
+customer-only provenance, qualification, current request state, staff review,
+offer/customer confirmation, tenant boundaries and idempotency are unchanged.
+No model-supplied date or availability becomes authority.
+
+Files: `packages/application/src/ai/appointment-time.ts`,
+`packages/application/src/ai/appointment-submission.ts`,
+`tests/ai/appointment-date.test.ts`, `tests/ai/appointment-submission.test.ts`,
+`tests/ai/grounded-wording.test.ts`, `docs/ai/s16-appointment-request.md`, and
+this receipt. No dependency, prompt/provider profile, public wire contract,
+database, migration, identity, recovery-code format or customer UI change.
+Unrelated owner changes remain excluded.
+
+Focused regression command:
+
+```text
+node node_modules/vitest/vitest.mjs run tests/ai/appointment-date.test.ts tests/ai/appointment-submission.test.ts tests/ai/grounded-wording.test.ts --maxWorkers=1 --testTimeout=30000 --reporter=dot
+```
+
+Result: **163/163 PASS** after the final correction, including exact first-message
+provenance, all twelve localized full month names, leap/non-leap dates, local-year
+boundary, past/closed/duration-overrun preferences, ambiguity/stale evidence,
+staff-authored dates, informational-only questions and medical/injection refusal.
+Tests check domain results and authoritative facts rather than live-model prose.
+
+Additional local verification, all PASS:
+
+```text
+node node_modules/vitest/vitest.mjs run tests/ai tests/ai-evals tests/application/widget-use-cases.test.ts tests/application/s22-widget-cohort.test.ts tests/instagram/application.test.ts tests/domain/appointment-request.test.ts --maxWorkers=1 --testTimeout=30000 --reporter=dot
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+node node_modules/typescript/bin/tsc -p packages/application/tsconfig.build.json
+node node_modules/eslint/bin/eslint.js packages/application/src/ai/appointment-time.ts packages/application/src/ai/appointment-submission.ts tests/ai/appointment-date.test.ts tests/ai/appointment-submission.test.ts tests/ai/grounded-wording.test.ts --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check packages/application/src/ai/appointment-time.ts packages/application/src/ai/appointment-submission.ts tests/ai/appointment-date.test.ts tests/ai/appointment-submission.test.ts tests/ai/grounded-wording.test.ts
+node scripts/check-boundaries.mjs
+node node_modules/tsx/dist/cli.mjs scripts/contracts/snapshot.ts --check
+git diff --check -- packages/application/src/ai/appointment-time.ts packages/application/src/ai/appointment-submission.ts tests/ai/appointment-date.test.ts tests/ai/appointment-submission.test.ts tests/ai/grounded-wording.test.ts docs/ai/s16-appointment-request.md docs/architecture/s22-acceptance-evidence.md
+```
+
+Broader run: **1,080 PASS / seven opt-in live-provider tests skipped**, across
+37 passing and two intentionally skipped files. Counts overlap the focused run;
+they are not additive. Boundary check covers **332 source files**; **382 canonical
+public contracts** remain valid. The snapshot command first failed during
+restricted-process `tsx` startup (`uv_os_get_passwd`, ENOMEM), before executing
+the check. The identical read-only command passed outside that restricted
+process context; no contracts, dependency files or tool guards were modified.
+Local checks do not substitute for the PR's full CI/PostgreSQL/production-build
+gate, exact-source rollout or real customer acceptance.
+
+**Not deployed.** Verified runtime remains `2055ab2`; already delivered messages
+are not rewritten or replayed. No customer message, provider call, recovery,
+renewal, replacement session, migration, job execution, budget increase or ledger
+reset was performed for this correction. Existing consumed-message/attempt
+limits and historical unknown costs remain intact. A screenshot with a date
+question does not independently establish the live persisted request/run state.
+The remaining customer message cannot be used as a style/date retry under an
+approval reserving it for confirmation after an actual staff offer.
+**S22 remains unaccepted.**

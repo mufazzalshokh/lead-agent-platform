@@ -266,67 +266,73 @@ describe("shared grounded customer wording", () => {
     expect(text).not.toContain("S22 sinov konsultatsiyasi");
   });
 
-  it("composes the reported booking question as one factual paragraph plus a safe request acknowledgment", () => {
-    const published = knowledge();
-    const service = published.services[0];
-    const location = published.locations[0];
-    const leadId = fixtureId(52_100),
-      policyId = fixtureId(52_101);
-    if (
-      service === undefined ||
-      location === undefined ||
-      !isSchemaValue(LeadIdSchema, leadId) ||
-      !isSchemaValue(ResourceIdSchema, policyId)
-    )
-      throw new Error("Missing synthetic booking context");
-    const message = `${questions.uz} Ertaga soat 17:00 ga yozilmoqchiman.`;
-    const now = "2026-10-11T08:29:00.000Z";
-    const snapshot: AIContextSnapshot = {
-      ...context("uz", published),
-      message,
-      sourceReceivedAt: now,
-      sales: {
-        leadId,
-        leadVersion: 2,
-        leadStatus: "engaged",
-        policy: { id: policyId, version: 1 },
-        contactable: true,
-        stored: EMPTY_SALES_EVIDENCE,
-        services: [
-          {
-            id: service.service_id,
-            names: Object.values(service.name_i18n).filter(
-              (name): name is string => name !== undefined,
-            ),
-            locationIds: [location.location_id],
-          },
-        ],
-        locations: [{ id: location.location_id, names: ["Synthetic test location"] }],
-      },
-      booking: {
-        now,
-        knowledge: published,
-        activeRequestId: null,
-        afterSequence: 0,
-        staffActive: false,
-      },
-    };
-    const outcome = evaluateSalesDecision(
-      validDecision({
-        language: "uz",
-        intent: "pricing",
-        factual_claims: snapshot.policy.facts.map((fact) => fact.reference),
-      }),
-      snapshot,
-    );
-    const plan = planAppointmentSubmission(snapshot, outcome);
-    expect(plan.result.kind).toBe("appointment_requested");
-    expect(plan.submission?.preference.localDate).toBe("2026-10-12");
-    expect(plan.submission?.preference.localStart).toContain("17:00");
-    expect(plan.text?.match(/100 000/gu)).toHaveLength(1);
-    expect(plan.text?.split("S22 sinov konsultatsiyasi")).toHaveLength(2);
-    expect(plan.text?.split("\n\n")).toHaveLength(2);
-    expect(plan.text).toContain("Xodim ko'rib chiqqach");
-    expect(plan.text).not.toMatch(/tasdiqlandi|qabul qilindi|bo'sh|confirmed/u);
-  });
+  it.each(["Ertaga", "12-oktabr"])(
+    "composes the reported booking question with %s without asking for its date again",
+    (date) => {
+      const published = knowledge();
+      const service = published.services[0];
+      const location = published.locations[0];
+      const leadId = fixtureId(52_100),
+        policyId = fixtureId(52_101);
+      if (
+        service === undefined ||
+        location === undefined ||
+        !isSchemaValue(LeadIdSchema, leadId) ||
+        !isSchemaValue(ResourceIdSchema, policyId)
+      )
+        throw new Error("Missing synthetic booking context");
+      const message = `${questions.uz} ${date} kuni soat 17:00 ga yozilmoqchiman.`;
+      const now = "2026-10-11T08:29:00.000Z";
+      const snapshot: AIContextSnapshot = {
+        ...context("uz", published),
+        message,
+        sourceReceivedAt: now,
+        sales: {
+          leadId,
+          leadVersion: 2,
+          leadStatus: "engaged",
+          policy: { id: policyId, version: 1 },
+          contactable: true,
+          stored: EMPTY_SALES_EVIDENCE,
+          services: [
+            {
+              id: service.service_id,
+              names: Object.values(service.name_i18n).filter(
+                (name): name is string => name !== undefined,
+              ),
+              locationIds: [location.location_id],
+            },
+          ],
+          locations: [{ id: location.location_id, names: ["Synthetic test location"] }],
+        },
+        booking: {
+          now,
+          knowledge: published,
+          activeRequestId: null,
+          afterSequence: 0,
+          staffActive: false,
+        },
+      };
+      const outcome = evaluateSalesDecision(
+        validDecision({
+          language: "uz",
+          intent: "pricing",
+          factual_claims: snapshot.policy.facts.map((fact) => fact.reference),
+        }),
+        snapshot,
+      );
+      const plan = planAppointmentSubmission(snapshot, outcome);
+      expect(plan.result.kind).toBe("appointment_requested");
+      expect(plan.submission?.preference.localDate).toBe("2026-10-12");
+      expect(plan.submission?.preference.localStart).toContain("17:00");
+      expect(plan.submission?.dateMessageId).toBe(snapshot.sourceMessageId);
+      expect(plan.submission?.timeMessageId).toBe(snapshot.sourceMessageId);
+      expect(plan.text?.match(/100 000/gu)).toHaveLength(1);
+      expect(plan.text?.split("S22 sinov konsultatsiyasi")).toHaveLength(2);
+      expect(plan.text?.split("\n\n")).toHaveLength(2);
+      expect(plan.text).toContain("Xodim ko'rib chiqqach");
+      expect(plan.text).not.toMatch(/tasdiqlandi|qabul qilindi|bo'sh|confirmed/u);
+      expect(plan.text).not.toContain("Qaysi kunga rejalashtiryapsiz?");
+    },
+  );
 });
