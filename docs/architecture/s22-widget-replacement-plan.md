@@ -304,3 +304,34 @@ docs/architecture/s22-widget-cohort-binding.md
 **Next safe task:** verify clean-checkout CI for the focused runtime commit before
 preparing one immutable rollout plan. Do not open a fresh frame during builds;
 deployment and bounded execution still require separate approval.
+
+### Clean-checkout declaration-build correction
+
+Runtime commit `939a72b2cdd427ccd0eedf42b7904fbdd53a6c65` was pushed and its remote
+hash verified. Automatic CI **38155757493** passed format/lint/boundaries, all
+382 canonical contracts, all workspace TypeScript, **3,594 ordinary tests**
+(seven opt-in skipped) and **542 actual PostgreSQL tests** (486 + 9 + 21 + 12 + 14).
+It then failed package declaration generation with **TS2883**: the new helper's
+inferred branded contact identifier could not be named portably from generated
+contract declarations. Root `--noEmit` checks do not prove declaration emission.
+That run remains FAIL; it is not a completed full-CI/build receipt.
+
+The smallest correction explicitly annotates the helper's finite metadata return
+type (UUID strings/inbound ID list or NULL). Runtime validation still uses the
+same identifier schema; no assertion cast, widened input, compiler suppression,
+guard, query, budget or schema change is introduced. Local declaration build and
+fresh exact-source CI must pass before a rollout can be prepared.
+
+Local correction verification: configuration and database declaration builds
+**PASS**, and the emitted helper declaration references only its named tenant
+session type and explicit finite metadata shape. Commands:
+
+```text
+node node_modules/typescript/bin/tsc -p packages/config/tsconfig.json --noEmit false --declaration true --declarationMap true --outDir packages/config/dist --rootDir packages/config/src
+node node_modules/typescript/bin/tsc -p packages/database/tsconfig.build.json --noEmit false --declaration true --declarationMap true --outDir packages/database/dist --rootDir packages/database/src
+node node_modules/vitest/vitest.mjs run tests/ai/s22-budget-ledger.test.ts --maxWorkers=1 --testTimeout=30000 --reporter=dot
+```
+
+All **96/96 modeled ledger cases PASS** after the annotation. Scoped lint,
+formatting and whitespace checks also pass; generated declarations remain
+unversioned. The follow-up commit needs its own clean-checkout CI receipt.

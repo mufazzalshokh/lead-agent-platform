@@ -6,7 +6,14 @@ import { executeTenantRead } from "./shared.js";
 /** Metadata only; no ownership code, hash, bearer or customer text is returned.
  * Called under the original cohort mutex. Locks the retired identity/business
  * rows so selection cannot race recovery/intake or a staff request transition. */
-export const readS22WidgetRetirement = async (session: TenantDbSession, at: Date) => {
+export const readS22WidgetRetirement = async (
+  session: TenantDbSession,
+  at: Date,
+): Promise<Readonly<{
+  conversationId: string;
+  contactId: string;
+  inboundMessageIds: readonly string[];
+}> | null> => {
   const scope = S22_WIDGET_REPLACEMENT;
   const rows = await executeTenantRead(
     session,
