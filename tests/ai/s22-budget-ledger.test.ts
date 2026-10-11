@@ -5,6 +5,7 @@ import {
   S22_WIDGET_ALLOWANCE,
   S22_WIDGET_SELECTION_ENVELOPE,
   S22_WIDGET_REPLACEMENT,
+  S22_WIDGET_DATE_CONTINUATION,
   createTenantDatabaseRuntimeConfig,
 } from "../../packages/config/src/index.js";
 import { AI_REFERENCE, fixtureId } from "./fixtures.js";
@@ -266,7 +267,7 @@ vi.mock("pg", async (originalImport) => {
                       row["direction"] === "inbound",
                   )
                   .sort((left, right) => Number(left["sequence_no"]) - Number(right["sequence_no"]))
-                  .slice(0, 3)
+                  .slice(0, /limit\s+4/iu.test(sql) ? 4 : 3)
                   .map((row) => ({ ...row })),
               };
             if (/from ai_runs r/iu.test(sql))
@@ -706,6 +707,216 @@ const bindReplacement = () => {
   transport.widgetSessions.shift();
   bindSelectedSession();
 };
+
+const initializeDateContinuation = async () => {
+  const scope = S22_WIDGET_DATE_CONTINUATION;
+  if (
+    !isSchemaValue(ConversationIdSchema, scope.conversationId) ||
+    !isSchemaValue(MessageIdSchema, scope.firstMessageId)
+  )
+    throw new Error("Invalid continuation fixture");
+  const { db, guard } = await initializeRetiredLane();
+  transport.widgetSessions[1] = freshSelectionSession(scope.sessionId);
+  await guard.widgetCohortStore.select(await selectCommand(scope.sessionId, 1));
+  transport.widgetSessions.shift();
+  Object.assign(transport.widgetSessions[0] ?? {}, {
+    conversation_id: scope.conversationId,
+    contact_id: widgetContactId,
+    version: 3,
+  });
+  Object.assign(transport.widgetConversation ?? {}, { id: scope.conversationId });
+  transport.widgetInboundMessages = [
+    {
+      organization_id: S22_BOOKING_COHORT.organizationId,
+      conversation_id: scope.conversationId,
+      id: scope.firstMessageId,
+      direction: "inbound",
+      sequence_no: 1,
+    },
+  ];
+  const first = {
+    ...settled(row(scope.firstRunId, scope.firstMessageId, 1, scope.conversationId), "2277"),
+    organization_id: S22_BOOKING_COHORT.organizationId,
+    widget_session_id: scope.sessionId,
+    widget_conversation_id: scope.conversationId,
+  };
+  transport.rows.push(first);
+  transport.widgetBindings.push({
+    actor_type: "system",
+    result: "succeeded",
+    session_id: scope.sessionId,
+    widget_session_id: scope.sessionId,
+    conversation_id: scope.conversationId,
+  });
+  const reference = {
+    ...selectedCall().reference,
+    conversationId: scope.conversationId,
+    messageId: scope.firstMessageId,
+  };
+  const appendInbound = (id: number) => {
+    const messageId = message(id);
+    transport.widgetInboundMessages.push({
+      organization_id: reference.organizationId,
+      conversation_id: reference.conversationId,
+      id: messageId,
+      direction: "inbound",
+      sequence_no: transport.widgetInboundMessages.length + 1,
+    });
+    return messageId;
+  };
+  const appendRun = (id: number, trigger: string, attemptNo = 1) => {
+    if (!isSchemaValue(MessageIdSchema, trigger)) throw new Error("Invalid continuation trigger");
+    const runId = fixtureId(id);
+    transport.rows.push({
+      ...row(runId, trigger, attemptNo, reference.conversationId),
+      organization_id: reference.organizationId,
+    });
+    return { reference: { ...reference, messageId: trigger }, reservation: { runId, attemptNo } };
+  };
+  return { db, guard, first, reference, appendInbound, appendRun };
+};
+
+describe("S22 same-chat date continuation — modeled transport only", () => {
+  it("retains the exact original attempt, retired ledger, historical NULLs and ceilings", async () => {
+    const f = await initializeDateContinuation();
+    const before = structuredClone(transport.rows);
+    expect(await f.guard.read(f.reference.organizationId)).toMatchObject({
+      blocked: false,
+      physicalCalls: 6,
+      knownCostMicros: "13241",
+      combinedExposureMicros: "1046637",
+      historicalReserveMicros: "1033396",
+      unresolvedReserveMicros: "0",
+      widget: {
+        sessionId: S22_WIDGET_DATE_CONTINUATION.sessionId,
+        physicalCalls: 1,
+        customerMessages: 1,
+      },
+    });
+    expect(transport.rows).toEqual(before);
+    expect(S22_WIDGET_REPLACEMENT.maximumCalls).toBe(3);
+    expect(S22_WIDGET_REPLACEMENT.additionalReserveMicros).toBe(2404296n);
+    expect(S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros).toBe(4247838n);
+    expect(S22_BOOKING_COHORT.hardCeilingMicros).toBe(10000000n);
+    await f.db.close();
+  });
+  it("permits one clarification and its bounded repair, never a third paid message or fourth physical slot", async () => {
+    const f = await initializeDateContinuation();
+    const clarification = f.appendInbound(20001);
+    const second = f.appendRun(20002, clarification);
+    expect(await f.guard.authorizeDispatch(second)).toBe(true);
+    expect(await f.guard.authorizeDispatch(second)).toBe(false);
+    settled(transport.rows.at(-1) ?? {}, "1000");
+    const repair = f.appendRun(20003, clarification, 2);
+    const restarted = createAIJourneyBudgetGuard(f.db, selectedConfig(), selectionClock, {
+      ownerSelection: true,
+    });
+    expect(await restarted.authorizeDispatch(repair)).toBe(true);
+    settled(transport.rows.at(-1) ?? {}, "1000");
+    expect(await restarted.authorizeDispatch(f.appendRun(20004, clarification, 3))).toBe(false);
+    const confirmation = f.appendInbound(20005);
+    expect(await restarted.authorizeDispatch(f.appendRun(20006, confirmation))).toBe(false);
+    expect(await restarted.read(f.reference.organizationId)).toMatchObject({
+      blocked: true,
+      reason: "attempt_limit",
+      physicalCalls: 8,
+      widget: { physicalCalls: 3, customerMessages: 3, logicalMessages: 2 },
+    });
+    expect(f.first["estimated_cost_micros"]).toBe("2277");
+    await f.db.close();
+  });
+  it("preserves the unpaid third confirmation slot and detects a fourth inbound sentinel", async () => {
+    const f = await initializeDateContinuation();
+    f.appendInbound(20001);
+    expect(await f.guard.read(f.reference.organizationId)).toMatchObject({ blocked: false });
+    const confirmation = f.appendInbound(20002);
+    expect(await f.guard.read(f.reference.organizationId)).toMatchObject({
+      reason: "message_limit",
+      widget: { physicalCalls: 1, customerMessages: 3 },
+    });
+    expect(await f.guard.authorizeDispatch(f.appendRun(20003, confirmation))).toBe(false);
+    const fourth = f.appendInbound(20004);
+    expect(await f.guard.authorizeDispatch(f.appendRun(20005, fourth))).toBe(false);
+    expect(await f.guard.read(f.reference.organizationId)).toMatchObject({
+      reason: "message_limit",
+      widget: { customerMessages: 4, physicalCalls: 1 },
+    });
+    await f.db.close();
+  });
+  it("does not reset the amendment across authenticated recovery and Worker restart", async () => {
+    const f = await initializeDateContinuation();
+    const second = f.appendRun(20002, f.appendInbound(20001));
+    expect(await f.guard.authorizeDispatch(second)).toBe(true);
+    settled(transport.rows.at(-1) ?? {}, "1000");
+    Object.assign(transport.widgetSessions[0] ?? {}, {
+      expires_at: new Date("2026-10-08T17:00:00Z"),
+      access_expires_at: new Date("2026-10-08T19:00:00Z"),
+    });
+    const restarted = createAIJourneyBudgetGuard(f.db, selectedConfig(), selectionClock, {
+      ownerSelection: true,
+    });
+    expect(await restarted.read(f.reference.organizationId)).toMatchObject({
+      blocked: false,
+      knownCostMicros: "14241",
+      widget: { physicalCalls: 2, customerMessages: 2 },
+    });
+    expect(await restarted.authorizeDispatch(second)).toBe(false);
+    f.appendInbound(20003);
+    expect(await restarted.read(f.reference.organizationId)).toMatchObject({
+      reason: "message_limit",
+    });
+    await expect(
+      restarted.widgetCohortStore.select(await selectCommand(fixtureId(20004), 2)),
+    ).rejects.toMatchObject({ code: "cohort_blocked" });
+    expect(transport.ownerSelections).toHaveLength(2);
+    await f.db.close();
+  });
+  it("serializes duplicate clarification authorization across two Workers", async () => {
+    const f = await initializeDateContinuation();
+    const second = f.appendRun(20002, f.appendInbound(20001));
+    const restarted = createAIJourneyBudgetGuard(f.db, selectedConfig(), selectionClock, {
+      ownerSelection: true,
+    });
+    const results = await Promise.all([
+      f.guard.authorizeDispatch(second),
+      restarted.authorizeDispatch(second),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(
+      transport.rows.find((row) => row["id"] === second.reservation.runId)?.["reservations"],
+    ).toBe(1);
+    await f.db.close();
+  });
+  it.each([
+    { id: fixtureId(20101) },
+    { conversation_id: otherConversation },
+    { trigger_message_id: message(20102) },
+    { widget_session_id: widgetSessionId },
+    { widget_conversation_id: otherConversation },
+    { status: "failed" },
+    { finished_at: null },
+    { estimated_cost_micros: "2278" },
+    { estimated_cost_micros: null },
+    { marker_authority: false },
+    { dispatch_authorized: "false" },
+    { attempt_no: 2 },
+    { reservations: 0 },
+    { journey_starts: 0 },
+  ])("fails closed when the priced original baseline changes: %j", async (patch) => {
+    const f = await initializeDateContinuation();
+    Object.assign(f.first, patch);
+    const second = f.appendRun(20002, f.appendInbound(20001));
+    expect(await f.guard.authorizeDispatch(second)).toBe(false);
+    expect(await f.guard.read(f.reference.organizationId)).toMatchObject({ blocked: true });
+    await f.db.close();
+  });
+  it("rejects another bound conversation even when the selected session matches", async () => {
+    const f = await initializeDateContinuation();
+    Object.assign(transport.widgetSessions[0] ?? {}, { conversation_id: otherConversation });
+    expect(await f.guard.read(f.reference.organizationId)).toMatchObject({ blocked: true });
+    await f.db.close();
+  });
+});
 
 describe("S22 exact additive replacement — modeled transport only", () => {
   it("selects once with attribution/CAS, preserves all history, and never returns Send authorization", async () => {

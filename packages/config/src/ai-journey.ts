@@ -26,6 +26,18 @@ export const S22_WIDGET_REPLACEMENT = Object.freeze({
   additionalReserveMicros: 2_404_296n,
 } as const);
 
+/** Prepared one-turn amendment for the already-consumed replacement only.
+ * Never widens paid-message, physical-attempt or money limits; no new selection. */
+export const S22_WIDGET_DATE_CONTINUATION = Object.freeze({
+  profile: "s22-widget-date-continuation.v1",
+  sessionId: "01a12c02-3e50-7663-99f4-c35024796c23",
+  conversationId: "01a12c14-1edf-7609-a7d3-6354deaa7006",
+  firstMessageId: "01a12c14-1edf-76bb-a51c-cc92a70975ea",
+  firstRunId: "01a12c14-24bc-77f1-b1bb-b040e2b7d588",
+  firstKnownCostMicros: 2_277n,
+  maximumCustomerMessages: 3,
+} as const);
+
 /** Stable, reviewed staging authorization envelope. The old unused SID is an
  * anchor only: it never renews or authenticates a browser. A fresh SID must be
  * explicitly selected by the owner through the audited application command. */

@@ -6729,3 +6729,34 @@ Billing, WhatsApp, external calendars, reminders and new configurable booking
 policies remain separately approved later scope, not S22 blockers.
 No duration estimate, production-ready claim or invented percentage is offered.
 **S22 remains unaccepted; S23 is not started.**
+
+## 2026-10-12 — Same-chat trace received; one clarification amendment prepared
+
+The owner supplied successful execution `lead-agent-staging-migrator-6m4qk`
+from SHA-pinned tooling at `e5be386`. Its runtime/tenant/read-only/FORCE-RLS/
+non-owner guards passed. Preserve that execution; do not rerun it. This receipt
+is owner-pasted metadata, not independently retrieved current readiness.
+
+For selected session `01a12c02-3e50-7663-99f4-c35024796c23` and conversation
+`01a12c14-1edf-7609-a7d3-6354deaa7006`, the 11 October 17:28–19:29 UTC window
+contained one inbound, one outbound and one authorized succeeded/schema-valid
+paid run costing USD0.002277, with zero appointment requests in that window.
+Original access was expired; the recovery family expires 12 October 17:49:03 UTC.
+The owner confirmed saving the recovery proof privately. No proof is retained
+here. Known cost USD0.013241, exposure USD1.046637 and pending USD0 were observed,
+not refreshed billing/readiness guarantees.
+
+The original message preceded the deployed named-date correction. It must not
+be replayed or replaced with a fresh selected chat. The owner approved
+**preparation only** of a three-customer-message amendment for this same chat:
+existing first message, one date clarification, then confirmation after an
+actual staff offer. The [exact continuation preparation](s22-widget-continuation-plan.md)
+retains the first run/cost, owner selection, retired ledger, three physical
+attempts, two attempts per paid message, two paid messages and all financial
+caps. Third paid-message and fourth inbound authorization remain denied.
+
+Local broad regressions passed **1,100/1,100**, with seven opt-in live tests
+skipped; twenty amendment unit tests and four actual PostgreSQL cases were
+added. The PostgreSQL cases still require full remote CI. No deployment,
+recovery, Send, replay, replacement, migration, job execution, IAM change,
+budget increase or ledger reset was performed. **S22 remains unaccepted.**

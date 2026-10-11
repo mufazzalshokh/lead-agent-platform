@@ -5,6 +5,7 @@ import {
   S22_BOOKING_COHORT,
   S22_WIDGET_SELECTION_ENVELOPE,
   S22_WIDGET_REPLACEMENT,
+  S22_WIDGET_DATE_CONTINUATION,
   createWidgetEmbedConfig,
   createWidgetSecurityConfig,
 } from "../../packages/config/src/index.js";
@@ -444,6 +445,168 @@ export const registerS22WidgetCohortTests = (options: Options): void => {
   };
   const guard = (clock: () => Date = () => NOW) =>
     createAIJourneyBudgetGuard(options.runtime(), CONFIG, clock, { ownerSelection: true });
+
+  const seedDateContinuation = async () => {
+    await seedRetirement();
+    const scope = S22_WIDGET_DATE_CONTINUATION;
+    const pool = options.privilegedPool();
+    const contact = fixtureId(24801),
+      lead = fixtureId(24802);
+    await seedSession(scope.sessionId);
+    await guard().widgetCohortStore.select(await command(scope.sessionId, 1));
+    await conversation(scope.conversationId, contact, lead);
+    await message(scope.firstMessageId, scope.conversationId, contact, 1);
+    await run(scope.firstRunId, scope.conversationId, scope.firstMessageId, 2277);
+    await audit(fixtureId(24803), scope.firstRunId, "ai_run.journey_started", {
+      profile: S22_BOOKING_COHORT.profile,
+    });
+    await audit(fixtureId(24804), scope.firstRunId, "ai_run.dispatch_reserved", {
+      profile: S22_BOOKING_COHORT.profile,
+      reservation_micros: "801432",
+      widget_session_id: scope.sessionId,
+      conversation_id: scope.conversationId,
+    });
+    await audit(fixtureId(24805), scope.firstRunId, "ai_run.completed", {
+      profile: S22_BOOKING_COHORT.profile,
+      dispatch_authorized: true,
+    });
+    await pool.query(
+      `insert into audit_events (id,organization_id,event_type,actor_type,target_type,target_id,action,
+        result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
+        values ($1,$2,'ai_run.widget_journey_bound','system','widget_session',$3,'ai_run.widget_journey_bound',
+        'succeeded','synthetic-date-continuation-binding',$1,$4::jsonb,$5)`,
+      [
+        fixtureId(24806),
+        ORG,
+        scope.sessionId,
+        JSON.stringify({
+          profile: S22_BOOKING_COHORT.profile,
+          widget_session_id: scope.sessionId,
+          conversation_id: scope.conversationId,
+        }),
+        NOW,
+      ],
+    );
+    // Model authenticated recovery metadata after original expiry, not redemption
+    // of a real code. Prior suites separately exercise the actual recovery flow.
+    await pool.query(
+      `update widget_sessions set conversation_id=$1,contact_id=$2,version=3,
+        issued_at=$3,expires_at=$4,recovery_token_hash=$5,recovery_issued_at=$6,
+        recovery_expires_at=$7,recovery_request_origin='https://widget.example',
+        recovery_embedding_origin='https://s22-synthetic.example',access_issued_at=$8,
+        access_expires_at=$9,last_seen_at=$8 where organization_id=$10 and id=$11`,
+      [
+        scope.conversationId,
+        contact,
+        later(-7300000),
+        later(-100000),
+        hash("synthetic-date-recovery"),
+        later(-200000),
+        later(86200000),
+        NOW,
+        later(7200000),
+        ORG,
+        scope.sessionId,
+      ],
+    );
+    return { scope, contact, pool };
+  };
+
+  describe("S22 exact same-chat date continuation — actual PostgreSQL guards", () => {
+    it("retains usage through recovery, admits one clarification, never dispatches the third inbound", async () => {
+      const { scope, contact, pool } = await seedDateContinuation();
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        blocked: false,
+        physicalCalls: 6,
+        knownCostMicros: "13241",
+        combinedExposureMicros: "1046637",
+        widget: { sessionId: scope.sessionId, physicalCalls: 1, customerMessages: 1 },
+      });
+      const clarification = fixtureId(24807),
+        secondRun = fixtureId(24808);
+      await message(clarification, scope.conversationId, contact, 2);
+      await run(secondRun, scope.conversationId, clarification, null, true);
+      await audit(fixtureId(24809), secondRun, "ai_run.journey_started", {
+        profile: S22_BOOKING_COHORT.profile,
+      });
+      const candidate = dispatch(secondRun, clarification);
+      if (!isSchemaValue(ConversationIdSchema, scope.conversationId))
+        throw new Error("Invalid continuation conversation");
+      const input = {
+        ...candidate,
+        reference: { ...candidate.reference, conversationId: scope.conversationId },
+      };
+      const concurrent = await Promise.all([
+        guard().authorizeDispatch(input),
+        guard().authorizeDispatch(input),
+      ]);
+      expect(concurrent.filter(Boolean)).toHaveLength(1);
+      await pool.query(
+        `update ai_runs set status='succeeded',finished_at=$1,estimated_cost_micros=1000,
+          provider_resolved_model_id='gemini-3.8-flash',input_units=520,output_units=217,
+          cached_input_units=0,total_units=737,latency_ms=1000,output_hash=$2,schema_valid=true,policy_allowed=true
+          where organization_id=$3 and id=$4`,
+        [later(1000), hash("synthetic-date-finished"), ORG, secondRun],
+      );
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        blocked: false,
+        knownCostMicros: "14241",
+        widget: { physicalCalls: 2, customerMessages: 2 },
+      });
+      const third = fixtureId(24810),
+        thirdRun = fixtureId(24811);
+      await message(third, scope.conversationId, contact, 3);
+      await run(thirdRun, scope.conversationId, third, null, true);
+      await audit(fixtureId(24812), thirdRun, "ai_run.journey_started", {
+        profile: S22_BOOKING_COHORT.profile,
+      });
+      const thirdCandidate = dispatch(thirdRun, third);
+      expect(
+        await guard().authorizeDispatch({
+          ...thirdCandidate,
+          reference: { ...thirdCandidate.reference, conversationId: scope.conversationId },
+        }),
+      ).toBe(false);
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        reason: "message_limit",
+        widget: { physicalCalls: 2, customerMessages: 3 },
+      });
+      await message(fixtureId(24813), scope.conversationId, contact, 4);
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        reason: "message_limit",
+        widget: { customerMessages: 4 },
+      });
+      await expect(
+        guard().widgetCohortStore.select(await command(SECOND, 2)),
+      ).rejects.toMatchObject({ code: "cohort_blocked" });
+      expect(
+        (
+          await pool.query("select estimated_cost_micros from ai_runs where id=$1", [
+            scope.firstRunId,
+          ])
+        ).rows[0],
+      ).toMatchObject({ estimated_cost_micros: "2277" });
+    });
+    it.each([null, 0, 2278])(
+      "denies mutated original cost %s without creating another reservation",
+      async (cost) => {
+        const { scope, pool } = await seedDateContinuation();
+        await pool.query(
+          "update ai_runs set estimated_cost_micros=$1 where organization_id=$2 and id=$3",
+          [cost, ORG, scope.firstRunId],
+        );
+        expect(await guard().read((await owner()).organizationId)).toMatchObject({ blocked: true });
+        expect(
+          (
+            await pool.query(
+              "select id from audit_events where organization_id=$1 and action='ai_run.dispatch_reserved'",
+              [ORG],
+            )
+          ).rows,
+        ).toHaveLength(6);
+      },
+    );
+  });
 
   describe("S22 one replacement lane — actual PostgreSQL locks/RLS", () => {
     it("enforces three physical slots and two customer inbounds across independent guard instances", async () => {

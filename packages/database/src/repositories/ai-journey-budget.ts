@@ -11,6 +11,7 @@ import {
   S22_BOOKING_COHORT,
   S22_WIDGET_SELECTION_ENVELOPE,
   S22_WIDGET_REPLACEMENT,
+  S22_WIDGET_DATE_CONTINUATION,
   type AIJourneyCohortConfig,
 } from "@lead-agent/config";
 import {
@@ -200,12 +201,16 @@ export const createAIJourneyBudgetGuard = (
       return null;
     const inboundMessageIds: string[] = [];
     if (conversationId !== null) {
-      // One sentinel beyond the approved two messages; never read bodies. With
-      // the session locked, Widget intake cannot add an inbound during authorization.
+      // Trusted integer constants only. Keep the old sentinel for every other SID.
+      const inboundLimit =
+        ownerSelection && selectedSessionId === S22_WIDGET_DATE_CONTINUATION.sessionId
+          ? S22_WIDGET_DATE_CONTINUATION.maximumCustomerMessages + 1
+          : S22_WIDGET_ALLOWANCE.maximumMessages + 1;
+      // Never read bodies. With the session locked, intake cannot add an inbound.
       const messages = await executeTenantRead(
         session,
         `select id::text from messages where organization_id=$1 and conversation_id=$2
-           and direction='inbound' order by sequence_no limit 3`,
+           and direction='inbound' order by sequence_no limit ${inboundLimit}`,
         [conversationId],
       );
       for (const message of messages) {
@@ -279,6 +284,7 @@ export const createAIJourneyBudgetGuard = (
     let retiredCalls = 0,
       retiredKnown = 0n;
     const allowance = replacement ? S22_WIDGET_REPLACEMENT : S22_WIDGET_ALLOWANCE;
+    let maximumCustomerMessages: number = allowance.maximumMessages;
     const originalMessages = new Set<string>(),
       widgetMessages = new Map<string, number>();
     const messages = new Map<string, number>();
@@ -378,6 +384,35 @@ export const createAIJourneyBudgetGuard = (
     }
     if (baselineSeen.size !== baseline.length) reason = "historical_baseline_missing";
     if (
+      ownerSelection &&
+      replacement &&
+      widgetSessionId === S22_WIDGET_DATE_CONTINUATION.sessionId
+    ) {
+      // An immutable, already-priced first attempt anchors the amendment. Its
+      // usage stays in the same ledger. Other selections keep the two-turn cap.
+      const continuation = S22_WIDGET_DATE_CONTINUATION;
+      const first = rows.find((row) => row["id"] === continuation.firstRunId);
+      if (
+        binding?.conversationId !== continuation.conversationId ||
+        binding.inboundMessageIds[0] !== continuation.firstMessageId ||
+        first === undefined ||
+        first["conversation_id"] !== continuation.conversationId ||
+        first["trigger_message_id"] !== continuation.firstMessageId ||
+        first["widget_session_id"] !== continuation.sessionId ||
+        first["widget_conversation_id"] !== continuation.conversationId ||
+        first["status"] !== "succeeded" ||
+        first["finished_at"] === null ||
+        first["marker_authority"] !== true ||
+        first["dispatch_authorized"] !== "true" ||
+        mapSafeBigInt(first["attempt_no"]) !== 1 ||
+        mapSafeBigInt(first["reservations"]) !== 1 ||
+        mapSafeBigInt(first["journey_starts"]) !== 1 ||
+        first["estimated_cost_micros"] !== continuation.firstKnownCostMicros.toString()
+      )
+        reason = reason ?? "widget_continuation_baseline_mismatch";
+      else maximumCustomerMessages = continuation.maximumCustomerMessages;
+    }
+    if (
       widgetSessionId === undefined &&
       (calls > config.maximumCalls ||
         messages.size > config.maximumMessages ||
@@ -446,7 +481,7 @@ export const createAIJourneyBudgetGuard = (
         exposure > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros
       )
         reason = "widget_allowance";
-      if ((binding?.inboundMessageIds.length ?? 0) > allowance.maximumMessages)
+      if ((binding?.inboundMessageIds.length ?? 0) > maximumCustomerMessages)
         reason = "message_limit";
     }
     return {
@@ -464,6 +499,7 @@ export const createAIJourneyBudgetGuard = (
       widgetPending,
       latchCount,
       allowance,
+      maximumCustomerMessages,
     };
   };
   const lockCohort = async (session: TenantDbSession) => {
@@ -694,7 +730,7 @@ export const createAIJourneyBudgetGuard = (
           selected === undefined ? (ready.reason ?? "widget_selection_required") : state.reason;
         if (reason === null) {
           if (state.widgetCalls >= state.allowance.maximumCalls) reason = "attempt_limit";
-          else if ((binding?.inboundMessageIds.length ?? 0) >= S22_WIDGET_ALLOWANCE.maximumMessages)
+          else if ((binding?.inboundMessageIds.length ?? 0) >= state.maximumCustomerMessages)
             reason = "message_limit";
           else if (
             state.reserve !== null &&
@@ -971,7 +1007,7 @@ export const createAIJourneyBudgetGuard = (
           else if (
             widgetSessionId === undefined
               ? messages.size >= config.maximumMessages
-              : (binding?.inboundMessageIds.length ?? 0) >= S22_WIDGET_ALLOWANCE.maximumMessages
+              : (binding?.inboundMessageIds.length ?? 0) >= state.maximumCustomerMessages
           )
             reason = "message_limit";
           else if (
