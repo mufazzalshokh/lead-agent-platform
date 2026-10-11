@@ -1,9 +1,10 @@
 # Website Chat recovery: migration-first rollout packet
 
-Status: PREPARED ONLY. No apply, migration execution, session replacement, customer
-message, provider call or budget increase is authorized by this packet. The owner
-approved preparation after the local recovery milestone, not deployment or paid
-execution. S22 as a whole remains unaccepted.
+Status: **STAGE A APPLIED AND VERIFIED**. The owner approved **plan 38139812141
+only**. Its exact saved binary updated the migrator job definition, without
+executing it. Migration execution, application rollout, session replacement,
+customer messages, provider calls and budget increases remain unapproved and
+unperformed by this rollout. S22 as a whole remains unaccepted.
 
 ## Release and tooling provenance
 
@@ -28,7 +29,7 @@ also passed. CI success is not a deployment or customer-journey result.
 Project/region: `lead-agent-stg-739284` / `me-central1`.
 Canonical release metadata timestamp: **`2026-10-11T12:34:47Z`**.
 
-## Immutable images: built once, not deployed
+## Immutable images: built once; only migrator job definition updated
 
 [Build 38139271816](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38139271816)
 passed for the exact runtime source above. OCI provenance/SBOM and pulled
@@ -111,13 +112,48 @@ revalidation of the exact plan using the pinned tooling. Never replace a stale
 or expired saved plan under the old approval. A separately approved replacement
 is necessary if state or artifact freshness changes.
 
+### Stage A apply receipt
+
+[Apply 38140600026](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38140600026)
+**PASS**. Dispatched once after the owner's exact-plan approval. A fresh
+authenticated download reproduced the approved binary/checksum above; local
+independent inspection again passed all 88 managed configurable comparisons.
+The workflow checked out pinned tooling `0949cfd`, revalidated the exact saved
+binary and approval boundary, and applied it without replacement or replanning:
+**0 added / 1 changed / 0 destroyed**. The only change is the migrator job.
+Dispatched branch head `6d0cbf2` contains only the later packet documentation;
+the input checkout and runtime image provenance remain independently pinned.
+
+Apply inputs are the exact preparation inputs above with `action=apply`,
+`plan_run_id=38139812141`, `approved_plan_sha256` equal to the approved binary
+SHA256, and the repository's explicit owner-approval marker. No other input,
+image, journey mode/anchor or budget changed. Terraform accepted the saved plan
+against its current state lineage/serial under the state lock.
+
+Authenticated evidence artifact **11703500694**:
+`s22-migrator-image-apply-evidence-38140600026`.
+Downloaded plaintext SHA256:
+`e3202cfb2234da8289c71c800f13ba93dc25547480547b901bbd7064eb7a2375`.
+All **15 live assertions PASS**: exact image/source/time/packaged migration head,
+service account, command/args, private VPC, five existing secret references,
+89 Terraform state entries and whole-configuration convergence exit code **0**.
+The strict pre-apply configuration comparison and convergence preserve numeric
+zero retries, task/parallelism, resources, IAM, application images/provenance,
+route/session binding, scaling and budgets. Packaged head `0032` on the job is
+not evidence that `0032` has been applied to the database.
+
+One-shot migration, database validation, bounded diagnostics, acceptance
+inventory, booking evidence and Widget progress jobs were explicitly **skipped**.
+No customer frame was opened or message/provider call sent by this apply.
+Do not reapply this now-consumed saved plan.
+
 ## Stage B: migration, then application rollout
 
-These are conditional steps, **not executed or implicitly authorized**:
+Stage A verification is complete. Steps 2–5 remain conditional, **not executed
+or implicitly authorized**:
 
-1. After exact Stage A approval/apply, verify the job image/provenance, private
-   VPC, unchanged secret references, zero retries and Terraform convergence.
-   Current application images remain unchanged throughout this stage.
+1. **Completed:** exact Stage A apply and live job/configuration convergence
+   verification are recorded above. Current application images remain unchanged.
 2. Obtain explicit authority for **one migration execution** of the reviewed
    job. `0032` adds seven nullable recovery/access fields and bounded checks;
    no backfill, customer proof issuance, budget/booking changes, historical
@@ -208,6 +244,23 @@ inspection passed. Raw plan/state/provider JSON stay in memory or ignored local
 artifacts, not chat, Git or public documentation. Build/plan receipts and
 head SHA verification are authenticated GitHub reads.
 
+Exact-apply verification additionally passed:
+
+```text
+gh run download 38139812141 --repo mufazzalshokh/lead-agent-platform --name s22-terraform-plan-migrator-image-update-0949cfdc2a5e541b19366b01fd93bcdf782c808a --dir .cache/s22-recovery-rollout/pre-apply-38139812141
+node .cache/s22-recovery-rollout/review.mjs .cache/s22-recovery-rollout/pre-apply-38139812141/s22.tfplan
+node --test .github/scripts/s22-full-runtime-config-check.test.mjs .github/scripts/s22-recovery-rollout.test.mjs
+node .cache/s22-recovery-rollout/apply.mjs --dispatch
+gh run download 38140600026 --repo mufazzalshokh/lead-agent-platform --name s22-migrator-image-apply-evidence-38140600026 --dir .cache/s22-recovery-rollout/applied-38140600026
+node .cache/s22-recovery-rollout/verify-apply.mjs
+```
+
+Result: approved checksum and exact configuration PASS; 15/15 native rollout
+guard tests PASS; one successful apply; authenticated receipt digest, 15/15 live
+assertions, convergence and skipped-execution boundaries PASS. No new application
+code/tests or SQL changes were needed for this apply. Only this rollout receipt
+document is changed in the apply milestone; temporary helpers remain ignored.
+
 In-scope release-tooling files (no application or SQL edits):
 
 ```text
@@ -229,6 +282,7 @@ Existing owner edits in `README.md`, `docs/architecture/s11-instagram-business.m
 and `s22-public-notices.patch` are preserved and excluded. Temporary reviewers,
 dispatch helpers, downloaded manifests and Terraform binaries remain ignored.
 
-**Exactly one next safe action:** approve the exact Stage A migrator-only saved
-plan **38139812141**. Its release-tooling CI gate is verified PASS. This
-approval does not authorize migration execution, application deployment or Send.
+**Exactly one next safe action:** obtain explicit approval for one execution of
+the now-verified migrator job to apply `0032_s22_widget_recovery`, followed by
+read-only schema/security verification with authenticated result-log access.
+That approval must not include application deployment, a new chat or Send.
