@@ -186,8 +186,8 @@ variable "migration_head" {
   default     = "0031_s22_widget_inbound_route_management"
 
   validation {
-    condition     = var.migration_head == "0031_s22_widget_inbound_route_management"
-    error_message = "S22 requires the approved Widget route-management migration head."
+    condition     = contains(["0031_s22_widget_inbound_route_management", "0032_s22_widget_recovery"], var.migration_head)
+    error_message = "S22 requires an explicitly reviewed Widget migration head (0031 or 0032)."
   }
 }
 

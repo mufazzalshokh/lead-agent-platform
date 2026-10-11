@@ -15,6 +15,7 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
   --arg commit "$TF_VAR_git_commit_sha" --arg timestamp "$TF_VAR_deployment_timestamp" \
   --arg api_image "$TF_VAR_api_image" --arg web_image "$TF_VAR_web_image" \
   --arg worker_image "$TF_VAR_worker_image" --arg migrator_image "$TF_VAR_migrator_image" \
+  --arg migration_head "$TF_VAR_migration_head" \
   --arg journey_mode "$TF_VAR_ai_journey_mode" \
   --arg widget_session "${TF_VAR_ai_journey_widget_session_id:-}" \
   --arg api_origin "$TF_VAR_api_public_origin" --arg web_origin "$TF_VAR_web_public_origin" '
@@ -43,11 +44,12 @@ jq -e --arg project "$TF_VAR_project_id" --arg region "$TF_VAR_region" \
     and .variables.web_max_instance_count.value == "1"
     and .variables.worker_instance_count.value == "1"
     and .variables.worker_memory.value == "512Mi"
-    and .variables.migration_head.value == "0031_s22_widget_inbound_route_management"
+    and .variables.migration_head.value == $migration_head
 ' "$PLAN_JSON" > /dev/null
 
 INITIAL_ACTIONS='["create:google_cloud_run_v2_worker_pool.worker[0]","update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]"]'
 RECONCILIATION_ACTIONS='["update:google_cloud_run_v2_job.migrator[0]","update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]","update:google_cloud_run_v2_worker_pool.worker[0]"]'
+MIGRATION_FIRST_ACTIONS='["update:google_cloud_run_v2_service.api[0]","update:google_cloud_run_v2_service.web[0]","update:google_cloud_run_v2_worker_pool.worker[0]"]'
 ACTUAL_ACTIONS="$(
   jq -c '
     [.resource_changes[]
@@ -66,6 +68,12 @@ case "$ACTUAL_ACTIONS" in
   "$RECONCILIATION_ACTIONS")
     CREATE_COUNT=0
     UPDATE_COUNT=4
+    PLAN_MODE=reconciliation
+    ;;
+  "$MIGRATION_FIRST_ACTIONS")
+    [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]
+    CREATE_COUNT=0
+    UPDATE_COUNT=3
     PLAN_MODE=reconciliation
     ;;
   *)

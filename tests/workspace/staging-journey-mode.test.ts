@@ -149,6 +149,7 @@ describe("S22 tracked AI journey deployment mode", () => {
       [
         "--test",
         ".github/scripts/s22-full-runtime-config-check.test.mjs",
+        ".github/scripts/s22-recovery-rollout.test.mjs",
         ".github/scripts/s22-widget-session-select.test.mjs",
       ],
       {

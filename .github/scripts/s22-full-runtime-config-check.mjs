@@ -11,6 +11,10 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 const requireSafe = (condition) => {
   if (!condition) throw new Error("S22_FULL_RUNTIME_CONFIGURATION_DENIED");
 };
+const approvedHeads = new Set([
+  "0031_s22_widget_inbound_route_management",
+  "0032_s22_widget_recovery",
+]);
 const canonical = (value) => {
   if (Array.isArray(value)) return value.map(canonical);
   if (value !== null && typeof value === "object")
@@ -96,13 +100,24 @@ function permittedRuntime(configurationValue, workload, variables, after) {
     requireSafe(typeof entry.name === "string" && !environment.has(entry.name));
     environment.set(entry.name, entry.value);
   }
+  const head = variables.migration_head?.value;
+  requireSafe(approvedHeads.has(head));
+  requireSafe(
+    !variables.runtime_migration_head?.value || variables.runtime_migration_head.value === head,
+  );
+  requireSafe(!variables.api_migration_head?.value || variables.api_migration_head.value === head);
+  requireSafe(approvedHeads.has(environment.get("DEPLOYMENT_MIGRATION_HEAD")));
+  requireSafe(
+    value.labels?.["migration-head"] ===
+      environment.get("DEPLOYMENT_MIGRATION_HEAD").replaceAll("_", "-"),
+  );
   if (after) {
     requireSafe(container.image === variables[`${workload}_image`].value);
     requireSafe(value.labels?.["git-sha"] === variables.git_commit_sha.value.slice(0, 12));
     for (const [name, expected] of [
       ["DEPLOYMENT_GIT_SHA", variables.git_commit_sha.value],
       ["DEPLOYMENT_TIMESTAMP", variables.deployment_timestamp.value],
-      ["DEPLOYMENT_MIGRATION_HEAD", "0031_s22_widget_inbound_route_management"],
+      ["DEPLOYMENT_MIGRATION_HEAD", head],
     ])
       requireSafe(environment.get(name) === expected);
     if (["api", "migrator"].includes(workload))
@@ -110,7 +125,11 @@ function permittedRuntime(configurationValue, workload, variables, after) {
         environment.get("DEPLOYMENT_IMAGE_DIGEST") === variables[`${workload}_image`].value,
       );
   }
-  const permitted = new Set(["DEPLOYMENT_GIT_SHA", "DEPLOYMENT_TIMESTAMP"]);
+  const permitted = new Set([
+    "DEPLOYMENT_GIT_SHA",
+    "DEPLOYMENT_TIMESTAMP",
+    "DEPLOYMENT_MIGRATION_HEAD",
+  ]);
   if (["api", "migrator"].includes(workload)) permitted.add("DEPLOYMENT_IMAGE_DIGEST");
   if (workload === "worker") {
     const mode = environment.get("AI_JOURNEY_MODE");
@@ -141,6 +160,7 @@ function permittedRuntime(configurationValue, workload, variables, after) {
     .sort((left, right) => left.name.localeCompare(right.name));
   delete container.image;
   delete value.labels["git-sha"];
+  delete value.labels["migration-head"];
   return value;
 }
 
@@ -160,6 +180,7 @@ export function verifyFullRuntimeConfiguration(plan, providerSchema) {
   const seen = new Set();
   let managed = 0;
   let changed = 0;
+  let readyMigrator = false;
   for (const resource of plan.resource_changes) {
     if (resource.mode !== "managed") continue;
     requireSafe(resource.provider_name === "registry.terraform.io/hashicorp/google");
@@ -186,16 +207,75 @@ export function verifyFullRuntimeConfiguration(plan, providerSchema) {
       changed++;
     } else {
       requireSafe(JSON.stringify(canonical(before)) === JSON.stringify(canonical(after)));
+      if (
+        workload === "migrator" &&
+        variables.migration_head?.value === "0032_s22_widget_recovery"
+      ) {
+        permittedRuntime(after, workload, variables, true);
+        readyMigrator = true;
+      }
     }
     managed++;
   }
-  requireSafe(changed === 4 && [...runtimeAddresses.keys()].every((address) => seen.has(address)));
+  requireSafe(
+    (changed === 4 || (changed === 3 && readyMigrator)) &&
+      [...runtimeAddresses.keys()].every((address) => seen.has(address)),
+  );
+  return { managedResources: managed, changedResources: changed };
+}
+
+// Migration-first preparation must leave every other managed configuration intact.
+export function verifyMigratorConfiguration(plan, providerSchema) {
+  requireSafe(Array.isArray(plan.resource_changes) && plan.variables !== null);
+  const variables = {
+    ...plan.variables,
+    git_commit_sha: plan.variables.migrator_git_commit_sha,
+    deployment_timestamp: plan.variables.migrator_deployment_timestamp,
+    runtime_migration_head: { value: "" },
+    api_migration_head: { value: "" },
+  };
+  const schemas =
+    providerSchema.provider_schemas?.["registry.terraform.io/hashicorp/google"]?.resource_schemas;
+  requireSafe(schemas !== undefined);
+  const seen = new Set();
+  let managed = 0;
+  let changed = 0;
+  for (const resource of plan.resource_changes) {
+    if (resource.mode !== "managed") continue;
+    requireSafe(
+      resource.provider_name === "registry.terraform.io/hashicorp/google" &&
+        !seen.has(resource.address),
+    );
+    seen.add(resource.address);
+    const block = schemas[resource.type]?.block;
+    requireSafe(block !== undefined);
+    const change = resource.change;
+    requireSafe((change.replace_paths ?? []).length === 0);
+    const before = configuration(change.before, block);
+    const after = configuration(change.after, block, change.after_unknown);
+    if (JSON.stringify(change.actions) === '["update"]') {
+      requireSafe(resource.address === "google_cloud_run_v2_job.migrator[0]");
+      requireSafe(
+        JSON.stringify(canonical(permittedRuntime(before, "migrator", variables, false))) ===
+          JSON.stringify(canonical(permittedRuntime(after, "migrator", variables, true))),
+      );
+      changed++;
+    } else {
+      requireSafe(JSON.stringify(change.actions) === '["no-op"]');
+      requireSafe(JSON.stringify(canonical(before)) === JSON.stringify(canonical(after)));
+    }
+    managed++;
+  }
+  requireSafe(changed === 1);
   return { managedResources: managed, changedResources: changed };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const result = verifyFullRuntimeConfiguration(
+    requireSafe(process.argv[4] === undefined || process.argv[4] === "migrator");
+    const verify =
+      process.argv[4] === "migrator" ? verifyMigratorConfiguration : verifyFullRuntimeConfiguration;
+    const result = verify(
       JSON.parse(readFileSync(process.argv[2], "utf8")),
       JSON.parse(readFileSync(process.argv[3], "utf8")),
     );

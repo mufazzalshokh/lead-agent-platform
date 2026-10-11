@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { verifyFullRuntimeConfiguration } from "./s22-full-runtime-config-check.mjs";
+import {
+  verifyFullRuntimeConfiguration,
+  verifyMigratorConfiguration,
+} from "./s22-full-runtime-config-check.mjs";
 
 const provider = "registry.terraform.io/hashicorp/google";
 const sessionId = "01923456-1234-7123-8123-123456789abc";
@@ -96,6 +99,7 @@ function fixture(mode = "widget_booking") {
   Object.assign(variables, {
     git_commit_sha: { value: commit },
     deployment_timestamp: { value: timestamp },
+    migration_head: { value: "0031_s22_widget_inbound_route_management" },
     ai_journey_mode: { value: mode },
     ai_journey_widget_session_id: { value: mode === "widget_booking" ? sessionId : "" },
   });
@@ -127,7 +131,11 @@ function fixture(mode = "widget_booking") {
     };
     const before = {
       name: workload,
-      labels: { "git-sha": "b".repeat(12), environment: "staging" },
+      labels: {
+        "git-sha": "b".repeat(12),
+        "migration-head": "0031-s22-widget-inbound-route-management",
+        environment: "staging",
+      },
       latest_revision: "old-revision",
       optional_computed: "stable-provider-default",
       template: workload === "migrator" ? [{ template: [inner] }] : [inner],
@@ -179,6 +187,91 @@ const denied = (plan) =>
     () => verifyFullRuntimeConfiguration(plan, schema),
     /S22_FULL_RUNTIME_CONFIGURATION_DENIED/u,
   );
+const recoveryFixture = () => {
+  const plan = fixture();
+  plan.variables.migration_head.value = "0032_s22_widget_recovery";
+  for (const workload of Object.keys(addresses)) {
+    const value = findChange(plan, workload).after;
+    value.labels["migration-head"] = "0032-s22-widget-recovery";
+    getContainer(value, workload).env.find(
+      (entry) => entry.name === "DEPLOYMENT_MIGRATION_HEAD",
+    ).value = "0032_s22_widget_recovery";
+  }
+  return plan;
+};
+
+test("allows reviewed recovery head with exact migration labels and all other configuration preserved", () => {
+  assert.equal(verifyFullRuntimeConfiguration(recoveryFixture(), schema).changedResources, 4);
+});
+test("migration-first plan changes only the migrator and preserves the old application provenance", () => {
+  const plan = recoveryFixture();
+  plan.variables.migrator_git_commit_sha = plan.variables.git_commit_sha;
+  plan.variables.migrator_deployment_timestamp = plan.variables.deployment_timestamp;
+  for (const workload of ["api", "web", "worker"]) {
+    const change = findChange(plan, workload);
+    change.after = structuredClone(change.before);
+    change.actions = ["no-op"];
+    change.after_unknown = {};
+  }
+  assert.equal(verifyMigratorConfiguration(plan, schema).changedResources, 1);
+  const assertDenied = (candidate) =>
+    assert.throws(
+      () => verifyMigratorConfiguration(candidate, schema),
+      /S22_FULL_RUNTIME_CONFIGURATION_DENIED/u,
+    );
+  for (const workload of ["api", "web", "worker"]) {
+    const candidate = structuredClone(plan);
+    getContainer(findChange(candidate, workload).after, workload).image = "unreviewed";
+    assertDenied(candidate);
+  }
+  const credentials = structuredClone(plan);
+  getContainer(findChange(credentials, "migrator").after, "migrator").env.push({
+    name: "UNREVIEWED_FLAG",
+    value: "enabled",
+  });
+  assertDenied(credentials);
+  const unknown = structuredClone(plan);
+  findChange(unknown, "migrator").after_unknown = { template: true };
+  assertDenied(unknown);
+});
+test("allows three application updates only when the recovery migrator is already exactly deployed", () => {
+  const plan = recoveryFixture();
+  const migrator = findChange(plan, "migrator");
+  migrator.after.latest_revision = "ready-migrator";
+  migrator.before = structuredClone(migrator.after);
+  migrator.actions = ["no-op"];
+  migrator.after_unknown = {};
+  assert.equal(verifyFullRuntimeConfiguration(plan, schema).changedResources, 3);
+  getContainer(migrator.after, "migrator").image = "wrong-image";
+  migrator.before = structuredClone(migrator.after);
+  denied(plan);
+});
+test("rejects arbitrary heads, misleading migration labels, inconsistent packaged heads and other missing updates", () => {
+  for (const mutate of [
+    (plan) => {
+      plan.variables.migration_head.value = "0033_unreviewed";
+    },
+    (plan) => {
+      findChange(plan, "api").after.labels["migration-head"] =
+        "0031-s22-widget-inbound-route-management";
+    },
+    (plan) => {
+      plan.variables.api_migration_head = { value: "0031_s22_widget_inbound_route_management" };
+    },
+    (plan) => {
+      plan.variables.runtime_migration_head = { value: "0031_s22_widget_inbound_route_management" };
+    },
+    (plan) => {
+      const change = findChange(plan, "web");
+      change.before = structuredClone(change.after);
+      change.actions = ["no-op"];
+    },
+  ]) {
+    const plan = recoveryFixture();
+    mutate(plan);
+    denied(plan);
+  }
+});
 
 test("allows only exact all-runtime provenance/images and reviewed Widget mode/session changes", () => {
   assert.deepEqual(verifyFullRuntimeConfiguration(fixture(), schema), {

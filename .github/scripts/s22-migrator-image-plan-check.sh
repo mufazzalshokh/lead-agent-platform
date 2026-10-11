@@ -15,10 +15,13 @@ EXPECTED_API_TIMESTAMP="${10:?expected preserved API deployment timestamp is req
 EXPECTED_API_MIGRATION_HEAD="${11:?expected preserved API migration head is required}"
 EXPECTED_WEB_IMAGE="${12:?expected preserved Web image is required}"
 EXPECTED_WORKER_IMAGE="${13:?expected preserved Worker image is required}"
+EXPECTED_MIGRATION_HEAD="${14:-0031_s22_widget_inbound_route_management}"
+[[ "$EXPECTED_MIGRATION_HEAD" == "0031_s22_widget_inbound_route_management" || "$EXPECTED_MIGRATION_HEAD" == "0032_s22_widget_recovery" ]]
 PLAN_DIR="$(dirname "$PLAN_PATH")"
 PLAN_NAME="$(basename "$PLAN_PATH")"
 PLAN_JSON="$(mktemp)"
-trap 'rm -f "$PLAN_JSON"' EXIT
+PROVIDER_SCHEMA="$(mktemp)"
+trap 'rm -f "$PLAN_JSON" "$PROVIDER_SCHEMA"' EXIT
 
 terraform -chdir="$PLAN_DIR" show -json "$PLAN_NAME" > "$PLAN_JSON"
 
@@ -34,12 +37,13 @@ jq -e \
   --arg api_timestamp "$EXPECTED_API_TIMESTAMP" \
   --arg api_migration_head "$EXPECTED_API_MIGRATION_HEAD" \
   --arg web_image "$EXPECTED_WEB_IMAGE" \
-  --arg worker_image "$EXPECTED_WORKER_IMAGE" '
+  --arg worker_image "$EXPECTED_WORKER_IMAGE" \
+  --arg migration_head "$EXPECTED_MIGRATION_HEAD" '
   .variables.project_id.value == "lead-agent-stg-739284"
     and .variables.region.value == "me-central1"
     and .variables.git_commit_sha.value == $runtime_commit
     and .variables.deployment_timestamp.value == $runtime_timestamp
-    and .variables.migration_head.value == "0031_s22_widget_inbound_route_management"
+    and .variables.migration_head.value == $migration_head
     and .variables.runtime_migration_head.value == $runtime_migration_head
     and .variables.api_image.value == $api_image
     and .variables.api_git_commit_sha.value == $api_commit
@@ -81,7 +85,8 @@ jq -e '
 jq -e \
   --arg commit "$EXPECTED_COMMIT" \
   --arg image "$EXPECTED_IMAGE" \
-  --arg timestamp "$EXPECTED_TIMESTAMP" '
+  --arg timestamp "$EXPECTED_TIMESTAMP" \
+  --arg migration_head "$EXPECTED_MIGRATION_HEAD" '
   [.resource_changes[]
    | select(.address == "google_cloud_run_v2_job.migrator[0]")
    | .change] as $changes
@@ -116,7 +121,7 @@ jq -e \
     and $changes[0].after.template[0].template[0].containers[0].image == $image
     and ($changes[0].after.labels["git-sha"] == ($commit[0:12]))
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_GIT_SHA" and .value == $commit)
-    and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_MIGRATION_HEAD" and .value == "0031_s22_widget_inbound_route_management")
+    and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_MIGRATION_HEAD" and .value == $migration_head)
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_TIMESTAMP" and .value == $timestamp)
     and any($changes[0].after.template[0].template[0].containers[0].env[]; .name == "DEPLOYMENT_IMAGE_DIGEST" and .value == $image)
     and ([ $changes[0].before.template[0].template[0].containers[0].env[]
@@ -136,6 +141,8 @@ REPLACE_COUNT="$(jq '[.resource_changes[] | select(.change.actions == ["delete",
 [[ "$CHANGE_COUNT" == "1" ]]
 [[ "$DESTROY_COUNT" == "0" ]]
 [[ "$REPLACE_COUNT" == "0" ]]
+terraform -chdir="$PLAN_DIR" providers schema -json > "$PROVIDER_SCHEMA"
+node "$(dirname "${BASH_SOURCE[0]}")/s22-full-runtime-config-check.mjs" "$PLAN_JSON" "$PROVIDER_SCHEMA" migrator
 
 echo "migrator_image_plan_creates=$CREATE_COUNT"
 echo "migrator_image_plan_changes=$CHANGE_COUNT"

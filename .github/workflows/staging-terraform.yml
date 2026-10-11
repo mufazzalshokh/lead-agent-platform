@@ -59,6 +59,14 @@ on:
         description: UTC RFC3339 deployment timestamp for runtime phases
         required: false
         type: string
+      migration_head:
+        description: Exact packaged migrator head; 0032 requires migration-first recovery rollout
+        required: false
+        default: 0031_s22_widget_inbound_route_management
+        type: choice
+        options:
+          - 0031_s22_widget_inbound_route_management
+          - 0032_s22_widget_recovery
       api_image:
         description: Immutable API image reference by digest
         required: false
@@ -349,6 +357,7 @@ jobs:
       TF_VAR_web_image: ${{ inputs.web_image }}
       TF_VAR_worker_image: ${{ inputs.worker_image }}
       TF_VAR_migrator_image: ${{ inputs.migrator_image }}
+      TF_VAR_migration_head: ${{ inputs.migration_head || '0031_s22_widget_inbound_route_management' }}
       TF_VAR_runtime_migration_head: ${{ inputs.runtime_migration_head }}
       TF_VAR_api_public_origin: ${{ vars.STAGING_API_ORIGIN }}
       TF_VAR_web_public_origin: ${{ vars.STAGING_WEB_ORIGIN }}
@@ -383,6 +392,13 @@ jobs:
             *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
           esac
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TF_VAR_migration_head" == "0031_s22_widget_inbound_route_management" || "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]
+          if [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]; then
+            [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" || "$PHASE" == "api-image-verify" ]]
+          fi
+          if [[ "$PHASE" == "full" && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
+            [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          fi
           [[ "$S22_AI_JOURNEY_MODE" == "preserve" || "$S22_AI_JOURNEY_MODE" == "paused" || "$S22_AI_JOURNEY_MODE" == "booking" || "$S22_AI_JOURNEY_MODE" == "widget_booking" ]]
           if [[ "$S22_AI_JOURNEY_MODE" != "preserve" ]]; then
             [[ "$PHASE" == "full" ]]
@@ -429,7 +445,7 @@ jobs:
           fi
           if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
             [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
-            [[ "$TF_VAR_api_migration_head" == "0031_s22_widget_inbound_route_management" ]]
+            [[ "$TF_VAR_api_migration_head" == "$TF_VAR_migration_head" ]]
             [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
             [[ "$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
             [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -688,6 +704,8 @@ jobs:
             echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
             echo "TF_VAR_api_git_commit_sha=$S22_API_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_api_deployment_timestamp=$S22_API_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+          elif [[ "$PHASE" == "full" && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
+            echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
           elif [[ "$PHASE" == "cloud-sql-start" || "$PHASE" == "migration" || "$PHASE" == "migration-diagnose" || "$PHASE" == "migration-wiring-diagnose" ]]; then
             echo "TF_VAR_git_commit_sha=2396fdf797eb4b19252a34c8b45e93945a8f53a3" >> "$GITHUB_ENV"
             echo "TF_VAR_deployment_timestamp=2026-09-26T09:53:56Z" >> "$GITHUB_ENV"
@@ -712,6 +730,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
           git fetch --no-tags origin "$DISPATCH_BRANCH"
           git merge-base --is-ancestor "$REQUESTED_SHA" "origin/$DISPATCH_BRANCH"
+          if [[ "$S22_PHASE" == "full" && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
+            git merge-base --is-ancestor "$S22_RUNTIME_GIT_COMMIT_SHA" "$REQUESTED_SHA"
+          fi
 
       - name: Authenticate to Google Cloud without a key
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -1985,6 +2006,7 @@ jobs:
             "$TF_VAR_api_migration_head" \
             "$TF_VAR_web_image" \
             "$TF_VAR_worker_image" \
+            "$TF_VAR_migration_head" \
             | tee infra/deploy/gcp/staging/s22-migrator-image-plan-evidence.txt
           echo "migrator_image_plan_sha256=$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)" \
             | tee -a infra/deploy/gcp/staging/s22-migrator-image-plan-evidence.txt
@@ -3115,7 +3137,8 @@ jobs:
             "$S22_API_DEPLOYMENT_TIMESTAMP" \
             "$TF_VAR_api_migration_head" \
             "$TF_VAR_web_image" \
-            "$TF_VAR_worker_image"
+            "$TF_VAR_worker_image" \
+            "$TF_VAR_migration_head"
 
       - name: Verify exact API image update approval boundary
         if: env.S22_PHASE == 'api-image-update' && env.S22_ACTION == 'apply'
@@ -5516,8 +5539,8 @@ jobs:
           {
             echo "migration_state_count=$STATE_COUNT"
             echo "migration_convergence_exit_code=$PLAN_EXIT_CODE"
-            echo "migration_head=0031_s22_widget_inbound_route_management"
-            echo "migration_count=32"
+            echo "migration_head=$TF_VAR_migration_head"
+            if [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]; then echo "migration_count=33"; else echo "migration_count=32"; fi
             echo "production_table_count=52"
             echo "force_rls_table_count=48"
             echo "application_role_connectivity=PASS"
@@ -5551,7 +5574,7 @@ jobs:
             echo "- Region: me-central1"
             echo "- Phase: $PHASE"
             echo "- Commit: \`$REQUESTED_SHA\`"
-            echo "- Migration head: \`0031_s22_widget_inbound_route_management\`"
+            echo "- Migration head: \`$TF_VAR_migration_head\`"
             echo "- Timestamp: \`$DEPLOYED_AT\`"
             [[ -z "$API_IMAGE" ]] || echo "- API: \`$API_IMAGE\`"
             [[ -z "$WEB_IMAGE" ]] || echo "- Web: \`$WEB_IMAGE\`"
