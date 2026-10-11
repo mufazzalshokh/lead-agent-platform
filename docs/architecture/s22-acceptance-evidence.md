@@ -6332,3 +6332,60 @@ and initial idle-boundary regressions are reused, not rerun. **Live diagnosis
 and Website Chat booking remain pending; S22 is unaccepted.** The sole next
 owner action is the immutable download/run command for this attempted-send
 collection, not another message or session. No upload is required.
+
+## 2026-10-11 - Restore the installation-code label; isolate missing S22 panel
+
+The owner clarified that the original **Copy installation code** action must
+remain visible, with a small copy icon on its right. The deployed icon-only
+component omitted that label and fixed the whole button at 44 by 44 pixels;
+this was a presentation mismatch, not evidence of a failed clipboard write.
+
+The local correction restores the ghost-button text, adds a trailing 16-pixel
+icon, removes the fixed square sizing and anchors the tooltip to the right.
+The 44-pixel minimum touch height remains. Successful copying still changes
+the icon to a checkmark and shows **Copied** for three seconds; pending writes,
+denial feedback, timer cleanup, validated snippet generation and key remounting
+are unchanged. The label and dimensions remain stable across these states.
+
+Files: `apps/web/src/app/staff/CopyWidgetCodeButton.tsx`, its new permanent
+`CopyWidgetCodeButton.test.ts`, `apps/web/src/app/styles.css`, and this receipt.
+No dependency, API, authentication, tenant, session, budget, database or migration
+change. **This correction is verified locally, not deployed.** No image build,
+saved plan, rollout, new browser frame, customer message or provider call was
+initiated to deliver this cosmetic change. Verified replacement runtime
+`2055ab2` remains the live release; do not interrupt the main booking check with
+a separate UI deployment.
+
+Verification, all PASS:
+
+```text
+node node_modules/vitest/vitest.mjs run apps/web/src/app/staff/CopyWidgetCodeButton.test.ts apps/web/src/app/staff/S22WidgetCohort.test.ts apps/web/src/lib/product-ux.test.ts apps/web/src/lib/s22-widget-cohort.test.ts --maxWorkers=1 --testTimeout=30000 --reporter=dot
+node node_modules/typescript/bin/tsc -p apps/web/tsconfig.typecheck.json --noEmit
+node node_modules/eslint/bin/eslint.js apps/web/src/app/staff/CopyWidgetCodeButton.tsx apps/web/src/app/staff/CopyWidgetCodeButton.test.ts --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check apps/web/src/app/staff/CopyWidgetCodeButton.tsx apps/web/src/app/staff/CopyWidgetCodeButton.test.ts apps/web/src/app/styles.css
+node .cache/s22-copy-feedback-browser.mjs --icon --label-icon
+node scripts/check-boundaries.mjs
+git diff --check -- apps/web/src/app/staff/CopyWidgetCodeButton.tsx apps/web/src/app/styles.css docs/architecture/s22-acceptance-evidence.md
+```
+
+Results: **56/56 focused cases PASS**, including three permanent rendered-label,
+accessibility and layout regressions. The actual React component with repository
+styles in isolated headless Edge passes all eight observed lifecycle states with
+a synthetic clipboard: label before icon, 16 by 16 icon, unchanged button width,
+single pending write, success/reset, failure/retry and remount. Dependency
+boundaries pass for 332 source files. No production build, full CI, real clipboard
+or live customer acceptance is claimed by these local results.
+
+Separately, the owner reports that the S22 panel disappears after refreshing.
+The current screenshot contains only Website Chat setup, not a session result.
+Source inspection proves that the panel is owner-only and its controller hides
+it on HTTP403/404. A single unauthenticated GET of the deployed Web gateway
+cohort route returned HTTP401, so the route exists; it does not establish the
+owner's authenticated response or permissions. Expired-session or budget
+snapshots must not be inferred from this crop. No authorization guard was
+relaxed and no speculative fix applied to the S22 workflow.
+
+The next safe task is to inspect the status of the existing owner's authenticated
+cohort GET, then diagnose that exact failure. Reloading only the staff tab with
+Network open is a read-only observation; leave the test chat unchanged, do not
+resend, create another chat or replace setup. **S22 remains unaccepted.**

@@ -45,10 +45,12 @@ export function CopyWidgetCodeButton({
         aria-describedby={tooltipId}
         onClick={() => void copy()}
       >
+        <span className="copy-code-label">Copy installation code</span>
         <svg
+          className="copy-code-icon"
           aria-hidden="true"
-          width="20"
-          height="20"
+          width="16"
+          height="16"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
