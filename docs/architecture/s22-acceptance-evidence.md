@@ -6509,3 +6509,48 @@ request/attempt/accounting state has not been independently collected here.
 The old snapshot must not be reported as a refreshed balance after the current
 first-message response. The preserved last-turn/actual-offer restriction still
 applies. **S22 remains unaccepted.**
+
+## 2026-10-12 — Exact date-fix deployment verified; remaining-work report
+
+The owner requested a remaining-work report, then explicitly approved
+**"apply plan 38165971091 only"**. [The exact rollout receipt](s22-widget-date-rollout-plan.md#exact-apply-and-runtime-verification-receipt--12-october-2026-asiatashkent)
+records successful apply **38166694777**, runtime postflight **38166835149** and
+readiness inventory **38166859528**. Source `1a910f0` is now deployed; the former
+`2055ab2` before-state and preparation-only checkpoint remain historical.
+
+Fresh approved checksum and **88/88** configuration comparisons passed. Apply
+made **0 creates / 4 in-place updates / 0 destroys / 0 replacements**, without
+replanning. **16/16** API/Web runtime assertions and **12/12** inventory assertions
+passed; Worker is ready, API/staff entry returned HTTP200 and whole-runtime
+convergence is zero. Source/images/provenance, private networking, identities,
+secret references, zero migrator retries, stable budget-envelope anchor, caps and
+migration head `0032_s22_widget_recovery` match the approved boundary.
+No migration, validator, diagnostic/database job, fresh session, selection,
+renewal/recovery, replay, customer message, provider-test request, ledger reset
+or budget increase was initiated. This does not rewrite the earlier first turn,
+establish its current request/accounting state or authorize a clarification turn.
+
+### Current remaining gates, not a completion percentage
+
+The [complete evidence map](#complete-remaining-work-map) supplies the detailed
+requirements and retained proof. This concise checkpoint supersedes only the
+date-fix deployment boundary; it does not reopen earlier accepted stages or
+claim that uninspected controls are absent. Existing passing evidence should be
+mapped/reused before any new test or implementation is proposed.
+
+| Gate | Exact remaining evidence / action |
+| --- | --- |
+| Website Chat | Current read-only selected-session/request/attempt/accounting trace; actual staff offer → customer confirmation → confirmed booking; customer-owned recovery. No fresh-frame/reset/resend loop or transfer of confirmation-only allowance to a date retry. |
+| Telegram Business | Real business-account connection/eligible DM/same-DM reply. Standalone bot-chat proof cannot replace this mandatory scope. |
+| Product release matrix | Fill actual gaps in booking/contact/consent/expiry/reject/decline/cancel/racing-offer cases; current EN/RU/UZ safety and keyboard/accessibility smoke; synthetic attendance/revenue/source-funnel reconciliation. Retain existing domain, PostgreSQL and original Instagram booking proof. |
+| Recovery/operations | Bounded provider/DB/worker failure and backlog drain; compatible previous-digest rollback/return and shutdown/drain; separate restored target with tenant/encryption/audit/Outbox integrity and measured RPO ≤5 min / RTO ≤60 min. Backups/PITR configuration is not restore proof. |
+| Capacity/timing | Approved fake-AI normal profile (10 tenants, ~1 msg/s, 15 min), burst (25 tenants, ~5 msg/s, 5 min), bounded stress/noisy-tenant tests, and measured platform/provider/render/queue percentiles. Current inventory explicitly retains `capacity_proven=false`; the larger production target is separate. |
+| Alerts/security/cost | Recorded API alert source still filters only 5xx with `ALIGN_RATE > 0.01`, without total-request denominator, despite its “1%” label. Correct that scoped semantic issue separately, prove notification delivery and finish current-release scan/rotation/revocation/shared-instance rate/monetary-control and attributable test-cost evidence. Configured alerts do not enforce an infrastructure dollar cap. Other uninspected gaps remain conditional. |
+| Final S22/S23 release | Consolidated current P0/evidence matrix, final coherent-tree CI/security review and controlled main promotion; then separately authorized S23 named go/no-go covering actual launch placement/residency/provider/privacy/retention, on-call/support, production budget/kill-switch and defensible capacity/availability/ROI claims. |
+
+Original scoped Instagram confirmed-booking and historical reservation/dispatch
+proof remain closed; no repeat customer messages are required for those receipts.
+Billing, WhatsApp, external calendars, reminders and new configurable booking
+policies remain separately approved later scope, not S22 blockers.
+No duration estimate, production-ready claim or invented percentage is offered.
+**S22 remains unaccepted; S23 is not started.**

@@ -1,9 +1,11 @@
 # S22 named-date correction: exact rollout approval packet
 
 Prepared and reviewed 11 October 2026 UTC (12 October in Asia/Tashkent).
-**PREPARED AND REVIEWED; NOT APPLIED; NO SEND.**
-Only saved plan **38165971091**, identified by the binary checksum below, is
-offered for review. No apply approval or token was supplied. The previous
+**APPLIED AND RUNTIME VERIFIED; LIVE CUSTOMER ACCEPTANCE PENDING.**
+The owner explicitly approved **"apply plan 38165971091 only"**. That exact saved
+plan was applied once, with successful read-only postflight recorded below.
+No message, session change, provider-test call or migration was initiated.
+Do not reapply this consumed saved plan. The previous
 [replacement deployment](s22-widget-replacement-rollout-plan.md#exact-apply-and-live-verification-receipt--11-october-2026)
 is historical and must not be repeated.
 
@@ -186,6 +188,93 @@ acceptance-evidence cross-reference. Owner README, Instagram documentation and
 public-notices patch edits remain untouched and excluded. No new runtime/tests,
 migration, dependency or public contract change is made in this preparation.
 
-The next safe task is owner review/approval of **plan 38165971091 only**,
-followed by its exact apply and read-only runtime postflight; not another chat
-or a Send instruction. This packet records preparation, not deploy authority.
+The above inputs and preparation receipts are historical. The owner's exact-plan
+approval and completed apply are recorded below; do not dispatch them again.
+
+## Exact apply and runtime-verification receipt — 12 October 2026, Asia/Tashkent
+
+[Apply 38166694777](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38166694777)
+**PASS**. Before the single dispatch, a fresh authenticated download reproduced
+approved binary SHA256
+`d8cfd8ba5311f5a74becc895562e51271f9f7f036ac054f7c0081f7f913e4a45`.
+Separate installed-provider inspection again passed **88/88** configuration
+comparisons and the exact four-update boundary. Source remained
+`1a910f097709a0e20b8d153bf482f470e1d631be`; branch dispatch HEAD was
+`d740836147f87d3d22092eff5f06c7ceed6b2dec`, which differs only by the two reviewed
+evidence documents. Runtime/tooling was not substituted with that documentation
+HEAD. The canonical release timestamp from the approved plan remained
+`2026-10-11T18:51:44Z`; it is provenance, not the later execution's wall clock.
+
+Authenticated completed-job inspection confirms **0 added / 4 changed /
+0 destroyed**, with exactly one completion for API, Web, Worker and migrator
+definition. All **17** non-skipped apply steps succeeded. The workflow downloaded
+the exact reviewed binary, checked its checksum and full-runtime approval
+boundary, and applied it under the existing state lock without replanning.
+Migration, validator, diagnostics, IAM/bootstrap changes and all three
+customer/booking evidence jobs were skipped. Updating the migrator definition
+did not execute it. Caps, stable envelope anchor, private networking, secret
+references, identities, numeric zero retries and packaged migration head remain
+unchanged.
+
+[Read-only runtime postflight 38166835149](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38166835149)
+**PASS**, using the same source/images/timestamp/heads/anchor, `action=plan` and
+`phase=api-image-verify`. Authenticated artifact **11712167620**,
+`s22-api-image-live-evidence-38166835149`, has downloaded plaintext SHA256
+`890dd070d735db7afdd615d3f891a6b55e7d56f6d41ff8ccc6401620da11ff94`.
+Separate receipt inspection passed **16/16** assertions: exact API/Web images,
+API source/time/image-digest/head, least-privilege identity, private VPC/egress,
+15 secret references and ready revisions. API ready revision:
+**`lead-agent-staging-api-00035-xxr`**; Web ready revision:
+**`lead-agent-staging-web-00031-dw9`**. Whole-runtime convergence returned
+**exit 0**, covering all four definitions and preserved configuration/binding.
+No saved plan, apply or database job was run by postflight.
+
+[Read-only readiness inventory 38166859528](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38166859528)
+**PASS**, observed at `2026-10-11T19:10:49.094Z` (**12 October, 00:10:49
+Asia/Tashkent**). Authenticated artifact **11712532308**,
+`s22-acceptance-inventory-38166859528`, has downloaded plaintext SHA256
+`2a9f3e7767cd04758350f35b01b298d8689aa5ade262d503ed914750b332378d`.
+All **12/12** prerequisite assertions pass: Worker ready, API and staff entry
+**HTTP 200**, private PostgreSQL 17/shared-core metadata, backups/PITR and
+notification configuration. No secret payload, database connection, Cloud Run
+job or infrastructure mutation was used by this inventory.
+`restore_proven=false` and `capacity_proven=false` remain explicit. Alert metadata
+does not prove correct error-ratio semantics or notification delivery.
+
+No fresh session, selection, renewal, recovery, booking mutation, customer
+message, replay, provider-test request, accounting reconciliation or budget
+increase was initiated by this rollout. This is exact deployed-runtime proof,
+not live Widget booking/recovery acceptance. Deploying the parser does not alter
+the earlier processed turn. Existing consumed-message/attempt and actual-offer
+restrictions remain; no remaining allowance is inferred from old screenshots.
+**S22 remains unaccepted.** The next safe task is one read-only trace of the
+existing selected Widget session/request/attempt/accounting state, not another
+fresh chat or a Send instruction. A diagnostic job is not launched by this apply.
+
+Apply/postflight verification commands, all PASS:
+
+```text
+gh run download 38165971091 --repo mufazzalshokh/lead-agent-platform --name s22-terraform-plan-full-1a910f097709a0e20b8d153bf482f470e1d631be --dir .cache/s22-named-date-rollout/pre-apply-38165971091
+node .cache/s22-named-date-rollout/review.mjs --pre-apply 38165971091
+node --check .cache/s22-named-date-rollout/apply.mjs
+node .cache/s22-named-date-rollout/apply.mjs --inspect
+node .cache/s22-named-date-rollout/apply.mjs --dispatch
+node --check .cache/s22-named-date-rollout/verify-apply.mjs
+node .cache/s22-named-date-rollout/verify-apply.mjs
+node --check .cache/s22-named-date-rollout/postflight.mjs
+node .cache/s22-named-date-rollout/postflight.mjs --dispatch
+gh run download 38166835149 --repo mufazzalshokh/lead-agent-platform --name s22-api-image-live-evidence-38166835149 --dir .cache/s22-named-date-rollout/postflight-api-38166835149
+gh workflow run staging-terraform.yml --repo mufazzalshokh/lead-agent-platform --ref verify/s22-staging-recovery-capacity --field action=plan --field phase=acceptance-inventory --field commit_sha=1a910f097709a0e20b8d153bf482f470e1d631be
+gh run download 38166859528 --repo mufazzalshokh/lead-agent-platform --name s22-acceptance-inventory-38166859528 --dir .cache/s22-named-date-rollout/postflight-inventory-38166859528
+node --check .cache/s22-named-date-rollout/verify-postflight.mjs
+node .cache/s22-named-date-rollout/verify-postflight.mjs
+node .cache/s22-named-date-rollout/verify-applied-document.mjs
+node node_modules/prettier/bin/prettier.cjs --check docs/architecture/s22-widget-date-rollout-plan.md docs/architecture/s22-acceptance-evidence.md
+git diff --check -- docs/architecture/s22-widget-date-rollout-plan.md docs/architecture/s22-acceptance-evidence.md
+```
+
+No runtime code, new test, dependency, schema or public API change is made by this
+receipt. Exact-source CI remains the 4,200-test runtime proof above, not a final
+S22/S23 release-matrix claim. Binary/helper artifacts remain ignored. The focused
+commit contains only this packet and its acceptance-evidence update; unrelated
+owner README/Instagram/public-notices edits remain unchanged and excluded.
