@@ -1,0 +1,170 @@
+# S22 Website Chat send correction rollout approval
+
+Prepared 2026-10-11, Asia/Tashkent. **READY FOR EXACT PLAN APPROVAL; NOT APPLIED.**
+
+Plan **38121689049** packages the confirmed Send-button correction, the larger
+auto-growing composer, and the previously requested installation-code **Copied!**
+feedback. Approving this plan permits only its saved four-workload update. It does
+not authorize a migration, another chat session, a customer message, or a paid AI
+call. Historical NULL costs remain unknown; S22 remains unaccepted.
+
+## Change and scope
+
+The owner's browser confirmed that the sandbox blocked native form submission
+before the arrow reached the message handler. The correction uses a normal button
+and its explicit JavaScript click handler, retains the sandbox/CSP, and guards
+concurrent arrow, Enter and Retry actions. Composer text uses the UI font at 16px;
+the input grows from 52px to 160px, then scrolls without displacing the conversation.
+The copy button acknowledges success only after the clipboard write resolves.
+
+Source comparison against deployed `c687dcf` contains three Web implementation
+files, regression tests and S22 documentation only. No API, Worker, database,
+infrastructure or workflow implementation changed. The existing release workflow
+builds a coherent four-image bundle, so all four workloads receive updated image
+and source/timestamp provenance without changing their other configuration.
+
+## Exact provenance
+
+| Field                          | Reviewed value                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Branch                         | `verify/s22-staging-recovery-capacity`                                                            |
+| Runtime, build and plan source | `084cb5a4cf719092345ae336fd6f01554258ae46`                                                        |
+| Source CI                      | [38121100842 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38121100842) |
+| Immutable image build          | [38121367839 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38121367839) |
+| Saved plan                     | [38121689049 PASS](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38121689049) |
+| Project and region             | `lead-agent-stg-739284` / `me-central1`                                                           |
+| Deployment timestamp           | `2026-10-11T07:31:30Z` (12:31:30 Asia/Tashkent)                                                   |
+| Migration provenance           | `0031_s22_widget_inbound_route_management`, unchanged                                             |
+| Saved-plan SHA256              | `7e17a4da491de83471b56e23cca2a217b53d8111bb3aefbaf02f1392ec115eee`                                |
+| Image-manifest SHA256          | `b26ea9d96d3af4a328c415ca0b6f2466fb7b7c6b1e09861eeeebde30ae7800b5`                                |
+| Plan-captured state lineage    | `ad1c3000-d52f-06eb-de1b-53ae4d67f63e`                                                            |
+| Plan-captured state serial     | `68`                                                                                              |
+
+Authenticated artifacts:
+
+- Build artifact `11695906359`,
+  `s22-image-manifest-084cb5a4cf719092345ae336fd6f01554258ae46-38121367839`.
+- Plan artifact `11694784963`,
+  `s22-terraform-plan-full-084cb5a4cf719092345ae336fd6f01554258ae46`.
+  It contains the binary saved plan, checksum and sanitized safety evidence.
+
+The build checked out the exact source, built with that commit's `GIT_SHA`,
+enabled OCI provenance/SBOM and verified every digest's `linux/amd64` image.
+All build/manifest steps passed. The downloaded manifest and saved binary were
+independently hashed; the binary matches its recorded checksum. Artifacts and raw
+plan/state JSON are not committed or printed. The embedded state supplied only
+the lineage/serial above, not a later read of the backend state.
+
+## Exact planned actions
+
+**0 creates / 4 in-place updates / 0 destroys / 0 replacements.**
+
+| Resource                                    | Action | Permitted changes                                   |
+| ------------------------------------------- | ------ | --------------------------------------------------- |
+| `google_cloud_run_v2_service.api[0]`        | update | Image and source/timestamp provenance               |
+| `google_cloud_run_v2_service.web[0]`        | update | Image and source/timestamp provenance               |
+| `google_cloud_run_v2_worker_pool.worker[0]` | update | Image and source/timestamp provenance               |
+| `google_cloud_run_v2_job.migrator[0]`       | update | Image and source/timestamp provenance; no execution |
+
+Workflow safety checks and independent local inspection both **PASS**. The
+installed Terraform 1.14.7 and locked Google provider 7.46.1 were reused in an
+existing backend-free inspection directory. The repository's
+`verifyFullRuntimeConfiguration` checked **88 managed resource configurations**,
+with no configurable unknowns or unreviewed changes. Additional comparisons
+matched all four before-images to the last reviewed rollout, and all after-images
+to the new manifest, exact source, timestamp and unchanged migration provenance.
+
+Before-provenance is `c687dcfb82da64a26d981d793d1611d44c49c593` /
+`2026-10-09T15:43:53Z`. This match comes from the refreshed saved plan, not merely
+from historical deployment success. No SQL, IAM, networking, identity, secret
+reference, command, retry, scaling or resource-limit change is planned. Private
+VPC/egress and migrator zero retries remain intact.
+
+Refresh recorded Artifact Registry `update_time` and Cloud SQL
+`settings.0.version` differences. Independent provider-schema inspection
+classifies both as **computed-only**; both resources have planned action `no-op`.
+They are not extra updates or configurable drift.
+
+`Create reviewed plan`, `Verify full runtime plan safety` and `Upload exact reviewed
+plan` passed. `Apply exact reviewed plan` and `Execute one-shot migrator` were
+**SKIPPED**; booking evidence and inventory jobs were also skipped. There was no
+database diagnostic, session mutation or paid customer execution.
+
+## Preserved test boundary
+
+Mode remains `widget_booking`. The before/after deployment envelope anchor is
+`01a11c48-dbc2-76de-a873-f41664da5ccb`; request mode `preserve` was resolved from
+authoritative Terraform state. This is not a fresh browser session or a renewal.
+Owner selection remains a separate authenticated and audited post-deployment
+action. No selection, ledger counter or session lifetime is reset by this plan.
+
+The existing allowance remains two total Widget inbound messages including
+confirmation, four physical attempts and at most two attempts per message.
+Per-call reserve USD0.801432, Widget allowance USD3.205728, combined planning
+exposure USD4.247838, historical budget-only reserve USD1.033396, USD5 target and
+USD10 ceiling are unchanged. Historical NULL costs remain unknown.
+
+The latest owner screenshot reported known cost USD0.008714, reserved exposure
+USD1.042110 and no pending reserve. That snapshot is not a new ledger read.
+The owner's October 11 paid approval was specific to the 11:53 selected session;
+this rollout does not transfer that authority or renew its lifetime. Unknown cost,
+pending reserve, timeout, exhaustion or any guard failure still blocks dispatch.
+
+## Verification and proof limits
+
+Exact-source CI **38121100842 PASS** completed clean-checkout `pnpm ci:verify`,
+including formatting/lint, boundaries/contracts, TypeScript, ordinary and real
+PostgreSQL test gates, and production builds. Its completed result is reused,
+not rerun for this preparation.
+
+Focused source verification is **124/124 PASS**, including generated client,
+frame bootstrap, product UX and gateway regression coverage. Five opt-in real
+headless Edge scenarios passed with synthetic APIs: arrow, phone layout,
+keyboard/composition, same-request retry and expired-session refusal. The original
+arrow behavior failed the browser test before the correction. Copy feedback has
+its previously recorded local verification. Exact commands and failure mechanism
+are in the [investigation record](s22-acceptance-evidence.md#2026-10-11---website-chat-arrow-blocked-before-the-send-handler).
+
+These are source/CI/build/plan proofs. They do not establish deployed readiness,
+live customer message persistence, provider completion, booking confirmation,
+delivery or exact historical accounting. No new application tests or migrations
+were added in this plan-preparation milestone.
+
+## Exact inputs for a future approved apply
+
+Workflow `staging-terraform.yml`, ref `verify/s22-staging-recovery-capacity`.
+The approval acknowledgement is deliberately absent. Supply it only after the
+owner explicitly approves this exact saved plan. Do not rebuild, replan or reuse
+an older consumed plan in place of this artifact.
+
+```json
+{
+  "action": "apply",
+  "phase": "full",
+  "commit_sha": "084cb5a4cf719092345ae336fd6f01554258ae46",
+  "deployment_timestamp": "2026-10-11T07:31:30Z",
+  "api_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:f628ade5f098cd7598a24048c6d5bb20b5561f753a669560782ab07f694643d1",
+  "web_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:c3bfd8d40bf8aca72444d2c414952253b7b09d4bc97e0747dea3b3bb1b34d80d",
+  "worker_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:5b3dae488226bf5722036c8fe196b4e431f182ed3e9005776fd329342c07e076",
+  "migrator_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:e052bc49776ea738c390937e7d1ba5ead78239dad8837989c28c32ca8c436c19",
+  "api_migration_head": "0031_s22_widget_inbound_route_management",
+  "runtime_migration_head": "0031_s22_widget_inbound_route_management",
+  "ai_journey_mode": "preserve",
+  "ai_journey_widget_session_id": "01a11c48-dbc2-76de-a873-f41664da5ccb",
+  "plan_run_id": "38121689049",
+  "approved_plan_sha256": "7e17a4da491de83471b56e23cca2a217b53d8111bb3aefbaf02f1392ec115eee"
+}
+```
+
+## Approval and next step
+
+At review, this plan was the newest staging workflow, with no active or intervening
+apply. Before an approved dispatch, recheck artifact availability/checksum and
+workflow history. Preserve Terraform's state lock and stale-plan lineage/serial
+guard. If state changed, stop; approval does not extend to a replacement plan.
+
+The owner's next action is **"Apply plan 38121689049 only."** After an approved
+apply, verify the exact runtime revision before any separately authorized fresh
+frame or customer action. Do not prepare a session while deployment is pending.
+If post-deployment checks fail, stop customer testing; rollback requires a newly
+reviewed plan rather than reapplying an old consumed artifact.

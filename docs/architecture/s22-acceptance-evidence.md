@@ -3,6 +3,35 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Send correction rollout plan prepared and independently reviewed
+
+The owner authorized rollout preparation only. Exact source `084cb5a` has
+**CI 38121100842 PASS**, immutable **build 38121367839 PASS** and saved
+**plan 38121689049 PASS**. The [approval packet](s22-widget-send-rollout-plan.md)
+records all four digests, exact inputs, artifacts and proof limits. It includes
+the confirmed arrow correction, larger composer and prior Copied feedback.
+
+Independent saved-binary SHA256 is
+`7e17a4da491de83471b56e23cca2a217b53d8111bb3aefbaf02f1392ec115eee`.
+Plan: **0 creates / 4 in-place workload updates / 0 destroys / 0 replacements**.
+All 88 managed configurations passed the existing provider-schema-aware guard;
+before bindings match the prior deployment and after bindings match the manifest.
+Mode, envelope anchor, budgets, identities, networking, secret references and
+migration provenance remain unchanged. Two refreshed drift fields were verified
+computed-only: registry `update_time` and SQL `settings.0.version`; both planned
+resources are `no-op`. The plan captures state serial 68, not a later state read.
+
+Apply and migrator execution were skipped. No fresh frame, selection, diagnostic,
+customer/model call, budget increase, ledger reset or IAM change ran. The failed
+local provider inspection was resolved by using the existing initialized,
+backend-free review directory and permitting the installed provider process;
+no dependency or guard was changed. The documentation skill kept the approval
+packet in the repository's established S22 location, with no external Page.
+
+Next: **Apply plan 38121689049 only**, if the owner approves its exact reviewed
+scope. No paid-test authorization is implied. Historical NULL costs remain
+unknown; deployed correction and real Website Chat booking proof remain pending.
+
 ## 2026-10-11 - Website Chat arrow blocked before the send handler
 
 **Status: cause confirmed in the owner's browser and reproduced locally;

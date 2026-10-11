@@ -1,5 +1,22 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Latest checkpoint - Send correction rollout ready for approval, 2026-10-11
+
+The owner approved preparation, not deployment. Source `084cb5a` has completed
+**CI 38121100842 PASS**, **build 38121367839 PASS**, and saved
+**plan 38121689049 PASS**. Independent inspection confirms **0 creates / 4
+in-place workload updates / 0 destroys / 0 replacements**, with unchanged budget,
+session envelope, security configuration and migration provenance. The packet
+contains the Send/composer correction and the prior Copied button feedback.
+
+**Next action: "Apply plan 38121689049 only"**, if the owner approves the
+[exact saved plan](s22-widget-send-rollout-plan.md). Nothing was applied, no
+migrator or diagnostic executed, and no customer/model call was sent. Do not
+open/select another frame or retry the draft while deployment is pending. Exact
+runtime verification comes before any separately authorized fresh test journey;
+the October 11 session-specific paid approval is not silently transferred.
+Historical NULL costs remain unknown; S22 remains unaccepted.
+
 ## Latest checkpoint - native arrow submission blocked by sandbox, 2026-10-11
 
 The owner selected the fresh 11:53 Asia/Tashkent session
