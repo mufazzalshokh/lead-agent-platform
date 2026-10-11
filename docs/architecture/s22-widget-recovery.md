@@ -1,14 +1,13 @@
 # Customer-owned Website Chat recovery
 
-Approved scope: local implementation and regression testing only. This does not
-approve staging migration/deployment, another paid test, increased budget, or
-retroactive recovery without customer ownership proof.
-
-The owner separately approved rollout **preparation**, now recorded in the
-[migration-first approval packet](s22-widget-recovery-rollout-plan.md). Runtime
-CI and immutable images are verified; the packet retains exact saved-plan,
-migration-execution and application-rollout approval boundaries. It is not an
-applied release or live recovery acceptance.
+Original implementation scope: local implementation and regression testing.
+The owner subsequently approved migration-first rollout preparation, one
+migration/schema-security validation and **application plan 38144565508 only**.
+The [rollout receipt](s22-widget-recovery-rollout-plan.md) records those separate
+approvals, verified immutable images, successful exact-plan application deployment
+and read-only postflight. It does not approve another paid test, increased budget,
+session replacement or retroactive recovery without customer ownership proof.
+Live customer recovery/booking acceptance remains pending.
 
 ## Root cause
 
@@ -167,9 +166,10 @@ also reached approximately 217 MB free physical RAM during verification. Only
 task-owned downloads, synthetic test data and temporary check scripts were removed;
 the disposable server is stopped and existing database services are untouched.
 
-A clean full CI/database gate, separately approved migration/runtime rollout and
-real browser recovery acceptance remain release requirements. The old live chat
-without a previously saved ownership code cannot be retroactively recovered.
+The later clean full CI/database gate and separately approved migration/runtime
+rollout are now verified in the linked receipt. Real browser recovery acceptance
+remains outstanding. The old live chat without a previously saved ownership code
+cannot be retroactively recovered.
 
 ## Implementation file inventory
 

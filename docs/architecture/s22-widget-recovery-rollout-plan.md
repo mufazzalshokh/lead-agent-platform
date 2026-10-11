@@ -1,12 +1,14 @@
 # Website Chat recovery: migration-first rollout packet
 
-Status: **MIGRATION VERIFIED; APPLICATION PLAN PREPARED, NOT APPLIED**.
+Status: **MIGRATION AND APPLICATION DEPLOYMENT VERIFIED; CUSTOMER ACCEPTANCE PENDING**.
 The owner approved **plan 38139812141 only** for the migrator job definition,
 then separately approved one migration execution and read-only schema/security
 validation. The owner subsequently approved application-plan preparation only.
-All three milestones are verified below. Application deployment, session
-replacement, customer messages, provider calls and budget increases remain
-unapproved and unperformed by this rollout. S22 as a whole remains unaccepted.
+After reviewing the saved application plan, the owner explicitly approved
+**plan 38144565508 only**. That exact application deployment and its read-only
+postflight are now verified below. Session replacement, customer messages,
+provider calls and budget increases remain unapproved and unperformed by this
+rollout. S22 as a whole remains unaccepted.
 
 ## Release and tooling provenance
 
@@ -45,7 +47,7 @@ These are preparation results, not deployment or customer-journey acceptance.
 Project/region: `lead-agent-stg-739284` / `me-central1`.
 Canonical release metadata timestamp: **`2026-10-11T12:34:47Z`**.
 
-## Immutable images: built once; only migrator job definition updated
+## Immutable images: built once; migration-first deployment verified
 
 [Build 38139271816](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38139271816)
 passed for the exact runtime source above. OCI provenance/SBOM and pulled
@@ -165,11 +167,12 @@ Do not reapply this now-consumed saved plan.
 
 ## Stage B: migration, then application rollout
 
-Stage A, migration/schema-security verification and application-plan preparation
-are complete. Step 5 remains **not executed or implicitly authorized**:
+Stage A, migration/schema-security verification, application-plan preparation
+and the separately approved application deployment/postflight are complete:
 
 1. **Completed:** exact Stage A apply and live job/configuration convergence
-   verification are recorded above. Current application images remain unchanged.
+   verification are recorded above. Application images remained unchanged at
+   that milestone; their later approved update is recorded in step 5.
 2. **Completed:** after explicit owner approval, one execution of the reviewed
    job applied `0032`, adding seven nullable recovery/access fields and bounded
    checks. The new SQL has no backfill, customer proof issuance, budget/booking
@@ -195,10 +198,11 @@ are complete. Step 5 remains **not executed or implicitly authorized**:
    no-op, zero creates/destroys/replacements. The first attempt failed before
    cloud authentication and produced no saved plan; its root cause and the
    deliberately corrected preparation are recorded below.
-5. After that separately approved apply, verify exact deployed API/Web images,
-   source/time/migration metadata, ready revisions, public health and whole-
-   runtime convergence. Worker/Migrator require their own descriptor/readiness
-   evidence when not independently covered by the convergence result.
+5. **Completed:** apply only saved plan **38144565508** after explicit owner
+   approval. Verify exact deployed API/Web images, source/time/migration metadata,
+   ready revisions, public health, Worker readiness and whole-runtime convergence.
+   These results are deployment prerequisites, not customer recovery/booking E2E
+   acceptance. No migration/validator or customer test was rerun.
 
 ### Migration and schema/security receipt — 11 October 2026
 
@@ -356,12 +360,90 @@ Do not replan, substitute an expired/stale artifact, execute migration/validatio
 again or transfer old plan/customer-test approval to this plan. If the state or
 artifact is stale, stop and obtain approval for a separately reviewed plan.
 
-No Stage B saved binary is prepared against the pre-migration state: Stage A
+No Stage B saved binary was prepared against the pre-migration state: Stage A
 changes its serial and would make such a plan stale. No new application queries
 may be deployed before successful migration verification. If migration or
 verification fails, keep the old application running and investigate the exact
 preserved failure. Compatible application rollback uses previously recorded
 digests under a new reviewed plan, not SQL downgrade or blind replay.
+
+### Application apply and live-verification receipt — 11 October 2026
+
+[Apply 38150555305](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38150555305)
+**PASS**. It was dispatched once after the owner's **“apply plan 38144565508
+only”** approval. A fresh authenticated artifact download reproduced the exact
+approved SHA256 `5e9e87a6cefec66d7618148cf509c04660d6f23633d49c9bd79b5c76e1caef84`.
+Independent pre-apply inspection again passed **88/88** configuration comparisons
+and the exact three-update action set. The runner checked out pinned tooling
+`bca1460`, verified the downloaded checksum and exact full-runtime approval
+boundary, and applied the saved binary without generating a replacement plan.
+
+Authenticated job metadata and allowlisted log inspection confirm:
+**0 added / 3 changed / 0 destroyed**. The completed updates are only API, Web and
+Worker; migrator is no-op. Terraform accepted the approved saved binary against
+the current state lineage/serial under its state lock. No plan substitution,
+IAM change or separately authorized application-source change occurred.
+Dispatched branch head was `53e751e2591acff4c9571d035a234f231e723966`, which differs
+from pinned tooling only by the verified plan receipt document. Runtime image
+provenance remains `19e7f3c`, not the later tooling/documentation source.
+
+Apply inputs are the application preparation inputs above with `action=apply`,
+`plan_run_id=38144565508`, `approved_plan_sha256` equal to the approved binary
+SHA256, and the existing explicit owner-approval marker. All images, migration
+heads, canonical timestamp, journey mode/anchor and budgets are unchanged.
+All **17** non-skipped workflow steps succeeded. Replanning, migration, database
+validator, Cloud Run diagnostic executions, bootstrap/IAM changes and the three
+customer/booking evidence jobs were skipped. The existing migration and validator
+executions were preserved; neither was rerun.
+
+[Read-only API/Web postflight 38150839125](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38150839125)
+**PASS**, using the same pinned tooling/images/source/time/head/binding with
+`action=plan`, `phase=api-image-verify`. The phase-specific API/Migrator/runtime
+provenance inputs all resolve to the reviewed recovery release; it does not
+create or apply a saved plan or execute a database job. Authenticated artifact
+**11705553850**: `s22-api-image-live-evidence-38150839125`.
+Downloaded plaintext SHA256:
+**`b9687846364dc5d133892f91632f287b03f493ef764c84205a67cf37d69c278a`**.
+
+Independent receipt inspection passes all **16/16** live assertions: exact
+API/Web images, API source/time/image-digest/migration provenance, existing API
+service account, private VPC/egress, 15 secret references and ready revisions.
+Ready API revision is **`lead-agent-staging-api-00033-ldh`**; ready Web revision is
+**`lead-agent-staging-web-00029-jtg`**. Whole-runtime Terraform convergence exit
+code is **0**, covering the unchanged configuration and declared recovery
+images/provenance for API, Web, Worker and Migrator. Apply, migration, database
+validator, diagnostics and customer/booking evidence jobs were skipped.
+
+[Read-only readiness inventory 38150872765](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38150872765)
+**PASS**. This existing workflow reads Cloud Run/SQL/backup/alert metadata and
+public HTTP status only; it does not connect to the database, launch a Cloud Run job,
+access secret payloads or run Terraform. Its tooling source is `bca1460` and
+dispatched head is the same `53e751e`; `evidence_commit` identifies evidence
+tooling, not image source. Authenticated artifact **11706234595**:
+`s22-acceptance-inventory-38150872765`. Downloaded plaintext SHA256:
+**`59dee9209bac2c648cbfa1103c8de35e1c6ff39b59ffdd566c30d3718b5ba366`**.
+
+All **12/12** allowlisted prerequisite assertions pass, including explicit
+**Worker readiness**, API health HTTP **200**, Web staff HTTP **200**, private
+shared-core PostgreSQL, enabled backup/PITR metadata, one successful backup and
+existing enabled alert policies with notification channels. These are metadata
+prerequisites: `restore_proven=false` and `capacity_proven=false` remain explicit.
+The workflow's Terraform and customer/booking evidence jobs were skipped.
+
+Independent public GETs also pass: API `/health` returns HTTP **200** with its
+finite expected service/status contract; Web `/` returns the implemented **307
+redirect to `/staff`**, and `/staff` returns HTTP **200**. The first supplemental
+probe incorrectly required the root to return 200 without redirect; inspecting
+the existing `page.tsx` established the intentional redirect, and the corrected
+bounded probe verifies it without changing application code. No cookie,
+credential or widget frame is used by these checks.
+
+No chat/session selection, customer message, provider request, booking mutation,
+budget increase, migration or validator was initiated by this deployment or
+postflight. Worker readiness and HTTP/convergence results are not provider-work
+or customer E2E proof. Do not reapply this now-consumed saved plan or transfer
+historical paid-test approval to a replacement session. Live customer-owned
+recovery and completion of the booking journey remain separate acceptance work.
 
 ## Customer and acceptance boundary
 
@@ -487,6 +569,37 @@ correction is committed and pushed as `bca146092ff3d12c5a4537f32440aef0de24b59b`
 No application source or SQL changed; no migration, validator or paid test was
 rerun. Temporary helpers, owner-output copies and saved plan stay ignored.
 
+Application exact-apply verification additionally passed. Dispatch commands
+below are historical receipts, not instructions to rerun the consumed apply:
+
+```text
+node .cache/s22-recovery-rollout/verify-plan-workflow.mjs
+gh run download 38144565508 --repo mufazzalshokh/lead-agent-platform --name s22-terraform-plan-full-bca146092ff3d12c5a4537f32440aef0de24b59b --dir .cache/s22-recovery-rollout/pre-apply-38144565508
+node .cache/s22-recovery-rollout/review-runtime-plan.mjs 38144565508 --pre-apply
+node --test .github/scripts/s22-full-runtime-config-check.test.mjs .github/scripts/s22-recovery-rollout.test.mjs
+node .cache/s22-recovery-rollout/apply-runtime.mjs --inspect
+node .cache/s22-recovery-rollout/apply-runtime.mjs --dispatch
+node .cache/s22-recovery-rollout/verify-application-apply.mjs
+node .cache/s22-recovery-rollout/postflight-api.mjs --dispatch
+gh workflow run staging-terraform.yml --repo mufazzalshokh/lead-agent-platform --ref verify/s22-staging-recovery-capacity --field action=plan --field phase=acceptance-inventory --field commit_sha=bca146092ff3d12c5a4537f32440aef0de24b59b
+gh run download 38150839125 --repo mufazzalshokh/lead-agent-platform --name s22-api-image-live-evidence-38150839125 --dir .cache/s22-recovery-rollout/postflight-api-38150839125
+gh run download 38150872765 --repo mufazzalshokh/lead-agent-platform --name s22-acceptance-inventory-38150872765 --dir .cache/s22-recovery-rollout/postflight-inventory-38150872765
+node .cache/s22-recovery-rollout/check-public-health.mjs
+node .cache/s22-recovery-rollout/verify-application-postflight.mjs
+git diff --check -- docs/architecture/s22-widget-recovery-rollout-plan.md docs/architecture/s22-widget-recovery.md
+```
+
+Results: authenticated approved artifact/source/expiry/checksum **PASS**;
+fresh saved-binary configuration review **88/88 PASS**; existing native guards
+**16/16 PASS**; exact apply **0 added / 3 changed / 0 destroyed PASS**, with no
+replan or database execution. Independent postflight checks validate authenticated
+receipt provenance/digests, **16/16** API/Web assertions, **12/12** inventory
+assertions including Worker readiness, convergence **0**, and public HTTP
+contracts **PASS**. No new tests, application code or SQL edits were required.
+Only this receipt and the recovery design's current-status text change in this
+apply milestone. Temporary dispatch/review/probe helpers and downloaded artifacts
+remain ignored, and the three unrelated owner files remain unchanged.
+
 Historical in-scope release-tooling files (no application or SQL edits):
 
 ```text
@@ -508,8 +621,9 @@ Existing owner edits in `README.md`, `docs/architecture/s11-instagram-business.m
 and `s22-public-notices.patch` are preserved and excluded. Temporary reviewers,
 dispatch helpers, downloaded manifests and Terraform binaries remain ignored.
 
-**Exactly one next safe action:** obtain **“Apply plan 38144565508 only”** approval
-for the reviewed three-workload application deployment. Applying that exact
-saved binary requires fresh artifact/state verification and the unchanged
-owner-approval boundary. It does not authorize migration/validation replay,
-session replacement, customer messages, provider calls or a budget increase.
+**Exactly one next safe action:** prepare one controlled customer-owned
+recovery/booking verification plan against this verified deployment. Preserve
+the existing budgets and consumed counts; identify required session/binding
+and paid-test authority explicitly. Preparation alone must not open/select a new
+chat, send messages, invoke a provider or increase a budget. Do not reapply the
+consumed application plan or repeat migration/validation.
