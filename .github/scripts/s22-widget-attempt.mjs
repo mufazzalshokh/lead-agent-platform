@@ -222,6 +222,7 @@ export function formatAttempt(result) {
     "Runtime / tenant / read-only / FORCE-RLS / non-owner guards: PASS",
     `Selected session: ${session.session_id}; status/version: ${session.status ?? "unknown"}/${session.version ?? "unknown"}`,
     `Idle valid: ${session.idle_valid}; absolute valid: ${session.absolute_valid}; last activity: ${session.last_seen_at ?? "unknown"}`,
+    `Effective access expiry: ${session.effective_expires_at ?? "uncollected"}; original expiry: ${session.expires_at ?? "unknown"}; recovery-family expiry: ${session.recovery_expires_at ?? "uncollected"}`,
     `Persisted conversation: ${session.conversation_id ?? "unbound"}`,
     ...(session.conversation_id === null
       ? []
@@ -260,7 +261,11 @@ export function formatAttempt(result) {
               `Request ${row.id}: ${row.status ?? "unknown"}; version: ${row.version ?? "unknown"}; offer: ${row.offer_version ?? "unknown"}`,
           ),
         ]),
-    `Actual cohort block: ${budget.blocked ?? "unknown"}; reason: ${budget.reason ?? "none or uncollected"}`,
+    ...(budget.observation_only === true
+      ? ["Dispatch authorization: not checked (read-only ledger; not a paid-send readiness check)"]
+      : [
+          `Actual cohort block: ${budget.blocked ?? "unknown"}; reason: ${budget.reason ?? "none or uncollected"}`,
+        ]),
     `Known cost / reserved exposure: ${dollars(budget.knownCostMicros)} / ${dollars(budget.combinedExposureMicros)}; pending reserve: ${dollars(budget.unresolvedReserveMicros)}`,
     `Widget customer messages / provider reservations: ${budget.widget?.customerMessages ?? "not enumerated"}/${budget.widget?.physicalCalls ?? "not enumerated"}`,
     `Reader SHA256: ${result.reader_sha256}`,
@@ -297,10 +302,13 @@ export async function runAttempt(overrides = {}) {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    requireSafe(
-      response.status !== 401 && response.status !== 403,
-      "CLOUD_READ_PERMISSION_UNAVAILABLE",
-    );
+    if (response.status === 401 || response.status === 403)
+      throw Object.assign(new Error(), {
+        code: "CLOUD_READ_PERMISSION_UNAVAILABLE",
+        readBoundary: url.startsWith("https://logging.googleapis.com/")
+          ? "authenticated_logging"
+          : "worker_metadata",
+      });
     requireSafe(response.ok && response.body !== null, "CLOUD_READ_UNAVAILABLE");
     const chunks = [];
     let size = 0;

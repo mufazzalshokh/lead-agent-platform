@@ -51,12 +51,13 @@ const provenance = (
   includeDigest,
   timestamp = pin.timestamp,
   source = pin.source,
+  head = pin.head,
 ) => {
   for (const [name, expected] of Object.entries({
     DEPLOYMENT_ENVIRONMENT: "staging",
     DEPLOYMENT_GIT_SHA: source,
     DEPLOYMENT_TIMESTAMP: timestamp,
-    DEPLOYMENT_MIGRATION_HEAD: pin.head,
+    DEPLOYMENT_MIGRATION_HEAD: head,
     ...(includeDigest ? { DEPLOYMENT_IMAGE_DIGEST: image } : {}),
   }))
     requireSafe(values.get(name)?.value === expected, "PROVENANCE_MISMATCH");
@@ -87,7 +88,10 @@ const copyReviewedRuntime = (value) => {
     value !== null &&
       typeof value === "object" &&
       !Array.isArray(value) &&
-      Object.keys(value).sort().join() === "image,source,timestamp,worker",
+      ["image,source,timestamp,worker", "image,migrationHead,source,timestamp,worker"].includes(
+        Object.keys(value).sort().join(),
+      ) &&
+      (value.migrationHead === undefined || value.migrationHead === "0032_s22_widget_recovery"),
     "REVIEWED_RUNTIME_INVALID",
   );
   const reviewed = Object.freeze({
@@ -95,6 +99,7 @@ const copyReviewedRuntime = (value) => {
     worker: value.worker,
     image: value.image,
     timestamp: value.timestamp,
+    ...(value.migrationHead === undefined ? {} : { migrationHead: value.migrationHead }),
   });
   requireSafe(
     typeof reviewed.source === "string" &&
@@ -114,7 +119,10 @@ const copyReviewedRuntime = (value) => {
 };
 const prepareReadinessInputs = (sessionId, deploymentTimestamp, reviewedRuntime = undefined) => {
   const reviewed = copyReviewedRuntime(reviewedRuntime);
-  const runtime = reviewed === undefined ? pin : Object.freeze({ ...pin, ...reviewed });
+  const runtime =
+    reviewed === undefined
+      ? pin
+      : Object.freeze({ ...pin, ...reviewed, head: reviewed.migrationHead ?? pin.head });
   if (reviewed !== undefined)
     requireSafe(
       sessionId !== undefined && deploymentTimestamp !== undefined,
@@ -191,7 +199,7 @@ export function verifyReadinessJob(metadata, inputs = {}, reviewedRuntime = unde
     "EXPLICIT_ZERO_RETRIES_REQUIRED",
   );
   const values = environment(container);
-  provenance(values, runtime.image, true, timestamp, runtime.source);
+  provenance(values, runtime.image, true, timestamp, runtime.source, runtime.head);
   const database = values.get("DATABASE_URL");
   requireSafe(
     database?.value === undefined &&
@@ -230,7 +238,7 @@ export function verifyReadinessWorker(metadata, inputs = {}, reviewedRuntime = u
     "WORKER_SCOPE_OR_IMAGE_MISMATCH",
   );
   const values = environment(container);
-  provenance(values, runtime.worker, false, timestamp, runtime.source);
+  provenance(values, runtime.worker, false, timestamp, runtime.source, runtime.head);
   requireSafe(
     values.get("AI_JOURNEY_MODE")?.value === "widget_booking" &&
       values.get("AI_JOURNEY_WIDGET_SESSION_ID")?.value === scope.session &&

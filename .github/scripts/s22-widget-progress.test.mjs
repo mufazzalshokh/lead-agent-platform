@@ -10,7 +10,7 @@ import {
 import { collectAttemptLogs } from "./s22-widget-attempt.mjs";
 import {
   attemptOperation,
-  attemptSessionSql,
+  progressSessionSql,
   attemptQueries,
   attemptForceRlsTableNames,
   collectWidgetAttempt,
@@ -41,9 +41,11 @@ const session = () => ({
   no_active_handoff: true,
   status: "active",
   version: "3",
-  issued_at: "2026-10-11T08:12:20.000Z",
-  last_seen_at: "2026-10-11T08:25:00.000Z",
-  expires_at: "2026-10-11T10:12:20.000Z",
+  issued_at: "2026-10-11T17:28:26.960Z",
+  last_seen_at: "2026-10-11T17:45:00.000Z",
+  expires_at: "2026-10-11T19:28:26.960Z",
+  effective_expires_at: "2026-10-11T19:28:26.960Z",
+  recovery_expires_at: "2026-10-12T17:45:00.000Z",
   contact_unbound: false,
   conversation_unbound: false,
   not_revoked: true,
@@ -60,7 +62,7 @@ const fixtureRows = async () => {
   const reports = [];
   await collectWidgetAttempt(
     async (sql) =>
-      sql === ownerSelectionSql ? [selection()] : sql === attemptSessionSql ? [session()] : [],
+      sql === ownerSelectionSql ? [selection()] : sql === progressSessionSql ? [session()] : [],
     (name, pass, observed) => {
       assert.equal(pass, true);
       reports.push(wrap(name, observed));
@@ -105,7 +107,7 @@ const env = (extra) =>
     DEPLOYMENT_ENVIRONMENT: "staging",
     DEPLOYMENT_GIT_SHA: runtime.source,
     DEPLOYMENT_TIMESTAMP: runtime.timestamp,
-    DEPLOYMENT_MIGRATION_HEAD: "0031_s22_widget_inbound_route_management",
+    DEPLOYMENT_MIGRATION_HEAD: runtime.migrationHead,
     ...extra,
   }).map(([name, value]) => ({ name, value }));
 const network = [{ network: "lead-agent-staging-vpc", subnetwork: "lead-agent-staging-cloud-run" }];
@@ -177,7 +179,7 @@ const fixture = async (changedWorker = worker()) => {
     calls = [],
     requests = [];
   let executed = false,
-    time = Date.parse("2026-10-11T10:45:00Z");
+    time = Date.parse("2026-10-11T19:45:00Z");
   return {
     calls,
     requests,
@@ -210,7 +212,9 @@ const fixture = async (changedWorker = worker()) => {
 
 test("progress is pinned to the received chat, not its stable deployment anchor", () => {
   assert.notEqual(scope.session, scope.anchor);
-  assert.equal(runtime.source, "68b3011d26afe1bbb8ef0a32c4efd8f66df7c819");
+  assert.equal(scope.session, "01a12c02-3e50-7663-99f4-c35024796c23");
+  assert.equal(runtime.source, "1a910f097709a0e20b8d153bf482f470e1d631be");
+  assert.equal(runtime.migrationHead, "0032_s22_widget_recovery");
   assert.ok(Object.isFrozen(scope) && Object.isFrozen(runtime));
 });
 for (const patch of [
@@ -271,7 +275,7 @@ test("expired bound chat is observable without renewal, with tenant/window/row l
   const id = await collectWidgetAttempt(
     async (sql, args) => {
       if (sql === ownerSelectionSql) return [selection()];
-      if (sql === attemptSessionSql) return [session()];
+      if (sql === progressSessionSql) return [session()];
       children++;
       assert.deepEqual(args, [conversation, scope.channel, scope.windowStart, scope.windowEnd]);
       assert.ok(Object.values(attemptQueries).includes(sql));
@@ -283,6 +287,34 @@ test("expired bound chat is observable without renewal, with tenant/window/row l
   );
   assert.equal(id, conversation);
   assert.equal(children, 5);
+});
+
+test("candidate UUID window is checked against persisted issuance before child reads", async () => {
+  let calls = 0;
+  await assert.rejects(
+    collectWidgetAttempt(
+      async (sql) => {
+        calls++;
+        return sql === ownerSelectionSql
+          ? [selection()]
+          : [{ ...session(), issued_at: "2026-10-11T16:00:00.000Z" }];
+      },
+      () => {},
+      scope,
+    ),
+    { code: "ATTEMPT_SESSION_SCOPE_INVALID" },
+  );
+  assert.equal(calls, 2);
+});
+
+test("old migration provenance stops before any diagnostic execution", async () => {
+  const value = worker();
+  value.template.containers[0].env.find(
+    (entry) => entry.name === "DEPLOYMENT_MIGRATION_HEAD",
+  ).value = "0031_s22_widget_inbound_route_management";
+  const f = await fixture(value);
+  await assert.rejects(runProgress(f.overrides), { code: "PROVENANCE_MISMATCH" });
+  assert.ok(!f.calls.some((args) => args.includes("execute")));
 });
 test("scope/owner guard is required when collecting execution logs", async () => {
   const rows = await fixtureRows();
@@ -331,6 +363,21 @@ test("wrong current image stops before creating any diagnostic execution", async
   );
   assert.ok(!f.calls.some((args) => args.includes("execute")));
 });
+
+for (const boundary of ["authenticated_logging", "worker_metadata"])
+  test(`permission denial identifies ${boundary} without executing a job`, async () => {
+    const f = await fixture();
+    const original = f.overrides.fetch;
+    f.overrides.fetch = (url, options) =>
+      url.includes(boundary === "authenticated_logging" ? "logging.googleapis.com" : "workerPools")
+        ? Promise.resolve(new Response("PRIVATE_PERMISSION_DETAIL", { status: 403 }))
+        : original(url, options);
+    await assert.rejects(runProgress(f.overrides), {
+      code: "CLOUD_READ_PERMISSION_UNAVAILABLE",
+      readBoundary: boundary,
+    });
+    assert.ok(!f.calls.some((args) => args.includes("execute")));
+  });
 test("read-only workflow is separate from Terraform and requires exact approved branch/tooling", () => {
   const text = readFileSync(new URL("../workflows/staging-terraform.yml", import.meta.url), "utf8");
   const segment = text.split("  widget-evidence:\n")[1].split("  terraform:\n")[0];

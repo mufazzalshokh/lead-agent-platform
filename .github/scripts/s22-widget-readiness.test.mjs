@@ -275,6 +275,22 @@ test("explicit reviewed runtime uses exact future images/source/time without cha
     code: "PROVENANCE_MISMATCH",
   });
 });
+
+test("reviewed recovery head is exact and historical defaults remain unchanged", () => {
+  const reviewed = { ...futureRuntime, migrationHead: "0032_s22_widget_recovery" };
+  const value = job(futureInputs, futureRuntime);
+  const env = value.spec.template.spec.template.spec.containers[0].env;
+  env.find((entry) => entry.name === "DEPLOYMENT_MIGRATION_HEAD").value = reviewed.migrationHead;
+  verifyReadinessJob(value, futureInputs, reviewed);
+  assert.throws(() => verifyReadinessJob(value, futureInputs, futureRuntime), {
+    code: "PROVENANCE_MISMATCH",
+  });
+  assert.throws(
+    () => verifyReadinessJob(value, futureInputs, { ...reviewed, migrationHead: "0033_unknown" }),
+    { code: "REVIEWED_RUNTIME_INVALID" },
+  );
+  verifyReadinessJob(job());
+});
 for (const [name, reviewedRuntime] of [
   ["null", null],
   ["array", []],

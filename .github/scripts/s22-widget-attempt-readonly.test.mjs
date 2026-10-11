@@ -16,7 +16,13 @@ import {
   sanitizeAttemptRow,
   sanitizeAttemptValue,
   sanitizeAttemptBudget,
+  progressSessionSql,
+  progressLedgerSql,
+  progressMarkersSql,
+  collectProgressAccounting,
+  ownerSelectionSql,
 } from "./s22-widget-attempt-readonly.mjs";
+import { progressScope } from "./s22-widget-progress.mjs";
 
 const conversation = "01a11b80-abcd-7123-8b01-0123456789ab";
 const message = "01a11b80-abce-7123-8b01-0123456789ab";
@@ -138,7 +144,7 @@ test("bounded-row sentinels fail closed instead of silently truncating persisted
 });
 
 test("the SQL includes only approved metadata and never reads bodies, account identifiers, hashes, secrets or unrestricted JSON", () => {
-  for (const query of [attemptSessionSql, ...Object.values(attemptQueries)]) {
+  for (const query of [attemptSessionSql, progressSessionSql, ...Object.values(attemptQueries)]) {
     assert.match(query, /^select /u);
     assert.doesNotMatch(
       query,
@@ -149,6 +155,164 @@ test("the SQL includes only approved metadata and never reads bodies, account id
   assert.match(
     attemptSessionSql,
     /cv\.channel_connection_id=s\.channel_connection_id and cv\.contact_id=s\.contact_id/u,
+  );
+});
+
+test("progress observes recovered access without changing historical SQL or collecting credentials", () => {
+  assert.doesNotMatch(attemptSessionSql, /access_expires_at|recovery_expires_at/u);
+  assert.match(
+    progressSessionSql,
+    /coalesce\(s.access_expires_at,s.expires_at\)>now\(\) as absolute_valid/u,
+  );
+  const observed = sanitizeAttemptValue({
+    effective_expires_at: "2026-10-12T00:00:00.000Z",
+    recovery_expires_at: "2026-10-12T17:45:00.000Z",
+    recovery_token_hash: "PRIVATE_PROOF",
+    token: "PRIVATE_PROOF",
+  });
+  assert.equal(observed.effective_expires_at, "2026-10-12T00:00:00.000Z");
+  assert.equal(observed.recovery_expires_at, "2026-10-12T17:45:00.000Z");
+  assert.doesNotMatch(JSON.stringify(observed), /PRIVATE_PROOF|hash|token/u);
+});
+
+test("progress ledger is SELECT-only metadata, not a weakening of the dispatch lock", () => {
+  for (const sql of [progressLedgerSql, progressMarkersSql]) {
+    assert.match(sql, /^select /u);
+    assert.match(sql, /organization_id=\$1/u);
+    assert.doesNotMatch(sql, /for update|insert |delete |body_|token|select \*/iu);
+  }
+});
+
+const ledgerCohort = {
+  profile: "s22-synthetic-booking.v1",
+  conversationId: "01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7",
+  historicalRunIds: [run],
+  historicalReserveMicros: 1033396n,
+};
+const ledgerRows = () => [
+  {
+    id: run,
+    conversation_id: ledgerCohort.conversationId,
+    estimated_cost_micros: null,
+    reservations: 0,
+    marker_authority: true,
+  },
+  {
+    id: message,
+    conversation_id: conversation,
+    trigger_message_id: message,
+    estimated_cost_micros: "2250",
+    reservations: 1,
+    reserved_micros: "801432",
+    widget_session_id: progressScope.session,
+    finished_at: "2026-10-11T17:45:00.000Z",
+    marker_authority: true,
+  },
+];
+const ledgerRead =
+  (rows, markerCount = 1) =>
+  async (sql) => {
+    if (sql === ownerSelectionSql)
+      return [
+        {
+          selected_session_id: progressScope.session,
+          selection_version: "1",
+          expected_selection_version: "0",
+          expected_session_version: "2",
+          channel_connection_id: progressScope.channel,
+          allowed_origin_id: progressScope.origin,
+          attributed: true,
+        },
+      ];
+    if (sql === progressLedgerSql) return rows;
+    assert.equal(sql, progressMarkersSql);
+    return [{ count: markerCount }];
+  };
+test("ledger preserves exact known cost and historical reserve without granting Send", async () => {
+  const snapshot = await collectProgressAccounting(
+    ledgerRead(ledgerRows()),
+    progressScope,
+    ledgerCohort,
+    conversation,
+  );
+  assert.equal(snapshot.knownCostMicros, "2250");
+  assert.equal(snapshot.historicalReserveMicros, "1033396");
+  assert.equal(snapshot.combinedExposureMicros, "1035646");
+  assert.equal(snapshot.unresolvedReserveMicros, "0");
+  assert.equal(snapshot.widget.physicalCalls, 1);
+  assert.equal(snapshot.blocked, null);
+  assert.equal(snapshot.reason, "dispatch_authorization_not_checked");
+  assert.equal(sanitizeAttemptBudget(snapshot, conversation, progressScope).observation_only, true);
+});
+for (const patch of [{ estimated_cost_micros: null }, { finished_at: null }])
+  test(`unknown/unfinished new slot retains its full reserve: ${Object.keys(patch)[0]}`, async () => {
+    const rows = ledgerRows();
+    Object.assign(rows[1], patch);
+    const snapshot = await collectProgressAccounting(
+      ledgerRead(rows),
+      progressScope,
+      ledgerCohort,
+      conversation,
+    );
+    assert.equal(snapshot.unresolvedReserveMicros, "801432");
+    assert.equal(snapshot.knownCostMicros, "0");
+    assert.equal(snapshot.combinedExposureMicros, "1834828");
+  });
+for (const [name, change] of [
+  [
+    "historical NULL mutated",
+    (rows) => {
+      rows[0].estimated_cost_micros = "0";
+    },
+  ],
+  [
+    "unattributed marker",
+    (rows) => {
+      rows[1].marker_authority = false;
+    },
+  ],
+  [
+    "duplicate reservation",
+    (rows) => {
+      rows[1].reservations = 2;
+    },
+  ],
+  [
+    "wrong reserve",
+    (rows) => {
+      rows[1].reserved_micros = "1";
+    },
+  ],
+  [
+    "lost historical run",
+    (rows) => {
+      rows.shift();
+    },
+  ],
+  [
+    "unreserved paid run",
+    (rows) => {
+      rows[1].reservations = 0;
+    },
+  ],
+])
+  test(`ledger fails closed: ${name}`, async () => {
+    const rows = ledgerRows();
+    change(rows);
+    await assert.rejects(
+      collectProgressAccounting(ledgerRead(rows), progressScope, ledgerCohort, conversation),
+      { code: "ATTEMPT_LEDGER_INVALID" },
+    );
+  });
+test("orphan reservation cannot silently free money", async () => {
+  await assert.rejects(
+    collectProgressAccounting(
+      ledgerRead(ledgerRows(), 2),
+      progressScope,
+      ledgerCohort,
+      conversation,
+    ),
+    { code: "ATTEMPT_LEDGER_INVALID" },
   );
 });
 
@@ -228,10 +392,14 @@ for (const state of [
   "guard-failed",
   "rls-failed",
   "sql-failed",
+  "bound-progress",
+  "changed-progress-selection",
 ])
   test(`exact compressed ESM bootstrap resolves deployed-style packages/private runtime and rolls back every exit: ${state}`, () => {
     const dir = mkdtempSync(join(tmpdir(), "s22-widget-attempt-bootstrap-"));
     try {
+      const progress = state.endsWith("progress") || state === "changed-progress-selection";
+      const readScope = progress ? progressScope : scope;
       const configDir = join(dir, "node_modules", "@lead-agent", "config");
       const databaseDir = join(dir, "node_modules", "@lead-agent", "database");
       mkdirSync(configDir, { recursive: true });
@@ -243,12 +411,12 @@ for (const state of [
         );
       writeFileSync(
         join(configDir, "index.js"),
-        `export const S22_BOOKING_COHORT={organizationId:'${scope.organization}',conversationId:'01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7',historicalReserveMicros:1033396n,hardCeilingMicros:10000000n};export const withLibpqCompatibleRequireSsl=v=>v;export function createTenantDatabaseRuntimeConfig(c){const o=new URL(c.connectionString).searchParams.get('options');if(c.maxConnections!==1||c.connectionTimeoutMilliseconds!==5000||c.statementTimeoutMilliseconds!==5000||c.idleTimeoutMilliseconds!==5000||!['default_transaction_read_only=on','row_security=on','statement_timeout=5000','lock_timeout=1000','idle_in_transaction_session_timeout=10000'].every(v=>o.includes(v)))throw Error();return c;}`,
+        `export const S22_BOOKING_COHORT={profile:'s22-synthetic-booking.v1',historicalRunIds:['${run}'],organizationId:'${scope.organization}',conversationId:'01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7',historicalReserveMicros:1033396n,hardCeilingMicros:10000000n};export const withLibpqCompatibleRequireSsl=v=>v;export function createTenantDatabaseRuntimeConfig(c){const o=new URL(c.connectionString).searchParams.get('options');if(c.maxConnections!==1||c.connectionTimeoutMilliseconds!==5000||c.statementTimeoutMilliseconds!==5000||c.idleTimeoutMilliseconds!==5000||!['default_transaction_read_only=on','row_security=on','statement_timeout=5000','lock_timeout=1000','idle_in_transaction_session_timeout=10000'].every(v=>o.includes(v)))throw Error();return c;}`,
       );
-      const bound = state === "bound-policy-denied";
+      const bound = state === "bound-policy-denied" || progress;
       writeFileSync(
         join(databaseDir, "index.js"),
-        `let commits=0,rollbacks=0;export function createTenantDatabaseRuntime(){return{verifyReady:async()=>{},withTenantTransaction:async(org,cb)=>{if(org!=='${scope.organization}')throw Error();try{const value=await cb({organizationId:org});commits++;return value;}catch(e){rollbacks++;throw e;}},close:async()=>console.log(JSON.stringify({fixture_cleanup:true,commits,rollbacks}))};}export function createAIJourneyBudgetGuard(runtime,c){if(c.mode!=='widget_booking'||c.widgetSessionId!=='${scope.session}'||c.historicalReserveMicros!==1033396n)throw Error();return{read:org=>runtime.withTenantTransaction(org,async()=>(${JSON.stringify(budgetSnapshot(bound))})),authorizeDispatch:()=>{throw Error('PROVIDER_FORBIDDEN');},recordStart:()=>{throw Error('PROVIDER_FORBIDDEN');}};}`,
+        `let commits=0,rollbacks=0;export function createTenantDatabaseRuntime(){return{verifyReady:async()=>{},withTenantTransaction:async(org,cb)=>{if(org!=='${scope.organization}')throw Error();try{const value=await cb({organizationId:org});commits++;return value;}catch(e){rollbacks++;throw e;}},close:async()=>console.log(JSON.stringify({fixture_cleanup:true,commits,rollbacks}))};}export function createAIJourneyBudgetGuard(runtime,c){if(${progress}||c.mode!=='widget_booking'||c.widgetSessionId!=='${scope.session}'||c.historicalReserveMicros!==1033396n)throw Error();return{read:org=>runtime.withTenantTransaction(org,async()=>(${JSON.stringify(budgetSnapshot(bound))})),authorizeDispatch:()=>{throw Error('PROVIDER_FORBIDDEN');},recordStart:()=>{throw Error('PROVIDER_FORBIDDEN');}};}`,
       );
       const runRow = {
         id: run,
@@ -268,7 +436,7 @@ for (const state of [
       };
       writeFileSync(
         join(databaseDir, "runtime", "tenant.js"),
-        `export async function executeTenantQuery(session,build){const q=build(session.organizationId);if(q.values[0]!=='${scope.organization}'||!/^select /u.test(q.text)||/for update|insert into|delete from/iu.test(q.text))throw Error();if(q.text.includes('from pg_catalog.pg_roles r where'))return{rows:[{runtime:${state !== "guard-failed"},staging_database:true,least_privilege:true,read_only:true,row_security:true,tenant_matches:true,collection_window_valid:true,secret:'PRIVATE_PAYLOAD'}]};if(q.text.includes('from pg_catalog.pg_class')){if(q.values[1].length!==${attemptForceRlsTableNames.length})throw Error();return{rows:[{count:${attemptForceRlsTableNames.length},safe:${state !== "rls-failed"},secret:'PRIVATE_PAYLOAD'}]};}if(q.text.includes('from widget_sessions s')){if(q.values[1]!=='${scope.session}'||q.values[2]!=='${scope.channel}'||q.values[3]!=='${scope.origin}')throw Error();return{rows:[${JSON.stringify(sessionRow(bound))}]};}if('${state}'==='sql-failed')throw Object.assign(new Error('PRIVATE_PAYLOAD'),{code:'42703'});if(q.values[1]!=='${conversation}'||q.values[2]!=='${scope.channel}'||q.values[3]!=='${scope.windowStart}'||q.values[4]!=='${scope.windowEnd}')throw Error();return{rows:q.text.includes('from ai_runs r')?[${JSON.stringify(runRow)}]:[]};}`,
+        `let selectionReads=0;export async function executeTenantQuery(session,build){const q=build(session.organizationId);if(q.values[0]!=='${scope.organization}'||!/^select\\s/u.test(q.text)||/for update|insert into|delete from/iu.test(q.text))throw Error();if(q.text.includes('from pg_catalog.pg_roles r where'))return{rows:[{runtime:${state !== "guard-failed"},staging_database:true,least_privilege:true,read_only:true,row_security:true,tenant_matches:true,collection_window_valid:true,secret:'PRIVATE_PAYLOAD'}]};if(q.text.includes('from pg_catalog.pg_class')){if(q.values[1].length!==${attemptForceRlsTableNames.length})throw Error();return{rows:[{count:${attemptForceRlsTableNames.length},safe:${state !== "rls-failed"},secret:'PRIVATE_PAYLOAD'}]};}if(q.text.includes("action='ai_run.widget_cohort_selected'")){if(q.values[1]!=='${progressScope.anchor}')throw Error();selectionReads++;return{rows:[{selected_session_id:selectionReads>1&&'${state}'==='changed-progress-selection'?'${scope.session}':'${readScope.session}',selection_version:'1',expected_selection_version:'0',expected_session_version:'2',channel_connection_id:'${scope.channel}',allowed_origin_id:'${scope.origin}',attributed:true}]};}if(q.text===${JSON.stringify(progressLedgerSql)})return{rows:[{id:'${run}',conversation_id:'01a1067f-d7d8-7e7e-9fb0-39bfe2f7cdc7',estimated_cost_micros:null,reservations:0,marker_authority:true}]};if(q.text===${JSON.stringify(progressMarkersSql)})return{rows:[{count:0}]};if(q.text.includes('from widget_sessions s')){if(q.values[1]!=='${readScope.session}'||q.values[2]!=='${scope.channel}'||q.values[3]!=='${scope.origin}')throw Error();return{rows:[${JSON.stringify({ ...sessionRow(bound), session_id: readScope.session, issued_at: progress ? "2026-10-11T17:28:26.960Z" : sessionRow(bound).issued_at })}]};}if('${state}'==='sql-failed')throw Object.assign(new Error('PRIVATE_PAYLOAD'),{code:'42703'});if(q.values[1]!=='${conversation}'||q.values[2]!=='${scope.channel}'||q.values[3]!=='${readScope.windowStart}'||q.values[4]!=='${readScope.windowEnd}')throw Error();return{rows:q.text.includes('from ai_runs r')?[${JSON.stringify(runRow)}]:[]};}`,
       );
       // Make sql-failed execute child queries rather than take the unbound shortcut.
       if (state === "sql-failed") {
@@ -281,7 +449,12 @@ for (const state of [
           ),
         );
       }
-      const reader = readFileSync(new URL("./s22-widget-attempt-readonly.mjs", import.meta.url));
+      const reader = Buffer.concat([
+        readFileSync(new URL("./s22-widget-attempt-readonly.mjs", import.meta.url)),
+        progress
+          ? Buffer.from(`\nawait runReadOnlyWidgetAttempt(${JSON.stringify(readScope)});\n`)
+          : Buffer.alloc(0),
+      ]);
       const payload = gzipSync(reader).toString("base64");
       assert.ok(payload.length < 32000);
       const result = spawnSync(process.execPath, ["--input-type=module", "-e", moduleBootstrap], {
@@ -292,12 +465,15 @@ for (const state of [
           ...process.env,
           DATABASE_URL: "postgres://unused:PRIVATE_DATABASE_CREDENTIAL@localhost/unused",
           S22_BOOKING_READ_B64: payload,
-          S22_WIDGET_ATTEMPT_READ: "execute",
+          S22_WIDGET_ATTEMPT_READ: progress ? "progress" : "execute",
           S22_WIDGET_ATTEMPT_STARTED_AT: "2026-10-08T13:10:00.000Z",
         },
       });
-      const passing = state === "expired-unbound" || bound;
-      assert.equal(result.status, passing ? 0 : 1, result.stderr);
+      const passing =
+        state === "expired-unbound" ||
+        state === "bound-policy-denied" ||
+        state === "bound-progress";
+      assert.equal(result.status, passing ? 0 : 1, result.stderr + result.stdout);
       assert.doesNotMatch(
         result.stdout + result.stderr,
         /PRIVATE_PAYLOAD|PRIVATE_DATABASE_CREDENTIAL|PROVIDER_FORBIDDEN|Cannot use 'import.meta'|ERR_MODULE_NOT_FOUND/u,
@@ -310,17 +486,25 @@ for (const state of [
       assert.equal(cleanup.commits, 0);
       assert.ok(cleanup.rollbacks >= 1);
       if (passing) {
-        const rows = collectAttemptLogs(output.map((jsonPayload) => ({ jsonPayload })));
+        const rows = collectAttemptLogs(
+          output.map((jsonPayload) => ({ jsonPayload })),
+          readScope,
+        );
         assert.equal(rows.length, 10);
         assert.equal(rows[2].observed.status, "active");
         assert.equal(rows[2].observed.idle_valid, false);
-        assert.equal(rows.at(-2).observed.blocked, true);
-        assert.equal(rows.at(-2).observed.reason, "widget_session_unavailable");
+        assert.equal(rows.at(-2).observed.blocked, progress ? null : true);
+        assert.equal(
+          rows.at(-2).observed.reason,
+          progress ? "dispatch_authorization_not_checked" : "widget_session_unavailable",
+        );
         if (bound) assert.equal(rows[4].observed.rows[0].estimated_cost_micros, null);
       } else {
         const error = output.find((row) => row.outcome === "BLOCKED");
         assert.ok(error);
         if (state === "sql-failed") assert.equal(error.sqlstate, "42703");
+        if (state === "changed-progress-selection")
+          assert.equal(error.code, "ATTEMPT_OWNER_SELECTION_INVALID", JSON.stringify(error));
       }
     } finally {
       const target = realpathSync(dir);

@@ -3,6 +3,62 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-12 - Current selected Widget trace prepared; no new booking attempt
+
+After the exact date-fix deployment, the owner requested **"keep going"** with
+the identified next task: inspect the existing selected Website Chat request,
+provider attempts and accounting read-only. The prepared trace pins selection
+`01a12c02-3e50-7663-99f4-c35024796c23`, the unchanged deployment anchor,
+reviewed runtime source `1a910f097709a0e20b8d153bf482f470e1d631be`, timestamp
+`2026-10-11T18:51:44Z`, Worker/Migrator digests from postflight `38166835149`,
+and exact head `0032_s22_widget_recovery`. It does not apply a plan or change
+the deployed source, session selection, booking state, budget or job definition.
+
+The older reader had three incompatible assumptions: a retired selection/older
+runtime, pre-recovery migration metadata, and original-lane rather than current
+replacement-lane accounting. The deployed owner-selection guard's read operation
+also takes a `FOR UPDATE` lock, which cannot run in a strict READ ONLY transaction.
+The trace does **not** weaken or bypass that dispatch guard. Instead, it reads
+bounded tenant-owned reservation/run metadata with integer cost arithmetic,
+historical NULL preservation, conservative full reserve for unfinished/unknown
+slots, marker provenance/count checks and latest attributed selection rechecks.
+Its output explicitly says **dispatch authorization not checked**; it never
+reports an original-lane guard result as current readiness or approval to Send.
+
+The candidate metadata window is **11 October 17:28-19:29 UTC**. Its start is
+derived from the selected UUIDv7 timestamp, not claimed as independent receipt
+evidence. Persisted `issued_at` must match before child queries; all child reads
+remain conversation/channel/tenant/time scoped with row-limit sentinels. Reads
+outside that window are not claimed. Recovery-aware access expiry is observed
+separately from original identity expiry, without selecting a recovery proof,
+hash, bearer, message body or provider payload. Historical standalone-reader
+defaults and pre-recovery SQL are retained.
+
+Local regression coverage includes exact release/head mismatch denial, selection
+CAS/foreign identity/window denial, READ ONLY rollback and cleanup, deployed-style
+compressed ESM/package resolution, recovery metadata sanitization, settled and
+unknown-cost accounting, duplicate/unattributed/orphan reservations and historical
+NULL mutation denial. Authenticated Worker-vs-Logging permission denials are now
+identified without creating an execution. These are deterministic tooling tests,
+not live PostgreSQL or customer acceptance evidence.
+
+Verification: **250/250 native tooling tests PASS**, scoped ESLint/Prettier and
+whitespace checks PASS. Commands:
+
+```text
+node --test .github/scripts/s22-widget-progress.test.mjs .github/scripts/s22-widget-attempt.test.mjs .github/scripts/s22-widget-attempt-readonly.test.mjs .github/scripts/s22-widget-readiness.test.mjs .github/scripts/s22-widget-readiness-readonly.test.mjs .github/scripts/s22-booking-evidence.test.mjs .github/scripts/s22-full-runtime-config-check.test.mjs
+node node_modules/eslint/bin/eslint.js .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs .github/scripts/s22-widget-readiness.mjs .github/scripts/s22-widget-readiness.test.mjs .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt-readonly.mjs .github/scripts/s22-widget-attempt-readonly.test.mjs --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check .github/scripts/s22-widget-progress.mjs .github/scripts/s22-widget-progress.test.mjs .github/scripts/s22-widget-readiness.mjs .github/scripts/s22-widget-readiness.test.mjs .github/scripts/s22-widget-attempt.mjs .github/scripts/s22-widget-attempt-readonly.mjs .github/scripts/s22-widget-attempt-readonly.test.mjs
+```
+
+One `widget-evidence` workflow at the committed tooling source is the next bounded
+read: `action=plan`, empty approval token, approved branch, Terraform skipped,
+existing WIF/least-privilege runtime reference, private VPC and explicit zero
+retries. If permission is denied, no IAM expansion or blind rerun is permitted;
+preserve its sanitized failure and any already-created execution. No new frame,
+Send, replay, renewal, recovery, paid call, migration or ledger reset is authorized.
+**S22 remains unaccepted.**
+
 ## 2026-10-11 - Selected Widget progress reader prepared after owner continuation
 
 The owner requested autonomous continuation of the existing booking journey,

@@ -8,24 +8,25 @@ import { copyAttemptScope, attemptFailureCodes } from "./s22-widget-attempt-read
 // browser bearer, Send permission or session renewal is created by this reader.
 export const progressScope = copyAttemptScope({
   organization: "01a0ee39-91a9-7293-82c0-5b7046c10115",
-  session: "01a12a04-d2ae-7cba-aded-0c48a410be0c",
+  session: "01a12c02-3e50-7663-99f4-c35024796c23",
   channel: "01a11771-2c02-7240-86f7-19f95690d22e",
   origin: "01a11771-2c02-7765-b999-7dc9895ee49d",
   anchor: "01a11c48-dbc2-76de-a873-f41664da5ccb",
-  // Owner screenshot: opened 13:12, absolute expiry 15:12 Asia/Tashkent.
-  // Minute-rounded boundary covers the first reply, never an unrestricted scan.
-  windowStart: "2026-10-11T08:12:00.000Z",
-  windowEnd: "2026-10-11T10:13:00.000Z",
+  // Candidate window from this UUIDv7's creation timestamp, not proof of receipt.
+  // The persisted issued_at must match this window before child reads proceed.
+  windowStart: "2026-10-11T17:28:00.000Z",
+  windowEnd: "2026-10-11T19:29:00.000Z",
 });
-// Independently reviewed plan 38128355452, apply 38129053516 and verification
-// 38129147318. Never learn expected images/provenance from the resources checked.
+// Exact consumed plan 38165971091, apply 38166694777 and verification
+// 38166835149. Never learn expected images/provenance from the resources checked.
 export const progressRuntime = Object.freeze({
-  source: "68b3011d26afe1bbb8ef0a32c4efd8f66df7c819",
-  timestamp: "2026-10-11T09:26:04Z",
+  source: "1a910f097709a0e20b8d153bf482f470e1d631be",
+  timestamp: "2026-10-11T18:51:44Z",
+  migrationHead: "0032_s22_widget_recovery",
   worker:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:d3fa54d67b455b9287e453c6dd1d111f336d7c2e609aea39857d32bbfaeb50b9",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:14b321478506600805bee7a573ccbf0fa86ec5a391b0815d9b2c49976326ed57",
   image:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:95841b30404b3605b3cee9a457bb83b0d29731c5ab3b97aac5dfd78c35c8e260",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:c144b3fe2b863dbb02e02e47fb3dc231213630406d7f0c0994ea6ec8c9c99bec",
 });
 export const runProgress = (overrides = {}) =>
   runAttempt({
@@ -65,11 +66,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     Object.assign(evidence, {
       code,
       ...(execution ? { execution } : {}),
+      ...(["authenticated_logging", "worker_metadata"].includes(error?.readBoundary)
+        ? { read_boundary: error.readBoundary }
+        : {}),
       ...(attemptFailureCodes.has(error?.diagnosticCode)
         ? { diagnostic_code: error.diagnosticCode }
         : {}),
     });
     console.log(`BLOCKED: ${code}`);
+    if (evidence.read_boundary) console.log(`Read boundary: ${evidence.read_boundary}`);
     if (execution) console.log(`Preserved execution: ${execution}; do not rerun blindly.`);
     process.exitCode = 1;
   } finally {

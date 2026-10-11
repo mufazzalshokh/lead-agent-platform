@@ -132,6 +132,17 @@ export const attemptSessionSql = `select s.organization_id::text,s.id::text as s
     and cv.channel_connection_id=s.channel_connection_id and cv.contact_id=s.contact_id
   where s.organization_id=$1 and s.id=$2::uuid and s.channel_connection_id=$3::uuid
     and s.widget_allowed_origin_id=$4::uuid limit 2`;
+// Only the reviewed post-0032 progress wrapper reads recovery-aware metadata.
+// Keep the historical standalone reader's pre-0032 query intact.
+export const progressSessionSql = attemptSessionSql
+  .replace(
+    "s.expires_at,s.conversation_id::text,",
+    "s.expires_at,s.conversation_id::text,coalesce(s.access_expires_at,s.expires_at) as effective_expires_at,s.recovery_expires_at,",
+  )
+  .replace(
+    "s.expires_at>now() as absolute_valid",
+    "coalesce(s.access_expires_at,s.expires_at)>now() as absolute_valid",
+  );
 const triggerJoin = `join messages m on m.organization_id=$1 and m.id=r.trigger_message_id
   and m.conversation_id=r.conversation_id and m.channel_connection_id=$3::uuid`;
 const triggerFilter = `r.organization_id=$1 and r.conversation_id=$2::uuid and m.direction='inbound'
@@ -302,6 +313,8 @@ export const sanitizeAttemptValue = (value) => {
     issued_at: date,
     last_seen_at: date,
     expires_at: date,
+    effective_expires_at: date,
+    recovery_expires_at: date,
     windowStart: date,
     windowEnd: date,
     sessionId: uuid,
@@ -340,7 +353,7 @@ const project = (value, fields) =>
 export const sanitizeAttemptBudget = (snapshot, conversationId = null, scope = attemptScope) => ({
   ...project(
     snapshot,
-    "profile mode physicalCalls logicalMessages knownCostMicros unresolvedReserveMicros historicalReserveMicros combinedExposureMicros perCallReserveMicros accountingComplete blocked reason",
+    "profile mode physicalCalls logicalMessages knownCostMicros unresolvedReserveMicros historicalReserveMicros combinedExposureMicros perCallReserveMicros accountingComplete blocked reason observation_only",
   ),
   widget: {
     ...project(
@@ -357,13 +370,21 @@ export const sanitizeAttemptBudget = (snapshot, conversationId = null, scope = a
 export const collectWidgetAttempt = async (read, report, expectation = attemptScope) => {
   const scope = copyAttemptScope(expectation);
   if (scope.anchor !== undefined) await verifyOwnerSelection(read, scope);
-  const rows = await read(attemptSessionSql, [scope.session, scope.channel, scope.origin]);
+  const rows = await read(scope.anchor === undefined ? attemptSessionSql : progressSessionSql, [
+    scope.session,
+    scope.channel,
+    scope.origin,
+  ]);
   const row = rows.length === 1 ? rows[0] : null;
   if (
     row?.organization_id !== scope.organization ||
     row.session_id !== scope.session ||
     row.channel_connection_id !== scope.channel ||
     row.allowed_origin_id !== scope.origin ||
+    (scope.anchor !== undefined &&
+      (date(row.issued_at) === null ||
+        Date.parse(row.issued_at) < Date.parse(scope.windowStart) ||
+        Date.parse(row.issued_at) >= Date.parse(scope.windowEnd))) ||
     row.conversation_ownership_matches !== true ||
     !(
       (row.conversation_id === null &&
@@ -390,6 +411,8 @@ export const collectWidgetAttempt = async (read, report, expectation = attemptSc
     issued_at: date(row.issued_at),
     last_seen_at: date(row.last_seen_at),
     expires_at: date(row.expires_at),
+    effective_expires_at: date(row.effective_expires_at),
+    recovery_expires_at: date(row.recovery_expires_at),
     ...Object.fromEntries(
       [
         "contact_unbound",
@@ -437,6 +460,7 @@ export const attemptFailureCodes = new Set([
   "ATTEMPT_OWNER_SELECTION_INVALID",
   "ATTEMPT_SESSION_SCOPE_INVALID",
   "ATTEMPT_ROW_LIMIT_EXCEEDED",
+  "ATTEMPT_LEDGER_INVALID",
   "COHORT_SCOPE_INVALID",
   "TENANT_MISMATCH",
   "DATABASE_UNAVAILABLE",
@@ -444,6 +468,116 @@ export const attemptFailureCodes = new Set([
   "DATABASE_CLEANUP_FAILED",
 ]);
 const rollback = new Error("EXPECTED_READ_ONLY_ROLLBACK");
+// The deployed owner-selected guard takes a FOR UPDATE lock, which cannot run
+// in READ ONLY. Observe its immutable ledger instead; do not weaken that guard,
+// imitate dispatch authorization or report the old lane's guard as current.
+export const progressLedgerSql = `select r.id::text,r.conversation_id::text,
+  r.trigger_message_id::text,r.status,r.finished_at,r.estimated_cost_micros::text,
+  not exists(select 1 from audit_events a where a.organization_id=$1 and a.target_type='ai_run'
+    and a.target_id=r.id and a.action='ai_run.dispatch_reserved' and (a.result<>'succeeded'
+      or a.actor_type<>'system' or a.metadata_redacted_jsonb->>'profile' is distinct from 's22-synthetic-booking.v1')) as marker_authority,
+  (select count(*)::integer from audit_events a where a.organization_id=$1
+    and a.target_type='ai_run' and a.target_id=r.id and a.action='ai_run.dispatch_reserved') as reservations,
+  (select a.metadata_redacted_jsonb->>'reservation_micros' from audit_events a
+    where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=r.id
+      and a.action='ai_run.dispatch_reserved' order by a.occurred_at,a.id limit 1) as reserved_micros,
+  (select a.metadata_redacted_jsonb->>'widget_session_id' from audit_events a
+    where a.organization_id=$1 and a.target_type='ai_run' and a.target_id=r.id
+      and a.action='ai_run.dispatch_reserved' order by a.occurred_at,a.id limit 1) as widget_session_id
+  from ai_runs r where r.organization_id=$1 order by r.started_at,r.id limit 65`;
+export const progressMarkersSql = `select count(*)::integer as count from
+  (select id from audit_events where organization_id=$1 and action='ai_run.dispatch_reserved'
+    and target_type='ai_run' and metadata_redacted_jsonb->>'profile'='s22-synthetic-booking.v1' limit 65) a`;
+export const collectProgressAccounting = async (read, scope, cohort, conversationId) => {
+  await verifyOwnerSelection(read, scope);
+  const rows = await read(progressLedgerSql);
+  const markers = await read(progressMarkersSql);
+  if (
+    !Array.isArray(rows) ||
+    rows.length >= 65 ||
+    markers.length !== 1 ||
+    count(markers[0].count) === null ||
+    markers[0].count >= 65
+  )
+    fail("ATTEMPT_ROW_LIMIT_EXCEEDED");
+  const historical = new Set(cohort.historicalRunIds);
+  let known = 0n,
+    pending = 0n,
+    calls = 0,
+    widgetKnown = 0n,
+    widgetPending = 0n,
+    widgetCalls = 0;
+  const messages = new Set(),
+    widgetMessages = new Set(),
+    baselineSeen = new Set();
+  for (const row of rows) {
+    if (
+      uuid(row.id) === null ||
+      count(row.reservations) === null ||
+      row.reservations > 1 ||
+      row.marker_authority !== true
+    )
+      fail("ATTEMPT_LEDGER_INVALID");
+    if (historical.has(row.id)) {
+      if (
+        row.estimated_cost_micros !== null ||
+        row.conversation_id !== cohort.conversationId ||
+        row.reservations !== 0
+      )
+        fail("ATTEMPT_LEDGER_INVALID");
+      baselineSeen.add(row.id);
+      continue;
+    }
+    if (row.reservations === 0) {
+      if (row.estimated_cost_micros !== null) fail("ATTEMPT_LEDGER_INVALID");
+      continue;
+    }
+    if (row.reserved_micros !== "801432" || uuid(row.trigger_message_id) === null)
+      fail("ATTEMPT_LEDGER_INVALID");
+    const widget =
+      row.widget_session_id === scope.session && row.conversation_id === conversationId;
+    calls++;
+    messages.add(row.trigger_message_id);
+    if (widget) {
+      widgetCalls++;
+      widgetMessages.add(row.trigger_message_id);
+    }
+    if (row.finished_at === null || row.estimated_cost_micros === null) {
+      pending += 801432n;
+      if (widget) widgetPending += 801432n;
+    } else {
+      if (digits(row.estimated_cost_micros) === null || BigInt(row.estimated_cost_micros) > 801432n)
+        fail("ATTEMPT_LEDGER_INVALID");
+      const cost = BigInt(row.estimated_cost_micros);
+      known += cost;
+      if (widget) widgetKnown += cost;
+    }
+  }
+  if (baselineSeen.size !== historical.size || markers[0].count !== calls)
+    fail("ATTEMPT_LEDGER_INVALID");
+  return {
+    profile: cohort.profile,
+    mode: "widget_booking",
+    observation_only: true,
+    accountingComplete: false,
+    blocked: null,
+    reason: "dispatch_authorization_not_checked",
+    physicalCalls: calls,
+    logicalMessages: messages.size,
+    knownCostMicros: known.toString(),
+    unresolvedReserveMicros: pending.toString(),
+    historicalReserveMicros: cohort.historicalReserveMicros.toString(),
+    combinedExposureMicros: (known + pending + cohort.historicalReserveMicros).toString(),
+    widget: {
+      sessionId: scope.session,
+      conversationId,
+      physicalCalls: widgetCalls,
+      logicalMessages: widgetMessages.size,
+      knownCostMicros: widgetKnown.toString(),
+      unresolvedReserveMicros: widgetPending.toString(),
+    },
+  };
+};
 export const runReadOnlyWidgetAttempt = async (expectation = attemptScope) => {
   let runtime,
     failures = 0,
@@ -595,7 +729,7 @@ export const runReadOnlyWidgetAttempt = async (expectation = attemptScope) => {
       collectWidgetAttempt(
         (text, extra) => {
           stage =
-            text === attemptSessionSql
+            text === attemptSessionSql || text === progressSessionSql
               ? "widget_attempt_session"
               : (Object.entries(attemptQueries).find(([, sql]) => sql === text)?.[0] ??
                 "widget_attempt_collection");
@@ -610,17 +744,20 @@ export const runReadOnlyWidgetAttempt = async (expectation = attemptScope) => {
       verifyReady: () => runtime.verifyReady(),
       close: () => runtime.close(),
     };
-    const budget = db.createAIJourneyBudgetGuard(readOnlyRuntime, {
-      ...config.S22_BOOKING_COHORT,
-      mode: "widget_booking",
-      widgetSessionId: scope.session,
-    });
     stage = "cohort_reservation_accounting";
-    report(
-      stage,
-      true,
-      sanitizeAttemptBudget(await budget.read(scope.organization), conversationId, scope),
-    );
+    const snapshot =
+      scope.anchor === undefined
+        ? await db
+            .createAIJourneyBudgetGuard(readOnlyRuntime, {
+              ...config.S22_BOOKING_COHORT,
+              mode: "widget_booking",
+              widgetSessionId: scope.session,
+            })
+            .read(scope.organization)
+        : await readOnly(scope.organization, (_session, read) =>
+            collectProgressAccounting(read, scope, config.S22_BOOKING_COHORT, conversationId),
+          );
+    report(stage, true, sanitizeAttemptBudget(snapshot, conversationId, scope));
     report("widget_attempt_collection", true, {
       windowStart: scope.windowStart,
       windowEnd: scope.windowEnd,
