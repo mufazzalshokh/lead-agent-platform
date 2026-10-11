@@ -88,6 +88,12 @@ script or new privileged diagnostic launcher.
 
 ## Concurrency and irreversible consumption boundary
 
+The separately approved local [replacement-lane transition](s22-widget-replacement-plan.md#local-runtime-transition--11-october-2026)
+adds one exact retired-session exception to the original rule below. It retains
+all old costs/counts/NULLs, requires an attributed owner CAS selection, and cannot
+be repeated or used to revive the old bearer. That runtime change is not deployed
+or permission to Send. All other consumed-lane replacements remain denied.
+
 Owner selection and provider authorization use the original cohort conversation's
 existing transaction mutex. Selection also locks the relevant Widget session.
 Compare-and-set prevents stale/concurrent choices; an exact repeated command

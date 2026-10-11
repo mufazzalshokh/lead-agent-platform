@@ -10,6 +10,7 @@ import {
   S22_WIDGET_ALLOWANCE,
   S22_BOOKING_COHORT,
   S22_WIDGET_SELECTION_ENVELOPE,
+  S22_WIDGET_REPLACEMENT,
   type AIJourneyCohortConfig,
 } from "@lead-agent/config";
 import {
@@ -40,6 +41,7 @@ import {
   RepositoryDataIntegrityError,
 } from "./shared.js";
 import { requireStaffActor } from "./staff-work.js";
+import { readS22WidgetRetirement } from "./s22-widget-retirement.js";
 
 const RESERVED = "ai_run.dispatch_reserved";
 const STARTED = "ai_run.journey_started";
@@ -51,6 +53,7 @@ type OwnerSelection = Readonly<{
   predecessor: number;
   actorId: string;
   membershipId: string;
+  replacement: boolean;
 }>;
 type WidgetBinding = Readonly<{
   conversationId: string | null;
@@ -217,6 +220,7 @@ export const createAIJourneyBudgetGuard = (
     session: TenantDbSession,
     binding: WidgetBinding | null = null,
     selectedSessionId: string | undefined = ownerSelection ? undefined : widgetSessionId,
+    replacement = false,
   ) => {
     const widgetSessionId = selectedSessionId;
     const reserve = reserveAt(clock());
@@ -226,6 +230,10 @@ export const createAIJourneyBudgetGuard = (
       `select r.id,r.conversation_id,r.trigger_message_id,r.attempt_no,r.expected_conversation_version,
         r.provider_id,r.requested_model_id,r.provider_resolved_model_id,
         r.status,r.input_units,r.output_units,r.estimated_cost_micros,r.finished_at,
+        not exists(select 1 from audit_events a where a.organization_id=$1 and a.target_type='ai_run'
+          and a.target_id=r.id and a.action in ($2,$3)
+          and (a.result<>'succeeded' or a.actor_type<>'system'
+            or a.metadata_redacted_jsonb->>'profile' is distinct from $4)) as marker_authority,
         (select count(*) from audit_events a where a.organization_id=$1 and a.target_type='ai_run'
           and a.target_id=r.id and a.action=$2) as reservations,
         (select count(*) from audit_events a where a.organization_id=$1 and a.target_type='ai_run'
@@ -242,7 +250,7 @@ export const createAIJourneyBudgetGuard = (
           order by a.occurred_at desc limit 1) as dispatch_authorized
        from ai_runs r where r.organization_id=$1
        order by r.started_at,r.id limit 65`,
-      [RESERVED, STARTED],
+      [RESERVED, STARTED, config.profile],
     );
     const markers = await executeTenantRead(
       session,
@@ -268,6 +276,9 @@ export const createAIJourneyBudgetGuard = (
     let widgetCalls = 0,
       widgetKnown = 0n,
       widgetPending = 0n;
+    let retiredCalls = 0,
+      retiredKnown = 0n;
+    const allowance = replacement ? S22_WIDGET_REPLACEMENT : S22_WIDGET_ALLOWANCE;
     const originalMessages = new Set<string>(),
       widgetMessages = new Map<string, number>();
     const messages = new Map<string, number>();
@@ -286,6 +297,7 @@ export const createAIJourneyBudgetGuard = (
       const reservations = mapSafeBigInt(row["reservations"]);
       const started = mapSafeBigInt(row["journey_starts"]);
       if (started !== 1 || reservations > 1) reason = "unrecognized_run";
+      if (replacement && row["marker_authority"] !== true) reason = "dispatch_marker_integrity";
       if (reservations === 0) {
         if (
           row["provider_resolved_model_id"] !== null ||
@@ -305,6 +317,8 @@ export const createAIJourneyBudgetGuard = (
       if (row["provider_id"] !== "gemini" || row["requested_model_id"] !== "gemini-3.8-flash")
         reason = "model_mismatch";
       const original = row["conversation_id"] === config.conversationId;
+      const retired =
+        replacement && row["conversation_id"] === S22_WIDGET_REPLACEMENT.retiredConversationId;
       const widget =
         widgetSessionId !== undefined &&
         binding?.conversationId !== null &&
@@ -318,6 +332,17 @@ export const createAIJourneyBudgetGuard = (
       } else if (widget) {
         widgetCalls++;
         widgetMessages.set(messageId, (widgetMessages.get(messageId) ?? 0) + 1);
+      } else if (retired) {
+        retiredCalls++;
+        if (
+          id !== S22_WIDGET_REPLACEMENT.retiredRunId ||
+          messageId !== S22_WIDGET_REPLACEMENT.retiredMessageId ||
+          row["widget_session_id"] !== S22_WIDGET_REPLACEMENT.retiredSessionId ||
+          row["widget_conversation_id"] !== S22_WIDGET_REPLACEMENT.retiredConversationId ||
+          row["status"] !== "succeeded" ||
+          mapSafeBigInt(row["attempt_no"]) !== 1
+        )
+          reason = "retired_ledger_mismatch";
       } else reason = "scope_mismatch";
       if (row["finished_at"] === null) {
         pending += retained;
@@ -348,6 +373,7 @@ export const createAIJourneyBudgetGuard = (
         known += value;
         if (original) originalKnown += value;
         if (widget) widgetKnown += value;
+        if (retired) retiredKnown += value;
       }
     }
     if (baselineSeen.size !== baseline.length) reason = "historical_baseline_missing";
@@ -364,14 +390,17 @@ export const createAIJourneyBudgetGuard = (
     if (widgetSessionId !== undefined) {
       const latches = await executeTenantRead(
         session,
-        `select target_id::text as session_id,
+        `select target_id::text as session_id,actor_type,result,
           metadata_redacted_jsonb->>'widget_session_id' as widget_session_id,
           metadata_redacted_jsonb->>'conversation_id' as conversation_id
          from audit_events where organization_id=$1 and action=$2
-           and target_type='widget_session' and metadata_redacted_jsonb->>'profile'=$3 limit 2`,
+           and target_type='widget_session' and metadata_redacted_jsonb->>'profile'=$3 limit 3`,
         [WIDGET_BOUND, config.profile],
       );
-      latchCount = latches.length;
+      const currentLatches = replacement
+        ? latches.filter((row) => row["session_id"] === widgetSessionId)
+        : latches;
+      latchCount = currentLatches.length;
       if (
         originalCalls !== S22_WIDGET_ALLOWANCE.previousCalls ||
         originalMessages.size !== S22_WIDGET_ALLOWANCE.previousMessages ||
@@ -379,28 +408,45 @@ export const createAIJourneyBudgetGuard = (
         originalPending !== 0n
       )
         reason = "widget_baseline_mismatch";
-      if (binding === null) reason = "widget_session_unavailable";
+      if (replacement) {
+        const retiredLatches = latches.filter(
+          (row) => row["session_id"] === S22_WIDGET_REPLACEMENT.retiredSessionId,
+        );
+        if (
+          retiredCalls !== 1 ||
+          retiredKnown !== S22_WIDGET_REPLACEMENT.retiredKnownCostMicros ||
+          retiredLatches.length !== 1 ||
+          retiredLatches[0]?.["widget_session_id"] !== S22_WIDGET_REPLACEMENT.retiredSessionId ||
+          retiredLatches[0]?.["conversation_id"] !== S22_WIDGET_REPLACEMENT.retiredConversationId ||
+          latches.some((row) => row["actor_type"] !== "system" || row["result"] !== "succeeded") ||
+          latches.length !== retiredLatches.length + currentLatches.length ||
+          (await readS22WidgetRetirement(session, clock())) === null
+        )
+          reason = "retired_ledger_mismatch";
+      }
+      if (binding === null) reason = reason ?? "widget_session_unavailable";
       if (
-        latches.length > 1 ||
-        (widgetCalls > 0 && latches.length !== 1) ||
-        (latches.length === 1 &&
-          (latches[0]?.["session_id"] !== widgetSessionId ||
-            latches[0]["widget_session_id"] !== widgetSessionId ||
-            latches[0]["conversation_id"] !== binding?.conversationId))
+        currentLatches.length > 1 ||
+        (widgetCalls > 0 && currentLatches.length !== 1) ||
+        (currentLatches.length === 1 &&
+          (currentLatches[0]?.["session_id"] !== widgetSessionId ||
+            currentLatches[0]["widget_session_id"] !== widgetSessionId ||
+            currentLatches[0]["conversation_id"] !== binding?.conversationId))
       )
         reason = "widget_binding_integrity";
       if (
-        widgetCalls > S22_WIDGET_ALLOWANCE.maximumCalls ||
-        widgetMessages.size > S22_WIDGET_ALLOWANCE.maximumMessages ||
+        widgetCalls > allowance.maximumCalls ||
+        widgetMessages.size > allowance.maximumMessages ||
         [...widgetMessages.values()].some((count) => count > config.maximumCallsPerMessage)
       )
         reason = "attempt_limit";
       if (
-        widgetKnown + widgetPending > S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+        widgetKnown + widgetPending > allowance.additionalReserveMicros ||
+        widgetKnown + widgetPending + retiredKnown > S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
         exposure > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros
       )
         reason = "widget_allowance";
-      if ((binding?.inboundMessageIds.length ?? 0) > S22_WIDGET_ALLOWANCE.maximumMessages)
+      if ((binding?.inboundMessageIds.length ?? 0) > allowance.maximumMessages)
         reason = "message_limit";
     }
     return {
@@ -417,6 +463,7 @@ export const createAIJourneyBudgetGuard = (
       widgetKnown,
       widgetPending,
       latchCount,
+      allowance,
     };
   };
   const lockCohort = async (session: TenantDbSession) => {
@@ -437,7 +484,9 @@ export const createAIJourneyBudgetGuard = (
         metadata_redacted_jsonb->>'expected_selection_version' as expected_selection_version,
         metadata_redacted_jsonb->>'expected_session_version' as expected_session_version,
         metadata_redacted_jsonb->>'channel_connection_id' as channel_connection_id,
-        metadata_redacted_jsonb->>'allowed_origin_id' as allowed_origin_id
+        metadata_redacted_jsonb->>'allowed_origin_id' as allowed_origin_id,
+        metadata_redacted_jsonb->>'replacement_profile' as replacement_profile,
+        metadata_redacted_jsonb->>'retired_session_id' as retired_session_id
        from audit_events where organization_id=$1 and action=$2 and result='succeeded'
         and target_type='widget_session' and target_id=$3
         and metadata_redacted_jsonb->>'profile'=$4
@@ -472,7 +521,30 @@ export const createAIJourneyBudgetGuard = (
           row["allowed_origin_id"] !== S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId
         )
           throw new S22WidgetCohortError("unavailable");
-        return { sessionId, version: index + 1, predecessor: index, actorId, membershipId };
+        const replacement = row["replacement_profile"] != null;
+        if (
+          (replacement &&
+            (row["replacement_profile"] !== S22_WIDGET_REPLACEMENT.profile ||
+              row["retired_session_id"] !== S22_WIDGET_REPLACEMENT.retiredSessionId ||
+              sessionId === S22_WIDGET_REPLACEMENT.retiredSessionId ||
+              index !== rows.length - 1 ||
+              !rows.some(
+                (previous) =>
+                  previous["selection_version"] === String(index) &&
+                  previous["selected_session_id"] === S22_WIDGET_REPLACEMENT.retiredSessionId &&
+                  previous["replacement_profile"] == null,
+              ))) ||
+          (!replacement && row["retired_session_id"] != null)
+        )
+          throw new S22WidgetCohortError("unavailable");
+        return {
+          sessionId,
+          version: index + 1,
+          predecessor: index,
+          actorId,
+          membershipId,
+          replacement,
+        };
       });
   };
   const requireOwner = async (session: TenantDbSession, actor: AuthorizationContext) => {
@@ -537,6 +609,28 @@ export const createAIJourneyBudgetGuard = (
     session: TenantDbSession,
     selected: OwnerSelection | undefined,
   ) => {
+    // One exact, additive exception. No automatic newest-session choice and
+    // no second replacement, even if the replacement has not yet dispatched.
+    if (selected?.sessionId === S22_WIDGET_REPLACEMENT.retiredSessionId || selected?.replacement) {
+      const state = await inspect(
+        session,
+        { conversationId: null, contactId: null, inboundMessageIds: [] },
+        S22_WIDGET_SELECTION_ENVELOPE.anchorSessionId,
+        true,
+      );
+      let reason = state.reason;
+      if (selected.replacement) reason = "widget_already_bound";
+      if (
+        state.calls !== S22_WIDGET_ALLOWANCE.previousCalls + 1 ||
+        state.messages.size !== S22_WIDGET_ALLOWANCE.previousMessages + 1 ||
+        state.known !==
+          S22_WIDGET_ALLOWANCE.previousKnownCostMicros +
+            S22_WIDGET_REPLACEMENT.retiredKnownCostMicros ||
+        state.pending !== 0n
+      )
+        reason = reason ?? "retired_ledger_mismatch";
+      return { state, reason, replacement: !selected.replacement };
+    }
     // This path must not require the previous unused SID to be alive. Replacing
     // it never revives it, and cannot erase any existing Widget binding/spend.
     const state = await inspect(session, null, undefined);
@@ -580,7 +674,7 @@ export const createAIJourneyBudgetGuard = (
       state.exposure + (state.reserve ?? 0n) > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros
     )
       reason = reason ?? "hard_ceiling";
-    return { state, reason };
+    return { state, reason, replacement: false };
   };
   const cohortStore: S22WidgetCohortStore = {
     get: async ({ actor }) => {
@@ -595,11 +689,11 @@ export const createAIJourneyBudgetGuard = (
         const state =
           selected === undefined
             ? ready.state
-            : await inspect(session, binding, selected.sessionId);
+            : await inspect(session, binding, selected.sessionId, selected.replacement);
         let reason =
           selected === undefined ? (ready.reason ?? "widget_selection_required") : state.reason;
         if (reason === null) {
-          if (state.widgetCalls >= S22_WIDGET_ALLOWANCE.maximumCalls) reason = "attempt_limit";
+          if (state.widgetCalls >= state.allowance.maximumCalls) reason = "attempt_limit";
           else if ((binding?.inboundMessageIds.length ?? 0) >= S22_WIDGET_ALLOWANCE.maximumMessages)
             reason = "message_limit";
           else if (
@@ -610,7 +704,7 @@ export const createAIJourneyBudgetGuard = (
           else if (
             state.reserve !== null &&
             (state.widgetKnown + state.widgetPending + state.reserve >
-              S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+              state.allowance.additionalReserveMicros ||
               state.exposure + state.reserve > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros)
           )
             reason = "widget_allowance";
@@ -680,6 +774,12 @@ export const createAIJourneyBudgetGuard = (
                 expected_session_version: 2,
                 channel_connection_id: S22_WIDGET_SELECTION_ENVELOPE.channelConnectionId,
                 allowed_origin_id: S22_WIDGET_SELECTION_ENVELOPE.allowedOriginId,
+                ...(ready.replacement
+                  ? {
+                      replacement_profile: S22_WIDGET_REPLACEMENT.profile,
+                      retired_session_id: S22_WIDGET_REPLACEMENT.retiredSessionId,
+                    }
+                  : {}),
               }),
               clock(),
             ],
@@ -731,9 +831,8 @@ export const createAIJourneyBudgetGuard = (
       return runtime.withTenantTransaction(input.reference.organizationId, async (session) => {
         // Same lock for every Worker/process. No lock is held during provider I/O.
         const locked = await lockCohort(session);
-        const widgetSessionId = ownerSelection
-          ? (await selections(session)).at(-1)?.sessionId
-          : config.widgetSessionId;
+        const selected = ownerSelection ? (await selections(session)).at(-1) : undefined;
+        const widgetSessionId = ownerSelection ? selected?.sessionId : config.widgetSessionId;
         if (ownerSelection && widgetSessionId === undefined) return false;
         // The original conversation remains the shared mutex across old/new Workers.
         // Widget intake and this gate both lock its session before its conversation.
@@ -764,11 +863,11 @@ export const createAIJourneyBudgetGuard = (
           currentConversation["automation_mode"] !== "ai"
         )
           return false;
-        const state = await inspect(session, binding, widgetSessionId);
+        const state = await inspect(session, binding, widgetSessionId, selected?.replacement);
         const calls = widgetSessionId === undefined ? state.calls : state.widgetCalls;
         const messages = widgetSessionId === undefined ? state.messages : state.widgetMessages;
         const maximumCalls =
-          widgetSessionId === undefined ? config.maximumCalls : S22_WIDGET_ALLOWANCE.maximumCalls;
+          widgetSessionId === undefined ? config.maximumCalls : state.allowance.maximumCalls;
         const maximumMessages =
           widgetSessionId === undefined
             ? config.maximumMessages
@@ -792,7 +891,7 @@ export const createAIJourneyBudgetGuard = (
           state.exposure + state.reserve >= config.hardCeilingMicros ||
           (widgetSessionId !== undefined &&
             (state.widgetKnown + state.widgetPending + state.reserve >
-              S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+              state.allowance.additionalReserveMicros ||
               state.exposure + state.reserve > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros))
         )
           return false;
@@ -851,11 +950,10 @@ export const createAIJourneyBudgetGuard = (
       if (tenant !== organizationId) throw new RepositoryDataIntegrityError();
       return runtime.withTenantTransaction(tenant, async (session) => {
         if (ownerSelection) await lockCohort(session);
-        const widgetSessionId = ownerSelection
-          ? (await selections(session)).at(-1)?.sessionId
-          : config.widgetSessionId;
+        const selected = ownerSelection ? (await selections(session)).at(-1) : undefined;
+        const widgetSessionId = ownerSelection ? selected?.sessionId : config.widgetSessionId;
         const binding = await widgetBinding(session, false, widgetSessionId);
-        const state = await inspect(session, binding, widgetSessionId);
+        const state = await inspect(session, binding, widgetSessionId, selected?.replacement);
         let reason =
           config.mode === "paused"
             ? "paused"
@@ -867,9 +965,7 @@ export const createAIJourneyBudgetGuard = (
           const messages = widgetSessionId === undefined ? state.messages : state.widgetMessages;
           if (
             calls >=
-            (widgetSessionId === undefined
-              ? config.maximumCalls
-              : S22_WIDGET_ALLOWANCE.maximumCalls)
+            (widgetSessionId === undefined ? config.maximumCalls : state.allowance.maximumCalls)
           )
             reason = "attempt_limit";
           else if (
@@ -887,7 +983,7 @@ export const createAIJourneyBudgetGuard = (
             widgetSessionId !== undefined &&
             state.reserve !== null &&
             (state.widgetKnown + state.widgetPending + state.reserve >
-              S22_WIDGET_ALLOWANCE.additionalReserveMicros ||
+              state.allowance.additionalReserveMicros ||
               state.exposure + state.reserve > S22_WIDGET_ALLOWANCE.maximumCombinedExposureMicros)
           )
             reason = "widget_allowance";

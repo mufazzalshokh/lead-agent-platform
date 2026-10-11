@@ -4,10 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   S22_BOOKING_COHORT,
   S22_WIDGET_SELECTION_ENVELOPE,
+  S22_WIDGET_REPLACEMENT,
+  createWidgetEmbedConfig,
+  createWidgetSecurityConfig,
 } from "../../packages/config/src/index.js";
 import {
   isSchemaValue,
   OrganizationIdSchema,
+  ChannelConnectionIdSchema,
   UserIdSchema,
   MembershipIdSchema,
   ResourceIdSchema,
@@ -18,10 +22,20 @@ import {
 import {
   createAIJourneyBudgetGuard,
   createS22WidgetCohortStore,
+  createWidgetPersistenceStore,
+  createWidgetRecoveryStore,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import { executeTenantQuery } from "../../packages/database/src/runtime/tenant.js";
-import { resolveAuthorizationContext } from "../../packages/security/src/index.js";
+import { createWidgetUseCases } from "../../packages/application/src/index.js";
+import {
+  resolveAuthorizationContext,
+  createCustomerDataProtection,
+  createWidgetTokenService,
+  createWidgetExchangeGrantService,
+  createWidgetRecoveryGrantService,
+  createWidgetRateLimiter,
+} from "../../packages/security/src/index.js";
 import { fixtureId } from "../ai/fixtures.js";
 
 type Options = Readonly<{ privilegedPool(): Pool; runtime(): TenantDatabaseRuntime }>;
@@ -126,6 +140,7 @@ export const registerS22WidgetCohortTests = (options: Options): void => {
     trigger: string,
     cost: number | null,
     started = false,
+    attemptNo = 1,
   ) => {
     await options.privilegedPool().query(
       `insert into ai_runs (id,organization_id,conversation_id,trigger_message_id,
@@ -138,7 +153,7 @@ export const registerS22WidgetCohortTests = (options: Options): void => {
        '1','application-policy-v1',case when $5::boolean then 'started' else 'succeeded' end,
        case when $5::boolean then null else 520 end,case when $5::boolean then null else 217 end,
        case when $5::boolean then null else 0 end,case when $5::boolean then null else 737 end,$6,'USD',
-       'ai-provider-prices.2026-09-17.v1',case when $5::boolean then null else 1000 end,1,'{}'::jsonb,$7,
+       'ai-provider-prices.2026-09-17.v1',case when $5::boolean then null else 1000 end,$12,'{}'::jsonb,$7,
        case when $5::boolean then null else $8::bytea end,case when $5::boolean then null else true end,
        case when $5::boolean then null else true end,$9,case when $5::boolean then null else $10::timestamptz end,$11)`,
       [
@@ -153,6 +168,7 @@ export const registerS22WidgetCohortTests = (options: Options): void => {
         NOW,
         later(1000),
         id,
+        attemptNo,
       ],
     );
   };
@@ -309,6 +325,528 @@ export const registerS22WidgetCohortTests = (options: Options): void => {
       dispatch_authorized: false,
     });
   };
+
+  const seedRetirement = async () => {
+    await seed();
+    const scope = S22_WIDGET_REPLACEMENT,
+      pool = options.privilegedPool();
+    await seedSession(scope.retiredSessionId);
+    await createS22WidgetCohortStore(options.runtime(), CONFIG, () => NOW).select(
+      await command(scope.retiredSessionId),
+    );
+    await conversation(scope.retiredConversationId, fixtureId(24601), fixtureId(24602));
+    await message(scope.retiredMessageId, scope.retiredConversationId, fixtureId(24601), 1);
+    await run(scope.retiredRunId, scope.retiredConversationId, scope.retiredMessageId, 2250);
+    await audit(fixtureId(24603), scope.retiredRunId, "ai_run.journey_started", {
+      profile: S22_BOOKING_COHORT.profile,
+    });
+    await audit(fixtureId(24604), scope.retiredRunId, "ai_run.dispatch_reserved", {
+      profile: S22_BOOKING_COHORT.profile,
+      reservation_micros: "801432",
+      widget_session_id: scope.retiredSessionId,
+      conversation_id: scope.retiredConversationId,
+    });
+    await pool.query(
+      `insert into audit_events (id,organization_id,event_type,actor_type,target_type,target_id,action,
+      result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
+      values ($1,$2,'ai_run.widget_journey_bound','system','widget_session',$3,'ai_run.widget_journey_bound',
+      'succeeded','synthetic-retired-binding',$1,$4::jsonb,$5)`,
+      [
+        fixtureId(24605),
+        ORG,
+        scope.retiredSessionId,
+        JSON.stringify({
+          profile: S22_BOOKING_COHORT.profile,
+          widget_session_id: scope.retiredSessionId,
+          conversation_id: scope.retiredConversationId,
+        }),
+        NOW,
+      ],
+    );
+    await pool.query(
+      `update widget_sessions set conversation_id=$1,contact_id=$2,version=3,
+      issued_at=$3,last_seen_at=$4,expires_at=$5 where id=$6`,
+      [
+        scope.retiredConversationId,
+        fixtureId(24601),
+        later(-7_300_000),
+        later(-7_299_000),
+        later(-100_000),
+        scope.retiredSessionId,
+      ],
+    );
+    await pool.query(
+      `insert into locations (id,organization_id,code,status) values ($1,$2,'synthetic-replacement','active')`,
+      [fixtureId(24606), ORG],
+    );
+    await pool.query(
+      `insert into location_versions (id,organization_id,location_id,version_no,name_i18n,address_i18n,
+      public_contact_jsonb,time_zone,published_at,published_by_user_id,content_hash,created_at)
+      values ($1,$2,$3,1,'{"en":"Synthetic"}','{"en":"Test"}','{}','Asia/Tashkent',$4,$5,$6,$4)`,
+      [fixtureId(24607), ORG, fixtureId(24606), NOW, USER, hash("location")],
+    );
+    await pool.query(
+      `insert into services (id,organization_id,code,status) values ($1,$2,'synthetic-replacement','active')`,
+      [fixtureId(24608), ORG],
+    );
+    await pool.query(
+      `insert into service_versions (id,organization_id,service_id,version_no,name_i18n,description_i18n,
+      duration_guidance_minutes,disclaimer_i18n,content_hash,published_at,published_by_user_id,created_at)
+      values ($1,$2,$3,1,'{"en":"Synthetic"}','{"en":"Test"}',30,'{"en":"Test only"}',$4,$5,$6,$5)`,
+      [fixtureId(24609), ORG, fixtureId(24608), hash("service"), NOW, USER],
+    );
+    await pool.query(
+      `insert into business_policies (id,organization_id,policy_key,version_no,policy_type,schema_version,
+      rules_jsonb,status,content_hash) values ($1,$2,'synthetic-replacement',1,'qualification',1,'{"required_fields":["service"]}','draft',$3)`,
+      [fixtureId(24610), ORG, hash("policy")],
+    );
+    await pool.query(
+      `insert into appointment_requests (id,organization_id,lead_id,contact_id,conversation_id,
+      source_message_id,service_id,service_version_id,location_id,location_version_id,business_policy_id,status,request_dedupe_key)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'requested','synthetic-retired-request')`,
+      [
+        scope.retiredRequestId,
+        ORG,
+        fixtureId(24602),
+        fixtureId(24601),
+        scope.retiredConversationId,
+        scope.retiredMessageId,
+        fixtureId(24608),
+        fixtureId(24609),
+        fixtureId(24606),
+        fixtureId(24607),
+        fixtureId(24610),
+      ],
+    );
+  };
+  const dispatch = (
+    runId: string = WIDGET_RUN,
+    messageId: string = WIDGET_MESSAGE,
+    attemptNo = 1,
+  ) => {
+    if (
+      !isSchemaValue(OrganizationIdSchema, ORG) ||
+      !isSchemaValue(ConversationIdSchema, WIDGET_CONVERSATION) ||
+      !isSchemaValue(MessageIdSchema, messageId) ||
+      !isSchemaValue(CorrelationIdSchema, runId)
+    )
+      throw new Error("Invalid dispatch fixture");
+    return {
+      reference: {
+        organizationId: ORG,
+        conversationId: WIDGET_CONVERSATION,
+        messageId,
+        correlationId: runId,
+        causationId: messageId,
+      },
+      reservation: { runId, attemptNo },
+    };
+  };
+  const guard = (clock: () => Date = () => NOW) =>
+    createAIJourneyBudgetGuard(options.runtime(), CONFIG, clock, { ownerSelection: true });
+
+  describe("S22 one replacement lane — actual PostgreSQL locks/RLS", () => {
+    it("enforces three physical slots and two customer inbounds across independent guard instances", async () => {
+      await seedRetirement();
+      await guard().widgetCohortStore.select(await command(FIRST, 1));
+      await bind();
+      const pool = options.privilegedPool();
+      const finish = async (id: string) =>
+        pool.query(
+          `update ai_runs set status='succeeded',finished_at=$1,
+        estimated_cost_micros=1000,provider_resolved_model_id='gemini-3.8-flash',input_units=520,output_units=217,
+        cached_input_units=0,total_units=737,latency_ms=1000,output_hash=$2,schema_valid=true,policy_allowed=true
+        where id=$3`,
+          [later(1000), hash(`finished:${id}`), id],
+        );
+      const attempt = async (id: string, trigger: string, number: number) => {
+        await run(id, WIDGET_CONVERSATION, trigger, null, true, number);
+        await audit(fixtureId(24700 + number), id, "ai_run.journey_started", {
+          profile: S22_BOOKING_COHORT.profile,
+        });
+        return dispatch(id, trigger, number);
+      };
+      expect(await guard().authorizeDispatch(dispatch())).toBe(true);
+      await finish(WIDGET_RUN);
+      const repair = await attempt(fixtureId(24710), WIDGET_MESSAGE, 2);
+      expect(await guard().authorizeDispatch(repair)).toBe(true);
+      await finish(repair.reservation.runId);
+      const excess = await attempt(fixtureId(24711), WIDGET_MESSAGE, 3);
+      expect(await guard().authorizeDispatch(excess)).toBe(false);
+      const nextMessage = fixtureId(24712);
+      await message(nextMessage, WIDGET_CONVERSATION, WIDGET_CONTACT, 2);
+      const next = await attempt(fixtureId(24713), nextMessage, 1);
+      expect(await guard().authorizeDispatch(next)).toBe(true);
+      await finish(next.reservation.runId);
+      // A new process sees the durable counts, not fresh in-memory credits.
+      await run(fixtureId(24714), WIDGET_CONVERSATION, nextMessage, null, true, 2);
+      await audit(fixtureId(24715), fixtureId(24714), "ai_run.journey_started", {
+        profile: S22_BOOKING_COHORT.profile,
+      });
+      expect(await guard().authorizeDispatch(dispatch(fixtureId(24714), nextMessage, 2))).toBe(
+        false,
+      );
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        physicalCalls: 8,
+        knownCostMicros: "13964",
+        widget: { physicalCalls: 3, customerMessages: 2 },
+        reason: "attempt_limit",
+      });
+      await message(fixtureId(24716), WIDGET_CONVERSATION, WIDGET_CONTACT, 3);
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        reason: "message_limit",
+      });
+    });
+    it("actual code recovery retains the replacement identity, request and consumed budget after original expiry", async () => {
+      await seedRetirement();
+      let now = NOW;
+      const clock = () => now;
+      const publicOrigin = "https://s22-synthetic.example",
+        platformOrigin = "https://widget.example",
+        key = "synthetic_public_widget_key_1234567890";
+      if (!isSchemaValue(OrganizationIdSchema, ORG)) throw new Error("Invalid organization");
+      const organizationId = ORG;
+      // This is a synthetic route resolver, not a provider or production account.
+      if (!isSchemaValue(ChannelConnectionIdSchema, CHANNEL)) throw new Error("Invalid channel");
+      const channelConnectionId = CHANNEL;
+      const tokens = createWidgetTokenService(
+        createWidgetSecurityConfig(Buffer.alloc(32, 71).toString("base64url")),
+      );
+      const embedConfig = createWidgetEmbedConfig(
+        Buffer.alloc(32, 72).toString("base64url"),
+        platformOrigin,
+        "https://api.example",
+        [Buffer.alloc(32, 71).toString("base64url")],
+      );
+      const useCases = createWidgetUseCases({
+        clock,
+        tokens,
+        dataProtector: createCustomerDataProtection({
+          currentEncryptionKey: Buffer.alloc(32, 73),
+          currentKeyId: "synthetic-replacement",
+          lookupKey: Buffer.alloc(32, 74),
+        }),
+        embed: {
+          exchanges: createWidgetExchangeGrantService(embedConfig),
+          platformOrigin,
+          publicApiOrigin: "https://api.example",
+        },
+        persistence: createWidgetPersistenceStore(options.runtime(), { clock }),
+        recovery: {
+          grants: createWidgetRecoveryGrantService(embedConfig),
+          store: createWidgetRecoveryStore(options.runtime()),
+        },
+        rateLimiter: createWidgetRateLimiter({ clock, salt: Buffer.alloc(32, 75) }),
+        routeResolver: {
+          resolveInboundRoute: () => Promise.resolve({ organizationId, channelConnectionId }),
+        },
+      });
+      const fresh = async () => {
+        const grant = await useCases.createEmbedGrant({
+          clientIp: "127.0.0.1",
+          origin: publicOrigin,
+          pageUrl: publicOrigin,
+          requestedLocale: "uz",
+          widgetKey: key,
+        });
+        return useCases.redeemEmbedSession({
+          exchangeGrant: grant.exchangeGrant,
+          origin: platformOrigin,
+        });
+      };
+      const initial = await fresh(),
+        initialClaims = await tokens.verify(initial.bearerToken, now);
+      await guard(clock).widgetCohortStore.select(await command(initialClaims.sessionId, 1));
+      const created = await useCases.createConversation({
+        bearerToken: initial.bearerToken,
+        origin: platformOrigin,
+        body: {
+          client_message_id: "synthetic.replacement-1",
+          kind: "text",
+          locale_hint: "uz",
+          text: "Synthetic booking request",
+        },
+        idempotencyKey: "synthetic-replacement-intake",
+      });
+      const claims = await tokens.verify(created.bearerToken, now),
+        pool = options.privilegedPool();
+      if (claims.conversationId === null) throw new Error("Missing conversation");
+      const messages = await pool.query<{ id: string }>(
+        "select id::text from messages where conversation_id=$1 and direction='inbound'",
+        [claims.conversationId],
+      );
+      const msg = messages.rows[0]?.id;
+      if (!isSchemaValue(MessageIdSchema, msg)) throw new Error("Missing message");
+      const runId = fixtureId(24801);
+      await run(runId, claims.conversationId, msg, null, true);
+      await audit(fixtureId(24802), runId, "ai_run.journey_started", {
+        profile: S22_BOOKING_COHORT.profile,
+      });
+      const ref = { ...dispatch(runId, msg).reference, conversationId: claims.conversationId };
+      expect(
+        await guard(clock).authorizeDispatch({
+          reference: ref,
+          reservation: { runId, attemptNo: 1 },
+        }),
+      ).toBe(true);
+      await pool.query(
+        `update ai_runs set status='succeeded',finished_at=$1,estimated_cost_micros=1000,
+        provider_resolved_model_id='gemini-3.8-flash',input_units=520,output_units=217,cached_input_units=0,total_units=737,
+        latency_ms=1000,output_hash=$2,schema_valid=true,policy_allowed=true where id=$3`,
+        [later(1000), hash("recovered-output"), runId],
+      );
+      const request = fixtureId(24803);
+      await pool.query(
+        `insert into appointment_requests (id,organization_id,lead_id,contact_id,conversation_id,source_message_id,
+        service_id,service_version_id,location_id,location_version_id,business_policy_id,status,request_dedupe_key)
+        select $1,$2,cv.lead_id,cv.contact_id,cv.id,$3,ar.service_id,ar.service_version_id,ar.location_id,ar.location_version_id,
+          ar.business_policy_id,'requested','synthetic-replacement-request' from conversations cv cross join appointment_requests ar
+        where cv.organization_id=$2 and cv.id=$4 and ar.organization_id=$2 and ar.id=$5`,
+        [request, ORG, msg, claims.conversationId, S22_WIDGET_REPLACEMENT.retiredRequestId],
+      );
+      const code = await useCases.issueRecoveryCode({
+        bearerToken: created.bearerToken,
+        origin: platformOrigin,
+        requestId: "synthetic-recovery-code",
+      });
+      const original = await pool.query(
+        "select id,contact_id,conversation_id,issued_at,expires_at from widget_sessions where id=$1",
+        [claims.sessionId],
+      );
+      const ledger = await pool.query("select id,estimated_cost_micros from ai_runs order by id");
+      now = later(7_201_000);
+      const context = await fresh();
+      const resumed = await useCases.resumeConversation({
+        bearerToken: context.bearerToken,
+        origin: platformOrigin,
+        body: { recovery_code: code.recoveryCode },
+        clientIp: "127.0.0.1",
+        requestId: "synthetic-recovery-resume",
+      });
+      expect(await tokens.verify(resumed.bearerToken, now)).toMatchObject({
+        sessionId: claims.sessionId,
+        conversationId: claims.conversationId,
+      });
+      expect(
+        (
+          await pool.query(
+            "select id,contact_id,conversation_id,issued_at,expires_at from widget_sessions where id=$1",
+            [claims.sessionId],
+          )
+        ).rows,
+      ).toEqual(original.rows);
+      expect(
+        (await pool.query("select id,estimated_cost_micros from ai_runs order by id")).rows,
+      ).toEqual(ledger.rows);
+      expect(
+        (await pool.query("select status,version from appointment_requests where id=$1", [request]))
+          .rows,
+      ).toEqual([{ status: "requested", version: "1" }]);
+      expect(await guard(clock).read(organizationId)).toMatchObject({
+        physicalCalls: 6,
+        knownCostMicros: "11964",
+        unresolvedReserveMicros: "0",
+        blocked: false,
+        widget: {
+          sessionId: claims.sessionId,
+          conversationId: claims.conversationId,
+          physicalCalls: 1,
+          customerMessages: 1,
+        },
+      });
+      await expect(
+        useCases.getConversation({
+          bearerToken: created.bearerToken,
+          origin: platformOrigin,
+          conversationId: claims.conversationId,
+        }),
+      ).rejects.toMatchObject({ code: "token_invalid" });
+      await expect(
+        useCases.resumeConversation({
+          bearerToken: context.bearerToken,
+          origin: platformOrigin,
+          body: { recovery_code: code.recoveryCode },
+          clientIp: "127.0.0.1",
+          requestId: "synthetic-recovery-replay",
+        }),
+      ).rejects.toMatchObject({ code: "token_invalid" });
+      expect(
+        (
+          await pool.query(
+            "select id from messages where conversation_id=$1 and direction='inbound'",
+            [claims.conversationId],
+          )
+        ).rows,
+      ).toHaveLength(1);
+    });
+    it("serializes replacement CAS and retains history, costs, attribution and original timestamps", async () => {
+      await seedRetirement();
+      const ledger = await options
+        .privilegedPool()
+        .query("select id,estimated_cost_micros from ai_runs order by id");
+      const identity = await options
+        .privilegedPool()
+        .query(
+          "select id,issued_at,last_seen_at,expires_at,version from widget_sessions order by id",
+        );
+      const store = guard().widgetCohortStore;
+      const results = await Promise.allSettled([
+        store.select(await command(FIRST, 1)),
+        guard().widgetCohortStore.select(await command(SECOND, 1)),
+      ]);
+      expect(results.filter((value) => value.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((value) => value.status === "rejected")).toHaveLength(1);
+      const selected = (await store.get({ actor: await owner() })).selected_session_id;
+      if (selected === null) throw new Error("Missing selected session");
+      const receipt = await store.select(await command(selected, 1));
+      expect(receipt.selection_version).toBe(2);
+      expect(
+        (
+          await options
+            .privilegedPool()
+            .query("select id,estimated_cost_micros from ai_runs order by id")
+        ).rows,
+      ).toEqual(ledger.rows);
+      expect(
+        (
+          await options
+            .privilegedPool()
+            .query(
+              "select id,issued_at,last_seen_at,expires_at,version from widget_sessions order by id",
+            )
+        ).rows,
+      ).toEqual(identity.rows);
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        physicalCalls: 5,
+        logicalMessages: 5,
+        knownCostMicros: "10964",
+        combinedExposureMicros: "1044360",
+        unresolvedReserveMicros: "0",
+        blocked: false,
+        widget: { physicalCalls: 0 },
+      });
+      const audits = await options.privilegedPool().query(
+        `select actor_id::text,actor_membership_id::text,metadata_redacted_jsonb
+        from audit_events where metadata_redacted_jsonb->>'replacement_profile'=$1`,
+        [S22_WIDGET_REPLACEMENT.profile],
+      );
+      expect(audits.rows).toHaveLength(1);
+      expect(audits.rows[0]).toMatchObject({
+        actor_id: USER,
+        actor_membership_id: MEMBER,
+        metadata_redacted_jsonb: { retired_session_id: S22_WIDGET_REPLACEMENT.retiredSessionId },
+      });
+      await expect(
+        store.select(await command(selected === FIRST ? SECOND : FIRST, 2)),
+      ).rejects.toMatchObject({ code: "cohort_blocked" });
+    });
+    it("actual transaction rollback preserves the old authority if audit persistence fails", async () => {
+      await seedRetirement();
+      await options.privilegedPool()
+        .query(`create function synthetic_replacement_abort() returns trigger language plpgsql as $$
+        begin if new.metadata_redacted_jsonb->>'replacement_profile'='s22-widget-replacement.v1' then
+          raise exception 'synthetic replacement rollback'; end if; return new; end $$;
+        create trigger synthetic_replacement_abort before insert on audit_events for each row execute function synthetic_replacement_abort()`);
+      try {
+        await expect(
+          guard().widgetCohortStore.select(await command(FIRST, 1)),
+        ).rejects.toMatchObject({ code: "repository_database_error" });
+        expect(
+          (await guard().widgetCohortStore.get({ actor: await owner() })).selection_version,
+        ).toBe(1);
+      } finally {
+        await options
+          .privilegedPool()
+          .query(
+            "drop trigger synthetic_replacement_abort on audit_events; drop function synthetic_replacement_abort()",
+          );
+      }
+    });
+    it.each([
+      "historical-zero",
+      "unknown-retired-cost",
+      "extra-retired-inbound",
+      "active-retired-access",
+      "missing-reservation",
+      "missing-binding",
+    ])("denies changed %s at the real database boundary", async (kind) => {
+      await seedRetirement();
+      const pool = options.privilegedPool(),
+        s = S22_WIDGET_REPLACEMENT;
+      if (kind === "historical-zero")
+        await pool.query("update ai_runs set estimated_cost_micros=0 where id=$1", [
+          S22_BOOKING_COHORT.historicalRunIds[0],
+        ]);
+      if (kind === "unknown-retired-cost")
+        await pool.query("update ai_runs set estimated_cost_micros=null where id=$1", [
+          s.retiredRunId,
+        ]);
+      if (kind === "extra-retired-inbound")
+        await message(fixtureId(24611), s.retiredConversationId, fixtureId(24601), 2);
+      if (kind === "active-retired-access")
+        await pool.query("update widget_sessions set expires_at=$1 where id=$2", [
+          later(100000),
+          s.retiredSessionId,
+        ]);
+      if (kind === "missing-reservation")
+        await pool.query(
+          "delete from audit_events where target_id=$1 and action='ai_run.dispatch_reserved'",
+          [s.retiredRunId],
+        );
+      if (kind === "missing-binding")
+        await pool.query(
+          "delete from audit_events where target_id=$1 and action='ai_run.widget_journey_bound'",
+          [s.retiredSessionId],
+        );
+      await expect(guard().widgetCohortStore.select(await command(FIRST, 1))).rejects.toMatchObject(
+        { code: "cohort_blocked" },
+      );
+      expect(
+        (
+          await pool.query(
+            "select id from audit_events where metadata_redacted_jsonb->>'replacement_profile'=$1",
+            [s.profile],
+          )
+        ).rows,
+      ).toHaveLength(0);
+    });
+    it("denies cross-tenant choice, old dispatch, duplicate/new pending dispatch and a second replacement", async () => {
+      await seedRetirement();
+      await expect(
+        guard().widgetCohortStore.select(await command(OTHER_SESSION, 1)),
+      ).rejects.toMatchObject({ code: "selection_conflict" });
+      await guard().widgetCohortStore.select(await command(FIRST, 1));
+      await bind();
+      const old = dispatch(
+        S22_WIDGET_REPLACEMENT.retiredRunId,
+        S22_WIDGET_REPLACEMENT.retiredMessageId,
+      );
+      if (!isSchemaValue(ConversationIdSchema, S22_WIDGET_REPLACEMENT.retiredConversationId))
+        throw new Error("Invalid old conversation");
+      expect(
+        await guard().authorizeDispatch({
+          ...old,
+          reference: {
+            ...old.reference,
+            conversationId: S22_WIDGET_REPLACEMENT.retiredConversationId,
+          },
+        }),
+      ).toBe(false);
+      const results = await Promise.all([
+        guard().authorizeDispatch(dispatch()),
+        guard().authorizeDispatch(dispatch()),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(await guard().read((await owner()).organizationId)).toMatchObject({
+        physicalCalls: 6,
+        unresolvedReserveMicros: "801432",
+        blocked: true,
+      });
+      await expect(
+        guard().widgetCohortStore.select(await command(SECOND, 2)),
+      ).rejects.toMatchObject({ code: "cohort_blocked" });
+    });
+  });
 
   describe("S22 audited Widget selection — real PostgreSQL 17", () => {
     it("commits exactly one concurrent CAS selection with durable owner attribution", async () => {

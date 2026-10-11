@@ -11,6 +11,21 @@ export const S22_WIDGET_ALLOWANCE = Object.freeze({
   previousMessages: 4,
 } as const);
 
+/** One additive, owner-approved replacement; never resets the retired ledger.
+ * Inactive until an exact retired-baseline check and attributed selection commit. */
+export const S22_WIDGET_REPLACEMENT = Object.freeze({
+  profile: "s22-widget-replacement.v1",
+  retiredSessionId: "01a12a04-d2ae-7cba-aded-0c48a410be0c",
+  retiredConversationId: "01a12a13-2f0a-7cb4-a8c7-8f0051168d39",
+  retiredMessageId: "01a12a13-2f0a-728c-9cdb-30fa521911c2",
+  retiredRunId: "01a12a13-389a-7ede-8073-99fe1edf5672",
+  retiredRequestId: "01a12a13-498e-7d43-83cf-85b13307bd7b",
+  retiredKnownCostMicros: 2_250n,
+  maximumMessages: 2,
+  maximumCalls: 3,
+  additionalReserveMicros: 2_404_296n,
+} as const);
+
 /** Stable, reviewed staging authorization envelope. The old unused SID is an
  * anchor only: it never renews or authenticates a browser. A fresh SID must be
  * explicitly selected by the owner through the audited application command. */

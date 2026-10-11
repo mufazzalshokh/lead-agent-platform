@@ -4,6 +4,7 @@ import {
   S22_BOOKING_COHORT,
   S22_WIDGET_ALLOWANCE,
   S22_WIDGET_SELECTION_ENVELOPE,
+  S22_WIDGET_REPLACEMENT,
   createTenantDatabaseRuntimeConfig,
 } from "../../packages/config/src/index.js";
 import { AI_REFERENCE, fixtureId } from "./fixtures.js";
@@ -47,6 +48,7 @@ const transport = vi.hoisted(() => {
     widgetSessions: [] as Record<string, unknown>[],
     anchorSession: null as Record<string, unknown> | null,
     memberships: [] as Record<string, unknown>[],
+    retirement: null as Record<string, unknown> | null,
   };
 });
 vi.mock("pg", async (originalImport) => {
@@ -96,6 +98,8 @@ vi.mock("pg", async (originalImport) => {
               return { rows: [] };
             }
             transport.reads.push(sql);
+            if (sql.includes("s22_retired_widget"))
+              return { rows: transport.retirement === null ? [] : [{ ...transport.retirement }] };
             if (/from memberships/iu.test(sql))
               return {
                 rows: transport.memberships
@@ -211,7 +215,8 @@ vi.mock("pg", async (originalImport) => {
                   (!/ws\.status\s*=\s*'active'/iu.test(sql) || widget["status"] === "active") &&
                   (!/ws\.revoked_at\s+is\s+null/iu.test(sql) || widget["revoked_at"] === null) &&
                   (!(at instanceof Date) ||
-                    (widget["expires_at"] instanceof Date && widget["expires_at"] > at)) &&
+                    ((widget["access_expires_at"] ?? widget["expires_at"]) instanceof Date &&
+                      Number(widget["access_expires_at"] ?? widget["expires_at"]) > Number(at))) &&
                   (!(idleBoundary instanceof Date) ||
                     (widget["last_seen_at"] instanceof Date &&
                       widget["last_seen_at"] > idleBoundary)) &&
@@ -325,6 +330,8 @@ vi.mock("pg", async (originalImport) => {
                           ? metadata.widget_conversation_id
                           : null,
                     profile: "profile" in metadata ? metadata.profile : null,
+                    actor_type: "system",
+                    result: "succeeded",
                   });
                 });
                 return { rows: [], rowCount: 1 };
@@ -418,6 +425,7 @@ const row = (
   reservation_widget_conversation_id: null,
   journey_starts: 1,
   dispatch_authorized: null,
+  marker_authority: true,
 });
 const call = (runId = fixtureId(19001), messageId = reference.messageId, attemptNo = 1) => ({
   reference: { ...reference, messageId },
@@ -527,6 +535,7 @@ beforeEach(() => {
   transport.widgetSessions = [];
   transport.anchorSession = null;
   transport.memberships = [];
+  transport.retirement = null;
 });
 
 const selectionClock = () => new Date("2026-10-08T17:50:00Z");
@@ -649,6 +658,247 @@ const bindSelectedSession = () => {
   }));
   transport.rows.push({ ...widgetRow(), organization_id: S22_BOOKING_COHORT.organizationId });
 };
+
+const initializeRetiredLane = async () => {
+  initializeSelectionLedger();
+  const scope = S22_WIDGET_REPLACEMENT;
+  const db = runtime();
+  const guard = createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+    ownerSelection: true,
+  });
+  transport.widgetSessions = [
+    freshSelectionSession(scope.retiredSessionId),
+    freshSelectionSession(),
+  ];
+  await guard.widgetCohortStore.select(await selectCommand(scope.retiredSessionId));
+  Object.assign(transport.widgetSessions[0] ?? {}, {
+    conversation_id: scope.retiredConversationId,
+    contact_id: widgetContactId,
+    expires_at: new Date("2026-10-08T17:49:59Z"),
+  });
+  transport.retirement = {
+    contact_id: widgetContactId,
+    retired: true,
+    owns_conversation: true,
+    request_unchanged: true,
+    one_inbound: true,
+    message_matches: true,
+  };
+  transport.rows.push({
+    ...settled(
+      row(scope.retiredRunId, scope.retiredMessageId, 1, scope.retiredConversationId),
+      "2250",
+    ),
+    organization_id: S22_BOOKING_COHORT.organizationId,
+    widget_session_id: scope.retiredSessionId,
+    widget_conversation_id: scope.retiredConversationId,
+  });
+  transport.widgetBindings.push({
+    actor_type: "system",
+    result: "succeeded",
+    session_id: scope.retiredSessionId,
+    widget_session_id: scope.retiredSessionId,
+    conversation_id: scope.retiredConversationId,
+  });
+  return { db, guard };
+};
+const bindReplacement = () => {
+  transport.widgetSessions.shift();
+  bindSelectedSession();
+};
+
+describe("S22 exact additive replacement — modeled transport only", () => {
+  it("selects once with attribution/CAS, preserves all history, and never returns Send authorization", async () => {
+    const { db, guard } = await initializeRetiredLane();
+    const input = await selectCommand(widgetSessionId, 1);
+    const before = structuredClone(transport.rows);
+    expect(await guard.widgetCohortStore.get({ actor: input.actor })).toMatchObject({
+      can_select: true,
+    });
+    const receipt = await guard.widgetCohortStore.select(input);
+    expect(await guard.widgetCohortStore.select(input)).toEqual(receipt);
+    expect(transport.ownerSelections).toHaveLength(2);
+    expect(transport.ownerSelections[1]).toMatchObject({
+      replacement_profile: S22_WIDGET_REPLACEMENT.profile,
+      retired_session_id: S22_WIDGET_REPLACEMENT.retiredSessionId,
+      actor_type: "member",
+    });
+    expect(transport.rows).toEqual(before);
+    expect(await guard.read(input.actor.organizationId)).toMatchObject({
+      blocked: false,
+      physicalCalls: 5,
+      logicalMessages: 5,
+      knownCostMicros: "10964",
+      combinedExposureMicros: "1044360",
+      accountingComplete: false,
+      widget: { sessionId: widgetSessionId, physicalCalls: 0, customerMessages: 0 },
+    });
+    transport.widgetSessions.push(freshSelectionSession(fixtureId(19805)));
+    await expect(
+      guard.widgetCohortStore.select(await selectCommand(fixtureId(19805), 2)),
+    ).rejects.toMatchObject({ code: "cohort_blocked" });
+    await db.close();
+  });
+  it.each(["retired", "owns_conversation", "request_unchanged", "one_inbound", "message_matches"])(
+    "blocks changed retired fact %s",
+    async (key) => {
+      const { db, guard } = await initializeRetiredLane();
+      if (transport.retirement !== null) transport.retirement[key] = false;
+      await expect(
+        guard.widgetCohortStore.select(await selectCommand(widgetSessionId, 1)),
+      ).rejects.toMatchObject({ code: "cohort_blocked" });
+      expect(transport.ownerSelections).toHaveLength(1);
+      await db.close();
+    },
+  );
+  it.each([
+    "null-cost",
+    "changed-cost",
+    "missing-start",
+    "missing-reservation",
+    "missing-latch",
+    "duplicate-latch",
+    "bad-marker",
+    "historical-zero",
+    "orphan",
+  ])("fails closed on %s without forgetting retained exposure", async (kind) => {
+    const { db, guard } = await initializeRetiredLane();
+    const retired = transport.rows.at(-1);
+    if (retired === undefined) throw new Error("Missing retired run");
+    if (kind === "null-cost") retired["estimated_cost_micros"] = null;
+    if (kind === "changed-cost") retired["estimated_cost_micros"] = "0";
+    if (kind === "missing-start") retired["journey_starts"] = 0;
+    if (kind === "missing-reservation") retired["reservations"] = 0;
+    if (kind === "missing-latch") transport.widgetBindings = [];
+    if (kind === "duplicate-latch")
+      transport.widgetBindings.push({ ...transport.widgetBindings[0] });
+    if (kind === "bad-marker") retired["marker_authority"] = false;
+    if (kind === "historical-zero")
+      Object.assign(transport.rows[0] ?? {}, { estimated_cost_micros: "0" });
+    if (kind === "orphan") transport.orphanReservations = 1;
+    await expect(
+      guard.widgetCohortStore.select(await selectCommand(widgetSessionId, 1)),
+    ).rejects.toMatchObject({ code: "cohort_blocked" });
+    expect(transport.ownerSelections).toHaveLength(1);
+    await db.close();
+  });
+  it("preserves three new slots/two per message across restart and recovery, not a fourth slot or third inbound", async () => {
+    const { db, guard } = await initializeRetiredLane();
+    await guard.widgetCohortStore.select(await selectCommand(widgetSessionId, 1));
+    bindReplacement();
+    const first = selectedCall();
+    expect(await guard.authorizeDispatch(first)).toBe(true);
+    expect(await guard.authorizeDispatch(first)).toBe(false);
+    const paid = transport.rows.at(-1);
+    if (paid === undefined) throw new Error("Missing paid run");
+    settled(paid, "1000");
+    const add = (id: number, trigger: string, attemptNo: number) => {
+      const runId = fixtureId(id);
+      if (!isSchemaValue(MessageIdSchema, trigger)) throw new Error("Invalid trigger fixture");
+      transport.rows.push({
+        ...widgetRow(runId, trigger, attemptNo),
+        organization_id: S22_BOOKING_COHORT.organizationId,
+      });
+      return {
+        ...first,
+        reference: { ...first.reference, messageId: trigger },
+        reservation: { runId, attemptNo },
+      };
+    };
+    // References are schema-validated fixtures, without changing their identity.
+    const repair = add(19810, first.reference.messageId, 2);
+    const repairInput = { ...repair, reference: first.reference };
+    expect(await guard.authorizeDispatch(repairInput)).toBe(true);
+    settled(transport.rows.at(-1) ?? {}, "1000");
+    const third = add(19811, first.reference.messageId, 3);
+    expect(await guard.authorizeDispatch({ ...third, reference: first.reference })).toBe(false);
+    const secondMessage = message(19502);
+    transport.widgetInboundMessages.push({
+      organization_id: S22_BOOKING_COHORT.organizationId,
+      conversation_id: otherConversation,
+      id: secondMessage,
+      direction: "inbound",
+      sequence_no: 2,
+    });
+    const second = add(19812, secondMessage, 1);
+    const secondInput = { ...second, reference: { ...first.reference, messageId: secondMessage } };
+    const restored = createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+      ownerSelection: true,
+    });
+    expect(await restored.authorizeDispatch(secondInput)).toBe(true);
+    settled(transport.rows.at(-1) ?? {}, "1000");
+    const fourth = add(19813, secondMessage, 2);
+    expect(await restored.authorizeDispatch({ ...fourth, reference: secondInput.reference })).toBe(
+      false,
+    );
+    const ws = transport.widgetSessions[0];
+    if (ws === undefined) throw new Error("Missing replacement session");
+    Object.assign(ws, {
+      expires_at: new Date("2026-10-08T17:00:00Z"),
+      access_expires_at: new Date("2026-10-08T19:00:00Z"),
+    });
+    expect(await restored.read(first.reference.organizationId)).toMatchObject({
+      physicalCalls: 8,
+      knownCostMicros: "13964",
+      widget: { physicalCalls: 3, customerMessages: 2 },
+      reason: "attempt_limit",
+    });
+    transport.widgetInboundMessages.push({
+      organization_id: S22_BOOKING_COHORT.organizationId,
+      conversation_id: otherConversation,
+      id: message(19503),
+      direction: "inbound",
+      sequence_no: 3,
+    });
+    expect(await restored.read(first.reference.organizationId)).toMatchObject({
+      reason: "message_limit",
+    });
+    expect(
+      transport.rows.slice(0, 2).every((value) => value["estimated_cost_micros"] === null),
+    ).toBe(true);
+    await db.close();
+  });
+  it("rolls back replacement selection on commit failure", async () => {
+    const { db, guard } = await initializeRetiredLane();
+    transport.commitFails = true;
+    await expect(
+      guard.widgetCohortStore.select(await selectCommand(widgetSessionId, 1)),
+    ).rejects.toThrow("synthetic commit failure");
+    expect(transport.ownerSelections).toHaveLength(1);
+    await db.close();
+  });
+  it("retains unknown replacement cost across restart and blocks subsequent dispatch", async () => {
+    const { db, guard } = await initializeRetiredLane();
+    await guard.widgetCohortStore.select(await selectCommand(widgetSessionId, 1));
+    bindReplacement();
+    expect(await guard.authorizeDispatch(selectedCall())).toBe(true);
+    settled(transport.rows.at(-1) ?? {}, null);
+    expect(
+      await createAIJourneyBudgetGuard(db, selectedConfig(), selectionClock, {
+        ownerSelection: true,
+      }).read(selectedCall().reference.organizationId),
+    ).toMatchObject({
+      reason: "cost_unknown",
+      unresolvedReserveMicros: "801432",
+      physicalCalls: 6,
+      knownCostMicros: "10964",
+    });
+    expect(await guard.authorizeDispatch(selectedCall())).toBe(false);
+    await db.close();
+  });
+  it.each(["replacement_profile", "retired_session_id"])(
+    "rejects corrupt replacement authority %s",
+    async (key) => {
+      const { db, guard } = await initializeRetiredLane();
+      await guard.widgetCohortStore.select(await selectCommand(widgetSessionId, 1));
+      Object.assign(transport.ownerSelections[1] ?? {}, { [key]: "unreviewed" });
+      await expect(guard.read(selectedCall().reference.organizationId)).rejects.toMatchObject({
+        code: "unavailable",
+      });
+      await db.close();
+    },
+  );
+});
 
 describe("S22 audited owner selection — modelled pg transport, no live/provider calls", () => {
   it("blocks before selection; a fresh session created after Worker startup can be selected without redeployment", async () => {
@@ -1371,7 +1621,7 @@ describe("S22 bounded Widget journey ledger — modelled pg transport", () => {
     expect(candidate["reservations"]).toBe(0);
     expect(
       transport.reads.some(
-        (sql) => /target_type='widget_session'/iu.test(sql) && /limit\s+2/iu.test(sql),
+        (sql) => /target_type='widget_session'/iu.test(sql) && /limit\s+3/iu.test(sql),
       ),
     ).toBe(true);
     await db.close();

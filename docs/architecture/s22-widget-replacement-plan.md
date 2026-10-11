@@ -1,6 +1,6 @@
 # S22 Website Chat replacement-lane preparation
 
-Status: **PREPARATION ONLY; RUNTIME ENFORCEMENT NOT IMPLEMENTED; NO SEND**.
+Status: **LOCAL RUNTIME TRANSITION VERIFIED; NOT DEPLOYED; NO SEND**.
 
 ## Exact authority and current boundary
 
@@ -13,8 +13,8 @@ approval. The original two-message lane is not silently reset or transferred.
 
 The [recovery application rollout](s22-widget-recovery-rollout-plan.md#application-apply-and-live-verification-receipt--11-october-2026)
 is already verified. This packet neither repeats it nor substitutes another
-runtime source/image. The implementation of the replacement-lane budget
-transition is a required later source change, not a claimed completed deployment.
+runtime source/image. The replacement-lane runtime transition is now implemented
+and tested locally below, not a claimed completed deployment.
 
 ## Why another fresh-frame loop would fail
 
@@ -106,10 +106,10 @@ authorization function: future collection must use the guarded transaction,
 owner-selection/binding evidence and the budget guard. A metadata PASS never
 substitutes for the customer's private code or actual browser recovery.
 
-## Required runtime transition before a rollout plan
+## Runtime transition requirements
 
-The current paid guard is deliberately unchanged. A future narrowly scoped
-implementation must:
+The preparation checkpoint deliberately left the paid guard unchanged. The
+subsequently approved local implementation follows these requirements:
 
 - Recognize only this exact fully settled retired binding, including the retained
   historical uncertainty and all original paid dispatch markers. Validate the
@@ -208,6 +208,99 @@ docs/architecture/s22-widget-replacement-plan.md
 Existing owner edits to README, Instagram documentation and the public-notices
 patch remain excluded. There is no application/configuration/SQL/IAM/budget change.
 
-**Next safe task:** implement and verify the exact replacement-lane runtime
-transition above. Do not open a fresh frame or request a rollout before its
-enforcement and real PostgreSQL checks are ready.
+The preparation checkpoint's next task was local implementation and PostgreSQL
+verification. That subsequent milestone is recorded below; the original
+preparation packet and its inactive flags remain unchanged.
+
+## Local runtime transition — 11 October 2026
+
+Owner instruction to continue authorizes local implementation/testing only.
+No cloud execution, deployment, new browser frame, Send or provider call was
+performed. No new schema, public API field, environment option, role or dependency
+is required.
+
+`S22_WIDGET_REPLACEMENT` fixes the exact retired session/conversation/message/run/
+request above, its 2,250-micro settled cost, two new inbounds and three new physical
+slots. Original allowance/caps, historical NULLs and the immutable ledger remain.
+The existing owner-selection command commits additive `replacement_profile` and
+`retired_session_id` metadata with current member attribution and CAS. Browser
+input cannot set the phase, limits, tenant, channel or origin.
+
+Before that commit the full ledger and exact expired, non-recoverable old identity
+and `requested/1/offer0` request must match. The existing cohort mutex serializes
+selection/dispatch; retired identity/conversation/request rows are also locked
+for the recheck. Missing, duplicated, unknown, changed or unattributed evidence
+denies the transition. No previous audit or session timestamp is modified.
+
+Each dispatch classifies original Instagram, retired Widget and replacement
+Widget separately, sums all costs/reserves/slots, and requires both old/new binding
+audits. Retired dispatch and any second replacement are denied. Restart or genuine
+code recovery does not grant new counters. The replacement checks its effective
+access lease, actual first two inbounds, owned active contact/conversation,
+versions, exact dated pricing, three physical attempts/two per message and both
+unchanged monetary caps before committing a physical reservation.
+
+Modeled transport checks cover corrupted selection authority, NULL/changed costs,
+missing/duplicate markers, orphan reservations, unknown outcome, rollback,
+restarts, duplicate commands and attempt/inbound limits. Eleven new actual
+PostgreSQL cases exercise locks/CAS, audit-failure rollback, foreign-tenant denial,
+frozen historical NULLs/costs/timestamps, old-lane denial, next-lane exhaustion and
+genuine private-code issuance/redemption after original expiry. Recovery retains
+the same session/conversation/request and ledger and rejects old credentials/replay;
+this uses the real application/security/database implementations, not a modeled
+lease update. Provider completion/knowledge/request rows are explicitly synthetic
+fixtures, not customer E2E evidence. Existing staff-offer confirmation semantics
+are unchanged; their separate recovered-lease regression is included.
+
+Verification:
+
+```text
+node node_modules/vitest/vitest.mjs run tests/ai/s22-budget-ledger.test.ts tests/application/s22-widget-cohort.test.ts apps/api/tests/s22-widget-cohort.test.ts tests/contracts/s22-widget-cohort.test.ts tests/contracts/contract-compatibility.test.ts apps/web/src/lib/s22-widget-cohort.test.ts --maxWorkers=1 --testTimeout=30000 --reporter=dot
+TEST_DATABASE_URL=postgresql://s22_test_admin@127.0.0.1:55437/s22_local_replacement_final_test
+node node_modules/vitest/vitest.mjs run tests/database/s4a-schema.test.ts -t 'S22|customer-owned Widget recovery|confirms the existing staff offer through a recovered' --maxWorkers=1 --testTimeout=60000 --hookTimeout=120000 --reporter=dot
+node --test .github/scripts/s22-widget-replacement-prepare.test.mjs
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js packages/config/src/ai-journey.ts packages/config/src/index.ts packages/database/src/repositories/ai-journey-budget.ts packages/database/src/repositories/s22-widget-retirement.ts tests/ai/s22-budget-ledger.test.ts tests/database/s22-widget-cohort.test-suite.ts --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check packages/config/src/ai-journey.ts packages/config/src/index.ts packages/database/src/repositories/ai-journey-budget.ts packages/database/src/repositories/s22-widget-retirement.ts tests/ai/s22-budget-ledger.test.ts tests/database/s22-widget-cohort.test-suite.ts
+node scripts/check-boundaries.mjs
+```
+
+Results: **210/210 focused ordinary cases PASS** (96 ledger cases, including 20
+new replacement cases); **39/39 selected real PostgreSQL cases PASS**, with 447
+unselected cases explicitly not claimed as verified in that run; **67/67 native
+preparation cases PASS**. The original packet remains non-executing. Root
+TypeScript, scoped lint/format and dependency boundaries pass. Full aggregate CI
+and live retirement-baseline collection/deployment/customer acceptance are not
+claimed by these results.
+
+The first two database runs stopped in fixture setup (publication timestamps,
+then empty policy JSON); constraints were not relaxed. The third passed nine
+new cases and exposed two test issues: attempts inserted as attempt 1 before an
+update, and an assertion expecting an unsanitized database error. Correcting those
+fixtures/assertions produced the combined 39-case PASS above. Earlier failed runs
+are not reclassified as successful verification. PostgreSQL 17.11 is task-local,
+loopback-only, with bounded WAL; existing installed services and staging databases
+were untouched.
+
+The disposable server was stopped after verification. Only this milestone's
+downloaded binaries, fictional cluster data and setup scripts in its exact task-
+cache directory were removed; versioned source, receipts and unrelated owner
+files remain. These disposable artifacts can be recreated, not restored as
+customer data.
+
+Runtime milestone files (unrelated owner edits excluded):
+
+```text
+packages/config/src/ai-journey.ts
+packages/config/src/index.ts
+packages/database/src/repositories/ai-journey-budget.ts
+packages/database/src/repositories/s22-widget-retirement.ts
+tests/ai/s22-budget-ledger.test.ts
+tests/database/s22-widget-cohort.test-suite.ts
+docs/architecture/s22-widget-replacement-plan.md
+docs/architecture/s22-widget-cohort-binding.md
+```
+
+**Next safe task:** verify clean-checkout CI for the focused runtime commit before
+preparing one immutable rollout plan. Do not open a fresh frame during builds;
+deployment and bounded execution still require separate approval.
