@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { buildWidgetInstallSnippet, type WidgetManagementConfiguration } from "../../lib/staff-ui";
 
@@ -12,6 +12,8 @@ export function CopyWidgetCodeButton({
   configuration: WidgetManagementConfiguration;
 }>) {
   const [status, setStatus] = useState<"idle" | "copying" | "copied" | "failed">("idle");
+  const tooltipId = useId();
+  const label = status === "copied" ? "Copied" : status === "copying" ? "Copying…" : "Copy code";
 
   useEffect(() => {
     if (status !== "copied") return;
@@ -33,26 +35,45 @@ export function CopyWidgetCodeButton({
   };
 
   return (
-    <>
+    <span className="copy-code-control" data-copy-state={status}>
       <button
-        className="ghost-button"
+        className="ghost-button copy-code-button"
         type="button"
         disabled={status === "copying"}
         aria-busy={status === "copying"}
-        aria-live="polite"
+        aria-label={status === "copied" ? "Installation code copied" : "Copy installation code"}
+        aria-describedby={tooltipId}
         onClick={() => void copy()}
       >
-        {status === "copied"
-          ? "Copied!"
-          : status === "copying"
-            ? "Copying…"
-            : "Copy installation code"}
+        <svg
+          aria-hidden="true"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {status === "copied" ? (
+            <path d="m5 12 4 4L19 6" />
+          ) : (
+            <>
+              <rect x="8" y="8" width="12" height="12" rx="2" />
+              <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+            </>
+          )}
+        </svg>
       </button>
+      <span className="copy-code-tooltip" id={tooltipId} role="tooltip" aria-live="polite">
+        {label}
+      </span>
       {status === "failed" && (
         <span className="integration-detail" role="alert">
           Could not copy the installation code. Please try again.
         </span>
       )}
-    </>
+    </span>
   );
 }

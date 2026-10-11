@@ -3,6 +3,57 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Compact installation-code copy control verified locally
+
+The owner confirmed that a hard refresh of the Lead Agent Integrations page
+loaded the deployed **Copied!** feedback. The reported unchanged click no longer
+reproduces after refreshing; there is no evidence of an ongoing clipboard defect.
+The owner clarified that the new request is the smaller icon/tooltip style shown
+in their reference, rather than another copy or booking recovery attempt.
+
+The control now has a 44px copy-icon button with **Copy code** on hover or keyboard
+focus. Successful clipboard completion changes the icon to a checkmark and
+automatically shows **Copied** for three seconds, including on touch devices.
+Pending writes disable the button and show **Copying…**; failed writes retain
+the adjacent accessible error and permit retry. Accessible button names and a
+live tooltip announce the state. Button dimensions remain stable. Existing
+snippet validation, key-change remounting and timer cleanup remain intact.
+
+Files: `apps/web/src/app/staff/CopyWidgetCodeButton.tsx`,
+`apps/web/src/app/styles.css`, and this evidence record. No dependencies, API,
+authentication, Widget session/budget, database or migration changes. This is
+**verified source, not a deployed UI update**; runtime remains `084cb5a` on
+the previously verified apply **38122198305**.
+
+Local checks use the actual React component and styles in headless Edge with a
+synthetic clipboard. They passed idle/focus tooltip visibility, pending-write
+disablement, one write while pending, success and timed reset, denial without
+false success, successful retry, key remount, unchanged snippet content and stable
+44px dimensions. The local diagnostic is ignored, not a new dependency or
+versioned test suite. Existing safe-snippet product UX coverage is **16/16 PASS**.
+Web TypeScript, component ESLint, scoped Prettier, dependency boundaries
+**327 source files**, scoped whitespace checks, and the production Web build
+passed. No permanent test was added for this small presentation update.
+
+Exact local verification (all PASS; root unless noted):
+
+```text
+node .cache/s22-copy-feedback-browser.mjs --icon (ignored local browser diagnostic)
+node node_modules/typescript/bin/tsc -p apps/web/tsconfig.typecheck.json --noEmit
+node node_modules/eslint/bin/eslint.js apps/web/src/app/staff/CopyWidgetCodeButton.tsx --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check apps/web/src/app/staff/CopyWidgetCodeButton.tsx apps/web/src/app/styles.css
+node node_modules/vitest/vitest.mjs run apps/web/src/lib/product-ux.test.ts --maxWorkers=1
+node scripts/check-boundaries.mjs
+node node_modules/next/dist/bin/next build (working directory apps/web)
+git diff --check -- apps/web/src/app/staff/CopyWidgetCodeButton.tsx apps/web/src/app/styles.css docs/architecture/s22-acceptance-evidence.md
+```
+
+No image build, new saved plan, deployment, customer frame/message or paid call
+was initiated for this cosmetic request. The main acceptance item remains the
+fresh owner-confirmed Website Chat booking journey; its session-specific paid
+authority is unchanged. Include this icon update in the next reviewed Web release
+instead of repeating session or budget preparation to test the copy control.
+
 ## 2026-10-11 - Exact Send correction plan applied; live runtime verified
 
 The owner approved **"Apply plan 38121689049 only."** One apply

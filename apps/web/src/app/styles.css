@@ -153,6 +153,56 @@ input:focus-visible {
   opacity: 0.48;
 }
 
+.copy-code-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.copy-code-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 2.75rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: var(--surface);
+  color: var(--muted);
+}
+.copy-code-button:hover {
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+.copy-code-control[data-copy-state="copied"] .copy-code-button {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.copy-code-tooltip {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 1.375rem;
+  z-index: 1;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.45rem;
+  background: var(--ink);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%);
+}
+.copy-code-control:hover .copy-code-tooltip,
+.copy-code-control:focus-within .copy-code-tooltip,
+.copy-code-control[data-copy-state="copying"] .copy-code-tooltip,
+.copy-code-control[data-copy-state="copied"] .copy-code-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
 .staff-shell {
   min-height: 100vh;
 }
