@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/staff-request";
+import { CopyWidgetCodeButton } from "./CopyWidgetCodeButton";
 import { S22WidgetCohort } from "./S22WidgetCohort";
 import {
   buildStaffSignInPath,
   formatStaffDateTime,
   formatStaffLocalDateTime,
   humanizeStaffStatus,
-  buildWidgetInstallSnippet,
   canManageIntegrations,
   initiateIntegrationConnection,
   readCsrfCookie,
@@ -450,19 +450,6 @@ export function StaffWorkspace({
       setIntegrationWorking(null);
     }
   }, [request, requireAuthentication, websiteOrigin]);
-
-  const copyWidgetSnippet = useCallback(async () => {
-    if (widgetConfiguration === null) return;
-    try {
-      const platformOrigin = apiOrigin.length > 0 ? apiOrigin : globalThis.location.origin;
-      await globalThis.navigator.clipboard.writeText(
-        buildWidgetInstallSnippet(platformOrigin, widgetConfiguration),
-      );
-      setIntegrationNotice("Installation code copied.");
-    } catch {
-      setIntegrationNotice("Copy is unavailable in this browser. Please try again.");
-    }
-  }, [apiOrigin, widgetConfiguration]);
 
   if (authState === "signed-out") {
     return (
@@ -940,13 +927,11 @@ export function StaffWorkspace({
                           : "Set up"}
                     </button>
                     {widgetConfiguration !== null && (
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() => void copyWidgetSnippet()}
-                      >
-                        Copy installation code
-                      </button>
+                      <CopyWidgetCodeButton
+                        key={widgetConfiguration.publishableKey}
+                        apiOrigin={apiOrigin}
+                        configuration={widgetConfiguration}
+                      />
                     )}
                   </div>
                   <p className="integration-detail">

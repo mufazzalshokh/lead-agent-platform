@@ -3,6 +3,42 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Installation code copy feedback verified locally
+
+**Status: PASS for local implementation; not deployed.** The owner reported that
+copying the installation code gave no obvious confirmation. The existing handler
+awaited the clipboard write and updated a shared banner above Integrations; the
+button itself never changed. The corrected button shows **Copying…**, then
+**Copied!** for three seconds only after the clipboard write succeeds. Failure
+appears beside the button as an accessible alert, with retry available.
+
+Files: `apps/web/src/app/staff/CopyWidgetCodeButton.tsx` and
+`apps/web/src/app/staff/StaffWorkspace.tsx`, plus this evidence entry. The small
+component owns its temporary feedback, cancels its reset timer on unmount or
+status change, and remounts when the installation key changes. It continues to
+use the existing validated public installation snippet and owner/admin display
+boundary. No API, authentication, budget, session, database or migration change.
+
+Verification **PASS** (repository root unless noted):
+
+```text
+node node_modules/typescript/bin/tsc -p apps/web/tsconfig.typecheck.json --noEmit
+node node_modules/eslint/bin/eslint.js apps/web/src/app/staff/CopyWidgetCodeButton.tsx apps/web/src/app/staff/StaffWorkspace.tsx --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check apps/web/src/app/staff/CopyWidgetCodeButton.tsx apps/web/src/app/staff/StaffWorkspace.tsx
+node node_modules/vitest/vitest.mjs run apps/web/src/lib/product-ux.test.ts --maxWorkers=1
+node scripts/check-boundaries.mjs
+node node_modules/next/dist/bin/next build (working directory apps/web)
+git diff --check
+```
+
+Existing product UX coverage: **16/16 PASS**, including safe installation snippet
+generation; dependency boundaries: **327 source files PASS**. No new tests were
+added for this limited presentation change. These checks do not establish live
+browser clipboard behavior. Next safe step: include the change in the next
+reviewed UI rollout, then observe copy success/failure in the deployed browser.
+No image build, saved plan, deployment or paid call ran for this change. Historical
+NULL costs and S22 acceptance status are unchanged. Unrelated edits are preserved.
+
 ## 2026-10-10 - Exact selection UI plan applied and runtime verified
 
 The owner approved **apply plan 37954005150 only**. One apply
