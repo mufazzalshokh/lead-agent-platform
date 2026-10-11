@@ -1,5 +1,34 @@
 # S22 synthetic knowledge and customer-to-confirmed-booking journey
 
+## Latest checkpoint - copy icon deployed; selected booking test approved, 2026-10-11
+
+Runtime source **1210c25**, timestamp **2026-10-11T08:15:07Z**; source CI
+**38123453058**, build **38123758852**, reviewed saved plan **38124183094**,
+apply **38124295117** and read-only verification **38124393676** all PASS.
+Sixteen live assertions and whole-runtime convergence exit 0 passed; API ready
+**lead-agent-staging-api-00031-4fm**, Web **lead-agent-staging-web-00027-htx**.
+Public staff JS/CSS serve the compact icon and copied tooltip. The unchanged
+Send correction remains deployed. Exact references/proof limits are in the
+[rollout record](s22-widget-send-rollout-plan.md#latest-rollout---compact-copy-icon-deployed-and-verified-2026-10-11).
+
+The owner screenshot confirms selected empty session
+**01a12a04-d2ae-7cba-aded-0c48a410be0c**, opened **13:12**, idle deadline
+**13:42**, absolute expiry **15:12 Asia/Tashkent**, October 11 (minute precision).
+Owner-UI budget snapshot: ready, known cost USD0.008714, exposure USD1.042110,
+pending USD0.000000. The owner separately approved this exact session: two total
+customer messages (request, then confirmation only after a staff offer), four
+provider attempts maximum, two per message, no budget increase. Additional
+reserve USD3.205728, combined exposure USD4.247838 and existing USD10 ceiling
+remain unchanged. This approval does not renew TTL or transfer to another frame.
+
+**Next: send the synthetic booking request once in this same selected chat before
+13:42, then report the reply/error without resending or reloading.** No further
+selection, deployment or Cloud Shell preparation is required for this step.
+Runtime guards revalidate actual dispatch. Release tooling performed no session
+mutation, database diagnostic, customer message or paid call. Real Widget intake,
+provider action, reply/delivery and full booking confirmation remain unverified.
+Historical NULL costs remain unknown; **S22 remains unaccepted**.
+
 ## Latest checkpoint - Send correction applied and runtime verified, 2026-10-11
 
 The owner's **"Apply plan 38121689049 only"** approval is fulfilled:

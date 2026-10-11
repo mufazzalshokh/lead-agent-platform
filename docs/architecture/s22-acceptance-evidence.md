@@ -3,6 +3,71 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-11 - Copy-icon deployment verified; exact test session approved
+
+**Observations:** the owner authorized deployment. Exact runtime source
+`1210c253f1d2909c9e92c6b4892cd76503c9fb74` passed CI **38123453058**,
+immutable build **38123758852**, saved plan **38124183094**, one apply
+**38124295117** and one read-only verification **38124393676**. The
+[rollout record](s22-widget-send-rollout-plan.md#latest-rollout---compact-copy-icon-deployed-and-verified-2026-10-11)
+retains all four digests, authenticated artifacts, checksum and proof limits.
+Timestamp `2026-10-11T08:15:07Z`; migration remains
+`0031_s22_widget_inbound_route_management`. Independent saved-plan review passed
+88 managed configurations and exactly four in-place image/provenance updates,
+no other configurable changes, creates, destroys or replacements. Binary SHA256
+`8a3f9717a415838d838ea310caf711c1c59c239dfe73fbd2a856bdd72b409197`
+matched before applying. No intervening apply; no rebuild, replan or migration.
+
+Sanitized runtime artifact **11696965253** independently passed **16/16**
+assertions and refreshed whole-runtime convergence **exit 0**. API ready revision
+**lead-agent-staging-api-00031-4fm**, Web **lead-agent-staging-web-00027-htx**.
+Exact API source/image/time/migration, API/Web ready images, API identity/private
+VPC/subnet/egress and 15 secret references passed. Worker/Migrator are covered
+by convergence rather than separate ready-revision assertions. Public reads of
+eight staff scripts and one stylesheet found the compact copy control, copied
+tooltip/clipboard code and 44px styling. Served Widget loader still exactly
+matches source, SHA256
+`9174e16a48d3bb1620d20e8854a774f78daac22d5d917b8ea7744cc2f7eaea0a`.
+These are deployed-revision/asset proofs, not authenticated clipboard interaction
+or customer-to-booking E2E. No grant/frame/session/message/provider endpoint or
+database diagnostic was invoked by the release tooling.
+
+The owner's empty-frame screenshot and subsequent owner-UI screenshot identify
+selected session **01a12a04-d2ae-7cba-aded-0c48a410be0c**, opened **13:12**,
+idle deadline **13:42**, absolute expiry **15:12 Asia/Tashkent**, October 11,
+screenshot minute precision. Selection succeeded; an unchecked confirmation
+display after refresh does not require selecting it again. Last budget check:
+ready; known cost **USD0.008714**, combined reserved exposure **USD1.042110**,
+pending reserve **USD0.000000**. This is an owner-UI snapshot, not a later atomic
+database read. No paid message has been reported for this selected session yet.
+
+The owner explicitly approved this exact session's test conditional on successful
+verification: **two total customer messages** (request, then confirmation only
+after a staff offer), **four attempts maximum / two per message**, unchanged
+additional reserve **USD3.205728**, combined exposure **USD4.247838** and USD10
+hard ceiling. Actual runtime dispatch must revalidate session/budget/ownership;
+do not transfer another session's approval, renew it or reset counters. Historical
+NULL costs remain unknown. Selection/approval are not provider-call evidence.
+
+**Hypothesis disposition:** the earlier Send-arrow mechanism remains confirmed
+and fixed: native form submission was blocked before its handler by the sandbox;
+the explicit button/click correction is retained unchanged in this runtime.
+There is no newly observed Send failure on this revision and no reason to patch
+another speculative mechanism. Current last successful boundary is empty frame,
+owner selection/budget snapshot and exact deployed runtime/asset verification.
+**Unknown:** initial real Send, persisted inbound/outbox, worker/provider action,
+reply/booking request, delivery, staff acceptance and customer confirmation.
+
+Release checks: authenticated `gh` run/artifact reads, existing saved-plan
+configuration guard with independent checksum/provenance comparisons, existing
+read-only `api-image-verify`, and bounded IPv4 public JS/CSS/loader reads all PASS.
+The previously recorded local browser/UX tests and exact-source CI are reused.
+Only the three S22 evidence documents change in this deployment handoff; no new
+test, dependency, architecture, security, budget, database or migration change.
+Next: one approved Send in the same selected chat before the idle deadline; then
+collect its reply/error and trace the first failed boundary if necessary, without
+resending. **Website Chat booking E2E and S22 acceptance remain pending.**
+
 ## 2026-10-11 - Compact installation-code copy control verified locally
 
 The owner confirmed that a hard refresh of the Lead Agent Integrations page
