@@ -1,9 +1,10 @@
 # Website Chat recovery: migration-first rollout packet
 
-Status: **MIGRATION APPLIED AND VERIFIED; APPLICATION ROLLOUT PENDING**.
+Status: **MIGRATION VERIFIED; APPLICATION PLAN PREPARED, NOT APPLIED**.
 The owner approved **plan 38139812141 only** for the migrator job definition,
 then separately approved one migration execution and read-only schema/security
-validation. Both milestones are verified below. Application rollout, session
+validation. The owner subsequently approved application-plan preparation only.
+All three milestones are verified below. Application deployment, session
 replacement, customer messages, provider calls and budget increases remain
 unapproved and unperformed by this rollout. S22 as a whole remains unaccepted.
 
@@ -16,7 +17,7 @@ The [recovery design](s22-widget-recovery.md) records ownership, expiry, replay,
 privacy, booking and budget invariants. There are no further application changes
 in this preparation; do not rebuild or substitute runtime source for a cosmetic change.
 
-Release-tooling source: `0949cfdc2a5e541b19366b01fd93bcdf782c808a`.
+Original release-tooling source: `0949cfdc2a5e541b19366b01fd93bcdf782c808a`.
 This descendant adds explicit approved migration-head selection (0031 or 0032),
 strict provider-schema configuration comparison for the isolated migrator,
 correct migration metadata/validator counts, and the later migration-first
@@ -26,6 +27,20 @@ Full release-tooling [CI 38139797313](https://github.com/mufazzalshokh/lead-agen
 **PASS** on exact `0949cfd`, including `pnpm ci:verify`, all PostgreSQL suites,
 contracts, static/type checks and production builds. Local preparation checks
 also passed. CI success is not a deployment or customer-journey result.
+
+Application-plan preparation exposed a shallow-checkout provenance failure.
+The narrowly scoped history correction is committed as
+`bca146092ff3d12c5a4537f32440aef0de24b59b`: the main exact-commit checkout now
+uses `fetch-depth: 0`, with one regression test preserving the exact HEAD and
+both ancestry guards. The pinned
+[checkout action](https://raw.githubusercontent.com/actions/checkout/3d3c42e5aac5ba805825da76410c181273ba90b1/action.yml)
+defaults to depth one; zero fetches full history. This changes release tooling
+only, not runtime source/images, Terraform configuration, workflow permissions,
+WIF, approved phases or the owner-approval boundary.
+[Correction CI 38143973430](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38143973430)
+**PASS** on exact `bca1460`, including the full `pnpm ci:verify` gate. The new
+application saved plan and independent configuration review also pass below.
+These are preparation results, not deployment or customer-journey acceptance.
 
 Project/region: `lead-agent-stg-739284` / `me-central1`.
 Canonical release metadata timestamp: **`2026-10-11T12:34:47Z`**.
@@ -150,8 +165,8 @@ Do not reapply this now-consumed saved plan.
 
 ## Stage B: migration, then application rollout
 
-Stage A and the migration/schema-security verification are complete. Steps 4–5
-remain conditional, **not executed or implicitly authorized**:
+Stage A, migration/schema-security verification and application-plan preparation
+are complete. Step 5 remains **not executed or implicitly authorized**:
 
 1. **Completed:** exact Stage A apply and live job/configuration convergence
    verification are recorded above. Current application images remain unchanged.
@@ -171,15 +186,15 @@ remain conditional, **not executed or implicitly authorized**:
    remains unresolved; the owner collected the existing results without changing
    IAM, sharing credentials or launching another job. Evidence provenance and
    the workflow collection failure are recorded below.
-4. Only after migration verification, create **one fresh full-runtime saved
-   plan** from the updated state. Reuse the four immutable images above, timestamp
-   and runtime source `19e7f3c`; use the pinned release tooling separately. Select
-   `migration_head`, `api_migration_head` and `runtime_migration_head` as `0032`;
-   preserve journey mode/anchor and all budgets. Expected application action set
-   is three in-place API/Web/Worker updates with the reviewed migrator already
-   no-op. A fourth migrator update is permitted only for exact reviewed release
-   provenance, never unreviewed configuration drift. Review its new saved binary,
-   digest and action/configuration set before requesting its specific apply.
+4. **Completed, preparation only:** after migration verification, create the
+   fresh full-runtime saved **plan 38144565508** from the updated state. Reuse
+   all four immutable images, timestamp and runtime source `19e7f3c`, with pinned
+   correction tooling `bca1460`. All three migration-head inputs are `0032`;
+   journey mode/anchor and budgets are preserved. The saved binary and exact
+   configuration review pass: three in-place API/Web/Worker updates, migrator
+   no-op, zero creates/destroys/replacements. The first attempt failed before
+   cloud authentication and produced no saved plan; its root cause and the
+   deliberately corrected preparation are recorded below.
 5. After that separately approved apply, verify exact deployed API/Web images,
    source/time/migration metadata, ready revisions, public health and whole-
    runtime convergence. Worker/Migrator require their own descriptor/readiness
@@ -248,6 +263,98 @@ references, route/session binding and budgets are unchanged. No frame, message,
 provider call, replacement binding or application deployment occurred. This
 receipt completes only the migration/schema-security gate, not live recovery
 or S22 acceptance.
+
+### Application-plan preparation: preserved failure and tooling correction
+
+The owner separately approved preparation only after the verified migration.
+[Initial attempt 38143519097](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38143519097)
+failed at the Git ancestry check with
+`fatal: Not a valid commit name 19e7f3c33d94b466e1129586b15796f35d5f938b`.
+The runner's depth-one checkout of original tooling `0949cfd` could not see its
+older runtime ancestor. Local `git merge-base` returns that exact runtime source;
+this was unavailable history, not evidence of an unauthorized source commit.
+
+Cloud authentication, Terraform setup/plan, apply, migration/validator,
+diagnostic and acceptance steps were skipped. The attempted artifact upload
+failed because no saved plan existed. Do not apply or rerun this failed attempt.
+The new regression test fails against the old checkout and passes after the
+single history-setting correction; the ancestry guards are retained unchanged.
+After full correction CI passed, preparation used pinned tooling `bca1460`,
+the same runtime source `19e7f3c`, four original immutable images and canonical
+timestamp. The corrected runner's exact HEAD and both ancestry checks pass.
+No rebuild, application change, IAM change or database execution was required.
+
+### Application saved-plan receipt — 11 October 2026
+
+[Plan 38144565508](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38144565508)
+**PASS**. This is the single valid saved application plan produced after the
+preserved pre-authentication failure. It uses `action=plan`, `phase=full`, exact
+tooling checkout `bca146092ff3d12c5a4537f32440aef0de24b59b`, and runtime provenance
+`19e7f3c33d94b466e1129586b15796f35d5f938b`. Authenticated artifact **11704038565**:
+`s22-terraform-plan-full-bca146092ff3d12c5a4537f32440aef0de24b59b`.
+The artifact was verified unexpired; its retention ends **2026-10-18T13:47:51Z**.
+Downloaded saved binary SHA256, independently recomputed against its checksum:
+**`5e9e87a6cefec66d7618148cf509c04660d6f23633d49c9bd79b5c76e1caef84`**.
+
+Installed Terraform **1.14.7** and locked Google provider **7.46.1** independently
+inspected the binary and provider schema. All **88 managed configurable resource
+comparisons PASS**, including every unchanged resource and nested configuration.
+Workflow safety evidence matches the independent review exactly:
+
+| Resource | Action | Permitted differences |
+| --- | --- | --- |
+| `google_cloud_run_v2_service.api[0]` | in-place update | Reviewed recovery image and matching source/time/migration provenance |
+| `google_cloud_run_v2_service.web[0]` | in-place update | Reviewed recovery image and matching source/time/migration provenance |
+| `google_cloud_run_v2_worker_pool.worker[0]` | in-place update | Reviewed recovery image and matching source/time/migration provenance |
+| Migrator and all other managed resources | no-op | None |
+
+**0 creates / 3 updates / 0 destroys / 0 replacements.** Before-state application
+images/provenance match the verified wording release `68b3011`, canonical old
+timestamp `2026-10-11T09:26:04Z`, head `0031` and authenticated manifest recorded
+above. After-state images/source/time/head match the original recovery manifest.
+Migrator image/provenance is already the reviewed recovery release and is no-op.
+
+IAM, secret references, private networking, service accounts, commands, task
+counts/parallelism, numeric zero retries, resources, scaling, staff access,
+journey mode/anchor and budgets are unchanged. No configurable unknowns or
+unreviewed changes are present. Refreshed drift is computed-only migrator
+execution-count/latest-execution metadata from the previously preserved jobs;
+it is not a new execution or permission to change configuration.
+
+Authenticated workflow metadata confirms all 15 non-skipped steps succeeded;
+every other step was skipped, including apply, migration, database validator,
+diagnostics, bootstrap/IAM changes and deployment-provenance recording. All
+three separate acceptance/Widget/booking evidence jobs were skipped. No cloud
+deployment, frame, message, provider call or budget increase occurred.
+
+Exact preparation inputs, excluding any apply token:
+
+```json
+{
+  "action": "plan",
+  "phase": "full",
+  "commit_sha": "bca146092ff3d12c5a4537f32440aef0de24b59b",
+  "runtime_git_commit_sha": "19e7f3c33d94b466e1129586b15796f35d5f938b",
+  "deployment_timestamp": "2026-10-11T12:34:47Z",
+  "migration_head": "0032_s22_widget_recovery",
+  "runtime_migration_head": "0032_s22_widget_recovery",
+  "api_migration_head": "0032_s22_widget_recovery",
+  "api_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:7174fb8ce3a5599da76d5e2a77aab68a8bbcecc473e9ff4eebc0b814ddc119b4",
+  "web_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:cc7dc7f7f819054b3c0ba1fd5796a1dea53f8ae45a402eadaadfc62513b95800",
+  "worker_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:90b4dcebfdd9bc59fee6b5f270c81469df8cb23da36caf0afbbcfebebc8dd6b6",
+  "migrator_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:cb3c6fc6c6f943b9d9457179e70627a1fe7dc2a59f3de91989bc7d5be7ac2919",
+  "ai_journey_mode": "preserve",
+  "ai_journey_widget_session_id": "01a11c48-dbc2-76de-a873-f41664da5ccb"
+}
+```
+
+Applying requires explicit approval of **plan 38144565508 only**, a fresh
+authenticated download reproducing the exact binary/checksum above, and current
+state lineage/serial compatibility under the existing state lock. Revalidate
+the exact saved plan and owner-approval boundary using pinned tooling `bca1460`.
+Do not replan, substitute an expired/stale artifact, execute migration/validation
+again or transfer old plan/customer-test approval to this plan. If the state or
+artifact is stale, stop and obtain approval for a separately reviewed plan.
 
 No Stage B saved binary is prepared against the pre-migration state: Stage A
 changes its serial and would make such a plan stale. No new application queries
@@ -351,7 +458,36 @@ No new application/SQL changes or tests were required. Only this receipt documen
 is changed; ignored owner-output copies and temporary verification helpers are
 not committed. The three unrelated owner files remain byte-for-byte unchanged.
 
-In-scope release-tooling files (no application or SQL edits):
+Application-plan preparation verification additionally passed:
+
+```text
+node --test .github/scripts/s22-full-runtime-config-check.test.mjs .github/scripts/s22-recovery-rollout.test.mjs
+node node_modules/vitest/vitest.mjs run tests/workspace/staging-infrastructure.test.ts tests/workspace/staging-journey-mode.test.ts --maxWorkers=1 --testTimeout=30000
+node node_modules/eslint/bin/eslint.js .github/scripts/s22-recovery-rollout.test.mjs --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check .github/workflows/staging-terraform.yml .github/scripts/s22-recovery-rollout.test.mjs
+gh run view 38143973430 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,headSha,jobs
+node .cache/s22-recovery-rollout/prepare-runtime-plan.mjs --dispatch
+gh run download 38144565508 --repo mufazzalshokh/lead-agent-platform --name s22-terraform-plan-full-bca146092ff3d12c5a4537f32440aef0de24b59b --dir .cache/s22-recovery-rollout/full-plan-38144565508
+node .cache/s22-recovery-rollout/review-runtime-plan.mjs 38144565508
+node .cache/s22-recovery-rollout/verify-plan-workflow.mjs
+git diff --check -- docs/architecture/s22-widget-recovery-rollout-plan.md
+```
+
+Results: **16/16** native guards, **28/28** Vitest workspace cases (including a
+native-wrapper rerun), lint, workflow/test formatting and full correction CI
+**PASS**. The new history regression was verified red against the previous
+checkout and green against `fetch-depth: 0`; exact HEAD and both ancestry guards
+remain required. Independent binary/checksum, **88/88** configuration comparisons,
+exact three-update action set, manifest/source/time/head/binding checks and
+authenticated artifact/workflow skipped-execution boundaries **PASS**.
+
+This milestone changes only `.github/workflows/staging-terraform.yml`,
+`.github/scripts/s22-recovery-rollout.test.mjs` and this packet. The two-file
+correction is committed and pushed as `bca146092ff3d12c5a4537f32440aef0de24b59b`.
+No application source or SQL changed; no migration, validator or paid test was
+rerun. Temporary helpers, owner-output copies and saved plan stay ignored.
+
+Historical in-scope release-tooling files (no application or SQL edits):
 
 ```text
 .github/scripts/s22-full-runtime-config-check.mjs
@@ -372,8 +508,8 @@ Existing owner edits in `README.md`, `docs/architecture/s11-instagram-business.m
 and `s22-public-notices.patch` are preserved and excluded. Temporary reviewers,
 dispatch helpers, downloaded manifests and Terraform binaries remain ignored.
 
-**Exactly one next safe action:** obtain approval to prepare one fresh
-full-runtime saved rollout plan from the post-migration state, reusing the
-reviewed immutable images and preserved budgets/binding. Preparation must not
-apply it, rerun migration/validation, open a new chat or authorize Send. Applying
-that future plan requires its own exact-plan approval after review.
+**Exactly one next safe action:** obtain **“Apply plan 38144565508 only”** approval
+for the reviewed three-workload application deployment. Applying that exact
+saved binary requires fresh artifact/state verification and the unchanged
+owner-approval boundary. It does not authorize migration/validation replay,
+session replacement, customer messages, provider calls or a budget increase.
