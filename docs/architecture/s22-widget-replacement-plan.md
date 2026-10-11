@@ -1,6 +1,12 @@
 # S22 Website Chat replacement-lane preparation
 
-Status: **LOCAL RUNTIME TRANSITION VERIFIED; NOT DEPLOYED; NO SEND**.
+Status: **RUNTIME AND ROLLOUT PREPARATION VERIFIED; NOT DEPLOYED; NO SEND**.
+
+The owner subsequently approved rollout preparation only. The
+[exact saved rollout plan 38157342630](s22-widget-replacement-rollout-plan.md)
+records green runtime source `2055ab2`, immutable image digests, the independently
+reviewed four-update action set and binary checksum. No apply, session or paid
+execution is authorized by that preparation receipt.
 
 ## Exact authority and current boundary
 
@@ -301,9 +307,10 @@ docs/architecture/s22-widget-replacement-plan.md
 docs/architecture/s22-widget-cohort-binding.md
 ```
 
-**Next safe task:** verify clean-checkout CI for the focused runtime commit before
-preparing one immutable rollout plan. Do not open a fresh frame during builds;
-deployment and bounded execution still require separate approval.
+That milestone's next task was clean-checkout CI and one separately approved
+rollout preparation. Both now pass on exact runtime source `2055ab2`; see the
+linked approval packet above. Deployment and bounded execution still require
+separate approval. Do not open a fresh frame before verified deployment.
 
 ### Clean-checkout declaration-build correction
 
@@ -334,4 +341,7 @@ node node_modules/vitest/vitest.mjs run tests/ai/s22-budget-ledger.test.ts --max
 
 All **96/96 modeled ledger cases PASS** after the annotation. Scoped lint,
 formatting and whitespace checks also pass; generated declarations remain
-unversioned. The follow-up commit needs its own clean-checkout CI receipt.
+unversioned. Follow-up source `2055ab297fa14549c32cfbae62a094c0dd7ee751` has its
+own successful clean-checkout CI **38156365923**: all 3,594 ordinary cases (seven
+opt-in skipped), 542 actual PostgreSQL cases and production/declaration builds
+PASS. This corrects the declaration failure; it is not live booking acceptance.
