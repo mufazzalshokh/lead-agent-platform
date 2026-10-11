@@ -4,6 +4,12 @@ Approved scope: local implementation and regression testing only. This does not
 approve staging migration/deployment, another paid test, increased budget, or
 retroactive recovery without customer ownership proof.
 
+The owner separately approved rollout **preparation**, now recorded in the
+[migration-first approval packet](s22-widget-recovery-rollout-plan.md). Runtime
+CI and immutable images are verified; the packet retains exact saved-plan,
+migration-execution and application-rollout approval boundaries. It is not an
+applied release or live recovery acceptance.
+
 ## Root cause
 
 The original trusted frame holds its access JWT and conversation reference only
