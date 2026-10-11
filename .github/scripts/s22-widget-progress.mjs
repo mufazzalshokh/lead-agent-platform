@@ -7,7 +7,11 @@ import {
   safeFailures,
   cloudFailureDetails,
 } from "./s22-widget-attempt.mjs";
-import { copyAttemptScope, attemptFailureCodes } from "./s22-widget-attempt-readonly.mjs";
+import {
+  copyAttemptScope,
+  attemptFailureCodes,
+  continuationReadBoundary,
+} from "./s22-widget-attempt-readonly.mjs";
 
 // Owner-selected session already received its first reply. No fresh selection,
 // browser bearer, Send permission or session renewal is created by this reader.
@@ -22,21 +26,40 @@ export const progressScope = copyAttemptScope({
   windowStart: "2026-10-11T17:28:00.000Z",
   windowEnd: "2026-10-11T19:29:00.000Z",
 });
-// Exact consumed plan 38165971091, apply 38166694777 and verification
-// 38166835149. Never learn expected images/provenance from the resources checked.
+// PREPARED plan 38172305694: not deployment or Send authority. Before apply,
+// old runtime provenance must fail closed. Never learn expected pins live.
 export const progressRuntime = Object.freeze({
-  source: "1a910f097709a0e20b8d153bf482f470e1d631be",
-  timestamp: "2026-10-11T18:51:44Z",
+  source: "abc3071fb81777068f5adfb98f6144d9081077eb",
+  timestamp: "2026-10-11T20:27:12Z",
   migrationHead: "0032_s22_widget_recovery",
   worker:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:14b321478506600805bee7a573ccbf0fa86ec5a391b0815d9b2c49976326ed57",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:b6d550af4f2c071f00b7ae8388dddd7d8ef7efc3be8923aebd5c168140f75c5a",
   image:
-    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:c144b3fe2b863dbb02e02e47fb3dc231213630406d7f0c0994ea6ec8c9c99bec",
+    "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:223f1cb22f12a082c147c001d12690c491ca01cf63aa265afeaaa62bd7b69ce5",
 });
 export const runProgress = (overrides = {}) =>
   runAttempt({
     ...overrides,
     scope: progressScope,
+    reviewedRuntime: progressRuntime,
+  });
+
+export const continuationProgressScope = (now = new Date()) => {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime()))
+    throw Object.assign(new Error(), { code: "ATTEMPT_SCOPE_INVALID" });
+  const end = Math.min(now.getTime(), Date.parse(continuationReadBoundary.recoveryDeadline));
+  const start = Math.max(end - 120 * 60000, Date.parse(continuationReadBoundary.issuedWindowEnd));
+  return copyAttemptScope({
+    ...progressScope,
+    continuation: continuationReadBoundary.profile,
+    windowStart: new Date(start).toISOString(),
+    windowEnd: new Date(end).toISOString(),
+  });
+};
+export const runContinuationProgress = ({ clock = () => new Date(), ...overrides } = {}) =>
+  runAttempt({
+    ...overrides,
+    scope: continuationProgressScope(clock()),
     reviewedRuntime: progressRuntime,
   });
 
@@ -52,9 +75,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     job_configuration_changed: false,
   };
   try {
-    if (process.argv.length !== 2)
+    if (
+      process.argv.length !== 2 &&
+      !(process.argv.length === 3 && process.argv[2] === "--continuation")
+    )
       throw Object.assign(new Error(), { code: "ATTEMPT_SCOPE_INVALID" });
-    const result = await runProgress({
+    const collect = process.argv[2] === "--continuation" ? runContinuationProgress : runProgress;
+    const result = await collect({
       onPreflight: () =>
         console.log(
           "Widget trace preflight: PASS (exact runtime, stable envelope, least-privilege DB reference, private VPC, zero retries, authenticated logging)",

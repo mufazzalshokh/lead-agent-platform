@@ -6757,6 +6757,44 @@ caps. Third paid-message and fourth inbound authorization remain denied.
 
 Local broad regressions passed **1,100/1,100**, with seven opt-in live tests
 skipped; twenty amendment unit tests and four actual PostgreSQL cases were
-added. The PostgreSQL cases still require full remote CI. No deployment,
+added. Source `abc3071fb81777068f5adfb98f6144d9081077eb` was committed/pushed.
+[Full CI 38171326929](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38171326929)
+then passed `pnpm ci:verify`: **4,224 tests**, including **546 actual PostgreSQL
+tests**, seven opt-in live skips, types/lint/format, boundaries, canonical
+contracts and production builds. All four new database cases are now verified.
+Runtime-plan guard regressions also passed **11/11**. No deployment,
 recovery, Send, replay, replacement, migration, job execution, IAM change,
 budget increase or ledger reset was performed. **S22 remains unaccepted.**
+
+## 2026-10-12 — Exact same-chat continuation rollout plan prepared
+
+[The exact packet](s22-widget-continuation-plan.md#exact-saved-rollout-packet--prepared-not-applied)
+binds passing runtime-source CI **38171326929** and immutable image build
+**38171816097** to saved plan **38172305694**, source `abc3071`, migration head
+`0032_s22_widget_recovery`. Binary SHA256:
+`f1f3bf00d5bb67cd552de85b3be3fc68c356dbfa06985dcee4db40cd51569e22`.
+
+Workflow and separate downloaded-plan/provider inspection passed **88/88**
+managed configurations: **0 creates / 4 in-place image/provenance updates /
+0 destroys / 0 replacements**. Worker envelope, owner selection, security,
+private networking, commands, resource limits, zero job retries and all financial
+caps remain unchanged. Artifact ID **11714626122**; **15 successful / 126 skipped**
+workflow steps, all three evidence jobs skipped. No apply, database job or
+migration ran. The deployed runtime still remains `1a910f0`.
+
+Compatible read-only progress tooling is prepared for this exact recovered
+conversation, separating its immutable issuance check from a later at-most-
+120-minute observation window capped by the fixed recovery-family deadline.
+It pins this **prepared, unapplied** runtime independently and must reject the
+old runtime before execution. Fifteen new native cases were added; all **432**
+applicable native cases passed. The unchanged standalone local selector
+PostgreSQL script was unavailable without its disposable DB configuration and
+is not claimed as rerun; actual runtime DB evidence is the successful **546**
+PostgreSQL cases in source CI. The observer does not authorize paid Send.
+
+This packet is **PREPARED ONLY; NOT APPLIED; NO SEND**. It preserves all consumed
+messages/attempts/costs, retired and historical unknown-cost records, original
+conversation and customer-owned recovery proof. No recovery, another selected
+chat, message, provider-test call, replay, ledger reset or budget increase was
+performed. Deployment still needs the exact saved-plan authority; later customer
+actions need their own scope/readiness. **S22 remains unaccepted.**

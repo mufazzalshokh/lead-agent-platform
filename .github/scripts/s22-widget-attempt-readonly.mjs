@@ -56,13 +56,23 @@ const fail = (failure) => {
   throw Object.assign(new Error(), { code: failure });
 };
 // Internal evidence scope only: never a browser selector or paid-call authority.
+export const continuationReadBoundary = Object.freeze({
+  profile: "s22-widget-date-continuation.v1",
+  session: "01a12c02-3e50-7663-99f4-c35024796c23",
+  conversation: "01a12c14-1edf-7609-a7d3-6354deaa7006",
+  issuedWindowStart: "2026-10-11T17:28:00.000Z",
+  issuedWindowEnd: "2026-10-11T19:29:00.000Z",
+  recoveryDeadline: "2026-10-12T17:49:03.353Z",
+});
 export const copyAttemptScope = (value = attemptScope) => {
   const keys = Object.keys(value ?? {})
     .sort()
     .join();
   const baseline = "channel,organization,origin,session,windowEnd,windowStart";
+  const continuationKeys =
+    "anchor,channel,continuation,organization,origin,session,windowEnd,windowStart";
   if (
-    (keys !== baseline && keys !== `anchor,${baseline}`) ||
+    (keys !== baseline && keys !== `anchor,${baseline}` && keys !== continuationKeys) ||
     value.organization !== attemptScope.organization ||
     value.channel !== attemptScope.channel ||
     value.origin !== attemptScope.origin ||
@@ -71,7 +81,13 @@ export const copyAttemptScope = (value = attemptScope) => {
     date(value.windowEnd) !== value.windowEnd ||
     Date.parse(value.windowEnd) <= Date.parse(value.windowStart) ||
     Date.parse(value.windowEnd) - Date.parse(value.windowStart) > 121 * 60000 ||
-    (value.anchor !== undefined && value.anchor !== "01a11c48-dbc2-76de-a873-f41664da5ccb")
+    (value.anchor !== undefined && value.anchor !== "01a11c48-dbc2-76de-a873-f41664da5ccb") ||
+    (keys === continuationKeys &&
+      (value.continuation !== continuationReadBoundary.profile ||
+        value.session !== continuationReadBoundary.session ||
+        value.anchor !== "01a11c48-dbc2-76de-a873-f41664da5ccb" ||
+        Date.parse(value.windowStart) < Date.parse(continuationReadBoundary.issuedWindowEnd) ||
+        Date.parse(value.windowEnd) > Date.parse(continuationReadBoundary.recoveryDeadline)))
   )
     fail("ATTEMPT_SCOPE_INVALID");
   return Object.freeze({ ...value });
@@ -369,6 +385,10 @@ export const sanitizeAttemptBudget = (snapshot, conversationId = null, scope = a
 });
 export const collectWidgetAttempt = async (read, report, expectation = attemptScope) => {
   const scope = copyAttemptScope(expectation);
+  // Later observation does not replace the immutable original issuance check.
+  const continuation = scope.continuation === continuationReadBoundary.profile;
+  const issuedStart = continuation ? continuationReadBoundary.issuedWindowStart : scope.windowStart;
+  const issuedEnd = continuation ? continuationReadBoundary.issuedWindowEnd : scope.windowEnd;
   if (scope.anchor !== undefined) await verifyOwnerSelection(read, scope);
   const rows = await read(scope.anchor === undefined ? attemptSessionSql : progressSessionSql, [
     scope.session,
@@ -383,8 +403,9 @@ export const collectWidgetAttempt = async (read, report, expectation = attemptSc
     row.allowed_origin_id !== scope.origin ||
     (scope.anchor !== undefined &&
       (date(row.issued_at) === null ||
-        Date.parse(row.issued_at) < Date.parse(scope.windowStart) ||
-        Date.parse(row.issued_at) >= Date.parse(scope.windowEnd))) ||
+        Date.parse(row.issued_at) < Date.parse(issuedStart) ||
+        Date.parse(row.issued_at) >= Date.parse(issuedEnd))) ||
+    (continuation && row.conversation_id !== continuationReadBoundary.conversation) ||
     row.conversation_ownership_matches !== true ||
     !(
       (row.conversation_id === null &&

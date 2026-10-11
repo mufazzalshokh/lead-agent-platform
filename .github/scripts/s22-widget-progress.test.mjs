@@ -10,6 +10,7 @@ import {
   progressScope as scope,
   progressRuntime as runtime,
   runProgress,
+  continuationProgressScope,
 } from "./s22-widget-progress.mjs";
 import { collectAttemptLogs } from "./s22-widget-attempt.mjs";
 import {
@@ -21,6 +22,7 @@ import {
   copyAttemptScope,
   ownerSelectionSql,
   verifyOwnerSelection,
+  continuationReadBoundary,
 } from "./s22-widget-attempt-readonly.mjs";
 
 const conversation = "01a12a04-d2ae-7cba-aded-0c48a410be01";
@@ -217,7 +219,7 @@ const fixture = async (changedWorker = worker()) => {
 test("progress is pinned to the received chat, not its stable deployment anchor", () => {
   assert.notEqual(scope.session, scope.anchor);
   assert.equal(scope.session, "01a12c02-3e50-7663-99f4-c35024796c23");
-  assert.equal(runtime.source, "1a910f097709a0e20b8d153bf482f470e1d631be");
+  assert.equal(runtime.source, "abc3071fb81777068f5adfb98f6144d9081077eb");
   assert.equal(runtime.migrationHead, "0032_s22_widget_recovery");
   assert.ok(Object.isFrozen(scope) && Object.isFrozen(runtime));
 });
@@ -310,6 +312,90 @@ test("candidate UUID window is checked against persisted issuance before child r
   );
   assert.equal(calls, 2);
 });
+
+const continuationScope = copyAttemptScope({
+  ...scope,
+  continuation: continuationReadBoundary.profile,
+  windowStart: "2026-10-12T12:00:00.000Z",
+  windowEnd: "2026-10-12T14:00:00.000Z",
+});
+test("continuation observation clock creates at most a two-hour window inside the fixed recovery family", () => {
+  const recent = continuationProgressScope(new Date("2026-10-12T14:00:00.000Z"));
+  assert.deepEqual(recent, continuationScope);
+  const early = continuationProgressScope(new Date("2026-10-11T19:30:00.000Z"));
+  assert.equal(early.windowStart, continuationReadBoundary.issuedWindowEnd);
+  const expired = continuationProgressScope(new Date("2026-10-12T18:00:00.000Z"));
+  assert.equal(expired.windowEnd, continuationReadBoundary.recoveryDeadline);
+  assert.equal(Date.parse(expired.windowEnd) - Date.parse(expired.windowStart), 120 * 60000);
+  assert.ok(Object.isFrozen(recent) && Object.isFrozen(expired));
+});
+for (const now of [new Date(NaN), new Date("2026-10-11T19:29:00.000Z")])
+  test(`invalid/early continuation clock stops before access: ${String(now)}`, () => {
+    assert.throws(() => continuationProgressScope(now), { code: "ATTEMPT_SCOPE_INVALID" });
+  });
+test("later continuation window retains original issuance, exact conversation and bounded metadata SELECTs", async () => {
+  let children = 0;
+  const id = await collectWidgetAttempt(
+    async (sql, args) => {
+      if (sql === ownerSelectionSql) return [selection()];
+      if (sql === progressSessionSql)
+        return [{ ...session(), conversation_id: continuationReadBoundary.conversation }];
+      children++;
+      assert.deepEqual(args, [
+        continuationReadBoundary.conversation,
+        scope.channel,
+        continuationScope.windowStart,
+        continuationScope.windowEnd,
+      ]);
+      assert.ok(Object.values(attemptQueries).includes(sql));
+      assert.match(sql, /organization_id=\$1/u);
+      return [];
+    },
+    () => {},
+    continuationScope,
+  );
+  assert.equal(id, continuationReadBoundary.conversation);
+  assert.equal(children, 5);
+});
+for (const patch of [
+  { continuation: "unknown-profile" },
+  { session: conversation },
+  { anchor: undefined },
+  { windowStart: "2026-10-11T19:28:59.999Z", windowEnd: "2026-10-11T19:30:00.000Z" },
+  { windowStart: "2026-10-12T17:48:00.000Z", windowEnd: "2026-10-12T17:49:03.354Z" },
+  { windowEnd: "2026-10-12T14:01:00.001Z" },
+  { extra: true },
+])
+  test(`continuation rejects out-of-scope preparation: ${JSON.stringify(patch)}`, () => {
+    assert.throws(() => copyAttemptScope({ ...continuationScope, ...patch }), {
+      code: "ATTEMPT_SCOPE_INVALID",
+    });
+  });
+for (const patch of [
+  { issued_at: "2026-10-11T17:27:59.999Z" },
+  { issued_at: "2026-10-11T19:29:00.000Z" },
+  { conversation_id: conversation },
+  { conversation_ownership_matches: false },
+])
+  test(`continuation denies changed identity before child reads: ${JSON.stringify(patch)}`, async () => {
+    let calls = 0;
+    await assert.rejects(
+      collectWidgetAttempt(
+        async (sql) => {
+          calls++;
+          if (sql === ownerSelectionSql) return [selection()];
+          assert.equal(sql, progressSessionSql);
+          return [
+            { ...session(), conversation_id: continuationReadBoundary.conversation, ...patch },
+          ];
+        },
+        () => assert.fail("no report expected"),
+        continuationScope,
+      ),
+      { code: "ATTEMPT_SESSION_SCOPE_INVALID" },
+    );
+    assert.equal(calls, 2);
+  });
 
 test("old migration provenance stops before any diagnostic execution", async () => {
   const value = worker();

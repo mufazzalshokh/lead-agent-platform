@@ -6,7 +6,8 @@ The owner approved preparation of one amendment: three customer messages in
 the already-selected replacement chat, with the three-physical-attempt limit
 and all monetary caps unchanged. This is **preparation only**. It does not
 authorize deployment, recovery, Send, replay, another replacement or a migration.
-No saved rollout plan exists for this amendment yet.
+Saved plan **38172305694** is prepared and independently reviewed below; it has
+not been applied.
 
 The named-date parser correction is already deployed as source
 `1a910f097709a0e20b8d153bf482f470e1d631be` through consumed plan
@@ -83,8 +84,17 @@ tests skipped**). Twenty modeled-transport tests cover retained usage, recovery
 and restart, duplicate authorization, exact baseline tampering, third paid-turn
 denial and the fourth-inbound sentinel. Four actual PostgreSQL tests were added
 for recovered access, concurrent authorization and changed/unknown first costs.
-They require the full remote CI database gate: the local Docker daemon is not
-available. Do not report those tests as passing before CI supplies evidence.
+The local Docker daemon is not available, so their evidence comes from the
+completed remote database gate, not a simulated local PostgreSQL run.
+
+Source `abc3071fb81777068f5adfb98f6144d9081077eb` is committed/pushed and
+[full CI 38171326929](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38171326929)
+passed `pnpm ci:verify`: **4,224 passed** (3,678 ordinary and **546 actual
+PostgreSQL**), seven opt-in live tests skipped, format/lint/types, boundaries,
+canonical contracts and production builds. This includes all four new database
+cases. Separately, `node --test .github/scripts/s22-full-runtime-config-check.test.mjs`
+passed **11/11** runtime-plan guard regressions. Passing CI is not live booking
+acceptance or Send authority.
 
 ```text
 node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
@@ -100,9 +110,92 @@ the stable `widget_booking` envelope anchor
 `01a11c48-dbc2-76de-a873-f41664da5ccb`, migration head
 `0032_s22_widget_recovery`, private VPC, runtime identities, secrets references
 and explicit zero migrator retries. Do not execute a job during runtime rollout.
-The existing metadata reader's old source/image/window pins cannot establish
-post-rollout readiness; prepare compatible bounded same-chat evidence instead
-of repeatedly running obsolete tooling.
+The old metadata reader's source/image/window pins cannot establish post-rollout
+readiness. The prepared `s22-widget-progress.mjs --continuation` reader pins
+this plan's exact source, timestamp, Worker and Migrator images. Before apply,
+the old deployed runtime must fail that preflight; do not run it yet. After
+separately authorized verification, its new observation window is at most
+120 minutes, bounded by the observed fixed recovery-family deadline. The
+original issuance window and exact persisted conversation remain independently
+required; the existing 121-minute maximum, tenant/owner/role guards, metadata-only
+SQL, row sentinels and no-retry protections are preserved. This is an observer,
+not a paid-send readiness check. It does not recover, select or authorize Send.
+
+Fifteen native regressions were added for the later window, wrong profiles,
+other identities, issuance tampering, deadline/length bounds and invalid clocks.
+The following complete applicable native group passed **432/432**:
+
+```powershell
+$continuationTests = @(rg --files .github/scripts -g 's22-widget-*.test.mjs' -g '!s22-widget-session-select-postgres.test.mjs')
+node --test @continuationTests .github/scripts/s22-full-runtime-config-check.test.mjs
+```
+
+An initial broader native glob included the unchanged standalone selector
+PostgreSQL script and failed because its local disposable DB configuration is
+unavailable; it is explicitly excluded here, not reported as passing. Actual
+runtime PostgreSQL coverage is the successful 546-test remote gate above. New
+read-only tooling also passed scoped ESLint, Prettier and diff checks.
+
+## Exact saved rollout packet — prepared, not applied
+
+[Image build 38171816097](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38171816097)
+passed for exact source `abc3071fb81777068f5adfb98f6144d9081077eb`. Four
+digest-pinned OCI images were pulled and checked as `linux/amd64`, with source
+provenance and SBOM enabled. Image-manifest SHA256:
+`c7aebf80fbeadf6352a59310ccc0979bba41b1480ab9bb10a89a7d807efffd4a`.
+
+[Saved plan 38172305694](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38172305694)
+completed successfully. Artifact ID **11714626122**, expiration
+`2026-10-18T20:28:29Z`; saved binary SHA256:
+`f1f3bf00d5bb67cd552de85b3be3fc68c356dbfa06985dcee4db40cd51569e22`.
+The downloaded binary and its separately downloaded checksum match. Later
+documentation/tooling HEADs are not substitute runtime source pins.
+
+Workflow and independent downloaded-plan inspection passed **88/88 managed
+configurations**, using Terraform **1.14.7** and locked Google provider **7.46.1**.
+Before-images/source/timestamp/head match the retained successful `1a910f0`
+manifest and deployment. After-images and provenance match these exact inputs:
+
+```json
+{
+  "action": "plan",
+  "phase": "full",
+  "commit_sha": "abc3071fb81777068f5adfb98f6144d9081077eb",
+  "runtime_git_commit_sha": "abc3071fb81777068f5adfb98f6144d9081077eb",
+  "deployment_timestamp": "2026-10-11T20:27:12Z",
+  "migration_head": "0032_s22_widget_recovery",
+  "runtime_migration_head": "0032_s22_widget_recovery",
+  "api_migration_head": "0032_s22_widget_recovery",
+  "api_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api@sha256:f89024dc7406a307c597a7d90ca57c616e2730cb73699733c2f7378216c4941f",
+  "web_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/web@sha256:4a57a0d4d80caa0eab3c0efb824aa1f97e33bb7f9d163b31fac129561e8f6dfe",
+  "worker_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/worker@sha256:b6d550af4f2c071f00b7ae8388dddd7d8ef7efc3be8923aebd5c168140f75c5a",
+  "migrator_image": "me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:223f1cb22f12a082c147c001d12690c491ca01cf63aa265afeaaa62bd7b69ce5",
+  "ai_journey_mode": "preserve",
+  "ai_journey_widget_session_id": "01a11c48-dbc2-76de-a873-f41664da5ccb"
+}
+```
+
+Actions are **0 creates / 4 in-place updates / 0 destroys / 0 replacements**:
+API, Web, Worker and Migrator definition only. Every other managed resource is
+no-op. IAM, identities, secret references, private VPC/egress, ingress, SQL,
+CPU/memory/scaling, commands, task count, parallelism and explicit zero Migrator
+retries remain unchanged. Worker mode and stable envelope anchor are identical
+before/after; owner-selected session identity is not a Terraform change. There
+are no configurable unknowns or unreviewed configuration changes. Refresh drift
+is limited to provider-classified computed-only Artifact Registry `update_time`
+and Migrator execution-count/latest-execution fields; it is not a new execution.
+
+Receipt inspection passed **15 successful preparation steps**, **126 skipped
+steps** and all three evidence jobs skipped. Apply, migration, validator,
+diagnostic/database jobs and bootstrap/IAM changes did not run. Independent
+review command: `node .cache/s22-widget-continuation-rollout/review.mjs --review 38172305694`
+— **PASS**. The helper and raw downloaded plan remain ignored local review
+artifacts, not committed credentials/state or a substitute for the saved binary.
+
+The next authority boundary is **apply plan 38172305694 only**, with a fresh
+checksum/before-state comparison of that same saved binary. Do not replan, run a
+migration or execute a database job. Application verification and any later
+customer recovery/clarification/confirmation remain separate from preparation.
 
 No database migration, new dependency, public contract change, IAM expansion,
 provider call or UI change is part of this amendment. **S22 remains unaccepted.**
