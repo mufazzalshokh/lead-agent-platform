@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { createStaffWebAuthConfig } from "../../packages/config/src/index.js";
-import { createAuth0BrowserOidcClientForTests } from "../../packages/integrations/src/identity/auth0-browser.js";
+import {
+  BrowserOidcCallbackInvalidError,
+  createAuth0BrowserOidcClientForTests,
+} from "../../packages/integrations/src/identity/auth0-browser.js";
 import {
   OidcCredentialInvalidError,
   OidcProviderUnavailableError,
@@ -11,7 +14,9 @@ import { describe, expect, it } from "vitest";
 
 const ISSUER = "https://tenant.auth0.example/";
 const CLIENT_ID = "staff-client";
-const CALLBACK = "https://api.example.test/v1/staff/auth/callback";
+const CALLBACK = "https://staff.example.test/v1/staff/auth/callback";
+const MULTI_FACTOR_AUTHENTICATION_CONTEXT =
+  "http://schemas.openid.net/pape/policies/2007/06/multi-factor";
 
 const configuration = createStaffWebAuthConfig({
   browserEnvelopeKey: Buffer.alloc(32, 1).toString("base64url"),
@@ -39,6 +44,7 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
     expect(url.searchParams.get("client_id")).toBe(CLIENT_ID);
     expect(url.searchParams.get("redirect_uri")).toBe(CALLBACK);
     expect(url.searchParams.get("scope")).toBe("openid profile email");
+    expect(url.searchParams.get("acr_values")).toBe(MULTI_FACTOR_AUTHENTICATION_CONTEXT);
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
     expect(url.searchParams.get("code_challenge")).toBe(
       createHash("sha256").update(first.codeVerifier, "ascii").digest("base64url"),
@@ -46,6 +52,10 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
     expect(first.state).not.toBe(second.state);
     expect(first.nonce).not.toBe(second.nonce);
     expect(first.codeVerifier).not.toBe(second.codeVerifier);
+    expect(url.searchParams.has("prompt")).toBe(false);
+
+    const recovery = new URL((await client.begin("reauthenticate")).authorizationUrl);
+    expect(recovery.searchParams.get("prompt")).toBe("login");
   });
 
   it("validates the callback and returns only bounded authentication evidence", async () => {
@@ -156,6 +166,74 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
       }),
     ).resolves.toMatchObject({ authenticationLevel: "single_factor" });
 
+    signedIdToken = await new SignJWT({
+      acr: MULTI_FACTOR_AUTHENTICATION_CONTEXT,
+      auth_time: nowSeconds,
+      email: "person@example.test",
+      email_verified: true,
+      nonce: authorization.nonce,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+      .setIssuer(ISSUER)
+      .setAudience(CLIENT_ID)
+      .setSubject("auth0|verified-subject")
+      .setIssuedAt(nowSeconds)
+      .setExpirationTime(nowSeconds + 600)
+      .sign(keys.privateKey);
+    await expect(
+      callbackClient.complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      }),
+    ).resolves.toMatchObject({ authenticationLevel: "mfa" });
+
+    signedIdToken = await new SignJWT({
+      auth_time: nowSeconds,
+      nonce: authorization.nonce,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+      .setIssuer(ISSUER)
+      .setAudience(CLIENT_ID)
+      .setSubject("auth0|verified-subject")
+      .setIssuedAt(nowSeconds)
+      .setExpirationTime(nowSeconds + 600)
+      .sign(keys.privateKey);
+    await expect(
+      callbackClient.complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      }),
+    ).resolves.toMatchObject({ authenticationLevel: "single_factor" });
+
+    signedIdToken = await new SignJWT({
+      acr: MULTI_FACTOR_AUTHENTICATION_CONTEXT,
+      amr: "mfa",
+      auth_time: nowSeconds,
+      nonce: authorization.nonce,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key", typ: "JWT" })
+      .setIssuer(ISSUER)
+      .setAudience(CLIENT_ID)
+      .setSubject("auth0|verified-subject")
+      .setIssuedAt(nowSeconds)
+      .setExpirationTime(nowSeconds + 600)
+      .sign(keys.privateKey);
+    await expect(
+      callbackClient.complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      }),
+    ).rejects.toMatchObject({ failure: "callback_authentication_methods_invalid" });
+
     await expect(
       callbackClient.complete({
         callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
@@ -164,7 +242,7 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
         expectedState: authorization.state,
         maximumAgeSeconds: 43_200,
       }),
-    ).rejects.toBeInstanceOf(OidcCredentialInvalidError);
+    ).rejects.toMatchObject({ failure: "token_endpoint_invalid_grant" });
     await expect(
       callbackClient.complete({
         callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
@@ -173,7 +251,35 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
         expectedState: authorization.state,
         maximumAgeSeconds: 43_200,
       }),
-    ).rejects.toBeInstanceOf(OidcCredentialInvalidError);
+    ).rejects.toMatchObject({ failure: "oidc_claim_validation_failed" });
+  });
+
+  it("retains only finite diagnostics from rejected token responses", async () => {
+    const client = createAuth0BrowserOidcClientForTests(configuration, () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: "invalid_client",
+            error_description: "must-not-escape-sensitive-provider-detail",
+          }),
+          { headers: { "content-type": "application/json" }, status: 401 },
+        ),
+      ),
+    );
+    const authorization = await client.begin("login");
+    const failure = await client
+      .complete({
+        callbackUrl: new URL(CALLBACK + "?code=synthetic&state=" + authorization.state),
+        codeVerifier: authorization.codeVerifier,
+        expectedNonce: authorization.nonce,
+        expectedState: authorization.state,
+        maximumAgeSeconds: 43_200,
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(BrowserOidcCallbackInvalidError);
+    expect(failure).toMatchObject({ failure: "token_endpoint_invalid_client" });
+    expect(JSON.stringify(failure)).not.toContain("must-not-escape-sensitive-provider-detail");
   });
 
   it("fails closed before exchange when callback state is substituted", async () => {

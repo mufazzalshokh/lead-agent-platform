@@ -6,8 +6,8 @@ const valid = (environment: "development" | "production" | "test" = "production"
   browserEnvelopeKey: key(1),
   callbackUri:
     environment === "development"
-      ? "http://localhost:3001/v1/staff/auth/callback"
-      : "https://api.example.test/v1/staff/auth/callback",
+      ? "http://localhost:3000/v1/staff/auth/callback"
+      : "https://staff.example.test/v1/staff/auth/callback",
   clientId: "staff-client",
   clientSecret: "server-only-secret",
   environment,
@@ -58,6 +58,15 @@ describe("S6.6 web authentication configuration", () => {
       }),
     ).toThrow();
     expect(() => createStaffWebAuthConfig(valid("development"))).not.toThrow();
+  });
+
+  it("requires the callback to use the canonical staff application origin", () => {
+    expect(() =>
+      createStaffWebAuthConfig({
+        ...valid(),
+        callbackUri: "https://api.example.test/v1/staff/auth/callback",
+      }),
+    ).toThrow();
   });
 
   it("requires purpose-separated 256-bit keys", () => {

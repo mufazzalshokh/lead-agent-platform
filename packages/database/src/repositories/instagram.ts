@@ -3,6 +3,7 @@ import {
   InstagramApplicationError,
   isCredentialSecretReference,
   type InstagramConnection,
+  type InstagramManagementStatus,
   type InstagramPersistenceStore,
   type TrustedInboundRoute,
 } from "@lead-agent/application";
@@ -39,6 +40,7 @@ type ConnectionRow = QueryResultRow & {
   configuration_jsonb: unknown;
   credential_secret_ref: unknown;
   credential_version: unknown;
+  id: unknown;
   provider_account_id_hash: Buffer | null;
   status: unknown;
 };
@@ -85,9 +87,24 @@ const selectConnection = async (
   lock = false,
 ): Promise<ConnectionRow | null> => {
   const result = await executeTenantQuery<ConnectionRow>(session, (organizationId) => ({
-    text: `select cc.status, cc.configuration_jsonb, cc.credential_secret_ref, cc.credential_version, cc.provider_account_id_hash
+    text: `select cc.id, cc.status, cc.configuration_jsonb, cc.credential_secret_ref, cc.credential_version, cc.provider_account_id_hash
       from channel_connections cc where cc.organization_id=$1 and cc.id=$2 and cc.channel_type='instagram' ${lock ? "for update of cc" : ""}`,
     values: [organizationId, channelConnectionId],
+  }));
+  return result.rows[0] ?? null;
+};
+const selectConnectionByDisplayName = async (
+  session: TenantDbSession,
+  displayName: string,
+): Promise<ConnectionRow | null> => {
+  const result = await executeTenantQuery<ConnectionRow>(session, (organizationId) => ({
+    text: `select cc.id, cc.status, cc.configuration_jsonb, cc.credential_secret_ref,
+                  cc.credential_version, cc.provider_account_id_hash
+             from channel_connections cc
+            where cc.organization_id=$1 and cc.channel_type='instagram'
+              and lower(cc.display_name)=lower($2)
+            for update of cc`,
+    values: [organizationId, displayName],
   }));
   return result.rows[0] ?? null;
 };
@@ -167,6 +184,33 @@ const mappedConnection = (row: ConnectionRow | null): InstagramConnection | null
   });
 };
 
+const managementStatus = (rows: readonly ConnectionRow[], now: Date): InstagramManagementStatus => {
+  const connections = rows.map((row) => mappedConnection(row));
+  if (
+    connections.some(
+      (connection) =>
+        connection?.status === "active" &&
+        connection.accountId !== null &&
+        connection.credentialReference !== null &&
+        connection.expiresAt !== null &&
+        Date.parse(connection.expiresAt) > now.getTime(),
+    )
+  ) {
+    return Object.freeze({ status: "connected" });
+  }
+  if (
+    connections.some(
+      (connection) =>
+        connection?.status === "pending" &&
+        connection.onboardingExpiresAt !== null &&
+        Date.parse(connection.onboardingExpiresAt) > now.getTime(),
+    )
+  ) {
+    return Object.freeze({ status: "connection_pending" });
+  }
+  return Object.freeze({ status: rows.length === 0 ? "not_connected" : "needs_attention" });
+};
+
 export const createInstagramPersistenceStore = (
   runtime: TenantDatabaseRuntime,
   options: Readonly<{ identifierFactory?: SecurityIdentifierFactory }> = {},
@@ -180,11 +224,40 @@ export const createInstagramPersistenceStore = (
     );
   return Object.freeze<InstagramPersistenceStore>({
     loadConnection,
+    loadManagementStatus: async (organizationId, now) =>
+      runtime.withTenantTransaction(organizationId, async (session) => {
+        const result = await executeTenantQuery<ConnectionRow>(
+          session,
+          (trustedOrganizationId) => ({
+            text: `select cc.id, cc.status, cc.configuration_jsonb, cc.credential_secret_ref, cc.credential_version, cc.provider_account_id_hash
+                   from channel_connections cc
+                  where cc.organization_id=$1 and cc.channel_type='instagram'
+                  order by cc.updated_at desc, cc.id desc`,
+            values: [trustedOrganizationId],
+          }),
+        );
+        return managementStatus(result.rows, now);
+      }),
     beginOnboarding: async (input) =>
       runtime.withTenantTransaction(input.actor.organizationId, async (session) => {
-        const channel = identifiers.issueResourceId(input.now);
-        if (!isSchemaValue(ChannelConnectionIdSchema, channel))
+        const existingRow = await selectConnectionByDisplayName(session, input.displayName);
+        const existing = mappedConnection(existingRow);
+        const existingId = existingRow?.id;
+        if (
+          existingRow !== null &&
+          (existing === null || !isSchemaValue(ChannelConnectionIdSchema, existingId))
+        )
           throw new InstagramApplicationError("business_rule_failed");
+        const issuedChannel = identifiers.issueResourceId(input.now);
+        const channel =
+          existingRow === null
+            ? isSchemaValue(ChannelConnectionIdSchema, issuedChannel)
+              ? issuedChannel
+              : null
+            : isSchemaValue(ChannelConnectionIdSchema, existingId)
+              ? existingId
+              : null;
+        if (channel === null) throw new InstagramApplicationError("business_rule_failed");
         const config: InstagramConfiguration = {
           schema_version: 1,
           account_id: null,
@@ -193,17 +266,54 @@ export const createInstagramPersistenceStore = (
           token_expires_at: null,
           token_issued_at: null,
         };
-        await executeTenantQuery(session, (organizationId) => ({
-          text: `insert into channel_connections (id,organization_id,channel_type,status,display_name,provider_account_id_hash,credential_secret_ref,webhook_secret_hash,configuration_jsonb,verified_at,credential_version,version,created_at,updated_at)
-          values ($2,$1,'instagram','pending',$3,null,null,null,$4::jsonb,null,1,1,$5,$5)`,
-          values: [organizationId, channel, input.displayName, JSON.stringify(config), input.now],
-        }));
-        const result = await executeTenantQuery<{ changed: boolean }>(session, () => ({
-          text: "select app.create_instagram_inbound_route($1,$2,$3::bytea) as changed",
-          values: [identifiers.issueResourceId(input.now), channel, ownHash(input.stateHash)],
-        }));
-        if (result.rows[0]?.changed !== true)
-          throw new InstagramApplicationError("business_rule_failed");
+        if (existingRow === null) {
+          await executeTenantQuery(session, (organizationId) => ({
+            text: `insert into channel_connections (id,organization_id,channel_type,status,display_name,provider_account_id_hash,credential_secret_ref,webhook_secret_hash,configuration_jsonb,verified_at,credential_version,version,created_at,updated_at)
+            values ($2,$1,'instagram','pending',$3,null,null,null,$4::jsonb,null,1,1,$5,$5)`,
+            values: [organizationId, channel, input.displayName, JSON.stringify(config), input.now],
+          }));
+          const created = await executeTenantQuery<{ changed: boolean }>(session, () => ({
+            text: "select app.create_instagram_inbound_route($1,$2,$3::bytea) as changed",
+            values: [identifiers.issueResourceId(input.now), channel, ownHash(input.stateHash)],
+          }));
+          if (created.rows[0]?.changed !== true)
+            throw new InstagramApplicationError("business_rule_failed");
+        } else {
+          const expectedStateHash = existing?.status === "pending" ? existing.stateHash : null;
+          if (expectedStateHash === null) {
+            const disabled = await executeTenantQuery<{ changed: boolean }>(session, () => ({
+              text: "select app.disable_instagram_inbound_route($1) as changed",
+              values: [channel],
+            }));
+            if (disabled.rows[0]?.changed !== true)
+              throw new InstagramApplicationError("business_rule_failed");
+          }
+          await executeTenantQuery(session, (organizationId) => ({
+            text: `update channel_connections
+                      set status='pending', provider_account_id_hash=null,
+                          credential_secret_ref=null, configuration_jsonb=$3::jsonb,
+                          verified_at=null, credential_version=credential_version+1,
+                          version=version+1, updated_at=$4
+                    where organization_id=$1 and id=$2 and channel_type='instagram'`,
+            values: [organizationId, channel, JSON.stringify(config), input.now],
+          }));
+          const routed =
+            expectedStateHash !== null
+              ? await executeTenantQuery<{ changed: boolean }>(session, () => ({
+                  text: "select app.rotate_instagram_inbound_route($1,$2::bytea,$3::bytea) as changed",
+                  values: [channel, ownHash(expectedStateHash), ownHash(input.stateHash)],
+                }))
+              : await executeTenantQuery<{ changed: boolean }>(session, () => ({
+                  text: "select app.create_instagram_inbound_route($1,$2,$3::bytea) as changed",
+                  values: [
+                    identifiers.issueResourceId(input.now),
+                    channel,
+                    ownHash(input.stateHash),
+                  ],
+                }));
+          if (routed.rows[0]?.changed !== true)
+            throw new InstagramApplicationError("business_rule_failed");
+        }
         await appendAudit(
           session,
           identifiers,
@@ -212,7 +322,10 @@ export const createInstagramPersistenceStore = (
           input.now,
           input.actor,
         );
-        return channel;
+        return Object.freeze({
+          channelConnectionId: channel,
+          retiredCredentialReference: existing?.credentialReference ?? null,
+        });
       }),
     activate: async (input) =>
       runtime.withTenantTransaction(input.context.organizationId, async (session) => {

@@ -30,10 +30,15 @@ import {
 import type { FastifyInstance } from "fastify";
 
 import { createApi, STAFF_AUTH_LOG_REDACTION_PATHS } from "./auth/plugin.js";
+import { WIDGET_LOG_REDACTION_PATHS } from "./widget/plugin.js";
 import { createStaffConfigurationDependencies } from "./configuration/composition.js";
 import { createStaffOperationsDependencies } from "./staff/composition.js";
 import { createS9ConversationComposition } from "./conversations/composition.js";
-import { createWidgetDependencies } from "./widget/composition.js";
+import {
+  createStaffWidgetManagementDependencies,
+  createWidgetDependencies,
+} from "./widget/composition.js";
+import { createStaffS22WidgetCohortDependencies } from "./staff/s22-widget-cohort-composition.js";
 import { createTelegramApiComposition } from "./telegram/composition.js";
 import { createInstagramApiComposition } from "./instagram/composition.js";
 import type { CredentialSecretStore } from "@lead-agent/application";
@@ -123,7 +128,10 @@ export const createApiFromEnvironment = (
   const api = createApi({
     logger: {
       level: "info",
-      redact: { censor: "[REDACTED]", paths: [...STAFF_AUTH_LOG_REDACTION_PATHS] },
+      redact: {
+        censor: "[REDACTED]",
+        paths: [...STAFF_AUTH_LOG_REDACTION_PATHS, ...WIDGET_LOG_REDACTION_PATHS],
+      },
     },
     staffAuth: {
       authorizationResolver: authorizationRuntime,
@@ -151,6 +159,10 @@ export const createApiFromEnvironment = (
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffOperations: createStaffOperationsDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffAnalytics: createStaffAnalyticsDependencies(tenantRuntime, metrics),
+    staffWidgetManagement: createStaffWidgetManagementDependencies(tenantRuntime),
+    ...(environment["DEPLOYMENT_ENVIRONMENT"] === "staging"
+      ? { staffS22WidgetCohort: createStaffS22WidgetCohortDependencies(tenantRuntime) }
+      : {}),
     staffConversations: conversations.staff,
     staffTelegram: telegram.staff,
     telegramWebhook: telegram.webhook,

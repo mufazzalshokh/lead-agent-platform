@@ -234,6 +234,12 @@ active Membership and rotates the session token; invitation acceptance receives
 the opaque token in a non-logged request body after OIDC authentication. Auth0
 logout alone never substitutes for local revocation.
 
+An invalid, expired, or replayed browser callback clears all local authentication
+cookies and redirects to a finite same-origin staff recovery state. The recovery
+screen requires an explicit fresh sign-in and never revives prior browser state;
+identity, Membership, MFA, and tenant authorization are re-established through
+the normal flow. Tenant API requests still use the canonical problem responses.
+
 S6 reuses the canonical problem vocabulary: missing authentication maps to
 `authentication_required`; malformed, expired, revoked, mismatched, or replayed
 authentication/invitation proof maps to `token_invalid`; a valid principal that

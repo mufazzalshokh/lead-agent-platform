@@ -56,6 +56,22 @@ export const S21_THREAD_AUTOMATION_SCHEMA_NAMES = [
   "ThreadAutomationControlResponseSchema",
 ] as const;
 
+export const S22_WIDGET_COHORT_SCHEMA_NAMES = [
+  "S22WidgetCohortSelectInputSchema",
+  "S22WidgetCohortCandidateSchema",
+  "S22WidgetCohortStatusSchema",
+  "S22WidgetCohortSelectionReceiptSchema",
+  "S22WidgetCohortStatusResponseSchema",
+  "S22WidgetCohortSelectionResponseSchema",
+] as const;
+
+export const WIDGET_RECOVERY_SCHEMA_NAMES = [
+  "WidgetRecoveryCodeIssueInputSchema",
+  "WidgetRecoveryCodeResponseSchema",
+  "WidgetRecoveryResumeInputSchema",
+  "WidgetRecoveryResumeResponseSchema",
+] as const;
+
 export const PUBLIC_STATIC_SCHEMA_NAMES = {
   ai: [
     "AgentDecisionLanguageSchema",
@@ -80,6 +96,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     ...S19_STAFF_SCHEMA_NAMES,
     ...S20_ANALYTICS_SCHEMA_NAMES,
     ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
+    ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     "ApiErrorCodeSchema",
     "ValidationIssueSchema",
     "ProblemSchema",
@@ -263,6 +280,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "AggregateVersionSchema",
   ],
   widget: [
+    ...WIDGET_RECOVERY_SCHEMA_NAMES,
     "WidgetAcceptedMessageSchema",
     "WidgetConversationCreateInputSchema",
     "WidgetConversationCreateResponseSchema",

@@ -4,12 +4,20 @@ import {
   loadCommercialV1AIConfig,
   loadOpenAIHarnessConfig,
 } from "../../packages/config/src/index.js";
-import { createCommercialV1AIProvider, createOpenAIProvider } from "../../packages/ai/src/index.js";
+import {
+  createCommercialV1AIProvider,
+  createOpenAIProvider,
+  createAppointmentSubmissionAIProvider,
+  APPOINTMENT_SUBMISSION_INSTRUCTIONS,
+} from "../../packages/ai/src/index.js";
 import {
   COMMERCIAL_V1_AI_INSTRUCTIONS,
   OPENAI_AGENT_DECISION_SCHEMA,
 } from "../../packages/ai/src/schema.js";
-import { buildAIProviderInput } from "../../packages/application/src/index.js";
+import {
+  buildAIProviderInput,
+  APPOINTMENT_SUBMISSION_PROMPT,
+} from "../../packages/application/src/index.js";
 import { EVAL_INSTRUCTIONS } from "../ai-evals/screen.js";
 import { AI_SNAPSHOT, validDecision } from "./fixtures.js";
 
@@ -36,6 +44,26 @@ const envelope = (modelVersion = "gemini-3.8-flash") => ({
 });
 
 describe("S13 owner-approved production configuration", () => {
+  it("booking prompt delegates extraction/action to application evidence without changing the model/schema pin", async () => {
+    const request = vi.fn<typeof fetch>(() => Promise.resolve(Response.json(envelope())));
+    await createAppointmentSubmissionAIProvider(config(), { fetch: request }).decide(input());
+    const body = request.mock.calls[0]?.[1]?.body;
+    if (typeof body !== "string") throw new TypeError("Missing controlled request");
+    const sent: unknown = JSON.parse(body);
+    expect(APPOINTMENT_SUBMISSION_PROMPT).toBe("s16-appointment-submission.v2");
+    expect(sent).toMatchObject({
+      systemInstruction: { parts: [{ text: APPOINTMENT_SUBMISSION_INSTRUCTIONS }] },
+      generationConfig: {
+        responseJsonSchema: OPENAI_AGENT_DECISION_SCHEMA,
+        maxOutputTokens: 4000,
+        thinkingConfig: { thinkingLevel: "low" },
+      },
+    });
+    expect(body).toContain("Leave ALL extracted_facts fields null");
+    expect(body).toContain("Use action=none");
+    expect(body).toContain("History may inform intent, never populate extracted_facts");
+    expect(request).toHaveBeenCalledOnce();
+  });
   it("pins the exact immutable paid-tier low-thinking profile and keeps the existing deadline", () => {
     expect(COMMERCIAL_V1_AI_PROFILE).toEqual({
       providerId: "gemini",

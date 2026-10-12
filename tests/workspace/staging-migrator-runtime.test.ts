@@ -48,7 +48,7 @@ describe("S22 staging migrator diagnostics", () => {
     const writeInfo = vi.fn<(message: string) => void>();
     const databaseError = Object.assign(
       new Error(
-        `migration 0029_s21_thread_automation_controls failed for ${environment.MIGRATION_DATABASE_URL}; password=migration-password; Authorization: Bearer private-token`,
+        `migration 0030_s22_first_tenant_bootstrap failed for ${environment.MIGRATION_DATABASE_URL}; password=migration-password; Authorization: Bearer private-token`,
       ),
       { code: "42501" },
     );
@@ -72,7 +72,7 @@ describe("S22 staging migrator diagnostics", () => {
       error_code: "42501",
       error_type: "Error",
       failure_stage: "apply_migrations",
-      migration_identifier: "0029_s21_thread_automation_controls",
+      migration_identifier: "0030_s22_first_tenant_bootstrap",
       operation: "database_migration",
       outcome: "failed",
     });
@@ -104,8 +104,8 @@ describe("S22 staging migrator diagnostics", () => {
       loadMigration: () =>
         Promise.resolve(() =>
           Promise.resolve({
-            migrationCount: 30,
-            migrationHead: "0029_s21_thread_automation_controls",
+            migrationCount: 31,
+            migrationHead: "0030_s22_first_tenant_bootstrap",
           }),
         ),
       writeError,
@@ -119,8 +119,8 @@ describe("S22 staging migrator diagnostics", () => {
       environment: "staging",
       git_commit_sha: "a".repeat(40),
       image_digest: `migrator@sha256:${"b".repeat(64)}`,
-      migration_count: 30,
-      migration_head: "0029_s21_thread_automation_controls",
+      migration_count: 31,
+      migration_head: "0030_s22_first_tenant_bootstrap",
       operation: "database_migration",
       outcome: "succeeded",
     });
