@@ -4,10 +4,11 @@
 
 The owner approved preparation of one amendment: three customer messages in
 the already-selected replacement chat, with the three-physical-attempt limit
-and all monetary caps unchanged. This is **preparation only**. It does not
-authorize deployment, recovery, Send, replay, another replacement or a migration.
-Saved plan **38172305694** is prepared and independently reviewed below; it has
-not been applied.
+and all monetary caps unchanged. On 12 October the owner separately authorized
+**apply plan 38172305694 only**. That exact saved binary was consumed once by
+successful apply **38245351724**; its runtime postflight **38245540893** passed.
+Do not apply it again. This authority does not authorize recovery, Send, replay,
+another replacement, a migration or a database diagnostic execution.
 
 The named-date parser correction is already deployed as source
 `1a910f097709a0e20b8d153bf482f470e1d631be` through consumed plan
@@ -69,8 +70,8 @@ Those figures are not a refreshed balance or dispatch authorization.
 Original access expired at `2026-10-11T19:28:26.960Z`. The observed recovery
 family expires at `2026-10-12T17:49:03.353Z` (22:49:03 Asia/Tashkent). The owner
 confirmed privately saving the recovery proof; no proof value is included here.
-After a separately authorized rollout and verification, owner redemption can
-resume this same session/conversation. The protocol uses an empty, unbound frame
+After the verified rollout, separately authorized owner redemption can resume
+this same session/conversation. The protocol uses an empty, unbound frame
 as redemption context and revokes that context on success; it must not become
 another selected business chat. Staff cannot recover a chat from its public ID.
 Expiry or failed recovery stops the continuation rather than causing a reset.
@@ -111,10 +112,11 @@ the stable `widget_booking` envelope anchor
 `0032_s22_widget_recovery`, private VPC, runtime identities, secrets references
 and explicit zero migrator retries. Do not execute a job during runtime rollout.
 The old metadata reader's source/image/window pins cannot establish post-rollout
-readiness. The prepared `s22-widget-progress.mjs --continuation` reader pins
+readiness. The `s22-widget-progress.mjs --continuation` reader pins
 this plan's exact source, timestamp, Worker and Migrator images. Before apply,
-the old deployed runtime must fail that preflight; do not run it yet. After
-separately authorized verification, its new observation window is at most
+the old deployed runtime had to fail that preflight. Deployment verification
+does not authorize executing this database observer. After separately authorized
+collection, its new observation window is at most
 120 minutes, bounded by the observed fixed recovery-family deadline. The
 original issuance window and exact persisted conversation remain independently
 required; the existing 121-minute maximum, tenant/owner/role guards, metadata-only
@@ -136,7 +138,7 @@ unavailable; it is explicitly excluded here, not reported as passing. Actual
 runtime PostgreSQL coverage is the successful 546-test remote gate above. New
 read-only tooling also passed scoped ESLint, Prettier and diff checks.
 
-## Exact saved rollout packet — prepared, not applied
+## Exact saved rollout packet — preparation record
 
 [Image build 38171816097](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38171816097)
 passed for exact source `abc3071fb81777068f5adfb98f6144d9081077eb`. Four
@@ -192,10 +194,68 @@ review command: `node .cache/s22-widget-continuation-rollout/review.mjs --review
 — **PASS**. The helper and raw downloaded plan remain ignored local review
 artifacts, not committed credentials/state or a substitute for the saved binary.
 
-The next authority boundary is **apply plan 38172305694 only**, with a fresh
-checksum/before-state comparison of that same saved binary. Do not replan, run a
-migration or execute a database job. Application verification and any later
-customer recovery/clarification/confirmation remain separate from preparation.
+The owner subsequently authorized **apply plan 38172305694 only**. The fresh
+checksum and before-state comparison, one-time apply and postflight are recorded
+below. Do not reapply, substitute another plan, run a migration or execute a
+database job. Later customer recovery/clarification/confirmation remain separate
+authority boundaries.
+
+## 12 October 2026 — exact approved apply and verification
+
+No deviation from the reviewed scope was found. Before apply, the artifact was
+downloaded again; its SHA256 remained
+`f1f3bf00d5bb67cd552de85b3be3fc68c356dbfa06985dcee4db40cd51569e22`.
+Backend-free inspection with the locked provider again passed all **88 managed
+configurations**, with exactly four in-place updates. The fresh read-only
+[before-state run 38245129813](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38245129813)
+passed **16/16** assertions against the old `1a910f0` image/source/timestamp pins
+and zero Terraform configuration drift. Its evidence artifact is **11745410713**;
+SHA256 `890dd070d735db7afdd615d3f891a6b55e7d56f6d41ff8ccc6401620da11ff94`.
+The convergence check did not create a replacement saved rollout plan.
+
+[Apply 38245351724](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38245351724)
+completed successfully: **0 added / 4 changed / 0 destroyed**. Independent
+receipt inspection matched one completion for each API, Web, Worker and Migrator
+definition, the saved checksum and all 88 configuration checks. The exact-plan
+approval guard and deployment-provenance recording succeeded. Replanning,
+migration, validator, diagnostic, bootstrap and all three evidence jobs were
+skipped. No IAM, session binding, cost ledger or financial cap was changed.
+The dispatched workflow HEAD was `d58b12d8a0d32b05eb1fd622eba37db4c5619e84`;
+the deployed image source remains the reviewed **`abc3071`**, not that later
+documentation/tooling HEAD. Both
+[source CI 38171326929](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38171326929)
+and [tooling CI 38172809848](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38172809848)
+were independently rechecked as successful before dispatch.
+
+[Runtime postflight 38245540893](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38245540893)
+passed **16/16** assertions: exact approved API/Web digests, source, timestamp,
+migration head, private VPC, runtime identity and 15 secret references, ready
+revisions and zero Terraform configuration drift. Ready revisions are
+`lead-agent-staging-api-00036-n86` and `lead-agent-staging-web-00032-8lc`.
+Its artifact is **11746025034**; evidence SHA256
+`e5dc2f6cd36ccdac3f3412578bf2bf19cdea869b36885269140ec7aee2f24f46`.
+No application database job or customer/provider-test call was executed.
+
+[Read-only inventory 38245680630](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38245680630)
+passed **12/12** assertions at `2026-10-12T11:55:00.048Z`: API/Web HTTP 200,
+Worker ready, private PostgreSQL 17/shared-core configuration, backups/PITR and
+configured alert policies. Artifact **11746305091**; evidence SHA256
+`e4b69ffc927493a1a1a2c3889d9c5e35744932dff4fb5f70a4497927b10337e1`.
+Secret payload reads and infrastructure mutations are false. Restore and
+capacity proof remain explicitly false; inventory is not S22 acceptance.
+
+The applicable native regression command above was rerun with
+`--test-reporter=dot`: **432 passed, exit 0**. Only rollout-receipt documentation
+is changed after deployment; runtime code remains identical to source CI.
+Owner changes to `README.md`, `docs/architecture/s11-instagram-business.md` and
+`s22-public-notices.patch` are preserved and excluded from the receipt commit.
+
+The next safe task is separately authorized **same-chat recovery plus read-only
+readiness/allowance collection**, with no Send. The observed family deadline
+remains **12 October, 22:49:03 Asia/Tashkent**, not renewed by deployment. No
+recovery proof may be pasted or screenshotted. A failed/expired proof stops this
+continuation; it does not authorize another replacement. The clarification,
+staff offer and customer-confirmed booking are still unproven.
 
 No database migration, new dependency, public contract change, IAM expansion,
 provider call or UI change is part of this amendment. **S22 remains unaccepted.**

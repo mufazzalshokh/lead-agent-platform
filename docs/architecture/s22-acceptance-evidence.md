@@ -6768,7 +6768,7 @@ budget increase or ledger reset was performed. **S22 remains unaccepted.**
 
 ## 2026-10-12 — Exact same-chat continuation rollout plan prepared
 
-[The exact packet](s22-widget-continuation-plan.md#exact-saved-rollout-packet--prepared-not-applied)
+[The exact packet](s22-widget-continuation-plan.md#exact-saved-rollout-packet--preparation-record)
 binds passing runtime-source CI **38171326929** and immutable image build
 **38171816097** to saved plan **38172305694**, source `abc3071`, migration head
 `0032_s22_widget_recovery`. Binary SHA256:
@@ -6798,3 +6798,55 @@ conversation and customer-owned recovery proof. No recovery, another selected
 chat, message, provider-test call, replay, ledger reset or budget increase was
 performed. Deployment still needs the exact saved-plan authority; later customer
 actions need their own scope/readiness. **S22 remains unaccepted.**
+
+## 2026-10-12 — Approved same-chat continuation plan applied once
+
+The owner requested a factual recap and plan/structure audit, then authorized
+**apply plan 38172305694 only**. No deviation from the reviewed deployment scope
+was found. The prior named-date fix was already deployed; it does not replay the
+existing message. This amendment preserves the same selected session/conversation
+and all consumed messages, calls, known/unknown costs, retired usage and money
+caps. No fresh selection, replacement or UI expansion was performed.
+
+The [deployment receipt](s22-widget-continuation-plan.md#12-october-2026--exact-approved-apply-and-verification)
+retains the exact source/digest/plan checksum and finite allowlisted artifacts.
+The plan was downloaded again and independently re-inspected with the locked
+provider: **88 managed configurations; 0 creates / 4 updates / 0 destroys /
+0 replacements**. Read-only before-state **38245129813** passed **16 assertions**
+against the old deployed source/digests/provenance, with zero configurable drift.
+
+[Apply 38245351724](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38245351724)
+consumed only that saved binary once: **0 added / 4 changed / 0 destroyed**.
+Independent job/log receipt inspection passed the checksum, exact approval
+boundary, all 88 configuration checks and exactly one completion per runtime
+definition. Replanning, migration, validator, diagnostic, bootstrap and all
+three evidence jobs were skipped. Runtime source is `abc3071`, timestamp
+`2026-10-11T20:27:12Z`, head `0032_s22_widget_recovery`; dispatch HEAD was
+`d58b12d8a0d32b05eb1fd622eba37db4c5619e84`. Source CI **38171326929** and tooling
+CI **38172809848** were successful and rechecked before dispatch.
+
+[Postflight 38245540893](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38245540893)
+passed **16/16** exact-image/provenance, identity/private-network/secret-reference,
+ready-revision and Terraform convergence assertions. API revision is
+`lead-agent-staging-api-00036-n86`; Web is `lead-agent-staging-web-00032-8lc`.
+[Inventory 38245680630](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/38245680630)
+passed **12/12** at `2026-10-12T11:55:00.048Z`, including API/Web 200 and Worker
+ready. It explicitly retains `restore_proven=false`, `capacity_proven=false`,
+`secret_payloads_read=false` and `infrastructure_mutated=false`.
+
+Applicable native Widget/runtime guard regressions were rerun: **432 passed**,
+exit 0. No new test code or runtime code was changed in this apply milestone.
+Only the two receipt documents are updated; owner edits to `README.md`,
+`docs/architecture/s11-instagram-business.md` and `s22-public-notices.patch`
+remain preserved and excluded from its commit. No recovery, Send, replay,
+customer/provider-test call, DB diagnostic execution, IAM expansion, migration,
+another saved rollout plan, ledger reset or budget increase was authorized or
+performed by this rollout.
+
+Next is separately authorized recovery of **this same chat** and current
+read-only allowance/readiness collection, with no Send. The observed recovery
+family expires **12 October 2026, 22:49:03 Asia/Tashkent**; deployment does not
+renew it. A failed/expired proof stops continuation, not starts another loop.
+The date clarification, actual staff offer and customer-confirmed booking remain
+unproven. All other gates in the [remaining-work report](#current-remaining-gates-not-a-completion-percentage)
+remain unchanged. **S22 remains unaccepted; S23 is not started.**
