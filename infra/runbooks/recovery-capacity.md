@@ -126,6 +126,35 @@ read, session replacement, provider call, restore or capacity drill is authorize
 If state advances or the artifact expires, stop; do not silently regenerate and
 apply a replacement. Configuration convergence does not prove alert delivery.
 
+### Read-only monitoring baseline
+
+Before a separately approved alert/failure exercise, dispatch the existing
+`staging-terraform.yml` with `action=plan`, `phase=monitoring-evidence`, and the
+exact CI-passing branch HEAD as `commit_sha`. Leave apply authority fields empty.
+Its isolated job cannot enter Terraform or execute database/customer/provider
+work. It uses existing WIF permissions only; access denial must produce a finite
+`BLOCKED` receipt, never an automatic IAM expansion.
+
+The collector checks the deployed API ratio, enabled canonical notification
+channel references, and two matching scoped metric aggregates. It makes at most
+11 Monitoring GET requests (one policy list, up to eight channels, two metric
+queries), with no redirects, retries, pagination or notification sends. Each
+response is capped at 1 MiB and each request at 15 seconds. Output excludes
+credentials, channel destinations, raw labels and customer content. The job has
+a five-minute bound and retains only its allowlisted receipt for seven days.
+
+The ten-minute metric window ends two minutes before observation because the
+[Cloud Run metric catalog](https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z#run)
+documents 60-second sampling and up to 120 seconds of visibility delay for
+`run.googleapis.com/request_count`. Queries use the deployed policy's alignment,
+reduction and grouping through the [time-series GET API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.timeSeries/list).
+Absent numerator/denominator series remain unobserved; a zero denominator does
+not yield a measured ratio. `BASELINE_COLLECTED` proves neither sustained
+threshold evaluation nor actual notification delivery. Do not claim otherwise.
+The existing `/health` handler returns static success; it is not a database
+readiness probe or a controlled 5xx generator. Do not add a public fault endpoint
+or assume probing `/health` during a database interruption proves this alert.
+
 ### Incident response
 
 Use this small internal severity model:

@@ -124,6 +124,8 @@ verified **88 managed configurations / zero changes**. Application provenance
 recording and unrelated evidence/database jobs were skipped. The apply evidence
 artifact expires `2026-10-28T18:34:51Z`. Do not reapply plan **39650372329**.
 
-Next: prepare bounded live metric/notification-delivery proof; do not inject
-failure traffic yet. The remaining S22 acceptance matrix is unchanged.
+Next: collect the read-only `monitoring-evidence` baseline before designing a
+bounded live notification-delivery exercise; do not inject failure traffic or
+send a test notification yet. See the [runbook](../../infra/runbooks/recovery-capacity.md#read-only-monitoring-baseline).
+The remaining S22 acceptance matrix is unchanged.
 **S22 remains unaccepted; S23 is not started.** Never reapply consumed plan `38172305694`.

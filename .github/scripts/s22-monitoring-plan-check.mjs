@@ -109,6 +109,7 @@ const requests =
 const errors = ' AND metric.label.response_code_class = "5xx"';
 const oldRequests =
   'resource.type = "cloud_run_revision" AND resource.label.service_name = "lead-agent-staging-api" AND metric.type = "run.googleapis.com/request_count"';
+export { requests as monitoringRequestFilter };
 const aggregation = () => ({
   alignment_period: "60s",
   cross_series_reducer: "REDUCE_SUM",

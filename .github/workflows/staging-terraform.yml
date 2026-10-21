@@ -29,6 +29,7 @@ on:
           - migration-validate
           - api-image-update
           - api-image-verify
+          - monitoring-evidence
           - monitoring-policy
           - migrator-image-update
           - migrator-image-verify
@@ -232,6 +233,64 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  monitoring-evidence:
+    name: Read S22 monitoring baseline
+    if: inputs.phase == 'monitoring-evidence'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 5
+    env:
+      S22_PHASE: ${{ inputs.phase }}
+      ACTION: ${{ inputs.action }}
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REQUESTED_SHA: ${{ inputs.commit_sha }}
+      APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
+      PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+      APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
+    steps:
+      - name: Enforce monitoring read-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ACTION" == "plan" && -z "$APPROVAL_TOKEN" && -z "$PLAN_RUN_ID" && -z "$APPROVED_PLAN_SHA256" ]]
+          [[ "$PROJECT_ID" == "lead-agent-stg-739284" && "$REQUESTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$REQUESTED_SHA" ]]
+          case "$GITHUB_REF_NAME" in
+            main|verify/s22-staging-recovery-capacity) ;;
+            *) exit 1 ;;
+          esac
+      - name: Check out exact monitoring tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+      - name: Verify monitoring source
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          git fetch --no-tags origin "$GITHUB_REF"
+          git merge-base --is-ancestor "$REQUESTED_SHA" FETCH_HEAD
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - name: Authenticate through existing staging WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      - name: Set up existing Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+      - name: Read bounded monitoring metadata only
+        run: node .github/scripts/s22-monitoring-evidence.mjs
+      - name: Preserve content-free monitoring evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-monitoring-evidence-${{ github.run_id }}
+          path: s22-monitoring-evidence.json
+          if-no-files-found: error
+          retention-days: 7
+
   booking-evidence:
     name: Read bounded S22 booking evidence
     if: inputs.phase == 'booking-evidence'
@@ -325,7 +384,7 @@ jobs:
           retention-days: 7
 
   terraform:
-    if: inputs.phase != 'acceptance-inventory' && inputs.phase != 'booking-evidence' && inputs.phase != 'widget-evidence'
+    if: inputs.phase != 'acceptance-inventory' && inputs.phase != 'monitoring-evidence' && inputs.phase != 'booking-evidence' && inputs.phase != 'widget-evidence'
     name: Terraform ${{ inputs.action }} / ${{ inputs.phase }}
     runs-on: ubuntu-latest
     environment: staging
