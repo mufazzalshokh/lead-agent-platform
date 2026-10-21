@@ -14,8 +14,13 @@ not belong in evidence or telemetry.
 3. Attach the recovery instance to the same isolated VPC with a temporary, dedicated
    recovery credential. Do not reuse application secrets in logs or Terraform state.
 4. Run read-only validation for PostgreSQL 17, migration head
-   `0031_s22_widget_inbound_route_management`, all 32 migrations,
+   `0032_s22_widget_recovery`, all 33 migrations,
    52 production tables, FORCE RLS/policy/role drift, and pg-boss ownership.
+   Cross-check the exact packaged migration journal against the reviewed release
+   and the backup/PITR point selected in step 1. An intentionally older recovery
+   point requires its own matching reviewed release manifest, not the current head.
+   Stop on a head/count mismatch; do not migrate the restored target to make the
+   validation pass.
 5. Validate representative synthetic Contacts, Leads, Conversations, Messages,
    AppointmentRequests, confirmation evidence, eligibility controls, audit and Outbox.
    Prove encrypted fields decrypt only with authorized recovery keys and Tenant A/B
@@ -67,6 +72,27 @@ safe saturation, sustained CPU/memory saturation, or provider limits. Record the
 actual bottleneck and restore API/Web min instances to zero after the test window.
 
 ## Operational response
+
+### API error-percentage alert
+
+The API alert compares summed 5xx request rates with summed request rates for all
+response codes, scoped to the staging project, region and API service. Both sides
+use 60-second alignment and identical service/location grouping; revisions and
+response-code labels are reduced away before division. The threshold is strictly
+greater than 1% for 300 seconds. CPU and billing policies are separate and unchanged.
+This follows [Google's ratio-condition requirements](https://docs.cloud.google.com/monitoring/alerts/policies-in-json#metric-ratio)
+and the [locked Google provider's denominator aggregation contract](https://github.com/hashicorp/terraform-provider-google/blob/v7.46.1/website/docs/r/monitoring_alert_policy.html.markdown).
+
+After a separately reviewed deployment, use bounded synthetic traffic to verify
+that 2 errors among 1,000 requests (0.2%) do not satisfy the condition, whereas
+2 among 100 (2%) do when sustained for the full retest window. Split traffic across
+revisions to check the ratio of totals rather than an unweighted average. Zero or
+missing total traffic is not evidence of a measured 0% error rate; this policy is
+not an availability or metric-absence alert. Confirm actual notification receipt
+and preserve content-free observations. Source tests and configured channels do
+not prove live alert delivery. Budget notifications do not enforce a dollar cap.
+
+### Incident response
 
 Use this small internal severity model:
 

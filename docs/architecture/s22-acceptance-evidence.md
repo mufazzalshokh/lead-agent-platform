@@ -3,6 +3,76 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-21 — Resumed audit; two operational source defects corrected
+
+This checkpoint supersedes expired next-action instructions below, not their
+historical receipts. The branch still began at `d50f0fc`; its full CI
+**38246056158** is independently confirmed successful. Consumed plan
+**38172305694** and its apply/postflight receipts must not be rerun. The last
+verified application release remains `abc3071`; today's metadata inventory does
+not independently re-attest its exact images or current customer/ledger state.
+
+[Read-only inventory 39639060906](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39639060906)
+passed **12/12** at `2026-10-21T16:55:43.632Z`: API/Web HTTP 200, Worker ready,
+private running PostgreSQL 17/shared core, backups/PITR and configured alert
+channels. The latest observed successful backup completed at
+`2026-10-21T03:03:50.276Z`. `restore_proven` and `capacity_proven` remain false.
+Terraform, booking and Widget evidence jobs were skipped; no secret payload was
+read or infrastructure mutated. A running database has ongoing cost exposure;
+configured billing alerts are notifications, not automatic spending enforcement.
+
+The saved Widget recovery-family deadline was **12 October 22:49:03
+Asia/Tashkent** and is now expired. No attempted recovery, automatic replacement,
+selection, ledger reset, budget expansion or Send is authorized by this audit.
+Current allowance and a new explicitly bounded test scope must be established
+before another live customer test. The completed original Instagram booking and
+dispatch/reservation evidence remain closed and must not be repeated.
+
+Two concrete source defects are corrected, **not deployed**:
+
+- `api_errors` now divides summed 5xx request rates by all request rates for the
+  exact staging project/region/API service. Both sides use identical 60-second
+  rate alignment, sum reduction and service/location grouping; revision and
+  response-code labels cannot create mismatched or unweighted per-series ratios.
+  The strict 1% threshold, 300-second retest window, recipients, CPU policy,
+  billing budgets, runtime identities and application images are unchanged.
+- The isolated-restore runbook now names `0032_s22_widget_recovery` and **33**
+  migrations, cross-checks the packaged journal and selected backup/release, and
+  stops on a mismatch rather than migrating the restored target to force a PASS.
+  An intentionally older recovery point requires its matching reviewed manifest.
+
+Three new source regressions failed against the old configuration, then passed
+after correction. Focused workspace checks passed **18/18**; recovery/runtime
+guard regressions passed **16/16**. Root TypeScript, scoped ESLint/Prettier,
+Terraform formatting and backend-free configuration validation passed with the
+existing locked Google provider **7.46.1**. Commands:
+
+```text
+node node_modules/vitest/vitest.mjs run tests/workspace/staging-infrastructure.test.ts tests/workspace/staging-acceptance-inventory.test.ts --maxWorkers=1 --reporter=dot
+node --test .github/scripts/s22-recovery-rollout.test.mjs .github/scripts/s22-full-runtime-config-check.test.mjs
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js tests/workspace/staging-infrastructure.test.ts --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check tests/workspace/staging-infrastructure.test.ts infra/runbooks/recovery-capacity.md docs/architecture/s22-acceptance-evidence.md
+terraform fmt -check infra/deploy/gcp/staging/monitoring.tf
+terraform -chdir=infra/deploy/gcp/staging validate -no-color
+git diff --check -- infra/deploy/gcp/staging/monitoring.tf infra/runbooks/recovery-capacity.md tests/workspace/staging-infrastructure.test.ts docs/architecture/s22-acceptance-evidence.md
+```
+
+Terraform initialization disabled the backend, used only the existing local
+provider mirror and kept the lockfile read-only. No cloud plan/apply, database
+execution, migration, IAM change or provider/customer message was run. Full CI
+on the resulting commit remains a required gate; use its actual PR result, not
+an earlier source's PASS. Owner changes to `README.md`,
+`docs/architecture/s11-instagram-business.md` and `s22-public-notices.patch` are
+preserved and excluded from this milestone.
+
+The next rollout preparation must have a narrow **API alert policy only** action
+boundary and preserve the existing application provenance. Do not relax or reuse
+the four-runtime-update guard to permit this different change. A fresh reviewed
+saved plan and separate exact-plan approval are required before deployment;
+actual metric/notification-delivery proof is still outstanding. The remaining
+S22 acceptance matrix is unchanged. **S22 remains unaccepted; S23 is not started.**
+
 ## 2026-10-12 - Owner access probes pass; CLI failure boundary now observable
 
 The owner ran the five-file, SHA256-verified Cloud Shell command below. All

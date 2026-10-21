@@ -20,6 +20,60 @@ describe("S22 staging infrastructure boundary", () => {
     expect(manifest.entries.every((entry, index) => entry.idx === index)).toBe(true);
   });
 
+  it("compares only the staging API's 5xx requests with all its requests", async () => {
+    const monitoring = await repositoryFile("infra/deploy/gcp/staging/monitoring.tf");
+    const policy = monitoring.match(
+      /resource "google_monitoring_alert_policy" "api_errors" \{[\s\S]*?\n\}/u,
+    )?.[0];
+    expect(policy).toBeDefined();
+    if (policy === undefined) throw new Error("Missing staging API error policy");
+    const requests =
+      'resource.type = "cloud_run_revision" AND resource.label.project_id = "${var.project_id}" AND resource.label.location = "${var.region}" AND resource.label.service_name = "${local.name_prefix}-api" AND metric.type = "run.googleapis.com/request_count"';
+    expect(policy.match(/^\s+filter\s+= ("(?:[^"\\]|\\.)*")$/mu)?.[1]).toBe(
+      JSON.stringify(`${requests} AND metric.label.response_code_class = "5xx"`),
+    );
+    expect(policy.match(/^\s+denominator_filter\s+= ("(?:[^"\\]|\\.)*")$/mu)?.[1]).toBe(
+      JSON.stringify(requests),
+    );
+    expect(policy).toMatch(/comparison\s+= "COMPARISON_GT"/u);
+    expect(policy).toMatch(/threshold_value\s+= 0\.01\s*$/mu);
+    expect(policy).toMatch(/duration\s+= "300s"/u);
+  });
+
+  it("reduces numerator and denominator identically across response codes and revisions", async () => {
+    const monitoring = await repositoryFile("infra/deploy/gcp/staging/monitoring.tf");
+    const policy = monitoring.match(
+      /resource "google_monitoring_alert_policy" "api_errors" \{[\s\S]*?\n\}/u,
+    )?.[0];
+    if (policy === undefined) throw new Error("Missing staging API error policy");
+    const aggregations = [
+      ...policy.matchAll(/^\s+(aggregations|denominator_aggregations) \{\r?\n([\s\S]*?)^\s+\}/gmu),
+    ];
+    expect(aggregations.map((match) => match[1])).toEqual([
+      "aggregations",
+      "denominator_aggregations",
+    ]);
+    const numerator = aggregations[0]?.[2];
+    expect(numerator?.trim()).toBe(aggregations[1]?.[2]?.trim());
+    expect(numerator).toMatch(/alignment_period\s+= "60s"/u);
+    expect(numerator).toMatch(/per_series_aligner\s+= "ALIGN_RATE"/u);
+    expect(numerator).toMatch(/cross_series_reducer\s+= "REDUCE_SUM"/u);
+    expect(numerator).toMatch(
+      /group_by_fields\s+= \["resource\.label\.service_name", "resource\.label\.location"\]/u,
+    );
+  });
+
+  it("ties restore validation to the current packaged migration head and count without migrating", async () => {
+    const manifest = await readStagingMigrationManifest();
+    const runbook = await repositoryFile("infra/runbooks/recovery-capacity.md");
+    expect(runbook).toContain(`\`${manifest.entries.at(-1)?.tag}\``);
+    expect(runbook).toContain(`all ${manifest.entries.length} migrations`);
+    expect(runbook).toContain("Cross-check the exact packaged migration journal");
+    expect(runbook).toContain("Stop on a head/count mismatch; do not migrate the restored target");
+    expect(runbook).toContain("Never overwrite active");
+    expect(runbook).toContain("Resource deletion requires a separately reviewed plan");
+  });
+
   it("keeps application-role provisioning compatible with non-superuser Cloud SQL", async () => {
     const ownerTransferSpecs = [
       ["0012_s5_inbound_route_resolver.sql", "lead_agent_inbound_route_definer"],
