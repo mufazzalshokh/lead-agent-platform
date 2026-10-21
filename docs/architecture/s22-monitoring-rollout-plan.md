@@ -128,7 +128,10 @@ The read-only [baseline 39657347257](https://github.com/mufazzalshokh/lead-agent
 passed at source `e50772e`: reviewed ratio confirmed, one enabled email channel,
 four Monitoring GETs, no request series observed and no delivery claim. Its full
 receipt and CI totals are in the [evidence register](s22-acceptance-evidence.md).
-Next: prepare the bounded failure/notification-delivery exercise; do not inject
-failure traffic or send a test notification yet. See the [runbook](../../infra/runbooks/recovery-capacity.md#read-only-monitoring-baseline).
+The [bounded failure/notification proposal](s22-failure-notification-plan.md)
+now records the probe, security-metadata exception, outage limits and independent
+recovery prerequisites. No live controller is armed or outage/notification
+authorized. Next: implement and offline-verify its guarded controller/preflight;
+do not inject traffic yet. See the [runbook](../../infra/runbooks/recovery-capacity.md#read-only-monitoring-baseline).
 The remaining S22 acceptance matrix is unchanged.
 **S22 remains unaccepted; S23 is not started.** Never reapply consumed plan `38172305694`.

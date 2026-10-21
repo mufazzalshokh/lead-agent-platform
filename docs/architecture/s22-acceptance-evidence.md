@@ -3,6 +3,53 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-22 — Failure/notification exercise prepared; no live effects
+
+The [bounded exercise proposal](s22-failure-notification-plan.md) selects the
+existing authenticated session GET, not static `/health` or an anonymous request.
+Five new offline HTTP/source regressions passed: healthy → sanitized 500 →
+healthy, negative controls, session rotation, invalid credentials and resolver
+metadata writes. The relevant production paths have no diff from the preserved
+deployed source `abc3071fb81777068f5adfb98f6144d9081077eb`.
+This does not prove an actual database outage or notification delivery.
+
+The important scope correction is explicit: this GET can update/rotate the
+operator's authentication session. It is not a strictly non-mutating probe.
+Any live authority must include that security-metadata exception and the
+whole-staging SQL outage/actual notification, or this method is NO-GO. No
+business mutation, paid dispatch, customer session replacement, IAM expansion
+or public fault endpoint is proposed.
+
+Proposed limits: one exact SQL stop/start cycle; restore initiated by eight
+minutes from accepted stop request, at most 44 session GETs, no overlap/retries,
+zero AI attempts and no resource scale-up. Independent recovery and a tested
+guarded controller are mandatory **unmet readiness gates**, not claimed
+implementations. The plan does not promise SQL operation duration, alert timing
+or a fixed cloud-dollar cap. Nothing live was executed during preparation.
+
+Receipt-only [CI 39657829435](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39657829435)
+at `f84899da9a1de71568a9fbe3dc825c0399c6a6a7` was also confirmed successful;
+the earlier monitoring apply/read was not repeated. Current changes are the
+new proposal/test and their links in this register, monitoring packet and
+recovery runbook. No production implementation, schema or dependency changed.
+Focused verification passed **26/26** tests:
+
+```text
+node node_modules/vitest/vitest.mjs run tests/security/s22-failure-probe.test.ts tests/security/session.test.ts tests/security/browser-auth.test.ts tests/security/auth0-browser.test.ts tests/workspace/staging-monitoring-boundary.test.ts tests/workspace/staging-monitoring-evidence.test.ts --maxWorkers=1 --reporter=dot
+```
+
+The five new tests are included in that total. Full source CI remains required
+before the preparation handoff can be called verified. Scoped Prettier and
+the dependency boundary check also passed (332 source files). An additional
+local API-auth/gateway suite stopped before assertions with V8
+`Committing semi space failed` / heap allocation failure. It is not a passing
+test result; no local rerun or test weakening is used to bypass the full CI
+gate. Disk/memory headroom remains limited and owner files are preserved.
+
+Next safe task: implement and offline-verify the bounded controller and
+independent-recovery preflight. Live authority is not requested until those
+gates can be demonstrated. **S22 remains unaccepted; S23 is not started.**
+
 ## 2026-10-21 — Read-only monitoring baseline collected
 
 The previously blocked apply receipts were committed and pushed as `f86676c`.

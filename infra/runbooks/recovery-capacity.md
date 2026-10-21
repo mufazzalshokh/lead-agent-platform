@@ -48,6 +48,12 @@ measurement and bottleneck; do not claim the target.
   transaction has no partial AppointmentRequest/confirmation, no tenant fallback, and
   bounded recovery. Do not corrupt data or disable RLS.
 
+The [bounded database-failure/notification proposal](../../docs/architecture/s22-failure-notification-plan.md)
+selects an existing authenticated dependency probe and records its security-metadata
+writes, whole-staging outage scope, finite limits and independent recovery gates.
+It is preparation only, not live authority or transaction-rollback evidence.
+Its controller and recovery preflight must be verified before a live run is proposed.
+
 ## Capacity profile
 
 Capacity traffic uses a deterministic fake AI path and synthetic channel/provider seams;
