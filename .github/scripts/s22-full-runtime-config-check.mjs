@@ -88,6 +88,9 @@ function configuration(value, block, mask = {}) {
   return result;
 }
 
+// Shared schema-aware comparison only; each rollout keeps its own action policy.
+export { configuration as comparableResourceConfiguration };
+
 function permittedRuntime(configurationValue, workload, variables, after) {
   const value = structuredClone(configurationValue);
   const container =

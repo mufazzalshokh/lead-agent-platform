@@ -3,6 +3,37 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-21 — Monitoring-only rollout preparation
+
+The preceding source milestone is committed as `d8c6785`; full CI
+[39642955064](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39642955064)
+passed **4,227 tests**, including **546 real PostgreSQL tests**. Seven opt-in live
+tests were skipped. Formatting, lint, types, contracts, boundaries and builds
+also passed. This is source evidence, not a deployed alert or S22 acceptance.
+
+The existing trusted staging workflow now has a separate `monitoring-policy`
+phase. It preserves the exact existing application images/provenance and checks
+all 88 managed configurations against the locked provider schema. Its sole
+permitted mutation is the reviewed API error-ratio policy correction. It rejects
+runtime/IAM/database/recipient/budget changes, configurable unknowns/drift,
+partial inventories, unexpected data reads and replacement actions. Apply must
+consume a successful exact-source/same-branch saved-plan artifact with an
+explicit owner-approved SHA256; post-apply verification requires full zero-change
+convergence. Existing application/migration guards remain unchanged except for
+sharing their schema-aware configuration comparator. No new dependency or IAM
+permission was introduced.
+
+Local evidence: **52/52** native guard tests (36 new monitoring tests plus 16
+existing rollout tests), **19/19** focused workspace tests, and an offline replay
+against the retained real 88-resource plan and Google **7.46.1** schema passed.
+The replay is not current-cloud evidence. The first workspace attempt hit local
+`ENOSPC`; only the regenerable temporary Node compilation cache was removed, and
+the same workspace command then passed. Owner source/evidence files were not
+removed. The resulting exact commit still requires its own full CI and one live
+plan review. No apply, database execution, paid/customer test or session change
+is authorized by this preparation. A reviewed saved-plan receipt will supersede
+this preparation status; all remaining acceptance gates below stay open.
+
 ## 2026-10-21 — Resumed audit; two operational source defects corrected
 
 This checkpoint supersedes expired next-action instructions below, not their

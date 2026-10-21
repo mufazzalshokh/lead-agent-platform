@@ -92,6 +92,40 @@ not an availability or metric-absence alert. Confirm actual notification receipt
 and preserve content-free observations. Source tests and configured channels do
 not prove live alert delivery. Budget notifications do not enforce a dollar cap.
 
+### Monitoring-only saved-plan boundary
+
+Use `staging-terraform.yml` with `action=plan` and `phase=monitoring-policy`.
+This phase is not an application release or a permission to send test traffic.
+The exact reviewed tooling commit must be the dispatched branch HEAD and pass
+CI before planning. Preserve the existing immutable images and application
+provenance: source `abc3071fb81777068f5adfb98f6144d9081077eb`, timestamp
+`2026-10-11T20:27:12Z`, packaged/runtime/API head
+`0032_s22_widget_recovery`, functional shared-core profile, and authoritative
+`widget_booking` mode/envelope anchor. The anchor is not a fresh browser session
+and does not renew an expired session or activate a budget.
+
+The provider-schema guard checks the complete 88-resource plan and permits only
+one in-place update to `google_monitoring_alert_policy.api_errors`: the reviewed
+numerator/denominator and matching aggregations. Every other configurable value
+must remain known and unchanged, including identities, networks, secret
+references, runtime environment, database settings, recipients, CPU alert and
+billing budget. Computed-only provider metadata is not configuration drift.
+Targeted/partial inventories, configurable drift, unknowns, create/delete/replace
+actions, additional reads and arbitrary baseline changes fail closed. Never
+loosen the application rollout guard or use `-target` to force this plan through.
+
+Preserve the successful plan run ID, exact source, saved-plan SHA256, seven-day
+artifact expiry and finite monitoring receipt in a review packet. Applying
+requires separate owner approval naming that exact plan, its approved checksum
+and `S22-APPLY-APPROVED`. The workflow rechecks successful same-repository,
+same-branch, exact-source plan provenance, artifact integrity and policy scope
+before applying only the saved binary. A post-apply full read-only plan must
+converge with zero changes and the corrected ratio. It must not record a new
+application deployment. No migration, diagnostic job, IAM grant, secret payload
+read, session replacement, provider call, restore or capacity drill is authorized.
+If state advances or the artifact expires, stop; do not silently regenerate and
+apply a replacement. Configuration convergence does not prove alert delivery.
+
 ### Incident response
 
 Use this small internal severity model:
