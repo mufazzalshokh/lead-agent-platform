@@ -3,17 +3,19 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
-## 2026-10-21 — Exact monitoring plan reviewed; awaiting apply approval
+## 2026-10-21 — Monitoring correction applied; convergence verified
 
-Successful monitoring-only plan
+Owner-approved monitoring-only plan
 [39650372329](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39650372329)
-at source `2601be9090411cfc24feadc4bd0e051080c4af8d` independently passed saved
-binary/provenance/checksum/provider-schema review: **88 managed configurations,
-one API alert-policy update, zero creates/deletes/replacements or runtime
-mutations**. No apply, database execution, session replacement or provider call
-ran. Exact checksum, seven-day artifact expiry, unchanged images, verification
-commands and the one next approval boundary are recorded in the
-[monitoring rollout packet](s22-monitoring-rollout-plan.md).
+at source `2601be9090411cfc24feadc4bd0e051080c4af8d` was consumed once by
+successful [apply 39653834662](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39653834662),
+finished `2026-10-21T18:34:55Z`: **0 added, 1 changed, 0 destroyed**. The exact
+saved checksum/provenance/scope guards passed; full post-apply provider-schema
+convergence verified **88 managed configurations / zero changes**. Application
+provenance recording, database and unrelated evidence jobs were skipped. No
+session replacement or provider call ran. The [rollout packet](s22-monitoring-rollout-plan.md)
+records the checksum, unchanged images and retained evidence. **Do not reapply
+39650372329.** Live metric/notification delivery remains unproven.
 
 Full [CI 39648796883, attempt 2](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39648796883)
 passed **4,228 tests**, including **546 real PostgreSQL tests**, plus format,
@@ -21,9 +23,9 @@ lint, type, contract, boundary and build checks; seven opt-in live tests were
 skipped. Attempt 1 had passed its 490 PostgreSQL assertions but failed suite
 shutdown with an administrator-termination connection error. One unchanged-source
 retry passed; no test was weakened and this shutdown failure is not claimed
-fixed. This receipt supersedes the preparation status below, not any remaining
-live acceptance gate. The metric correction is **not deployed**. S22 remains
-unaccepted; S23 is not started.
+fixed. Documentation-source CI **39653067473** also passed. This receipt
+supersedes the preparation status below, not remaining live acceptance gates.
+S22 remains unaccepted; S23 is not started.
 
 ## 2026-10-21 — Monitoring-only rollout preparation
 

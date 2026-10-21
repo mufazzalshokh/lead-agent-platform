@@ -1,7 +1,7 @@
 # S22 API error-ratio monitoring-only plan
 
-Status: **PREPARED AND REVIEWED; NOT APPLIED**. This packet does not authorize
-deployment, a paid test, a replacement session or S22 acceptance.
+Status: **APPLIED; ZERO-CHANGE CONVERGENCE VERIFIED**. The owner-approved plan
+was consumed once. No paid test, replacement session or S22 acceptance is authorized.
 
 ## Exact saved plan
 
@@ -97,12 +97,13 @@ node .cache/s22-monitoring-rollout/review.mjs 39650372329
 # independent exact-artifact/provenance/schema review PASS, 88 configurations / 1 update
 ```
 
-Local `ENOSPC` interrupted one workspace attempt and one artifact download. Only
-the regenerable temporary Node compilation cache was removed; the repeated
-workspace check and evidence download/review passed. Local disk pressure remains
-an operational risk. Source, dependencies, retained plans and owner edits were
-preserved. No new dependency or database migration was introduced. No tenant
-authorization or application business logic changed.
+The first receipt-staging attempt failed with local `ENOSPC`: `unable to write
+loose object file: No space left on device`. The follow-up observed 120,455,168
+bytes free and resumed the focused receipt handoff without a local build or
+further deletion. Remote apply logs and the retained artifact independently
+verify deployment. Disk headroom remains limited. Source, dependencies, retained
+plans and owner edits are preserved; no migration, tenant authorization or
+application logic changed.
 
 Implemented files: `.github/scripts/s22-monitoring-plan-check.mjs`, its `.sh`
 wrapper and `.test.mjs`; shared comparator export in
@@ -114,15 +115,15 @@ and this review packet. The earlier metric correction is committed in `d8c6785`.
 Owner changes in `README.md`, `docs/architecture/s11-instagram-business.md` and
 `s22-public-notices.patch` are unchanged and excluded.
 
-## Exactly one next safe step
+## Consumed apply receipt and next gate
 
-Obtain owner approval for **apply plan 39650372329 only**. Its future apply must
-use the source, preserved inputs, saved-plan run ID and checksum above, with
-`S22-APPLY-APPROVED`; revalidate the same successful plan provenance and scope,
-then apply only that saved binary and require full zero-change convergence.
-Do not regenerate a replacement under this approval. Stop if state advances,
-an input differs or the artifact expires. Do not record a new application release.
+Owner-approved [apply 39653834662](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39653834662)
+finished `2026-10-21T18:34:55Z`: **0 added, 1 changed, 0 destroyed**. Eight approval,
+integrity, apply and convergence steps passed. Full provider-schema convergence
+verified **88 managed configurations / zero changes**. Application provenance
+recording and unrelated evidence/database jobs were skipped. The apply evidence
+artifact expires `2026-10-28T18:34:51Z`. Do not reapply plan **39650372329**.
 
-After that boundary, live alert/notification proof and the existing remaining
-S22 acceptance matrix still need completion. **S22 remains unaccepted and S23
-is not started.** Consumed historical plan `38172305694` must never be reapplied.
+Next: prepare bounded live metric/notification-delivery proof; do not inject
+failure traffic yet. The remaining S22 acceptance matrix is unchanged.
+**S22 remains unaccepted; S23 is not started.** Never reapply consumed plan `38172305694`.
