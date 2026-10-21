@@ -3,6 +3,90 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-21 — Read-only monitoring baseline collected
+
+The previously blocked apply receipts were committed and pushed as `f86676c`.
+No deployment was repeated. The collector is committed as
+`e50772e19d7ee8bc48e04e37bada62a3dfebcd4c`; full
+[CI 39656339208](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39656339208)
+passed on its first attempt: **4,229 tests**, including **546 real PostgreSQL
+tests**, plus formatting, lint, types, contracts, boundaries and builds. Seven
+opt-in live tests were skipped. Local evidence passed **71 native tests** (19
+new read-only evidence tests and 52 existing guard tests) and **20 focused
+workspace tests**. After the final diagnostic change, its workspace wrapper was
+rerun and passed. Local lint exhausted memory; the unchanged full CI lint gate
+subsequently passed. No local full build or additional deletion was performed.
+Disk headroom remains limited; owner files and retained evidence are preserved.
+
+Exactly one [read-only run 39657347257](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39657347257)
+at that source completed successfully. Its authenticated allowlisted receipt was
+independently checked against the source, job status and retained artifact:
+
+| Observation | Verified result |
+| --- | --- |
+| Observed at | `2026-10-21T18:57:45.087Z` |
+| Metric window | `18:45:45.087Z` through `18:55:45.087Z` on 21 October |
+| API error-ratio policy | Matches the reviewed deployed ratio and aggregation |
+| Enabled notification channels | 1, email; destination not recorded |
+| Observed total / error series | 0 / 0; no metric buckets in this window |
+| Maximum observed ratio | `null` (unobserved), not an invented zero |
+| Monitoring GET requests | 4; existing WIF/permissions only |
+| Terraform and other evidence jobs | All skipped |
+| Infrastructure/database/provider effects | No mutation; no database execution; zero AI provider calls |
+| Artifact expiry | `2026-10-28T18:57:46Z` |
+
+`BASELINE_COLLECTED` proves configuration and read access, **not** sustained
+condition evaluation, incident creation or delivery. Both
+`notification_delivery_proven` and `sustained_condition_proven` remain false.
+The owner confirmed control of the existing destination; that is an ownership
+statement, not evidence that a notification arrived or permission to send one.
+No address, message content, credential, raw metric labels or token is retained.
+No request traffic, notification, IAM grant, migration, session replacement,
+budget change or paid AI call was generated.
+
+The new isolated `monitoring-evidence` phase pins the exact branch HEAD with
+`action=plan` and empty apply authority. This execution was separately gated on
+that source's successful CI. It rejects redirects,
+pagination, excessive payloads, foreign scopes, ambiguous policies, malformed
+or partial metrics, and unreviewed ratio changes. Read failures identify the
+policy/channel/metric stage with a finite code, not a raw response. Its bounded
+ten-minute window ends two minutes before observation; missing series and zero
+denominators do not become zero-percent success. The
+[runbook](../../infra/runbooks/recovery-capacity.md#read-only-monitoring-baseline)
+records the request/time/privacy limits and official API references.
+
+Files in this monitoring milestone: `.github/scripts/s22-monitoring-evidence.mjs`,
+`.github/scripts/s22-monitoring-evidence.test.mjs`,
+`.github/scripts/s22-monitoring-plan-check.mjs` (filter export only),
+`.github/workflows/staging-terraform.yml`,
+`tests/workspace/staging-monitoring-evidence.test.ts`,
+`infra/runbooks/recovery-capacity.md`,
+`docs/architecture/s22-monitoring-rollout-plan.md`, and this register.
+No dependency, domain behavior, tenant authorization or database schema changed.
+Verification commands:
+
+```text
+node --test .github/scripts/s22-monitoring-evidence.test.mjs .github/scripts/s22-monitoring-plan-check.test.mjs .github/scripts/s22-full-runtime-config-check.test.mjs .github/scripts/s22-recovery-rollout.test.mjs
+# 71/71
+node node_modules/vitest/vitest.mjs run tests/workspace/staging-infrastructure.test.ts tests/workspace/staging-acceptance-inventory.test.ts tests/workspace/staging-monitoring-boundary.test.ts tests/workspace/staging-monitoring-evidence.test.ts --maxWorkers=1 --reporter=dot
+# 20/20; final evidence-wrapper rerun also PASS
+gh run view 39656339208 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,headSha
+# completed / success / e50772e19d7ee8bc48e04e37bada62a3dfebcd4c
+gh run view 39657347257 --repo mufazzalshokh/lead-agent-platform --json status,conclusion,headSha,jobs
+# success; only the metadata job executed
+```
+
+Next safe task: prepare one bounded failure/notification-delivery exercise as
+part of the existing failure gate, with an independently verified non-mutating
+HTTP probe, an explicit reversible failure/recovery window, request/time/cost
+bounds, recipient acknowledgement and stop conditions. Do not add a public fault
+endpoint, lower the deployed threshold, manufacture cost or claim acceptance
+from this baseline. The existing `/health` handler returns static success and
+is not a database-readiness or controlled-5xx probe. A live exercise requires
+separate authority; this read authorizes no failure injection or notification.
+**S22 remains unaccepted; S23 is not started.** Plans **39650372329** and
+**38172305694** are consumed and must not be applied again.
+
 ## 2026-10-21 — Monitoring correction applied; convergence verified
 
 Owner-approved monitoring-only plan

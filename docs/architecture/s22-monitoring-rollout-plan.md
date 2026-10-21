@@ -124,8 +124,11 @@ verified **88 managed configurations / zero changes**. Application provenance
 recording and unrelated evidence/database jobs were skipped. The apply evidence
 artifact expires `2026-10-28T18:34:51Z`. Do not reapply plan **39650372329**.
 
-Next: collect the read-only `monitoring-evidence` baseline before designing a
-bounded live notification-delivery exercise; do not inject failure traffic or
-send a test notification yet. See the [runbook](../../infra/runbooks/recovery-capacity.md#read-only-monitoring-baseline).
+The read-only [baseline 39657347257](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39657347257)
+passed at source `e50772e`: reviewed ratio confirmed, one enabled email channel,
+four Monitoring GETs, no request series observed and no delivery claim. Its full
+receipt and CI totals are in the [evidence register](s22-acceptance-evidence.md).
+Next: prepare the bounded failure/notification-delivery exercise; do not inject
+failure traffic or send a test notification yet. See the [runbook](../../infra/runbooks/recovery-capacity.md#read-only-monitoring-baseline).
 The remaining S22 acceptance matrix is unchanged.
 **S22 remains unaccepted; S23 is not started.** Never reapply consumed plan `38172305694`.
