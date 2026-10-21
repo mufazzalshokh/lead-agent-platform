@@ -10,9 +10,9 @@ const path = "/v1/staff/auth/session";
 const fixture = () => {
   // Reuse only the common auth fixture; no messaging/business use cases are mounted.
   const auth = staffFixture();
-  const createSession = vi.fn(auth.staffAuth.sessions.createSession);
-  const revokeSession = vi.fn(auth.staffAuth.sessions.revokeSession);
-  const revokeUserSessions = vi.fn(auth.staffAuth.sessions.revokeUserSessions);
+  const createSession = vi.spyOn(auth.staffAuth.sessions, "createSession");
+  const revokeSession = vi.spyOn(auth.staffAuth.sessions, "revokeSession");
+  const revokeUserSessions = vi.spyOn(auth.staffAuth.sessions, "revokeUserSessions");
   const rotateSession = vi.fn<StaffAuthDependencies["sessions"]["rotateSession"]>(() =>
     Promise.resolve({
       csrfSecret: "c".repeat(43),

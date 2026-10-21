@@ -46,6 +46,17 @@ local API-auth/gateway suite stopped before assertions with V8
 test result; no local rerun or test weakening is used to bypass the full CI
 gate. Disk/memory headroom remains limited and owner files are preserved.
 
+Initial source [CI 39660879565](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39660879565)
+at `cd6dde0` passed formatting but found three `unbound-method` lint errors in
+the new test's spy setup. Those method references were replaced with bound
+`vi.spyOn` spies; no lint rule, production code or test assertion was weakened.
+The corrected source must pass the full gate; the failed source is not a
+verified milestone. Its scoped Prettier check passed, but the local probe
+rerun stopped during import with `ENOSPC` before assertions. Earlier 26 passing
+tests are not relabeled as a corrected-source pass. Verification therefore
+depends on the corrected-source remote CI; no additional local build or
+unrelated file deletion is performed.
+
 Next safe task: implement and offline-verify the bounded controller and
 independent-recovery preflight. Live authority is not requested until those
 gates can be demonstrated. **S22 remains unaccepted; S23 is not started.**
