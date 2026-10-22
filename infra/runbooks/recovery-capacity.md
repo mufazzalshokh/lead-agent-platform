@@ -13,8 +13,14 @@ not belong in evidence or telemetry.
    staging and never expose a public IP.
 3. Attach the recovery instance to the same isolated VPC with a temporary, dedicated
    recovery credential. Do not reuse application secrets in logs or Terraform state.
-4. Run read-only validation for PostgreSQL 17, migration head `0029`, all 30 migrations,
+4. Run read-only validation for PostgreSQL 17, migration head
+   `0032_s22_widget_recovery`, all 33 migrations,
    52 production tables, FORCE RLS/policy/role drift, and pg-boss ownership.
+   Cross-check the exact packaged migration journal against the reviewed release
+   and the backup/PITR point selected in step 1. An intentionally older recovery
+   point requires its own matching reviewed release manifest, not the current head.
+   Stop on a head/count mismatch; do not migrate the restored target to make the
+   validation pass.
 5. Validate representative synthetic Contacts, Leads, Conversations, Messages,
    AppointmentRequests, confirmation evidence, eligibility controls, audit and Outbox.
    Prove encrypted fields decrypt only with authorized recovery keys and Tenant A/B
@@ -42,6 +48,16 @@ measurement and bottleneck; do not claim the target.
   transaction has no partial AppointmentRequest/confirmation, no tenant fallback, and
   bounded recovery. Do not corrupt data or disable RLS.
 
+The [bounded database-failure/notification proposal](../../docs/architecture/s22-failure-notification-plan.md)
+selects an existing authenticated dependency probe and records its security-metadata
+writes, whole-staging outage scope, finite limits and independent recovery gates.
+It is preparation only, not live authority or transaction-rollback evidence.
+The offline [preflight validator](../../.github/scripts/s22-failure-preflight.mjs)
+checks a supplied snapshot against the pinned deployment and fixed bounds. A passing
+snapshot is not independent live-state verification or execution authority. The
+offline reducer only simulates transitions; a live execution adapter, independent
+watchdog and recovery confirmation still need implementation and separate review.
+
 ## Capacity profile
 
 Capacity traffic uses a deterministic fake AI path and synthetic channel/provider seams;
@@ -66,6 +82,90 @@ safe saturation, sustained CPU/memory saturation, or provider limits. Record the
 actual bottleneck and restore API/Web min instances to zero after the test window.
 
 ## Operational response
+
+### API error-percentage alert
+
+The API alert compares summed 5xx request rates with summed request rates for all
+response codes, scoped to the staging project, region and API service. Both sides
+use 60-second alignment and identical service/location grouping; revisions and
+response-code labels are reduced away before division. The threshold is strictly
+greater than 1% for 300 seconds. CPU and billing policies are separate and unchanged.
+This follows [Google's ratio-condition requirements](https://docs.cloud.google.com/monitoring/alerts/policies-in-json#metric-ratio)
+and the [locked Google provider's denominator aggregation contract](https://github.com/hashicorp/terraform-provider-google/blob/v7.46.1/website/docs/r/monitoring_alert_policy.html.markdown).
+
+After a separately reviewed deployment, use bounded synthetic traffic to verify
+that 2 errors among 1,000 requests (0.2%) do not satisfy the condition, whereas
+2 among 100 (2%) do when sustained for the full retest window. Split traffic across
+revisions to check the ratio of totals rather than an unweighted average. Zero or
+missing total traffic is not evidence of a measured 0% error rate; this policy is
+not an availability or metric-absence alert. Confirm actual notification receipt
+and preserve content-free observations. Source tests and configured channels do
+not prove live alert delivery. Budget notifications do not enforce a dollar cap.
+
+### Monitoring-only saved-plan boundary
+
+Use `staging-terraform.yml` with `action=plan` and `phase=monitoring-policy`.
+This phase is not an application release or a permission to send test traffic.
+The exact reviewed tooling commit must be the dispatched branch HEAD and pass
+CI before planning. Preserve the existing immutable images and application
+provenance: source `abc3071fb81777068f5adfb98f6144d9081077eb`, timestamp
+`2026-10-11T20:27:12Z`, packaged/runtime/API head
+`0032_s22_widget_recovery`, functional shared-core profile, and authoritative
+`widget_booking` mode/envelope anchor. The anchor is not a fresh browser session
+and does not renew an expired session or activate a budget.
+
+The provider-schema guard checks the complete 88-resource plan and permits only
+one in-place update to `google_monitoring_alert_policy.api_errors`: the reviewed
+numerator/denominator and matching aggregations. Every other configurable value
+must remain known and unchanged, including identities, networks, secret
+references, runtime environment, database settings, recipients, CPU alert and
+billing budget. Computed-only provider metadata is not configuration drift.
+Targeted/partial inventories, configurable drift, unknowns, create/delete/replace
+actions, additional reads and arbitrary baseline changes fail closed. Never
+loosen the application rollout guard or use `-target` to force this plan through.
+
+Preserve the successful plan run ID, exact source, saved-plan SHA256, seven-day
+artifact expiry and finite monitoring receipt in a review packet. Applying
+requires separate owner approval naming that exact plan, its approved checksum
+and `S22-APPLY-APPROVED`. The workflow rechecks successful same-repository,
+same-branch, exact-source plan provenance, artifact integrity and policy scope
+before applying only the saved binary. A post-apply full read-only plan must
+converge with zero changes and the corrected ratio. It must not record a new
+application deployment. No migration, diagnostic job, IAM grant, secret payload
+read, session replacement, provider call, restore or capacity drill is authorized.
+If state advances or the artifact expires, stop; do not silently regenerate and
+apply a replacement. Configuration convergence does not prove alert delivery.
+
+### Read-only monitoring baseline
+
+Before a separately approved alert/failure exercise, dispatch the existing
+`staging-terraform.yml` with `action=plan`, `phase=monitoring-evidence`, and the
+exact CI-passing branch HEAD as `commit_sha`. Leave apply authority fields empty.
+Its isolated job cannot enter Terraform or execute database/customer/provider
+work. It uses existing WIF permissions only; access denial must produce a finite
+`BLOCKED` receipt, never an automatic IAM expansion.
+
+The collector checks the deployed API ratio, enabled canonical notification
+channel references, and two matching scoped metric aggregates. It makes at most
+11 Monitoring GET requests (one policy list, up to eight channels, two metric
+queries), with no redirects, retries, pagination or notification sends. Each
+response is capped at 1 MiB and each request at 15 seconds. Output excludes
+credentials, channel destinations, raw labels and customer content. The job has
+a five-minute bound and retains only its allowlisted receipt for seven days.
+
+The ten-minute metric window ends two minutes before observation because the
+[Cloud Run metric catalog](https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z#run)
+documents 60-second sampling and up to 120 seconds of visibility delay for
+`run.googleapis.com/request_count`. Queries use the deployed policy's alignment,
+reduction and grouping through the [time-series GET API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.timeSeries/list).
+Absent numerator/denominator series remain unobserved; a zero denominator does
+not yield a measured ratio. `BASELINE_COLLECTED` proves neither sustained
+threshold evaluation nor actual notification delivery. Do not claim otherwise.
+The existing `/health` handler returns static success; it is not a database
+readiness probe or a controlled 5xx generator. Do not add a public fault endpoint
+or assume probing `/health` during a database interruption proves this alert.
+
+### Incident response
 
 Use this small internal severity model:
 

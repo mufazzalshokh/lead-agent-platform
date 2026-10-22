@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Render actual Web components in Node tests; Next retains its own JSX config.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       "@lead-agent/ai": fileURLToPath(new URL("./packages/ai/src/index.ts", import.meta.url)),

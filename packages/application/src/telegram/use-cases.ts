@@ -80,6 +80,11 @@ export type TelegramOnboardingRecord = Readonly<{
   channelConnectionId: ChannelConnectionId;
 }>;
 
+export type TelegramManagementStatus = Readonly<{
+  nextStep: "connect_business" | "open_bot" | null;
+  status: "connected" | "connection_pending" | "needs_attention" | "not_connected";
+}>;
+
 export interface TelegramPersistenceStore {
   beginOnboarding(
     input: Readonly<{
@@ -129,6 +134,10 @@ export interface TelegramPersistenceStore {
       context: TrustedInboundRoute;
     }>,
   ): Promise<TelegramConnectionAuthority | null>;
+  loadManagementStatus(
+    organizationId: AuthorizationContext["organizationId"],
+    now: Date,
+  ): Promise<TelegramManagementStatus>;
 }
 
 export interface TelegramCallbackAcknowledger {
@@ -160,6 +169,9 @@ export type TelegramBusinessUseCases = Readonly<{
       displayName: string;
     }>,
   ): Promise<Readonly<{ channelConnectionId: ChannelConnectionId; onboardingUrl: string }>>;
+  getStatus(
+    input: Readonly<{ authorization: AuthorizationContext }>,
+  ): Promise<TelegramManagementStatus>;
   processUpdate(update: TelegramNormalizedUpdate): Promise<TelegramWebhookOutcome>;
 }>;
 
@@ -297,6 +309,18 @@ export const createTelegramBusinessUseCases = (dependencies: {
         channelConnectionId: record.channelConnectionId,
         onboardingUrl: `https://t.me/${dependencies.botUsername}?start=${nonce}`,
       });
+    },
+    getStatus: async ({ authorization }) => {
+      if (
+        !isAuthorizationContext(authorization) ||
+        !hasPermission(authorization.role, "integrations.manage")
+      ) {
+        throw new TelegramApplicationError("permission_denied");
+      }
+      return await dependencies.persistence.loadManagementStatus(
+        authorization.organizationId,
+        clock(),
+      );
     },
     processUpdate: async (update) => {
       if (update.kind === "ignored") return ignored();
