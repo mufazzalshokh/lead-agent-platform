@@ -30,6 +30,8 @@ export const failureExerciseBounds = Object.freeze({
   recovery_observation_deadline_seconds: 600,
   sql_operation_reads: 48,
   sql_operation_read_deadline_seconds: 15,
+  stop_operation_reads: 8,
+  restore_operation_reads: 40,
   ai_attempts: 0,
   provider_attempts: 0,
 });

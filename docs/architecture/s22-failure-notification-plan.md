@@ -77,7 +77,11 @@ No restore, deletion, credential/role/firewall change or public access is allowe
    snapshot against the pinned project, service, migration and all four image
    digests. Its positive result explicitly says live state was not independently
    verified; it makes zero cloud requests and does not authorize an execution.
-   It does not implement the controller or watchdog.
+   `.github/scripts/s22-failure-controller.mjs` reduces ordered simulated
+   events under the fixed probe, poll and transition limits. Its proposed actions
+   are labels only (`live_actions: 0`); it has no adapter or timer that can
+   operate Cloud SQL, a browser or a notification channel. The live executor
+   and independent watchdog remain unimplemented.
 2. Independently verify the current instance identity/configuration, no pending
    SQL operation, existing least-privilege stop/start/operation-read access,
    reviewed app provenance, unchanged alert/recipient and no already-open
@@ -181,6 +185,8 @@ Telegram or Widget booking/recovery gates. Those remain in the
 [S22 evidence register](s22-acceptance-evidence.md). No expired customer session
 is renewed and no additional message/provider allowance is activated.
 
-Next safe task: implement and offline-verify the bounded controller and its
-independent-recovery preflight. Only after readiness is demonstrated should the
-exact live outage/notification scope be presented for approval.
+Next safe task: separately design and review any live execution adapter and
+independent watchdog, with a tested recovery path. The offline reducer and
+preflight are complete for simulation only; they do not establish live
+readiness. Present exact outage and notification authority for approval before
+any live failure or delivery exercise.

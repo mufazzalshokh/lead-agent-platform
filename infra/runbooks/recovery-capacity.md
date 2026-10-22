@@ -54,8 +54,9 @@ writes, whole-staging outage scope, finite limits and independent recovery gates
 It is preparation only, not live authority or transaction-rollback evidence.
 The offline [preflight validator](../../.github/scripts/s22-failure-preflight.mjs)
 checks a supplied snapshot against the pinned deployment and fixed bounds. A passing
-snapshot is not independent live-state verification or execution authority. The live
-controller and recovery confirmation still need implementation and separate review.
+snapshot is not independent live-state verification or execution authority. The
+offline reducer only simulates transitions; a live execution adapter, independent
+watchdog and recovery confirmation still need implementation and separate review.
 
 ## Capacity profile
 

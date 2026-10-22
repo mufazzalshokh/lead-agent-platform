@@ -46,7 +46,7 @@ local API-auth/gateway suite stopped before assertions with V8
 test result; no local rerun or test weakening is used to bypass the full CI
 gate. Disk/memory headroom remains limited and owner files are preserved.
 
-The next preparation change adds `.github/scripts/s22-failure-preflight.mjs`,
+The offline preparation adds `.github/scripts/s22-failure-preflight.mjs`,
 which reuses the canonical monitoring deployment profile to check all four
 image digests, target, approval fields, SQL baseline, recovery attestation,
 quiet-window assertions, probe and incident state. Its nine native tests pass:
@@ -59,8 +59,19 @@ node --test .github/scripts/s22-failure-preflight.test.mjs
 The test is also wired into the normal workspace CI. A matching input returns
 `live_authorized: false`, `live_state_independently_verified: false`, and zero
 cloud requests. It validates claims in a supplied snapshot; it cannot establish
-that those claims are true or operate SQL. The live controller, independent
-recovery confirmation and notification delivery remain unimplemented.
+that those claims are true or operate SQL. The pure
+`.github/scripts/s22-failure-controller.mjs` reducer models event ordering,
+the 44 probe and 48 SQL-read ceilings, deadlines, no-retry takeover and recovery
+cutoff. Its 15 native cases also pass under:
+
+```text
+node --test .github/scripts/s22-failure-preflight.test.mjs .github/scripts/s22-failure-controller.test.mjs
+# 24 passed
+```
+
+This reducer returns simulated next-step labels only. No live Cloud SQL, browser,
+watchdog or notification adapter exists. Independent recovery confirmation and
+notification delivery remain unverified.
 
 Initial source [CI 39660879565](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39660879565)
 at `cd6dde0` passed formatting but found three `unbound-method` lint errors in
@@ -73,11 +84,11 @@ tests are not relabeled as a corrected-source pass. Verification therefore
 depends on the corrected-source remote CI; no additional local build or
 unrelated file deletion is performed.
 
-Next safe task: implement and offline-verify the bounded controller and
-independent-recovery preflight. The offline input validator now exists, but does
-not verify the supplied attestations or perform live reads. Live authority is
-not requested until a guarded controller and independently verified recovery
-path can be demonstrated. **S22 remains unaccepted; S23 is not started.**
+Next safe task: separately design and review a live execution adapter and
+independent watchdog, including a tested recovery path and independently
+verified live-state evidence. The offline validator checks supplied claims but
+cannot verify them; the pure reducer only simulates transitions. No live
+authority is implied. **S22 remains unaccepted; S23 is not started.**
 
 ## 2026-10-21 — Read-only monitoring baseline collected
 
