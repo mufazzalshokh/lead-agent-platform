@@ -1,6 +1,6 @@
 import { monitoringProfile } from "./s22-monitoring-plan-check.mjs";
 
-const fixedTarget = Object.freeze({
+export const failureExerciseTarget = Object.freeze({
   project_id: "lead-agent-stg-739284",
   region: "me-central1",
   sql_instance: "lead-agent-staging-postgres17",
@@ -100,7 +100,7 @@ export function validateFailureExercisePreflight(input) {
       "PREFLIGHT_INPUT_INVALID",
     );
     deny(validTime(input.now_utc), "PREFLIGHT_TIME_INVALID");
-    sameRecord(input.target, fixedTarget, "TARGET_MISMATCH");
+    sameRecord(input.target, failureExerciseTarget, "TARGET_MISMATCH");
     sameRecord(input.deployment, failureExerciseDeployment, "DEPLOYMENT_MISMATCH");
 
     recordWithKeys(
@@ -130,7 +130,7 @@ export function validateFailureExercisePreflight(input) {
       "SQL_BASELINE_INVALID",
     );
     deny(
-      input.observed_sql.activation_policy === fixedTarget.activation_policy &&
+      input.observed_sql.activation_policy === failureExerciseTarget.activation_policy &&
         input.observed_sql.pending_operation === false &&
         input.observed_sql.control_permissions_verified === true,
       "SQL_BASELINE_INVALID",

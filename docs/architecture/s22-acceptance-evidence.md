@@ -3,6 +3,44 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-22 — Offline response boundaries added; no live adapters
+
+Pure response normalizers now project only the pinned Cloud SQL target/policy,
+operation ID/result, or browser HTTP status/duration. They discard response
+bodies, headers, API error details and unrelated fields, and contain no network,
+Cloud SDK or credential handling. The combined offline preflight, controller and
+adapter suite passes **32/32** native tests; the workspace CI wrapper passes
+**1/1**. These are synthetic inputs, not live Cloud SQL or browser evidence.
+
+The [failure exercise plan](s22-failure-notification-plan.md) specifies the
+separate live transport and recovery boundaries. The live probe, Cloud SQL
+transport, independent recovery operator, current IAM/state and notification
+delivery remain unverified. Next is one fresh read-only staging snapshot from
+the authorized Cloud Shell/console; no write or notification is part of that
+check. **S22 remains unaccepted.**
+
+## 2026-10-22 — Offline controller and adapter design review
+
+Commit `3809270fed225d178edac9004e2c7ff8a4b78886` passed full
+[CI 39829933159](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39829933159):
+4,235 tests passed and 7 were skipped. The offline preflight/controller suite is
+24/24; no Cloud SQL, browser, notification or provider call was made.
+
+The reducer is simulation-only. The linked
+[failure/notification plan](s22-failure-notification-plan.md) now specifies the
+required browser-local probe and Cloud SQL Admin adapter boundaries and records
+the independent recovery gate. Repository review found the existing
+`staging-terraform.yml` Cloud SQL phases are protected, historical plan-bound
+lifecycle transitions, not a time-bounded exercise runner/watchdog. They must
+not be repurposed for a live drill. No live principal/permission, current SQL
+state, separate recovery operator, or browser-to-controller probe path has been
+independently verified.
+
+Next safe task: implement and test only offline adapter contracts/fault
+injection. Live execution remains NO-GO until current least-privilege access,
+an independently available recovery operator and exact outage/session-metadata/
+notification authority are separately verified. **S22 remains unaccepted.**
+
 ## 2026-10-22 — Failure/notification exercise prepared; no live effects
 
 The [bounded exercise proposal](s22-failure-notification-plan.md) selects the
@@ -22,9 +60,9 @@ or public fault endpoint is proposed.
 
 Proposed limits: one exact SQL stop/start cycle; restore initiated by eight
 minutes from accepted stop request, at most 44 session GETs, no overlap/retries,
-zero AI attempts and no resource scale-up. Independent recovery and a tested
-guarded controller are mandatory **unmet readiness gates**, not claimed
-implementations. The plan does not promise SQL operation duration, alert timing
+zero AI attempts and no resource scale-up. The offline reducer is now tested;
+the live probe/SQL adapters and independent recovery path are still **unmet
+readiness gates**. The plan does not promise SQL operation duration, alert timing
 or a fixed cloud-dollar cap. Nothing live was executed during preparation.
 
 Receipt-only [CI 39657829435](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/39657829435)

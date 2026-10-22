@@ -68,11 +68,12 @@ No restore, deletion, credential/role/firewall change or public access is allowe
 
 ## Mandatory live readiness gates — not yet established
 
-1. Implement and offline-test a guarded controller/probe before proposing a live
-   invocation. It must bind the exact project/instance/service, require explicit
-   outage and notification authority, use monotonic deadlines, single-flight
-   requests and finite receipts, and recover on abort. It must reject foreign
-   targets, redirects, uncertain control-operation results and expired authority.
+1. The offline controller and preflight are implemented and tested. The live
+   probe, SQL adapter and recovery watchdog are not. Any future live adapter
+   must bind the exact project/instance/service, require explicit outage and
+   notification authority, use monotonic deadlines, single-flight requests and
+   finite receipts, and recover on abort. It must reject foreign targets,
+   redirects, uncertain control-operation results and expired authority.
    `.github/scripts/s22-failure-preflight.mjs` now checks a submitted evidence
    snapshot against the pinned project, service, migration and all four image
    digests. Its positive result explicitly says live state was not independently
@@ -156,6 +157,68 @@ poller is not implemented here. The offline preflight can validate fields
 claiming a separate operator is ready, but cannot independently verify that
 person, console session, permissions or availability.
 
+## Live adapter and watchdog design review — offline only
+
+**Decision: NO-GO for live execution.** Keep the tested reducer pure. The
+preflight accepts submitted assertions; it does not query Google Cloud, prove
+the runner's identity or permissions, or verify that a second operator is
+present. The controller emits simulated action labels only. Adding a real
+adapter does not follow from those offline PASS results.
+
+The intended primary path, if separately approved, has two isolated adapters:
+
+1. A browser-local probe uses the owner's existing same-origin staff page and
+   session. It requests only `GET /v1/staff/auth/session`, includes the browser's
+   normal credentials without exporting them, rejects redirects, discards the
+   response body/headers, and records only status and elapsed time. One request
+   can be in flight; deadlines, slot ceilings and no-retry behavior are enforced
+   outside the browser UI. This retains the already-documented session metadata
+   writes as an explicitly approved effect.
+2. A Cloud SQL Admin adapter reads the exact instance and current operations,
+   requires `ALWAYS` and no conflicting operation, then submits exactly one
+   `activationPolicy=NEVER` update. The API is asynchronous: a successful patch
+   returns an operation resource. The adapter must retain that operation ID and
+   poll its exact operation resource; it must never replay an ambiguous patch.
+   Recovery submits one `ALWAYS` update only after confirming the target and
+   checking for a conflicting operation. The official API defines instance
+   patch and operation-get as separate methods; stopping through the activation
+   policy sets it to `NEVER` and stops the instance ([patch](https://docs.cloud.google.com/sql/docs/postgres/admin-api/rest/v1/instances/patch),
+   [start/stop procedure](https://docs.cloud.google.com/sql/docs/postgres/start-stop-restart-instance),
+   [operations](https://docs.cloud.google.com/sql/docs/postgres/admin-api/rest/v1beta4/operations)).
+
+The pure `.github/scripts/s22-failure-adapters.mjs` module now defines only the
+response boundary: it checks the fixed instance/project/region, retains the
+exact asynchronous operation ID, and reduces a browser probe to status and
+elapsed time. It strips unrelated fields and error text. It has no HTTP, Cloud
+SDK, credential or browser transport; it cannot execute the path above.
+
+The independent recovery path must be armed before the first stop request and
+must be outside both the primary runner and browser. It needs an independently
+authenticated operator/console, exact target and deadline, and a tested
+restore-only path. A `finally` block or second task in the same runner is not
+independent. Current preflight booleans and distinct operator labels do not prove
+that identity, access or presence. If no independent operator can be verified,
+do not start.
+
+The existing `staging-terraform.yml` workflow is not that watchdog: it is a
+protected, plan-hash-bound deployment workflow. Its current `cloud-sql-start`
+and `cloud-sql-phase-b` paths are tied to specific historical plan/commit
+inputs; phase B is the staging lifecycle transition to `NEVER`, not a timed
+restore controller. Reusing those runs would not provide this exercise's
+fresh-state checks, operation deadline or independent recovery. Do not dispatch
+them as a substitute for a reviewed live adapter.
+
+Before any real adapter is eligible for review, its offline fault-injection
+tests must cover: wrong target or stale authority; non-`ALWAYS`/pending-operation
+baseline; a lost or malformed patch response; exact operation-ID polling and
+read caps; per-read and absolute deadline expiry; stop/restore races; browser
+redirect, 401/403, 429, 5xx and timeout; runner cancellation; independent
+operator takeover; and two consecutive healthy recovery responses. Tests must
+prove no retry of a control mutation and no token, cookie, body, header or
+recipient address in receipts. A separate review must verify the live principal
+and least-privilege permissions without changing IAM. No database operation,
+notification, or new cloud resource is authorized by this design review.
+
 ## Evidence and acceptance boundaries
 
 Require all of the following for this **sub-exercise**, otherwise keep the
@@ -185,8 +248,8 @@ Telegram or Widget booking/recovery gates. Those remain in the
 [S22 evidence register](s22-acceptance-evidence.md). No expired customer session
 is renewed and no additional message/provider allowance is activated.
 
-Next safe task: separately design and review any live execution adapter and
-independent watchdog, with a tested recovery path. The offline reducer and
-preflight are complete for simulation only; they do not establish live
-readiness. Present exact outage and notification authority for approval before
-any live failure or delivery exercise.
+Next safe task: collect one fresh, read-only staging snapshot of SQL identity,
+activation policy, pending operations and effective test/operator access, while
+confirming a separate recovery operator is actually available. That evidence
+must come from the authorized Cloud Shell/console; offline fixtures cannot
+substitute. Do not issue a stop/start or notification during collection.
