@@ -73,7 +73,11 @@ No restore, deletion, credential/role/firewall change or public access is allowe
    outage and notification authority, use monotonic deadlines, single-flight
    requests and finite receipts, and recover on abort. It must reject foreign
    targets, redirects, uncertain control-operation results and expired authority.
-   There is **no live controller or armed watchdog in this milestone**.
+   `.github/scripts/s22-failure-preflight.mjs` now checks a submitted evidence
+   snapshot against the pinned project, service, migration and all four image
+   digests. Its positive result explicitly says live state was not independently
+   verified; it makes zero cloud requests and does not authorize an execution.
+   It does not implement the controller or watchdog.
 2. Independently verify the current instance identity/configuration, no pending
    SQL operation, existing least-privilege stop/start/operation-read access,
    reviewed app provenance, unchanged alert/recipient and no already-open
@@ -143,7 +147,10 @@ The 44-request ceiling includes all baseline/fault/recovery session probes
 (4 + 24 + 16); normal interactive use must be paused. Any unexpected customer
 traffic, security concern, provider dispatch or target/configuration change
 triggers early recovery. SQL control polls also need a controller-enforced
-finite request/time budget before live readiness; they are not implemented here.
+ceiling of 48 reads, each with a 15-second deadline and no retries; the live
+poller is not implemented here. The offline preflight can validate fields
+claiming a separate operator is ready, but cannot independently verify that
+person, console session, permissions or availability.
 
 ## Evidence and acceptance boundaries
 
