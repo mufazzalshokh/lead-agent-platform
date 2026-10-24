@@ -6,6 +6,23 @@ window. No outage, traffic, notification, IAM change or database job has run as
 part of preparation. S22 remains unaccepted. Do not reapply consumed plans
 `39650372329` or `38172305694`.
 
+## Current operator constraint — 2026-10-24
+
+The owner confirmed they manage this project alone. The second recovery
+operator required by gate 4 is unavailable, so the current whole-staging
+outage proposal cannot proceed. A second tab, a different operator label or
+a same-process cleanup handler does not satisfy that gate. No invitation,
+permission change or repeat Cloud Shell preflight is needed to establish
+this already-known constraint.
+
+An independent automatic recovery service is a possible alternative to design
+and review, not an implemented replacement. The current preflight still
+requires the separate human operator; it rejects automation claims. Any revised
+proposal must explicitly replace that requirement, demonstrate independent
+recovery before permitting a stop, and retain the existing recovery deadlines
+and limits. The owner's sole-operator answer does not authorize an outage,
+notification, IAM change or new cloud resource.
+
 ## Established facts and probe selection
 
 The [monitoring correction](s22-monitoring-rollout-plan.md) is deployed and
@@ -191,6 +208,12 @@ response boundary: it checks the fixed instance/project/region, retains the
 exact asynchronous operation ID, and reduces a browser probe to status and
 elapsed time. It strips unrelated fields and error text. It has no HTTP, Cloud
 SDK, credential or browser transport; it cannot execute the path above.
+Cloud SQL's documented `PENDING` and `RUNNING` statuses both normalize to the
+existing incomplete `PENDING` result; only `DONE` can produce success or failure.
+Unknown statuses and error-bearing incomplete operations remain blocked. This
+matches the [official operation status contract](https://docs.cloud.google.com/sql/docs/postgres/admin-api/rest/v1/operations#SqlOperationStatus)
+without adding a new controller state or interpreting an ongoing update as
+completion.
 
 The independent recovery path must be armed before the first stop request and
 must be outside both the primary runner and browser. It needs an independently
@@ -248,8 +271,17 @@ Telegram or Widget booking/recovery gates. Those remain in the
 [S22 evidence register](s22-acceptance-evidence.md). No expired customer session
 is renewed and no additional message/provider allowance is activated.
 
-Next safe task: collect one fresh, read-only staging snapshot of SQL identity,
-activation policy, pending operations and effective test/operator access, while
-confirming a separate recovery operator is actually available. That evidence
-must come from the authorized Cloud Shell/console; offline fixtures cannot
-substitute. Do not issue a stop/start or notification during collection.
+Next safe task: prepare and review an independent automatic recovery alternative
+for the confirmed sole-operator constraint. It must run outside the fault
+runner/browser, acknowledge that it is armed before any stop, restore the exact
+target on abort or deadline, and resolve ownership of the single restore request
+without replaying an ambiguous mutation. Its review must account for the checked-in
+WIF configuration: `infra/deploy/gcp/bootstrap/main.tf` permits only `staging-images.yml`
+and `staging-terraform.yml`, and assigns the deployer `roles/cloudsql.admin`.
+A new workflow is not already trusted, and a restore-only identity cannot be
+assumed from that broad deployment role. Current live access remains unverified.
+Any required identity, trust or resource
+changes need their own concrete reviewed rollout; historical plans do not cover
+them. Do not weaken the existing preflight to substitute an unverified watchdog.
+Resume fresh live-state/access collection once a viable independent recovery
+path is established. Do not issue a stop/start or notification during preparation.

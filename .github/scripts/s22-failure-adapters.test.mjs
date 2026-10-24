@@ -67,6 +67,30 @@ test("retains the exact asynchronous operation ID and exposes no unrelated field
   assert.equal(JSON.stringify(result).includes("person@example.test"), false);
 });
 
+test("keeps queued and running SQL updates incomplete until the same operation is done", () => {
+  for (const status of ["PENDING", "RUNNING"]) {
+    const result = normalizeFailureSqlOperation(
+      operation({ status, user: "synthetic-operator@example.test" }),
+    );
+    assert.deepEqual(result, { outcome: "PENDING", operation_id: "op_01-abc" });
+  }
+  assert.deepEqual(normalizeFailureSqlOperation(operation({ status: "DONE" })), {
+    outcome: "SUCCEEDED",
+    operation_id: "op_01-abc",
+  });
+});
+
+test("blocks inconsistent error-bearing results while a SQL update is running", () => {
+  const result = normalizeFailureSqlOperation(
+    operation({
+      status: "RUNNING",
+      error: { errors: [{ message: "synthetic-private-detail" }] },
+    }),
+  );
+  assert.deepEqual(result, { outcome: "BLOCKED", code: "PENDING_OPERATION_HAS_ERROR" });
+  assert.equal(JSON.stringify(result).includes("synthetic-private-detail"), false);
+});
+
 test("classifies completed operation success or failure without exposing API error text", () => {
   assert.deepEqual(normalizeFailureSqlOperation(operation({ status: "DONE" })), {
     outcome: "SUCCEEDED",

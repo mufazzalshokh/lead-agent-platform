@@ -112,6 +112,8 @@ test("requires preserved application provenance and current SQL baseline", () =>
 test("requires a recent acknowledgement from a different recovery operator", () => {
   for (const update of [
     (input) => (input.recovery_operator.operator_id = input.primary_operator_id),
+    (input) => (input.recovery_operator.control_path = "same_operator_second_tab"),
+    (input) => (input.recovery_operator.control_path = "independent_automation"),
     (input) => (input.recovery_operator.ready = false),
     (input) => (input.recovery_operator.attested_at = "2026-10-22T11:54:59.999Z"),
     (input) => (input.recovery_operator.approval_ref = "OTHER-APPROVAL"),

@@ -44,10 +44,10 @@ export function normalizeFailureSqlOperation(raw) {
     return blocked("OPERATION_TARGET_MISMATCH");
   if (raw.operationType !== "UPDATE") return blocked("OPERATION_TYPE_UNSUPPORTED");
   if (!validOperationId(raw.name)) return blocked("OPERATION_ID_INVALID");
-  if (!(raw.status === "PENDING" || raw.status === "DONE"))
+  if (!(raw.status === "PENDING" || raw.status === "RUNNING" || raw.status === "DONE"))
     return blocked("OPERATION_STATUS_UNSUPPORTED");
 
-  if (raw.status === "PENDING") {
+  if (raw.status === "PENDING" || raw.status === "RUNNING") {
     if (raw.error !== undefined && raw.error !== null)
       return blocked("PENDING_OPERATION_HAS_ERROR");
     return frozen({ outcome: "PENDING", operation_id: raw.name });

@@ -3,6 +3,40 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-24 — Sole operator confirmed; operation-status contract corrected
+
+The owner confirmed they manage the Google Cloud project alone. The existing
+[failure exercise proposal](s22-failure-notification-plan.md) requires a separate
+recovery operator; that gate is now explicitly unavailable. Its validator remains
+unchanged and rejects a same-operator second tab or an unimplemented automation
+claim. Repeating a live readiness snapshot cannot resolve this constraint.
+
+Review found a specific preparation-code defect: the Cloud SQL response
+normalizer rejected `RUNNING`, although Google's
+[operation contract](https://docs.cloud.google.com/sql/docs/postgres/admin-api/rest/v1/operations#SqlOperationStatus)
+defines it as a normal incomplete status. It now maps both `PENDING` and
+`RUNNING` to the existing incomplete result, retaining the exact operation ID.
+Only `DONE` can indicate completion; unknown statuses and errors in incomplete
+results still fail closed. Two regression tests reproduced the defect before
+the correction. This is an offline contract fix, not a deployed application
+change or evidence of a live outage's cause.
+
+Verification: the combined native suite passed **34/34**, and the workspace
+wrapper passed **1/1**:
+
+```text
+node --test .github/scripts/s22-failure-preflight.test.mjs .github/scripts/s22-failure-controller.test.mjs .github/scripts/s22-failure-adapters.test.mjs
+node node_modules/vitest/vitest.mjs run tests/workspace/staging-failure-preflight.test.ts --maxWorkers=1 --reporter=dot
+```
+
+The next task is a reviewed automatic recovery alternative that is independent
+of the fault runner and browser. The checked-in bootstrap configuration trusts
+only the two deployment workflows and assigns broad Cloud SQL administration
+to the deployment principal; current live access remains unverified. This does
+not establish a dedicated restore-only watchdog. No new workflow trust,
+IAM, resource, outage, notification or provider action is authorized by this
+operator clarification. **S22 remains unaccepted.**
+
 ## 2026-10-22 — Offline response boundaries added; no live adapters
 
 Pure response normalizers now project only the pinned Cloud SQL target/policy,
