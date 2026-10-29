@@ -413,9 +413,11 @@ export function advanceFailureExerciseSimulation(state, event) {
           next_action: action("independent_operator_takeover_no_retry"),
         }),
       );
+    const nextReadAtMs = elapsed + 15_000;
     if (
       operationReads === operationReadLimit ||
-      totalOperationReads === failureExerciseBounds.sql_operation_reads
+      totalOperationReads === failureExerciseBounds.sql_operation_reads ||
+      nextReadAtMs >= deadline
     )
       return result(
         stateWith(state, {
@@ -439,9 +441,11 @@ export function advanceFailureExerciseSimulation(state, event) {
           stopping ? "observe_sql_stop_operation" : "observe_sql_restore_operation",
           {
             sequence: operationReads + 1,
-            not_before_ms: elapsed + 15_000,
-            request_deadline_ms:
-              elapsed + failureExerciseBounds.sql_operation_read_deadline_seconds * 1000,
+            not_before_ms: nextReadAtMs,
+            request_deadline_ms: Math.min(
+              nextReadAtMs + failureExerciseBounds.sql_operation_read_deadline_seconds * 1000,
+              deadline,
+            ),
             deadline_ms: deadline,
           },
         ),

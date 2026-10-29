@@ -232,11 +232,12 @@ monitoring-evidence reads and matching incident/inbox acknowledgement limits.
    Verify one restore issuer, no blind mutation replay and receipt redaction.
    Scheduling tests must include nonzero HTTP latency, not just results exactly
    on scheduled timestamps. Current simulation PASS is not a live timer proof.
-   An offline reproduction on 2026-10-29 found that the current reducer assigns
-   the same next-read start and response deadline after a pending SQL operation.
-   A response one millisecond later enters `INCIDENT`. This preparation does not
-   change that code; correct it with focused stop/restore regressions before
-   extending the protocol. No live failure is inferred from the reproduction.
+   An offline reproduction on 2026-10-29 found equal next-read start and response
+   deadlines in the reducer. The subsequent scoped correction gives each read
+   its own response window, clips it to the absolute phase deadline and refuses
+   to schedule a read when no phase time remains. Six regressions cover stop
+   and restore latency, late responses and absolute bounds. This corrects an
+   offline model, not a deployed outage or the unimplemented recovery protocol.
 3. Implement the isolated root and strict plan/image guards only after protocol
    review. Verify the complete resource inventory, existing provisioning
    permissions and every added IAM capability. Build only the dedicated image;

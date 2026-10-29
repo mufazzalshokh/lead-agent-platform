@@ -3,6 +3,29 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-29 — SQL polling response windows corrected offline
+
+The pending-operation reducer scheduled the next SQL read 15 seconds later,
+but set its response deadline to that same instant. An offline reproduction
+showed even one millisecond of response latency entering `INCIDENT`. Four new
+regressions failed against the old code before the correction.
+
+The next response window now begins at that next scheduled read, is capped by
+the original absolute phase deadline, and yields to incident handling when no
+time remains to schedule another read. The 8/40/48 read caps, 120/600-second
+phase bounds, one-stop/one-restore limits, redaction and no-retry behavior remain
+unchanged. No live adapter, automation gate or cloud action was added.
+
+Verification: **40/40** native tests and the **1/1** workspace CI wrapper passed.
+The six added regressions cover both stop and restore, positive response
+latency (1 ms, 7.5 s and 15 s), late responses and absolute-deadline clipping.
+Scoped ESLint, explicit Prettier checks, the 332-source-file dependency-boundary
+check and scoped whitespace checks passed. No local Docker/database suite or
+live model evaluation was run for this preparation-only JavaScript correction.
+The [sole-operator proposal](s22-solo-recovery-plan.md) remains a design, not a
+deployed watchdog or saved rollout plan. Next is its offline independent-job
+protocol and fault-injection suite. **S22 remains unaccepted; S23 is not started.**
+
 ## 2026-10-29 — Sole-operator recovery proposal prepared; live gates unchanged
 
 The [independent recovery proposal](s22-solo-recovery-plan.md) defines a dedicated
