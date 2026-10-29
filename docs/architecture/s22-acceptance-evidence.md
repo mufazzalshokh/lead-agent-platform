@@ -3,6 +3,30 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-30 — Independent recovery protocol modeled offline; live remains NO-GO
+
+The sole-operator proposal now has a private-state simulator, explicit fixture
+authority envelope, pinned inert request constructors and 31 new native fault
+tests. The combined suite passes **71/71**, and its workspace wrapper passes
+**1/1**. It covers stop/restore claim ownership, ambiguous creates and patches,
+duplicate launch/claim prevention, wrong or stale arming, heartbeat failures,
+storage loss/cancellation, pending/foreign operations, finite budgets, authority
+expiry, response latency, absolute deadlines and sanitized receipts.
+
+The existing human-console validator and controller are unchanged. All new
+receipts explicitly withhold live authority and retain three unresolved gates:
+real writer-origin verification, late-stop fencing/reconciliation, and deployed
+IAM/independence/canary proof. In particular, a truncated operation page or an
+`ALWAYS` snapshot cannot be used to assert that a delayed stop is absent. A
+terminal restore operation still requires separate SQL/application recovery
+observations; the model does not report S22 acceptance.
+
+There is no new live adapter, job, image, Terraform resource, identity/grant,
+outage, notification, customer message, provider attempt or database change.
+No budget or historical cost ledger changed. Next is the scoped protocol review
+of those unresolved origin/reconciliation guarantees before infrastructure
+implementation. **S22 remains unaccepted; S23 is not started.**
+
 ## 2026-10-29 — SQL polling response windows corrected offline
 
 The pending-operation reducer scheduled the next SQL read 15 seconds later,

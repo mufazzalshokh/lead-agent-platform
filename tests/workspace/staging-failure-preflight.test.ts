@@ -9,6 +9,7 @@ it("enforces the offline S22 preflight, controller and transport boundaries", ()
       ".github/scripts/s22-failure-preflight.test.mjs",
       ".github/scripts/s22-failure-controller.test.mjs",
       ".github/scripts/s22-failure-adapters.test.mjs",
+      ".github/scripts/s22-solo-recovery-protocol.test.mjs",
     ],
     { encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024 },
   );

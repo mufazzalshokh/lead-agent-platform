@@ -273,9 +273,10 @@ Telegram or Widget booking/recovery gates. Those remain in the
 [S22 evidence register](s22-acceptance-evidence.md). No expired customer session
 is renewed and no additional message/provider allowance is activated.
 
-Next safe task: implement and test only the offline protocol in the
-[independent recovery proposal](s22-solo-recovery-plan.md), including its
-late-stop ambiguity gate. The proposed live job must run outside the fault
+Next safe task: review the now-implemented offline protocol in the
+[independent recovery proposal](s22-solo-recovery-plan.md), specifically real
+writer-origin verification and safe late-stop/conflict reconciliation. Its tests
+do not establish either live guarantee. The proposed live job must run outside the fault
 runner/browser, acknowledge that it is armed before any stop, restore the exact
 target on abort or deadline, and resolve ownership of the single restore request
 without replaying an ambiguous mutation. Its review must account for the checked-in

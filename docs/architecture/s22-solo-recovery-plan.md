@@ -1,6 +1,6 @@
 # S22 independent recovery for a sole operator
 
-Status: **PREPARED DESIGN — NOT IMPLEMENTED, DEPLOYED OR LIVE-AUTHORIZED**.
+Status: **OFFLINE PROTOCOL IMPLEMENTED — LIVE JOB NOT IMPLEMENTED, DEPLOYED OR AUTHORIZED**.
 This proposal addresses the sole-operator constraint recorded on 2026-10-24.
 It is not a saved Terraform rollout plan and does not replace the current
 human-recovery gate. S22 remains unaccepted.
@@ -219,12 +219,75 @@ the remaining budgets cannot support recovery. Tokens, raw API errors and
 unbounded lists must not enter receipts. Keep the original two bounded
 monitoring-evidence reads and matching incident/inbox acknowledgement limits.
 
+## Offline protocol checkpoint — 2026-10-30
+
+The pure `s22-solo-recovery-contract.mjs` and `s22-solo-recovery-protocol.mjs`
+modules now model the proposed ownership protocol. The manifest binds the exact
+staging target/application provenance, proposed job configuration, fixture source
+and image hashes, generation, scoped effects and finite authority/grant/token
+lifetimes. Hash equality is not an authenticated signature or live approval.
+
+Tests inject a monotonic clock and response events at the transport boundary.
+Request descriptors are inert data; there is no HTTP transport, scheduler,
+credential reader, cloud process or live permission verifier. Storage `CREATE`
+descriptors are abstract create-only intents, not a completed wire adapter.
+Every receipt retains `live_authorized: false`, `live_actions: 0`,
+`cloud_requests: 0` and the unresolved live gates. The existing human-console
+preflight is unchanged and continues to reject unsupported automation.
+
+The simulation requires a primary stop claim before launching once, then a
+watchdog restore claim before arming. Lost claim responses use an exact-record
+read; conflicts or unresolved results never cause an overwrite or new claimant.
+Lost launch/patch responses retain the ownership context and require incident
+reconciliation, not a second launch/mutation. The simulated primary cannot issue
+the watchdog's restore, and acknowledgement fields cannot substitute for the
+expected execution/image/configuration. Real writer-origin verification is still
+unimplemented, regardless of a passing matching-fixture test.
+
+Heartbeat writes are counted before their results; failed, late or ambiguous
+writes cannot refresh the cached slot timer. Cancellation, storage loss, two
+missed slots or the arm deadline trigger recovery independently of further
+storage writes. A known terminal stop, an exact `NEVER` instance snapshot and a
+bounded operation-conflict check precede the one restore descriptor. Unknown
+stops, conflicting/pending operations, truncated operation lists or exhausted
+time/traffic budgets are incidents, not recovery proof. No page continuation or
+timestamp-only operation attribution is allowed. SQL operation completion stops
+at `RECOVERY_OBSERVATION_REQUIRED`; it does not prove application recovery,
+configuration convergence, notification delivery or S22 acceptance.
+
+The ledger reserves 40 of 48 operation GETs for restore, partitions the seven
+watchdog instance GETs into four diagnostic and three recovery reads, and limits
+non-heartbeat creates to 16 alongside at most 32 heartbeat creates. These stricter
+internal partitions do not expand the proposed aggregate ceilings. Failed and
+ambiguous issued requests consume their slots. Per-read response windows include
+nonzero latency and are clipped to the original absolute phase deadlines.
+
+The 31 new native tests cover the protocol and constructors; combined with the
+unchanged preflight/controller/response tests, the suite has 71 tests and is
+included in the workspace CI wrapper. This is offline evidence only. In
+particular, the bounded operation page may be insufficient to establish the
+absence of conflicts in a live instance with substantial operation history;
+safe reconciliation must be reviewed rather than bypassing the truncation gate.
+
+Local verification for this checkpoint (all passed; no Docker or cloud exercise):
+
+```text
+node --test --test-reporter=spec .github/scripts/s22-failure-preflight.test.mjs .github/scripts/s22-failure-controller.test.mjs .github/scripts/s22-failure-adapters.test.mjs .github/scripts/s22-solo-recovery-protocol.test.mjs
+node node_modules/vitest/vitest.mjs run tests/workspace/staging-failure-preflight.test.ts --maxWorkers=1 --reporter=dot
+node node_modules/eslint/bin/eslint.js .github/scripts/s22-solo-recovery-contract.mjs .github/scripts/s22-solo-recovery-protocol.mjs .github/scripts/s22-solo-recovery-protocol.test.mjs tests/workspace/staging-failure-preflight.test.ts --max-warnings=0
+node node_modules/prettier/bin/prettier.cjs --check .github/scripts/s22-solo-recovery-contract.mjs .github/scripts/s22-solo-recovery-protocol.mjs .github/scripts/s22-solo-recovery-protocol.test.mjs tests/workspace/staging-failure-preflight.test.ts infra/runbooks/recovery-capacity.md
+node node_modules/prettier/bin/prettier.cjs --check --ignore-path .gitignore docs/architecture/s22-solo-recovery-plan.md
+node scripts/check-boundaries.mjs
+```
+
 ## Implementation and release sequence
 
-1. Implement only the offline independent-job protocol, explicit authority
-   envelope, request constructors and fault-injection tests. Use injected clocks
-   and transports. Keep current human-console preflight behavior and unknown
-   automation rejection unchanged until a separately reviewed strategy exists.
+1. The offline independent-job protocol, explicit authority envelope, inert
+   request constructors and fault-injection tests are implemented as above.
+   Review this model and resolve the real writer-origin and late-stop/conflict
+   reconciliation gates before treating it as a viable live strategy. Keep
+   current human-console preflight behavior and unknown automation rejection
+   unchanged until a separately reviewed strategy exists.
 2. Tests must cover forged/stale arming, wrong target/image/identity, cancelled
    primary, missing/failed heartbeats, storage loss after arming, duplicate job
    launches, claim ambiguity, late/unknown stop requests, pending/foreign control
@@ -275,6 +338,6 @@ transaction rollback/queue-drain/duplicate-effect proof, isolated PITR RPO/RTO,
 capacity, below-threshold alert case or multi-revision ratio evidence. Their
 statuses remain in the [S22 register](s22-acceptance-evidence.md).
 
-Next safe implementation task: the offline independent-job protocol and its
-fault-injection suite, with the late-stop ambiguity gate explicit. No live
-adapter, IAM rollout or SQL stop is authorized by this design.
+Next safe task: review the offline protocol's writer-origin and late-stop/conflict
+reconciliation gates before preparing the isolated infrastructure implementation.
+No live adapter, IAM rollout or SQL stop is authorized by this checkpoint.

@@ -61,8 +61,9 @@ watchdog and recovery confirmation still need implementation and separate review
 For the confirmed sole-operator constraint, follow the
 [independent recovery proposal](../../docs/architecture/s22-solo-recovery-plan.md).
 It specifies an isolated job/root and bounded ownership protocol, not a deployed
-watchdog or an exception to the existing second-operator gate. Offline protocol
-tests come next; provisioning, any restore canary, outage, session-metadata writes
+watchdog or an exception to the existing second-operator gate. Its offline protocol
+and fault tests now exist; real writer-origin and late-stop/conflict reconciliation
+remain review gates. Provisioning, any restore canary, outage, session-metadata writes
 and notification delivery each retain their explicit review/authority boundaries.
 
 ## Capacity profile
