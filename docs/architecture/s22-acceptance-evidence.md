@@ -3,6 +3,28 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-30 — Self-expiring connection-fault replacement prepared only
+
+The owner explicitly selected preparation only of the
+[replacement connection-fault design](s22-connection-fault-plan.md). It proposes
+an owned loopback TCP relay for one admitted operator's request-scoped session
+connection, real transport failure through the existing error path, and an
+immutable expiry with default-normal behavior. Cloud SQL activation, normal
+pools, other routes and worker/channel paths remain unchanged.
+
+The design specifies source/session-digest binding, same-process baseline/nonce
+admission, preserved cookie/role/TLS checks, abort/restart/skew/late-callback
+handling and finite cleanup. It retains the 44-browser-GET total by explicitly
+reallocating one former fault slot: 1 setup + 4 baseline + 23 fault + 16 recovery.
+It does not claim whole-instance failure, transaction rollback, queue drain,
+PITR, capacity or notification delivery. Those acceptance criteria remain open.
+
+No implementation, dependency, test, image, infrastructure, identity, workflow,
+session, connection fault, notification, provider attempt or budget change was
+performed. The old SQL-stop proposal remains NO-GO. Next is review/authorization
+of offline implementation and tests only, not deployment or a live exercise.
+**S22 remains unaccepted; S23 is not started.**
+
 ## 2026-10-30 — Recovery safety review concluded; current watchdog proposal NO-GO
 
 The [Step 1 review](s22-recovery-safety-review.md) traced the two live-denial

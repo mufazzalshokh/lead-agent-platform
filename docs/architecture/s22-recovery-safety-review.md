@@ -4,6 +4,11 @@ Decision: **NO-GO for provisioning or live execution of the current SQL-stop/wat
 The Step 1 review is concluded; its required safety guarantees are not established.
 This is not S22 acceptance and does not authorize a replacement implementation.
 
+Owner decision received on 30 October: **prepare the self-expiring connection-fault
+design only**. The [replacement design](s22-connection-fault-plan.md) records that
+bounded preparation. The SQL-stop NO-GO remains; implementation and live actions
+are still unauthorized.
+
 ## Scope and evidence
 
 Reviewed the independent-recovery proposal, its pure contract/simulator/tests,
@@ -128,5 +133,6 @@ The historical unformatted evidence register is not reformatted wholesale.
 Unrelated owner edits are excluded. Full CI status belongs to the resulting
 commit's actual run, not an earlier source's successful check.
 
-**Next safe step: obtain the mechanism decision above, then prepare only its
-reviewed design. S22 remains unaccepted; S23 is not started.**
+**Next safe step: review and authorize only the offline implementation of the
+[prepared replacement](s22-connection-fault-plan.md). S22 remains unaccepted;
+S23 is not started.**

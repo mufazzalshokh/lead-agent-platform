@@ -71,6 +71,12 @@ concludes NO-GO for provisioning that watchdog proposal. Obtain the explicit
 fault-mechanism/design decision before implementation; do not repeat readiness
 reads, launch a canary or treat incident-only handling as independent recovery.
 
+The owner has since approved preparation only of the
+[self-expiring connection-fault design](../../docs/architecture/s22-connection-fault-plan.md).
+It proposes a request-scoped TCP interruption with Cloud SQL and normal pools
+unchanged, not a whole-instance outage. Its implementation and live use are not
+authorized. Transaction rollback, worker drain and isolated restore stay separate.
+
 ## Capacity profile
 
 Capacity traffic uses a deterministic fake AI path and synthetic channel/provider seams;

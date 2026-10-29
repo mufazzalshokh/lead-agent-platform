@@ -11,6 +11,10 @@ but writer isolation and late-stop recovery are not established. An explicit
 fault-mechanism/design decision is required before Step 2; the historical
 implementation sequence below is conditional, not authority to proceed.
 
+The owner subsequently approved preparation only of the
+[self-expiring connection-fault replacement](s22-connection-fault-plan.md).
+That design does not authorize its implementation or clear this proposal's NO-GO.
+
 ## Decision and unchanged boundaries
 
 Propose one independently running Cloud Run job as the recovery controller.
@@ -344,7 +348,7 @@ transaction rollback/queue-drain/duplicate-effect proof, isolated PITR RPO/RTO,
 capacity, below-threshold alert case or multi-revision ratio evidence. Their
 statuses remain in the [S22 register](s22-acceptance-evidence.md).
 
-Next safe task: obtain the fault-mechanism/design decision in the
-[completed safety review](s22-recovery-safety-review.md), then prepare only that
-design. Do not proceed to infrastructure implementation under this proposal.
+Next safe task: review and authorize only the offline implementation of the
+[prepared connection-fault replacement](s22-connection-fault-plan.md).
+Do not proceed to infrastructure implementation under this SQL-stop proposal.
 No live adapter, IAM rollout or SQL stop is authorized by this checkpoint.

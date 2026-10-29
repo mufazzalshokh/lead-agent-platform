@@ -6,6 +6,12 @@ window. No outage, traffic, notification, IAM change or database job has run as
 part of preparation. S22 remains unaccepted. Do not reapply consumed plans
 `39650372329` or `38172305694`.
 
+Current direction, 30 October: the [safety review](s22-recovery-safety-review.md)
+concludes NO-GO for this SQL-stop path. The owner approved preparation only of
+the [self-expiring request-scoped connection-fault design](s22-connection-fault-plan.md).
+Its mechanism and evidence scope differ; the SQL-stop sequence below remains
+historical/conditional and must not be executed as that replacement.
+
 ## Current operator constraint — 2026-10-24
 
 The owner confirmed they manage this project alone. The second recovery
