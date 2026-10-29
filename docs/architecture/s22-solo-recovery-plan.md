@@ -5,6 +5,12 @@ This proposal addresses the sole-operator constraint recorded on 2026-10-24.
 It is not a saved Terraform rollout plan and does not replace the current
 human-recovery gate. S22 remains unaccepted.
 
+The [30 October safety review](s22-recovery-safety-review.md) concludes
+**NO-GO for provisioning the current proposal**. Step 1's review is finished,
+but writer isolation and late-stop recovery are not established. An explicit
+fault-mechanism/design decision is required before Step 2; the historical
+implementation sequence below is conditional, not authority to proceed.
+
 ## Decision and unchanged boundaries
 
 Propose one independently running Cloud Run job as the recovery controller.
@@ -338,6 +344,7 @@ transaction rollback/queue-drain/duplicate-effect proof, isolated PITR RPO/RTO,
 capacity, below-threshold alert case or multi-revision ratio evidence. Their
 statuses remain in the [S22 register](s22-acceptance-evidence.md).
 
-Next safe task: review the offline protocol's writer-origin and late-stop/conflict
-reconciliation gates before preparing the isolated infrastructure implementation.
+Next safe task: obtain the fault-mechanism/design decision in the
+[completed safety review](s22-recovery-safety-review.md), then prepare only that
+design. Do not proceed to infrastructure implementation under this proposal.
 No live adapter, IAM rollout or SQL stop is authorized by this checkpoint.

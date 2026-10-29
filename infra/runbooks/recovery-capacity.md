@@ -66,6 +66,11 @@ and fault tests now exist; real writer-origin and late-stop/conflict reconciliat
 remain review gates. Provisioning, any restore canary, outage, session-metadata writes
 and notification delivery each retain their explicit review/authority boundaries.
 
+The [30 October safety review](../../docs/architecture/s22-recovery-safety-review.md)
+concludes NO-GO for provisioning that watchdog proposal. Obtain the explicit
+fault-mechanism/design decision before implementation; do not repeat readiness
+reads, launch a canary or treat incident-only handling as independent recovery.
+
 ## Capacity profile
 
 Capacity traffic uses a deterministic fake AI path and synthetic channel/provider seams;

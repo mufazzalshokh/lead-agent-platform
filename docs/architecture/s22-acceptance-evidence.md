@@ -3,6 +3,28 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-30 — Recovery safety review concluded; current watchdog proposal NO-GO
+
+The [Step 1 review](s22-recovery-safety-review.md) traced the two live-denial
+gates to concrete missing mechanisms. Fixture actor/hash equality does not
+authenticate the writer; the broad existing deployer is not a restricted primary
+identity. The versionless SQL patch descriptors and version-dropping normalizer
+also do not implement late-stop fencing. Official Google contracts reviewed do
+not establish client-timeout cancellation or the assumed no-op restore fence.
+
+The simulator's unknown-stop incident is a refusal to assert success, not proof
+of independent restoration after an accepted stop. No extra fixture PASS can
+replace that guarantee. The current ten-resource proposal must not proceed to
+provisioning or canary execution. Its offline model remains useful and unchanged.
+
+An explicit decision is needed: preferably prepare a self-expiring application
+DB-connection interruption design under the existing reversible-interruption
+runbook, or retain SQL stop and obtain supported fencing plus a revised isolated
+primary/WIF design. The alternative is not implemented, approved or credited as
+whole-instance outage, transaction rollback, queue-drain or PITR proof.
+No cloud inspection/mutation, code, IAM, workflow, image, session, provider call,
+budget or migration changed in this review. **S22 remains unaccepted.**
+
 ## 2026-10-30 — Independent recovery protocol modeled offline; live remains NO-GO
 
 The sole-operator proposal now has a private-state simulator, explicit fixture
