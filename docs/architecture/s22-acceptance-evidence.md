@@ -3,6 +3,35 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-29 — Sole-operator recovery proposal prepared; live gates unchanged
+
+The [independent recovery proposal](s22-solo-recovery-plan.md) defines a dedicated
+Cloud Run job outside the primary runner/browser, an isolated Terraform root,
+the proposed ten-resource inventory, least-privilege constraints, immutable
+claims, deadlines and finite request budgets. It records the checked-in WIF
+and provisioning-permission gaps instead of assuming the deployment identity
+can create a new bucket/custom roles. It also makes the late/ambiguous-stop
+reconciliation problem an explicit release gate, not a guessed retry/fencing
+guarantee.
+
+This is documentation only. No validator, reducer, adapter, workflow,
+infrastructure definition, identity, budget or application setting changed.
+There is no saved cloud plan, new resource, deployed watchdog, outage,
+notification, database operation or provider call from this preparation.
+The existing preflight still rejects unsupported automation. Next is the
+offline independent-job protocol and fault-injection suite; cloud provisioning
+and live execution remain separately gated. **S22 remains unaccepted; S23 is
+not started.**
+
+Verification for this preparation: the existing offline native suite passed
+**34/34**; the new proposal passed an explicit Prettier check, and scoped
+`git diff --check` passed. A separate offline timing reproduction returned
+`INCIDENT` for a pending-operation response one millisecond after its next
+scheduled read, because that read's start and response deadline are equal.
+The defect is recorded for the next focused correction, not treated as a live
+outage cause. Unrelated owner edits remain preserved; their pre-existing
+trailing whitespace is outside the scoped diff check.
+
 ## 2026-10-24 — Sole operator confirmed; operation-status contract corrected
 
 The owner confirmed they manage the Google Cloud project alone. The existing

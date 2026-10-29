@@ -15,8 +15,10 @@ a same-process cleanup handler does not satisfy that gate. No invitation,
 permission change or repeat Cloud Shell preflight is needed to establish
 this already-known constraint.
 
-An independent automatic recovery service is a possible alternative to design
-and review, not an implemented replacement. The current preflight still
+The [sole-operator recovery proposal](s22-solo-recovery-plan.md) now specifies
+an independent job, isolated infrastructure/IAM scope, claim ownership, finite
+traffic and required fault tests. It is not an implemented replacement or a
+saved rollout plan. The current preflight still
 requires the separate human operator; it rejects automation claims. Any revised
 proposal must explicitly replace that requirement, demonstrate independent
 recovery before permitting a stop, and retain the existing recovery deadlines
@@ -271,8 +273,9 @@ Telegram or Widget booking/recovery gates. Those remain in the
 [S22 evidence register](s22-acceptance-evidence.md). No expired customer session
 is renewed and no additional message/provider allowance is activated.
 
-Next safe task: prepare and review an independent automatic recovery alternative
-for the confirmed sole-operator constraint. It must run outside the fault
+Next safe task: implement and test only the offline protocol in the
+[independent recovery proposal](s22-solo-recovery-plan.md), including its
+late-stop ambiguity gate. The proposed live job must run outside the fault
 runner/browser, acknowledge that it is armed before any stop, restore the exact
 target on abort or deadline, and resolve ownership of the single restore request
 without replaying an ambiguous mutation. Its review must account for the checked-in

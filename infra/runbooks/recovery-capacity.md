@@ -58,6 +58,13 @@ snapshot is not independent live-state verification or execution authority. The
 offline reducer only simulates transitions; a live execution adapter, independent
 watchdog and recovery confirmation still need implementation and separate review.
 
+For the confirmed sole-operator constraint, follow the
+[independent recovery proposal](../../docs/architecture/s22-solo-recovery-plan.md).
+It specifies an isolated job/root and bounded ownership protocol, not a deployed
+watchdog or an exception to the existing second-operator gate. Offline protocol
+tests come next; provisioning, any restore canary, outage, session-metadata writes
+and notification delivery each retain their explicit review/authority boundaries.
+
 ## Capacity profile
 
 Capacity traffic uses a deterministic fake AI path and synthetic channel/provider seams;
