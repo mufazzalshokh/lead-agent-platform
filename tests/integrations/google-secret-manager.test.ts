@@ -9,8 +9,8 @@ import {
 const resource = "projects/lead-agent-staging-123/secrets/channel-credentials";
 const version = `${resource}/versions/7`;
 
-const client = (): GoogleSecretManagerClient => ({
-  addSecretVersion: vi.fn(() => Promise.resolve([{ name: version }] as const)),
+const client = (createdVersion = version): GoogleSecretManagerClient => ({
+  addSecretVersion: vi.fn(() => Promise.resolve([{ name: createdVersion }] as const)),
   accessSecretVersion: vi.fn(() =>
     Promise.resolve([{ payload: { data: Buffer.from("token-value", "utf8") } }] as const),
   ),
@@ -18,6 +18,49 @@ const client = (): GoogleSecretManagerClient => ({
 });
 
 describe("Google Secret Manager credential store", () => {
+  it("stores, reads and cleans up canonical project-number references without reading metadata or widening scope", async () => {
+    const canonical = "projects/644972983497/secrets/channel-credentials";
+    const createdVersion = `${canonical}/versions/7`;
+    const fake = client(createdVersion);
+    const store = createGoogleSecretManagerCredentialStore(canonical, fake);
+    const reference = await store.put("token-value");
+    expect(reference).toBe(`gcp-secret://${createdVersion}`);
+    await expect(store.get(reference)).resolves.toBe("token-value");
+    await expect(store.delete(reference)).resolves.toBeUndefined();
+    expect(fake.addSecretVersion).toHaveBeenCalledWith({
+      parent: canonical,
+      payload: { data: Buffer.from("token-value") },
+    });
+    expect(fake.accessSecretVersion).toHaveBeenCalledWith({ name: createdVersion });
+    expect(fake.destroySecretVersion).toHaveBeenCalledWith({ name: createdVersion });
+    for (const foreign of [
+      "projects/644972983498/secrets/channel-credentials/versions/7",
+      "projects/644972983497/secrets/other-channel/versions/7",
+      "projects/lead-agent-staging-123/secrets/channel-credentials/versions/7",
+    ]) {
+      await expect(store.get(`gcp-secret://${foreign}`)).rejects.toThrow("out of scope");
+      await expect(store.delete(`gcp-secret://${foreign}`)).rejects.toThrow("out of scope");
+    }
+    expect(fake.accessSecretVersion).toHaveBeenCalledTimes(1);
+    expect(fake.destroySecretVersion).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    "projects/644972983498/secrets/channel-credentials/versions/7",
+    "projects/644972983497/secrets/other-channel/versions/7",
+  ])("rejects a created version outside the exact canonical namespace: %s", async (foreign) => {
+    const store = createGoogleSecretManagerCredentialStore(
+      "projects/644972983497/secrets/channel-credentials",
+      client(foreign),
+    );
+    await expect(store.put("token-value")).rejects.toThrow("invalid credential version resource");
+  });
+  it("does not silently map an unverified project-number response to a project-ID namespace", async () => {
+    const store = createGoogleSecretManagerCredentialStore(
+      resource,
+      client("projects/644972983497/secrets/channel-credentials/versions/7"),
+    );
+    await expect(store.put("token-value")).rejects.toThrow("invalid credential version resource");
+  });
   it("stores, reads and destroys only versions under its configured secret", async () => {
     const fake = client();
     const store = createGoogleSecretManagerCredentialStore(resource, fake);

@@ -42,6 +42,69 @@ const answer = (context: AIContextSnapshot, extra: Readonly<Record<string, unkno
 
 describe("S14 approved relational fact grounding", () => {
   it.each([
+    "konsultatsiya narxi qancha va qancha davom etadi?",
+    "Сколько стоит консультация и какова длительность?",
+    "what is the consultation price and duration?",
+  ])("answers both authoritative price and duration: %s", (message) => {
+    const context = snapshot(message),
+      result = answer(context);
+    expect(result.kind).toBe("decision");
+    if (result.kind !== "decision") throw new Error("Expected complete grounded answer");
+    expect(result.decision.message.draft_text).toContain("100 000 UZS");
+    expect(result.decision.message.draft_text).toMatch(/30 (daqiqa|минут|minutes)/u);
+    expect(result.decision.message.draft_text).not.toMatch(/250 000|UNTRUSTED|SECRET/u);
+    expect(context.policy.facts.map((fact) => fact.grounding?.need)).toEqual(
+      expect.arrayContaining(["price", "duration"]),
+    );
+  });
+  it("a combined question cannot hide a missing price behind an available duration", () => {
+    const knowledge = groundingKnowledge();
+    const context = snapshot("konsultatsiya narxi va davomiyligi?", {
+      ...knowledge,
+      services: knowledge.services.map((service) => ({ ...service, price_resolutions: [] })),
+    });
+    expect(context.policy.facts).toEqual([]);
+    expect(answer(context)).toMatchObject({
+      kind: "fallback_required",
+      reason: "grounding_insufficient",
+    });
+  });
+  it("a duration-only 'qancha' question does not acquire a new price requirement", () => {
+    const knowledge = groundingKnowledge();
+    const context = snapshot("lazer qancha davom etadi?", {
+      ...knowledge,
+      services: knowledge.services.map((service) => ({ ...service, price_resolutions: [] })),
+    });
+    const result = answer(context);
+    expect(result.kind).toBe("decision");
+    if (result.kind !== "decision") throw new Error("Expected duration answer");
+    expect(result.decision.message.draft_text).toContain("30 daqiqa");
+    expect(result.decision.message.draft_text).not.toContain("UZS");
+  });
+  it("a partial/conflicting combined snapshot cannot produce a complete answer", () => {
+    const context = snapshot("konsultatsiya price and duration?");
+    expect(
+      answer({
+        ...context,
+        policy: {
+          ...context.policy,
+          facts: context.policy.facts.filter((fact) => fact.grounding?.need !== "price"),
+        },
+      }),
+    ).toMatchObject({ kind: "fallback_required" });
+    const duration = context.policy.facts.find((fact) => fact.grounding?.need === "duration");
+    if (duration === undefined) throw new Error("Missing duration fixture");
+    expect(
+      answer({
+        ...context,
+        policy: {
+          ...context.policy,
+          facts: [...context.policy.facts, { ...duration, text: "Conflicting duration" }],
+        },
+      }),
+    ).toMatchObject({ kind: "fallback_required" });
+  });
+  it.each([
     ["oka lazer nechi pul", "uz", "250 000 UZS"],
     ["Лазер нархи қанча?", "uz", "250 000 UZS"],
     ["lazer narxi?", "uz", "250 000 UZS"],

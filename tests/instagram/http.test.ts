@@ -1,8 +1,10 @@
 import { createHmac } from "node:crypto";
+import { Writable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { createApi } from "../../apps/api/src/app.js";
 import {
   InstagramApplicationError,
+  InstagramProviderError,
   type InstagramBusinessUseCases,
 } from "../../packages/application/src/index.js";
 import { ACCOUNT_ID, CUSTOMER_ID, IDS, NONCE, NOW, TOKEN, instagramConfig } from "./fixtures.js";
@@ -28,19 +30,33 @@ const body = Buffer.from(
 );
 const signature = `sha256=${createHmac("sha256", instagramConfig.appSecret).update(body).digest("hex")}`;
 const fixture = () => {
+  const logs: string[] = [];
+  const stream = new Writable({
+    write(chunk: unknown, _encoding, callback) {
+      if (typeof chunk === "string") logs.push(chunk);
+      else if (chunk instanceof Buffer) logs.push(chunk.toString("utf8"));
+      callback();
+    },
+  });
   const processMessage = vi.fn<InstagramBusinessUseCases["processMessage"]>(() =>
     Promise.resolve({ status: "accepted" }),
   );
-  const completeOnboarding = vi.fn(() => Promise.resolve());
+  const completeOnboarding = vi.fn<InstagramBusinessUseCases["completeOnboarding"]>(() =>
+    Promise.resolve({ organizationId: IDS.organization }),
+  );
+  const resolveOnboardingOrganization = vi.fn<
+    InstagramBusinessUseCases["resolveOnboardingOrganization"]
+  >(() => Promise.resolve({ organizationId: IDS.organization }));
   const api = createApi({
+    logger: { level: "warn", stream },
     instagramWebhook: {
       appSecret: instagramConfig.appSecret,
       webhookVerifyToken: instagramConfig.webhookVerifyToken,
-      useCases: { processMessage, completeOnboarding },
+      useCases: { processMessage, completeOnboarding, resolveOnboardingOrganization },
       clock: () => NOW,
     },
   });
-  return { api, processMessage, completeOnboarding };
+  return { api, processMessage, completeOnboarding, resolveOnboardingOrganization, logs };
 };
 describe("Instagram raw HTTP webhook/callback security", { timeout: 30000 }, () => {
   it.each([undefined, "sha256=bad", "sha256=" + "0".repeat(64)])(
@@ -166,13 +182,87 @@ describe("Instagram raw HTTP webhook/callback security", { timeout: 30000 }, () 
       const callback = await test.api.inject(
         `/v1/integrations/instagram/callback?code=synthetic-code&state=${NONCE}`,
       );
-      expect(callback.statusCode).toBe(200);
-      expect(callback.json()).toEqual({ status: "connected" });
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(
+        `/staff?organization=${IDS.organization}&integration=instagram&result=connected#integrations`,
+      );
       expect(callback.body).not.toContain(NONCE);
+      expect(test.resolveOnboardingOrganization).not.toHaveBeenCalled();
       expect(
         (await test.api.inject(`/v1/integrations/instagram/callback?code=code&state=bad`))
           .statusCode,
       ).toBe(400);
+    } finally {
+      await test.api.close();
+    }
+  });
+  it("returns provider denial to the tenant workspace without exposing provider details", async () => {
+    const test = fixture();
+    try {
+      const callback = await test.api.inject(
+        `/v1/integrations/instagram/callback?error=access_denied&error_reason=user_denied&error_description=private-provider-detail&state=${NONCE}`,
+      );
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(
+        `/staff?organization=${IDS.organization}&integration=instagram&result=failed#integrations`,
+      );
+      expect(callback.headers.location).not.toContain("private-provider-detail");
+      expect(test.completeOnboarding).not.toHaveBeenCalled();
+      expect(test.resolveOnboardingOrganization).toHaveBeenCalledWith({ state: NONCE });
+    } finally {
+      await test.api.close();
+    }
+  });
+  it("returns a known completion failure to the tenant workspace", async () => {
+    const test = fixture();
+    test.completeOnboarding.mockRejectedValue(new InstagramApplicationError("channel_unavailable"));
+    try {
+      const callback = await test.api.inject(
+        `/v1/integrations/instagram/callback?code=synthetic-code&state=${NONCE}`,
+      );
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(
+        `/staff?organization=${IDS.organization}&integration=instagram&result=failed#integrations`,
+      );
+      expect(test.resolveOnboardingOrganization).toHaveBeenCalledWith({ state: NONCE });
+    } finally {
+      await test.api.close();
+    }
+  });
+  it("records one safe callback diagnostic without logging credentials, code, or state", async () => {
+    const test = fixture();
+    const diagnostic = {
+      operation: "profile" as const,
+      reason: "http_rejection" as const,
+      httpStatus: 400,
+      providerCode: 100,
+      providerSubcode: 33,
+    };
+    test.completeOnboarding.mockImplementation(({ onFailure }) => {
+      onFailure?.({
+        stage: "code_exchange",
+        failure: "provider",
+        applicationCode: null,
+        providerCategory: "permanent_rejection",
+        providerDiagnostic: diagnostic,
+        databaseCode: null,
+      });
+      return Promise.reject(
+        new InstagramProviderError("permanent_rejection", false, undefined, diagnostic),
+      );
+    });
+    try {
+      const callback = await test.api.inject(
+        `/v1/integrations/instagram/callback?code=private-code&state=${NONCE}`,
+      );
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toContain("result=failed");
+      const evidence = test.logs.filter((line) => line.includes("instagramCallbackFailure"));
+      expect(evidence).toHaveLength(1);
+      expect(evidence[0]).toContain('"instagramCallbackStage":"code_exchange"');
+      expect(evidence[0]).toContain('"providerCode":100');
+      expect(evidence[0]).toContain('"providerSubcode":33');
+      expect(test.logs.join("\n")).not.toMatch(new RegExp(`${NONCE}|${TOKEN}|private-code`, "u"));
     } finally {
       await test.api.close();
     }
@@ -187,12 +277,43 @@ describe("Instagram staff integration management", () => {
       }),
     );
     const disconnect = vi.fn(() => Promise.resolve());
+    const getStatus = vi.fn(() => Promise.resolve({ status: "connected" as const }));
     const api = createApi({
       staffAuth: auth.staffAuth,
-      staffInstagram: { useCases: { beginOnboarding, disconnect } },
+      staffInstagram: { useCases: { beginOnboarding, disconnect, getStatus } },
     });
-    return { api, beginOnboarding, disconnect, ...auth };
+    return { api, beginOnboarding, disconnect, getStatus, ...auth };
   };
+  it("returns only the authenticated tenant connection status", async () => {
+    const test = fixture();
+    const readHeaders = { ...test.headers };
+    delete readHeaders["x-csrf-token"];
+    try {
+      const result = await test.api.inject({
+        method: "GET",
+        url: "/v1/staff/integrations/instagram/status",
+        headers: readHeaders,
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual({ status: "connected" });
+      expect(test.getStatus).toHaveBeenCalledOnce();
+      expect(
+        (
+          await test.api.inject({
+            method: "GET",
+            url: "/v1/staff/integrations/instagram/status",
+            headers: {
+              ...readHeaders,
+              "x-organization-context": IDS.otherOrganization,
+            },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(test.getStatus).toHaveBeenCalledOnce();
+    } finally {
+      await test.api.close();
+    }
+  });
   it("returns only the authorized OAuth URL and supports staff disconnect", async () => {
     const test = fixture();
     try {

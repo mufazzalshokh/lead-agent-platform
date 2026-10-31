@@ -121,6 +121,15 @@ export const groundingNeed = (message: string): GroundingNeed => {
   return "service";
 };
 
+/** Do not drop half of an explicit price/duration question. Other needs retain existing policy. */
+export const groundingNeeds = (message: string): readonly GroundingNeed[] => {
+  const query = normalizeGroundingQuery(message);
+  return /\b(minut\w*|duration|davom|dlitel\w*)\b/u.test(query) &&
+    /\b(narx\w*|pul|qancha turadi|tsena|stoit|price|cost)\b/u.test(query)
+    ? ["price", "duration"]
+    : [groundingNeed(message)];
+};
+
 const stopWords = new Set([
   "oka",
   "aka",
