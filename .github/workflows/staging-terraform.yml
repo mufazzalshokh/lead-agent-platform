@@ -78,10 +78,6 @@ on:
         description: Exact source commit used to build the immutable API image
         required: false
         type: string
-      connection_fault_build_run_id:
-        description: Exact successful API-only build run for the default-off connection-fault code phase
-        required: false
-        type: string
       api_deployment_timestamp:
         description: Exact deployment timestamp currently on the API for isolated migrator update/resume
         required: false
@@ -398,7 +394,6 @@ jobs:
       S22_ACTION: ${{ inputs.action }}
       S22_AUTH_CALLBACK_REQUEST_ID: ${{ inputs.auth_callback_request_id }}
       S22_API_DEPLOYMENT_TIMESTAMP: ${{ inputs.api_deployment_timestamp }}
-      S22_CONNECTION_FAULT_BUILD_RUN_ID: ${{ inputs.connection_fault_build_run_id }}
       S22_API_GIT_COMMIT_SHA: ${{ inputs.api_git_commit_sha }}
       S22_APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
       S22_APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
@@ -836,7 +831,11 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_DIRECTORY="$(mktemp -d)"
-          trap 'rm -f "$BUILD_DIRECTORY/run.json" "$BUILD_DIRECTORY/s22-image-manifest.txt"; rmdir "$BUILD_DIRECTORY"' EXIT
+          trap 'rm -f "$BUILD_DIRECTORY/runs.json" "$BUILD_DIRECTORY/run.json" "$BUILD_DIRECTORY/s22-image-manifest.txt"; rmdir "$BUILD_DIRECTORY"' EXIT
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/staging-images.yml/runs?head_sha=$S22_COMMIT_SHA&event=workflow_dispatch&per_page=2" > "$BUILD_DIRECTORY/runs.json"
+          S22_CONNECTION_FAULT_BUILD_RUN_ID="$(node .github/scripts/s22-connection-fault-code-plan-check.mjs --select-build "$BUILD_DIRECTORY/runs.json")"
+          export S22_CONNECTION_FAULT_BUILD_RUN_ID
+          echo "S22_CONNECTION_FAULT_BUILD_RUN_ID=$S22_CONNECTION_FAULT_BUILD_RUN_ID" >> "$GITHUB_ENV"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$S22_CONNECTION_FAULT_BUILD_RUN_ID" > "$BUILD_DIRECTORY/run.json"
           gh run download "$S22_CONNECTION_FAULT_BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" \
             --name "s22-image-manifest-$S22_API_GIT_COMMIT_SHA-$S22_CONNECTION_FAULT_BUILD_RUN_ID" --dir "$BUILD_DIRECTORY"

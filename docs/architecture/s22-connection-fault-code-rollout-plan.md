@@ -64,10 +64,13 @@ unknown costs, reservations, retired usage and all acceptance gaps remain intact
    Retain its run ID. Inspect the authenticated successful run and immutable
    manifest; no Web/worker/migrator build-and-push steps may execute.
 3. Dispatch `staging-terraform.yml` once, `action=plan`,
-   `phase=connection-fault-code`, exact tooling SHA, actual build run/digest and
+   `phase=connection-fault-code`, exact tooling SHA, actual image digest and
    UTC API timestamp. Preserve baseline runtime/migrator provenance and images,
    all three heads `0032`, `ai_journey_mode=preserve`, no new Widget binding,
-   no approval token or apply fields. No DB job or diagnostic executes.
+   no approval token or apply fields. Authenticated workflow metadata must
+   resolve exactly one successful build at that tooling SHA; its run and API-only
+   manifest are independently checked. Missing/duplicate matches stop the run.
+   No DB job or diagnostic executes. No extra workflow input is introduced.
 4. Independently download/authenticate the exact saved artifact and recompute
    its binary SHA256. Review its JSON with the locked provider schema and new
    guard; inspect executed/skipped steps. Publish actual receipt values before
@@ -83,6 +86,13 @@ unknown costs, reservations, retired usage and all acceptance gaps remain intact
 Rollback candidate is the prior immutable API image/provenance above. Any
 rollback needs a fresh reviewed plan and applicable approval; do not reapply
 consumed plans or mutate SQL to resolve a code-only rollout problem.
+
+Preparation caught an input-limit error before cloud execution: workflow-load
+run `41227953661` rejected the initial 26-input definition. The extra input was
+removed; the workflow retains 25 inputs and resolves exactly one build through
+authenticated metadata instead. A regression fixes this boundary at 25, matching
+[GitHub's documented limit](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs).
+No build or Terraform execution occurred in that failed validation run.
 
 ## Acceptance accounting
 

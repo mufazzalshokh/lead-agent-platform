@@ -45,7 +45,6 @@ export function verifyConnectionFaultCodeRequest(environment) {
   safe(environment.S22_PHASE === "connection-fault-code");
   safe(["plan", "apply"].includes(environment.S22_ACTION));
   safe(/^[a-f0-9]{40}$/u.test(environment.S22_COMMIT_SHA ?? ""));
-  safe(/^[1-9][0-9]*$/u.test(environment.S22_CONNECTION_FAULT_BUILD_RUN_ID ?? ""));
   safe(environment.S22_RUNTIME_GIT_COMMIT_SHA === baseline.git_commit_sha);
   safe(environment.S22_RUNTIME_DEPLOYMENT_TIMESTAMP === baseline.deployment_timestamp);
   safe(environment.S22_API_GIT_COMMIT_SHA === connectionFaultCodeSource);
@@ -97,6 +96,21 @@ export function verifyConnectionFaultCodeRun(receipt, environment, kind = "plan"
   );
   safe(receipt.repository?.full_name === "mufazzalshokh/lead-agent-platform");
   return true;
+}
+
+export function selectConnectionFaultCodeBuildRun(receipt, environment) {
+  // The workflow already uses GitHub's 25-input limit. Resolve exactly one run
+  // from authenticated metadata instead of overloading an unrelated input.
+  safe(receipt.total_count === 1 && receipt.workflow_runs?.length === 1);
+  const run = receipt.workflow_runs[0];
+  const id = String(run.id);
+  safe(/^[1-9][0-9]*$/u.test(id));
+  verifyConnectionFaultCodeRun(
+    run,
+    { ...environment, S22_CONNECTION_FAULT_BUILD_RUN_ID: id },
+    "build",
+  );
+  return id;
 }
 
 export function verifyConnectionFaultCodeManifest(source, environment) {
@@ -278,6 +292,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       safe(process.argv.length === 3);
       verifyConnectionFaultCodeRequest(process.env);
       console.log("connection_fault_code_request=PASS");
+    } else if (process.argv[2] === "--select-build") {
+      safe(process.argv.length === 4);
+      console.log(
+        selectConnectionFaultCodeBuildRun(
+          JSON.parse(readFileSync(process.argv[3], "utf8")),
+          process.env,
+        ),
+      );
     } else if (process.argv[2] === "--provenance") {
       safe(process.argv.length === 4);
       verifyConnectionFaultCodeRun(JSON.parse(readFileSync(process.argv[3], "utf8")), process.env);

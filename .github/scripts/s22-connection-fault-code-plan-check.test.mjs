@@ -5,6 +5,7 @@ import test from "node:test";
 import { monitoringProfile as baseline } from "./s22-monitoring-plan-check.mjs";
 import {
   connectionFaultCodeSource,
+  selectConnectionFaultCodeBuildRun,
   verifyConnectionFaultCodeManifest,
   verifyConnectionFaultCodePlan,
   verifyConnectionFaultCodeRequest,
@@ -478,7 +479,6 @@ test("request gate requires bounded exact-source planning and separately approve
   for (const [action, key, value] of [
     ["plan", "S22_APPROVAL_TOKEN", "S22-APPLY-APPROVED"],
     ["plan", "GITHUB_SHA", "a".repeat(40)],
-    ["plan", "S22_CONNECTION_FAULT_BUILD_RUN_ID", ""],
     ["plan", "S22_AI_JOURNEY_MODE", "paused"],
     ["plan", "S22_MIGRATOR_EXECUTION_ID", "some-job"],
     ["plan", "S22_API_GIT_COMMIT_SHA", baseline.git_commit_sha],
@@ -524,6 +524,19 @@ test("build and saved-plan provenance require exact successful authenticated wor
       repository: { full_name: "mufazzalshokh/lead-agent-platform" },
     };
     assert.equal(verifyConnectionFaultCodeRun(receipt, request("apply"), kind), true);
+    if (kind === "build") {
+      assert.equal(
+        selectConnectionFaultCodeBuildRun({ total_count: 1, workflow_runs: [receipt] }, request()),
+        "123",
+      );
+      for (const listing of [
+        { total_count: 0, workflow_runs: [] },
+        { total_count: 2, workflow_runs: [receipt, receipt] },
+        { total_count: 3, workflow_runs: [receipt] },
+        { total_count: 1, workflow_runs: [{ ...receipt, head_sha: baseline.git_commit_sha }] },
+      ])
+        assert.throws(() => selectConnectionFaultCodeBuildRun(listing, request()));
+    }
     for (const [key, value] of [
       ["id", 999],
       ["status", "in_progress"],
@@ -562,6 +575,8 @@ test("workflow gates request/build/plan/apply and preserves the legacy guard", (
   const step = (name) =>
     source.split(`      - name: ${name}\n`)[1]?.split(/\n {6}- (?:name|uses):/u)[0];
   assert.ok(source.includes("- connection-fault-code"));
+  const inputs = source.split("\npermissions:")[0].match(/^ {6}[a-z0-9_]+:$/gmu);
+  assert.equal(inputs?.length, 25);
   assert.ok(
     source.indexOf("- name: Validate connection-fault code request") <
       source.indexOf("- name: Authenticate to Google Cloud without a key"),
