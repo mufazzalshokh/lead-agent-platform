@@ -3,6 +3,17 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-31 — Default-off API code rollout preparation
+
+The owner approved one API-only image build from verified source `7a4201c` and
+one saved Terraform plan after the new guard passes CI. The
+[rollout packet](s22-connection-fault-code-rollout-plan.md) isolates current-head
+`0032` API image/provenance changes without relaxing the old `0031` guard.
+Fault profile/target metadata must stay absent; 88 managed configurations,
+worker/selection/budget state, SQL, IAM and monitoring must remain preserved.
+Build/plan receipts are pending execution. This authority excludes deployment,
+fault activation, notifications, migrations and AI calls. **S22 remains unaccepted.**
+
 ## 2026-10-31 — Connection-fault offline implementation; live gates unchanged
 
 Following the owner's continuation, the [replacement](s22-connection-fault-plan.md)

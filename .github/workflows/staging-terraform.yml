@@ -29,6 +29,7 @@ on:
           - migration-validate
           - api-image-update
           - api-image-verify
+          - connection-fault-code
           - monitoring-evidence
           - monitoring-policy
           - migrator-image-update
@@ -75,6 +76,10 @@ on:
         type: string
       api_git_commit_sha:
         description: Exact source commit used to build the immutable API image
+        required: false
+        type: string
+      connection_fault_build_run_id:
+        description: Exact successful API-only build run for the default-off connection-fault code phase
         required: false
         type: string
       api_deployment_timestamp:
@@ -393,6 +398,7 @@ jobs:
       S22_ACTION: ${{ inputs.action }}
       S22_AUTH_CALLBACK_REQUEST_ID: ${{ inputs.auth_callback_request_id }}
       S22_API_DEPLOYMENT_TIMESTAMP: ${{ inputs.api_deployment_timestamp }}
+      S22_CONNECTION_FAULT_BUILD_RUN_ID: ${{ inputs.connection_fault_build_run_id }}
       S22_API_GIT_COMMIT_SHA: ${{ inputs.api_git_commit_sha }}
       S22_APPROVAL_TOKEN: ${{ inputs.owner_approval_token }}
       S22_APPROVED_PLAN_SHA256: ${{ inputs.approved_plan_sha256 }}
@@ -454,7 +460,7 @@ jobs:
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$TF_VAR_migration_head" == "0031_s22_widget_inbound_route_management" || "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]
           if [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]; then
-            [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" || "$PHASE" == "api-image-verify" || "$PHASE" == "monitoring-policy" ]]
+            [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" || "$PHASE" == "api-image-verify" || "$PHASE" == "monitoring-policy" || "$PHASE" == "connection-fault-code" ]]
           fi
           if [[ "$PHASE" == "full" && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
             [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -503,7 +509,7 @@ jobs:
             [[ "$ACTION" == "plan" ]]
             [[ "$S22_AUTH_CALLBACK_REQUEST_ID" == "request:latest" || "$S22_AUTH_CALLBACK_REQUEST_ID" =~ ^(request|instagram):req-[A-Za-z0-9_-]{1,64}$ ]]
           fi
-          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
+          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" || "$PHASE" == "connection-fault-code" ]]; then
             [[ "$S22_API_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
             [[ "$TF_VAR_api_migration_head" == "$TF_VAR_migration_head" ]]
             [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -669,6 +675,12 @@ jobs:
               SQL_POLICY=ALWAYS
               WORKER_COUNT=1
               ;;
+            connection-fault-code)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
             migrator-image-update)
               DEPLOY_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -757,7 +769,7 @@ jobs:
             echo "TF_VAR_worker_instance_count=$WORKER_COUNT"
             echo "TF_VAR_worker_memory=$WORKER_MEMORY"
           } >> "$GITHUB_ENV"
-          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" ]]; then
+          if [[ "$PHASE" == "api-image-update" || "$PHASE" == "api-image-verify" || "$PHASE" == "connection-fault-code" ]]; then
             API_DEPLOYMENT_TIMESTAMP="$TF_VAR_deployment_timestamp"
             echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
@@ -800,6 +812,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
           git fetch --no-tags origin "$DISPATCH_BRANCH"
           git merge-base --is-ancestor "$REQUESTED_SHA" "origin/$DISPATCH_BRANCH"
+          if [[ "$S22_PHASE" == "connection-fault-code" ]]; then
+            git merge-base --is-ancestor "$S22_API_GIT_COMMIT_SHA" "$REQUESTED_SHA"
+            git merge-base --is-ancestor "$S22_RUNTIME_GIT_COMMIT_SHA" "$REQUESTED_SHA"
+          fi
           if [[ ( "$S22_PHASE" == "full" || "$S22_PHASE" == "monitoring-policy" ) && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
             git merge-base --is-ancestor "$S22_RUNTIME_GIT_COMMIT_SHA" "$REQUESTED_SHA"
           fi
@@ -807,6 +823,25 @@ jobs:
       - name: Validate monitoring request
         if: env.S22_PHASE == 'monitoring-policy'
         run: node .github/scripts/s22-monitoring-plan-check.mjs --request
+
+      - name: Validate connection-fault code request
+        if: env.S22_PHASE == 'connection-fault-code'
+        run: node .github/scripts/s22-connection-fault-code-plan-check.mjs --request
+
+      - name: Verify connection-fault code image provenance
+        if: env.S22_PHASE == 'connection-fault-code'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_DIRECTORY="$(mktemp -d)"
+          trap 'rm -f "$BUILD_DIRECTORY/run.json" "$BUILD_DIRECTORY/s22-image-manifest.txt"; rmdir "$BUILD_DIRECTORY"' EXIT
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$S22_CONNECTION_FAULT_BUILD_RUN_ID" > "$BUILD_DIRECTORY/run.json"
+          gh run download "$S22_CONNECTION_FAULT_BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "s22-image-manifest-$S22_API_GIT_COMMIT_SHA-$S22_CONNECTION_FAULT_BUILD_RUN_ID" --dir "$BUILD_DIRECTORY"
+          node .github/scripts/s22-connection-fault-code-plan-check.mjs --build \
+            "$BUILD_DIRECTORY/run.json" "$BUILD_DIRECTORY/s22-image-manifest.txt"
 
       - name: Authenticate to Google Cloud without a key
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -1972,6 +2007,14 @@ jobs:
           bash .github/scripts/s22-monitoring-plan-check.sh infra/deploy/gcp/staging/s22.tfplan plan \
             | tee infra/deploy/gcp/staging/s22-monitoring-plan-evidence.txt
 
+      - name: Verify default-off connection-fault code plan
+        if: env.S22_PHASE == 'connection-fault-code' && env.S22_ACTION == 'plan'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/s22-connection-fault-code-plan-check.sh infra/deploy/gcp/staging/s22.tfplan plan \
+            | tee infra/deploy/gcp/staging/s22-connection-fault-code-plan-evidence.txt
+
       - name: Verify migration plan safety
         if: env.S22_PHASE == 'migration' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
@@ -2445,6 +2488,7 @@ jobs:
             infra/deploy/gcp/staging/s22-full-runtime-plan-evidence.txt
             infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
             infra/deploy/gcp/staging/s22-monitoring-plan-evidence.txt
+            infra/deploy/gcp/staging/s22-connection-fault-code-plan-evidence.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -3179,6 +3223,18 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$S22_PLAN_RUN_ID" > "$RUN_JSON"
           node .github/scripts/s22-monitoring-plan-check.mjs --provenance "$RUN_JSON"
 
+      - name: Verify connection-fault code saved-plan provenance
+        if: env.S22_PHASE == 'connection-fault-code' && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_JSON="$(mktemp)"
+          trap 'rm -f "$RUN_JSON"' EXIT
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$S22_PLAN_RUN_ID" > "$RUN_JSON"
+          node .github/scripts/s22-connection-fault-code-plan-check.mjs --provenance "$RUN_JSON"
+
       - name: Download exact owner-reviewed plan
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         env:
@@ -3220,6 +3276,15 @@ jobs:
           ACTUAL_PLAN_SHA256="$(awk '{print $1}' infra/deploy/gcp/staging/s22.tfplan.sha256)"
           [[ "$ACTUAL_PLAN_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
           bash .github/scripts/s22-monitoring-plan-check.sh infra/deploy/gcp/staging/s22.tfplan plan
+
+      - name: Verify exact connection-fault code approval boundary
+        if: env.S22_PHASE == 'connection-fault-code' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_PLAN_SHA256="$(sha256sum infra/deploy/gcp/staging/s22.tfplan | awk '{print $1}')"
+          [[ "$ACTUAL_PLAN_SHA256" == "$S22_APPROVED_PLAN_SHA256" ]]
+          bash .github/scripts/s22-connection-fault-code-plan-check.sh infra/deploy/gcp/staging/s22.tfplan plan
 
       - name: Verify exact migrator image update approval boundary
         if: env.S22_PHASE == 'migrator-image-update' && env.S22_ACTION == 'apply'
@@ -3672,6 +3737,26 @@ jobs:
         if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
+
+      - name: Verify default-off connection-fault code convergence
+        if: env.S22_PHASE == 'connection-fault-code' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/deploy/gcp/staging plan -detailed-exitcode -lock-timeout=5m \
+            -out=s22-connection-fault-code-convergence.tfplan > /dev/null
+          bash .github/scripts/s22-connection-fault-code-plan-check.sh \
+            infra/deploy/gcp/staging/s22-connection-fault-code-convergence.tfplan verify \
+            | tee infra/deploy/gcp/staging/s22-connection-fault-code-apply-evidence.txt
+
+      - name: Preserve default-off connection-fault code apply evidence
+        if: always() && env.S22_PHASE == 'connection-fault-code' && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-connection-fault-code-apply-evidence-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-connection-fault-code-apply-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify monitoring policy convergence
         if: env.S22_PHASE == 'monitoring-policy' && env.S22_ACTION == 'apply'
@@ -5679,8 +5764,25 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Record default-off connection-fault code provenance
+        if: env.S22_PHASE == 'connection-fault-code' && env.S22_ACTION == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## S22 default-off API-only code rollout"
+            echo "- Tooling source: $S22_COMMIT_SHA"
+            echo "- API source: $TF_VAR_api_git_commit_sha"
+            echo "- API image: $TF_VAR_api_image"
+            echo "- API timestamp: $TF_VAR_api_deployment_timestamp"
+            echo "- Migration head: $TF_VAR_api_migration_head"
+            echo "- Consumed saved plan: $S22_PLAN_RUN_ID ($S22_APPROVED_PLAN_SHA256)"
+            echo "- Full configuration convergence: 88 resources / zero changes"
+            echo "- Fault profile absent; no live exercise or S22 acceptance claim"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'monitoring-policy' && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'connection-fault-code' && env.S22_PHASE != 'monitoring-policy' && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}
