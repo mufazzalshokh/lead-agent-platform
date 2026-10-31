@@ -9,6 +9,10 @@ design only**. The [replacement design](s22-connection-fault-plan.md) records th
 bounded preparation. The SQL-stop NO-GO remains; implementation and live actions
 are still unauthorized.
 
+On 31 October the owner authorized continuation into offline implementation of
+that replacement and tests only. This does not authorize its build/deployment,
+live use or provisioning the rejected SQL-stop/watchdog design.
+
 ## Scope and evidence
 
 Reviewed the independent-recovery proposal, its pure contract/simulator/tests,
@@ -133,6 +137,6 @@ The historical unformatted evidence register is not reformatted wholesale.
 Unrelated owner edits are excluded. Full CI status belongs to the resulting
 commit's actual run, not an earlier source's successful check.
 
-**Next safe step: review and authorize only the offline implementation of the
-[prepared replacement](s22-connection-fault-plan.md). S22 remains unaccepted;
+**Next safe step after replacement implementation verification: prepare its
+[default-off rollout packet](s22-connection-fault-plan.md). S22 remains unaccepted;
 S23 is not started.**

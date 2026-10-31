@@ -3,6 +3,28 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-10-31 — Connection-fault offline implementation; live gates unchanged
+
+Following the owner's continuation, the [replacement](s22-connection-fault-plan.md)
+now has default-off configuration, request-scoped API admission, an owned
+loopback relay reusing real session SQL/role checks, and sanitized receipts.
+Cloud SQL, normal pools, tenant/business policy and the rejected SQL-stop tooling
+are unchanged. The existing 44-GET design cap remains 1 setup + 4 baseline +
+23 fault + at most 16 recovery; no live requests have been made.
+
+Focused tests cover real pg transport failures, TLS/CA rejection, request/auth/
+tenant scope, credential changes, replay/concurrency, cleanup and self-expiry.
+Database-backed role, resolver, revocation and HTTP transition cases are added
+to the existing isolated PostgreSQL gate. Their actual CI result must be read
+for the resulting commit; test definitions or mocks are not a PASS receipt.
+
+No image build, infrastructure change, deployment, enabled profile, live fault,
+notification, IAM/provider call or budget change is performed by this milestone.
+The future packet must bind declared target metadata to the actual resource and
+pinned image, and retain separate live exercise authority. Restore, transaction,
+queue, capacity and actual notification proofs are not waived. **S22 remains
+unaccepted; S23 is not started.**
+
 ## 2026-10-30 — Self-expiring connection-fault replacement prepared only
 
 The owner explicitly selected preparation only of the

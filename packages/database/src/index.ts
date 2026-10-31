@@ -94,6 +94,10 @@ export {
 } from "./runtime/tenant.js";
 export * from "./repositories/index.js";
 export * from "./schema/index.js";
+export {
+  createSessionConnectionProbe,
+  type SessionConnectionProbe,
+} from "./runtime/session-connection-probe.js";
 export { createStaffOperationsStore } from "./repositories/staff-operations.js";
 export { createAIOrchestrationStore } from "./repositories/ai-orchestration.js";
 export {

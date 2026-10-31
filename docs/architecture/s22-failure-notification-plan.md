@@ -11,6 +11,9 @@ concludes NO-GO for this SQL-stop path. The owner approved preparation only of
 the [self-expiring request-scoped connection-fault design](s22-connection-fault-plan.md).
 Its mechanism and evidence scope differ; the SQL-stop sequence below remains
 historical/conditional and must not be executed as that replacement.
+On 31 October the owner authorized the replacement's offline implementation and
+tests only; its build/deployment, profile activation and live exercise still need
+their separate gates. Nothing clears the SQL-stop NO-GO.
 
 ## Current operator constraint — 2026-10-24
 

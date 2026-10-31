@@ -558,6 +558,7 @@ let runtimeConnectionString: string | undefined;
 let tenantRuntime: TenantDatabaseRuntime | undefined;
 let identityRuntime: IdentityDatabaseRuntime | undefined;
 let sessionRuntime: SessionDatabaseRuntime | undefined;
+let sessionProbeConfiguration: IdentityDatabaseRuntimeConfig | undefined;
 let authorizationRuntime: AuthorizationDatabaseRuntime | undefined;
 let membershipLifecycleRuntime: MembershipLifecycleDatabaseRuntime | undefined;
 let membershipTenantRuntime: TenantDatabaseRuntime | undefined;
@@ -2471,16 +2472,14 @@ beforeAll(async () => {
       onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
     },
   );
-  sessionRuntime = createSessionDatabaseRuntime(
-    createIdentityDatabaseRuntimeConfig({
-      connectionString: authUrl.toString(),
-      maxConnections: 8,
-      statementTimeoutMilliseconds: 30_000,
-    }),
-    {
-      onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
-    },
-  );
+  sessionProbeConfiguration = createIdentityDatabaseRuntimeConfig({
+    connectionString: authUrl.toString(),
+    maxConnections: 8,
+    statementTimeoutMilliseconds: 30_000,
+  });
+  sessionRuntime = createSessionDatabaseRuntime(sessionProbeConfiguration, {
+    onUnexpectedPoolError: (error) => identityRuntimePoolErrors.push(error),
+  });
   authorizationRuntime = createAuthorizationDatabaseRuntime(
     createIdentityDatabaseRuntimeConfig({
       connectionString: authUrl.toString(),
@@ -10221,6 +10220,11 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
   });
   registerSessionLifecycleTests({
     privilegedPool: database,
+    probeConfiguration: () => {
+      if (sessionProbeConfiguration === undefined)
+        throw new Error("Probe configuration is not initialized");
+      return sessionProbeConfiguration;
+    },
     runtime: () => {
       if (sessionRuntime === undefined) {
         throw new Error("Session runtime is not initialized");

@@ -1,9 +1,10 @@
 # S22 self-expiring connection-fault design
 
-Status: **PREPARED DESIGN ONLY — NOT IMPLEMENTED, DEPLOYED OR LIVE-AUTHORIZED**.
+Status: **OFFLINE IMPLEMENTATION — NOT DEPLOYED OR LIVE-AUTHORIZED**.
 On 30 October 2026 the owner approved preparation of this replacement design
-only. Implementation, image builds, deployment, an outage, notification, IAM
-changes and spending are not authorized. S22 remains unaccepted.
+only. On 31 October the owner instructed continuation into offline implementation
+and tests. Image builds, deployment, an outage, notification, IAM changes and
+spending remain unauthorized. S22 remains unaccepted.
 
 This is a proposed replacement **test mechanism**, not a saved rollout plan or
 permission to run the rejected [SQL-stop/watchdog proposal](s22-recovery-safety-review.md).
@@ -64,7 +65,8 @@ so parsing cannot silently override the relay address.
 Before any implementation adds the parser as a direct database-package dependency,
 justify promoting this already-installed transitive library: its typed public
 parser avoids private-driver access and a second, incomplete SSL/URI parser.
-Pin the existing version; no installation or lockfile change is approved here.
+The offline implementation promotes exactly 2.14.0 to a direct dependency and
+updates only its existing lockfile importer; it adds no new library/version.
 
 Preserve credentials, database, SSL negotiation, CA/client certificates,
 verification behavior, options and timeouts. Keep the original TLS server-name
@@ -109,6 +111,22 @@ introduced. Preserve origin, Fetch Metadata, cookie/envelope validation and rate
 limits; add header redaction and hostile-header tests. Untagged requests always
 use normal authentication, even for the same operator during the test window.
 
+A real same-origin browser GET normally omits `Origin`. Admission requires
+`Sec-Fetch-Site: same-origin` and either an explicit configured staff origin or,
+when Origin is absent, `Sec-Fetch-Mode: cors|same-origin` plus
+`Sec-Fetch-Dest: empty`. Never derive an origin from Host/Referer. Ordinary auth
+policy remains unchanged, and the cookie envelope is still validated before the
+request-local resolver runs. No Web gateway change is required.
+
+The runtime additionally requires declared `GOOGLE_CLOUD_PROJECT` and
+`GOOGLE_CLOUD_REGION` matching the exact staging target, `K_SERVICE` and
+`DEPLOYMENT_GIT_SHA`. Current infrastructure does not set the two new metadata
+variables or the profile, so this implementation is default-off. These are
+trusted deployment declarations, not Google identity attestation: the future
+exact-plan guard must verify the real project/region/resource and pinned image.
+`APP_ENV=production` stays unchanged for staging's normal strong auth settings;
+`DEPLOYMENT_ENVIRONMENT` must be staging.
+
 Baseline sequence 1 is resolved normally, verifies the configured session digest
 and returns only the process nonce as allowlisted test metadata. Sequences 2–4
 must carry that nonce and complete real PostgreSQL resolution in their scheduled
@@ -118,7 +136,9 @@ The controller must observe all four responses from the same process.
 
 Only after four successful baseline reads may that process retain an in-memory
 keyed fingerprint of the admitted credential for the fault path. Do not retain
-the raw bearer or expose the fingerprint. During fault reads, still validate the
+the raw bearer or expose the fingerprint. During baseline, a separate candidate
+fingerprint detects credential changes; it cannot select a fault and is cleared
+on retirement or transferred only after all four successful reads. During fault reads, still validate the
 sealed browser envelope and exact request scope before selecting the failed
 connection. The cached binding may only deny that probe: it can never return an
 authenticated session, authorize a protected action, or substitute for live
@@ -256,14 +276,25 @@ an unavailable live test as completed because the design or a local fixture pass
    Removal needs the applicable exact-plan approval; expiry does not depend on it.
    No new IAM/resource cleanup, budget expansion or ledger reset is introduced.
 
-## Current verification boundary
+## Offline implementation and verification boundary
 
-Only this design and navigation/evidence documents are changed. No profile,
-headers, relay, code, dependency, test or infrastructure definition is implemented.
-Existing probe tests characterize error/safety behavior; they do not prove the
-proposed relay, expiry or TLS equivalence. Those are mandatory implementation
-gates, not established guarantees. Current CI/local verification results belong
-to the resulting documentation commit and are reported separately.
+The configuration loader, API request-local resolver, admission state machine,
+owned TCP relay and sanitized receipts are implemented, default-off. The normal
+session runtime's SQL/role checks are reused. No business or booking policy is
+changed. Existing SQL-stop preflight/controller/watchdog files remain unchanged.
 
-**Next safe step: review and authorize only the offline implementation and its
-tests. No image build, deployment, fault run or notification is authorized.**
+Focused tests exercise real pg socket cuts, both TLS negotiation modes with an
+ephemeral CA-trusted certificate and rejection of an untrusted certificate,
+cleanup/concurrency, profile/auth/tenant/header boundaries, rotation, replay,
+clock/expiry and request accounting. Real PostgreSQL role/resolver/revocation and
+HTTP baseline → 23 cuts → recovery cases are registered in the existing isolated
+database suite, not claimed passed from a mock. Exact local and full-CI results
+are reported with the implementation checkpoint.
+
+No deployed profile, traffic controller invocation, image build, infrastructure
+definition, cloud mutation, live fault, session setup or notification has run.
+Local socket/CI database evidence is not live staging recovery or S22 acceptance.
+
+**Next safe step after all implementation gates pass: prepare the immutable,
+default-off code rollout packet. No build, deployment, enabled profile, fault run
+or notification is authorized by the offline implementation approval.**

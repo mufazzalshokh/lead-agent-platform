@@ -57,6 +57,8 @@ import {
 import { WidgetApplicationError, WidgetManagementError } from "@lead-agent/application";
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from "fastify";
 import Fastify, { LogController } from "fastify";
+import type { S22SessionProbe } from "../diagnostics/s22-connection-fault.js";
+import { S22_CONNECTION_FAULT_HEADER } from "../diagnostics/s22-connection-fault-admission.js";
 
 import {
   registerStaffConfiguration,
@@ -128,6 +130,8 @@ export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.x-csrf-token",
   "req.headers.x-telegram-bot-api-secret-token",
   "req.headers.x-hub-signature-256",
+  "req.headers.x-s22-connection-fault",
+  "res.headers.x-s22-connection-fault",
   "res.headers.set-cookie",
   "body.authorization_code",
   "body.invitation_token",
@@ -158,6 +162,7 @@ export type StaffAuthDependencies = Readonly<{
   oidcClient: StaffBrowserOidcClient;
   oidcVerifier: OidcIdentityVerifier;
   sessions: ApplicationSessionLifecycle;
+  sessionConnectionProbe?: S22SessionProbe;
   clock?: () => Date;
 }>;
 
@@ -566,6 +571,7 @@ const registerStaffAuth = async (
     request: FastifyRequest,
     reply: FastifyReply,
     rotateWhenDue = true,
+    scopedResolver?: (token: string) => Promise<AuthenticatedApplicationSession>,
   ): Promise<SessionResolution> => {
     try {
       rejectDuplicateSecurityCookies(request);
@@ -573,7 +579,10 @@ const registerStaffAuth = async (
       const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
       if (sealed === undefined) throw new SessionAuthenticationRequiredError();
       const credential = dependencies.envelopeProtector.openSession(sealed, now);
-      const session = await dependencies.sessions.resolveSession(credential.sessionToken);
+      const session =
+        scopedResolver === undefined
+          ? await dependencies.sessions.resolveSession(credential.sessionToken)
+          : await scopedResolver(credential.sessionToken);
       if (rotateWhenDue && session.rotationDue) {
         const issued = await dependencies.sessions.rotateSession(credential.sessionToken);
         setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
@@ -861,7 +870,34 @@ const registerStaffAuth = async (
   });
 
   api.get(STAFF_AUTH_PREFIX + "/session", async (request, reply) => {
-    const { session } = await resolveSession(request, reply);
+    // Probe context never bypasses the normal envelope/origin validation above.
+    // Other protected routes never receive this request-local resolver.
+    const probe = dependencies.sessionConnectionProbe;
+    // Browsers normally omit Origin on same-origin GET. In that case require
+    // the complete fetch shape; never derive an origin from Host or Referer.
+    const browserGet =
+      request.headers.origin === undefined &&
+      ["cors", "same-origin"].includes(String(request.headers["sec-fetch-mode"])) &&
+      request.headers["sec-fetch-dest"] === "empty";
+    const sameOrigin =
+      request.headers["sec-fetch-site"] === "same-origin" &&
+      (request.headers.origin === dependencies.config.staffApplicationOrigin || browserGet);
+    const { session } = await resolveSession(
+      request,
+      reply,
+      true,
+      probe === undefined || !sameOrigin
+        ? undefined
+        : (token) =>
+            probe.resolveSession(
+              request.headers[S22_CONNECTION_FAULT_HEADER],
+              token,
+              (normalToken) => dependencies.sessions.resolveSession(normalToken),
+              (metadata) => {
+                reply.header(S22_CONNECTION_FAULT_HEADER, JSON.stringify(metadata));
+              },
+            ),
+    );
     return {
       absolute_expires_at: session.absoluteExpiresAt.toISOString(),
       assurance: session.authenticationLevel,

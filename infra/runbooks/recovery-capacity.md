@@ -74,8 +74,9 @@ reads, launch a canary or treat incident-only handling as independent recovery.
 The owner has since approved preparation only of the
 [self-expiring connection-fault design](../../docs/architecture/s22-connection-fault-plan.md).
 It proposes a request-scoped TCP interruption with Cloud SQL and normal pools
-unchanged, not a whole-instance outage. Its implementation and live use are not
-authorized. Transaction rollback, worker drain and isolated restore stay separate.
+unchanged, not a whole-instance outage. The 31 October continuation permits only
+its offline implementation/tests; build, deployment and live use remain
+unauthorized. Transaction rollback, worker drain and isolated restore stay separate.
 
 ## Capacity profile
 
