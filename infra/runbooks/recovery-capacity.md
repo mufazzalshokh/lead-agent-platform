@@ -5,6 +5,12 @@ Git/image/migration provenance, operator, approved ticket, observations, and cle
 Raw messages, credentials, database URLs, and unbounded customer/tenant identifiers do
 not belong in evidence or telemetry.
 
+Current S22 status and remaining closure criteria are in the
+[completion checklist](../../docs/architecture/s22-completion-checklist.md).
+The default-off connection-fault code was deployed on 1 November; no enabled
+exercise or notification is authorized. Older design/provisioning paragraphs
+below are historical constraints, not instructions to revive a rejected path.
+
 ## Isolated database restore
 
 1. Record the active Cloud SQL instance, latest successful backup, target PITR time,
@@ -48,35 +54,27 @@ measurement and bottleneck; do not claim the target.
   transaction has no partial AppointmentRequest/confirmation, no tenant fallback, and
   bounded recovery. Do not corrupt data or disable RLS.
 
-The [bounded database-failure/notification proposal](../../docs/architecture/s22-failure-notification-plan.md)
-selects an existing authenticated dependency probe and records its security-metadata
-writes, whole-staging outage scope, finite limits and independent recovery gates.
-It is preparation only, not live authority or transaction-rollback evidence.
-The offline [preflight validator](../../.github/scripts/s22-failure-preflight.mjs)
-checks a supplied snapshot against the pinned deployment and fixed bounds. A passing
-snapshot is not independent live-state verification or execution authority. The
-offline reducer only simulates transitions; a live execution adapter, independent
-watchdog and recovery confirmation still need implementation and separate review.
+The historical [whole-instance proposal](../../docs/architecture/s22-failure-notification-plan.md),
+[sole-operator/watchdog design](../../docs/architecture/s22-solo-recovery-plan.md)
+and their offline validators/controllers remain **NO-GO for live execution** under
+the [30 October safety review](../../docs/architecture/s22-recovery-safety-review.md).
+Retain their fixtures and findings; do not provision the watchdog, add grants,
+repeat its readiness reads or loosen its denial gates. A simulator or static
+snapshot is not authenticated live-state evidence or an independent recovery guarantee.
 
-For the confirmed sole-operator constraint, follow the
-[independent recovery proposal](../../docs/architecture/s22-solo-recovery-plan.md).
-It specifies an isolated job/root and bounded ownership protocol, not a deployed
-watchdog or an exception to the existing second-operator gate. Its offline protocol
-and fault tests now exist; real writer-origin and late-stop/conflict reconciliation
-remain review gates. Provisioning, any restore canary, outage, session-metadata writes
-and notification delivery each retain their explicit review/authority boundaries.
+The replacement [self-expiring connection-fault mechanism](../../docs/architecture/s22-connection-fault-plan.md)
+is implemented and deployed **default-off**, using approved plan `41228923359`,
+consumed once by [apply 41277068065](../../docs/architecture/s22-connection-fault-code-rollout-plan.md#approved-apply-and-independent-verification--1-november-2026).
+All 88 managed configurations converged; the profile/target metadata stay absent.
+Cloud SQL and normal pools are unchanged. This is not a whole-instance outage,
+transaction rollback, worker drain, isolated restore or live notification proof.
 
-The [30 October safety review](../../docs/architecture/s22-recovery-safety-review.md)
-concludes NO-GO for provisioning that watchdog proposal. Obtain the explicit
-fault-mechanism/design decision before implementation; do not repeat readiness
-reads, launch a canary or treat incident-only handling as independent recovery.
-
-The owner has since approved preparation only of the
-[self-expiring connection-fault design](../../docs/architecture/s22-connection-fault-plan.md).
-It proposes a request-scoped TCP interruption with Cloud SQL and normal pools
-unchanged, not a whole-instance outage. The 31 October continuation permits only
-its offline implementation/tests; build, deployment and live use remain
-unauthorized. Transaction rollback, worker drain and isolated restore stay separate.
+Follow the [current exercise specification](../../docs/architecture/s22-connection-fault-exercise-plan.md)
+for the still-required activation/removal guards, bounded browser controller,
+one private binding, exact UTC window, authority and finite evidence/cleanup.
+No real session digest or schedule is collected during offline preparation.
+Activation, session-metadata writes, connection cuts and actual alert delivery
+remain separately gated; this runbook does not authorize them.
 
 ## Capacity profile
 
@@ -124,8 +122,16 @@ not prove live alert delivery. Budget notifications do not enforce a dollar cap.
 
 ### Monitoring-only saved-plan boundary
 
-Use `staging-terraform.yml` with `action=plan` and `phase=monitoring-policy`.
-This phase is not an application release or a permission to send test traffic.
+Historical boundary: this paragraph and its guard describe consumed plan
+`39650372329` / [apply 39653834662](../../docs/architecture/s22-monitoring-rollout-plan.md#consumed-apply-receipt-and-next-gate).
+Its old all-runtime image pins do not match the mixed-version runtime deployed
+on 1 November. Do not dispatch or relax that plan phase for the new exercise.
+The separate monitoring-only **reader** below remains reusable: it validates the
+unchanged policy/target, not application image provenance.
+
+The historical correction used `staging-terraform.yml` with `action=plan` and
+`phase=monitoring-policy`. This phase is not an application release or permission
+to send test traffic. The following is its retained protocol, not a new dispatch instruction.
 The exact reviewed tooling commit must be the dispatched branch HEAD and pass
 CI before planning. Preserve the existing immutable images and application
 provenance: source `abc3071fb81777068f5adfb98f6144d9081077eb`, timestamp

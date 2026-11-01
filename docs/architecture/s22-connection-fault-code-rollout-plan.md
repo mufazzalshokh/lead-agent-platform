@@ -226,8 +226,10 @@ Existing source/tooling CI remains the code verification. Scoped receipt
 formatting/whitespace and final diff checks passed for its documentation
 handoff. Owner edits remain excluded.
 
-Next safe step: prepare the separately scoped connection-fault exercise profile,
-guard and evidence bindings for this deployed mixed-version runtime, without
-activating it. Historical readers pinned to the old API image must fail closed;
-do not loosen them or relabel default-off deployment as live recovery evidence.
+Next safe step: offline-implement the guards/controller from the
+[exercise specification](s22-connection-fault-exercise-plan.md), without real
+bindings or activation. Historical readers pinned to the old API image must fail
+closed; the policy-scoped monitoring reader can be reused unchanged. Follow the
+[completion checklist](s22-completion-checklist.md); do not loosen historical
+guards or relabel default-off deployment as live recovery evidence.
 **S22 remains unaccepted; S23 is not started.**

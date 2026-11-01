@@ -1,14 +1,20 @@
 # S22 self-expiring connection-fault design
 
-Status: **OFFLINE IMPLEMENTATION — NOT DEPLOYED OR LIVE-AUTHORIZED**.
-On 30 October 2026 the owner approved preparation of this replacement design
-only. On 31 October the owner instructed continuation into offline implementation
-and tests. Image builds, deployment, an outage, notification, IAM changes and
-spending remain unauthorized. S22 remains unaccepted.
+Status: **DEFAULT-OFF CODE DEPLOYED; LIVE EXERCISE NOT AUTHORIZED**.
+Preparation on 30 October and offline implementation/tests on 31 October were
+followed by the separately approved API-only build, saved plan and default-off
+deployment. [Apply 41277068065](s22-connection-fault-code-rollout-plan.md#approved-apply-and-independent-verification--1-november-2026)
+consumed plan `41228923359` once on 1 November; all 88 managed configurations
+converged with zero changes. Do not reapply it. The profile and explicit target
+metadata remain absent. No fault, notification, IAM change, migration or budget
+increase is authorized by that deployment. S22 remains unaccepted.
 
-This is a proposed replacement **test mechanism**, not a saved rollout plan or
+This is the replacement **test mechanism**, not an activation plan or
 permission to run the rejected [SQL-stop/watchdog proposal](s22-recovery-safety-review.md).
 It tests one application connection path, not Cloud SQL instance failure.
+Use the [current exercise preparation](s22-connection-fault-exercise-plan.md)
+and [completion checklist](s22-completion-checklist.md) for next gates; historical
+preparation receipts do not supersede the deployed-code receipt above.
 
 ## Decision and affected boundary
 
@@ -149,7 +155,7 @@ enforce revocation normally. No stale identity is turned into an authorized resu
 ## Expiry, abort, restart and scheduling
 
 Each process generates a new nonce and starts unadmitted. No profile alone arms
-a process. A process starting at/after `S`, a new replica or a restart cannot
+a process. A process starting at/after `B`, a new replica or a restart cannot
 resume the old admission. A nonce change aborts this exercise; do not acquire a
 new nonce, repeat baseline or automatically select another instance. Cloud Run
 autoscaling is not assumed to provide sticky routing or a single durable process.
@@ -291,10 +297,14 @@ HTTP baseline → 23 cuts → recovery cases are registered in the existing isol
 database suite, not claimed passed from a mock. Exact local and full-CI results
 are reported with the implementation checkpoint.
 
-No deployed profile, traffic controller invocation, image build, infrastructure
-definition, cloud mutation, live fault, session setup or notification has run.
-Local socket/CI database evidence is not live staging recovery or S22 acceptance.
+The offline implementation subsequently passed application CI `41226090997`;
+rollout tooling passed CI `41228163371`. The accepted default-off build/deployment
+is recorded above and in the [consumed packet](s22-connection-fault-code-rollout-plan.md).
+No enabled profile, browser controller invocation, live fault, exercise session
+setup or notification has run. Local socket/CI database evidence and default-off
+deployment are not live staging recovery or S22 acceptance.
 
-**Next safe step after all implementation gates pass: prepare the immutable,
-default-off code rollout packet. No build, deployment, enabled profile, fault run
-or notification is authorized by the offline implementation approval.**
+**Next safe step: prepare and offline-verify the profile plan guard and bounded
+browser controller described in the [exercise specification](s22-connection-fault-exercise-plan.md).
+Do not collect a real session digest, schedule a window, create a private profile,
+deploy configuration or execute the fault during preparation.**

@@ -3,6 +3,39 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+Current navigation: [completion checklist](s22-completion-checklist.md),
+[deployed default-off receipt](s22-connection-fault-code-rollout-plan.md), and
+[bounded exercise preparation](s22-connection-fault-exercise-plan.md).
+The dated sections below preserve history; older pending wording does not
+reopen later explicitly scoped PASS evidence.
+
+## 2026-11-01 — Status reconciled; bounded exercise specified, not executed
+
+The design/runbook now reflect the consumed default-off deployment rather than
+claiming it remains undeployed. The current checklist retains original scoped
+Instagram booking/accounting and deployed alert-ratio proof while keeping M2
+customer/P0, live recovery/delivery, rollback/drain, restore, capacity and final
+release gates open. The sequencing deviation (M3 preparation while M2 is open)
+is explicit; no scope, target or acceptance criterion was weakened.
+
+The new exercise specification binds the deployed mixed-version runtime, exact
+three-name environment delta, private-profile delivery proposal, startup-before-B
+and one-hour bound, 44-request accounting, finite monitoring/recipient observation,
+separate cleanup and offline guard/controller gates. No real profile/digest/window
+is populated. The policy-scoped monitoring reader is reusable unchanged; old
+image-pinned and rejected SQL-stop guards are not relaxed.
+
+This is documentation/specification only: no application, workflow, infrastructure,
+guard or controller implementation change; no build, plan dispatch, deployment,
+secret mutation, session GET, fault, notification, provider-test call or budget increase.
+Verification: source/document consistency passed for seven files, 33 local
+links/anchors, ten profile keys, the 44-request cap and eight open gates. The
+changed runbook's existing infrastructure regression suite passed **13/13**;
+scoped Prettier and whitespace checks passed. No live acceptance test was
+repeated; these checks verify documentation, not deployment or recovery behavior.
+Next is offline guard/controller implementation and tests, not a live exercise.
+**S22 remains unaccepted; S23 is not started.**
+
 ## 2026-11-01 — Exact default-off API plan applied once; convergence verified
 
 The owner approved **apply plan 41228923359 only**. Fresh authenticated

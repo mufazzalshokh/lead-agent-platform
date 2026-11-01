@@ -2,6 +2,13 @@
 
 Status: owner-approved implementation freeze; cloud execution evidence pending.
 
+Current checkpoint (1 November 2026): use the
+[S22 completion checklist](s22-completion-checklist.md) and its dated receipts
+for closed/open gates. The default-off API connection-fault prerequisite is
+deployed; live recovery, delivery, restore, capacity and remaining product proof
+are not thereby accepted. This freeze retains the approved architecture/targets;
+older pending wording is not a new instruction to repeat accepted work.
+
 S22 uses one isolated, billing-enabled Google Cloud staging project in
 `me-central1` (Doha). This is a staging decision only. S23 must revisit the final
 production placement using Uzbekistan latency, legal/data-transfer requirements,
