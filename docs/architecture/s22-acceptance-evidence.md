@@ -3,6 +3,32 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-11-01 — Default-off API code plan independently verified; not applied
+
+The [exact packet](s22-connection-fault-code-rollout-plan.md) now binds passing
+application CI `41226090997`, tooling CI `41228163371`, API-only build
+`41228545634` and saved plan `41228923359`. Tooling source is `621047b`, application
+source `7a4201c`, migration head `0032_s22_widget_recovery`. Binary SHA256:
+`4ad4d987a961c05af28375f4721adcf469da84bbb43a7c500445291dbcbc1269`.
+
+Remote guard and independent authenticated artifact/provider-schema review
+passed: **88 managed configurations / one in-place API image/provenance update /
+zero creates, deletes or replacements**. Fault profile and target metadata stay
+absent; the other 87 resources, worker binding, SQL, budgets, IAM, secret
+references and monitoring are preserved. API-only build excludes Web, worker
+and migrator builds. Apply, migration, DB diagnostic and evidence jobs were skipped.
+
+Full tooling CI passed **4,296 tests**, including **549 PostgreSQL tests**, plus
+format, lint, types, contracts, boundaries and builds; seven opt-in tests were
+skipped. The preparation caught and corrected a workflow input-limit error
+before cloud execution, adding a regression without relaxing old guards. One
+API build and one saved plan were executed; neither was blindly repeated.
+
+The plan artifact expires `2026-11-07T18:21:18Z`. No deployment, live fault,
+notification, AI-provider call, migration or budget increase occurred. Next is
+exact-plan authority for default-off code deployment; live exercise authority
+and all other acceptance proofs remain separate. **S22 remains unaccepted.**
+
 ## 2026-10-31 — Default-off API code rollout preparation
 
 The owner approved one API-only image build from verified source `7a4201c` and

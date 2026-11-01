@@ -1,6 +1,6 @@
 # S22 default-off connection-fault code rollout
 
-Status: preparation in progress, **not deployment or live-exercise approval**.
+Status: **PREPARED; INDEPENDENT REVIEW PASS; NOT APPLIED**.
 The owner approved one API-only image build and one saved Terraform plan, after
 the new guard passes CI, under unchanged spending limits. Do not apply a plan
 until the owner approves its exact run/checksum. Do not enable a profile or run
@@ -10,10 +10,48 @@ requests, notifications, migrations, AI calls or IAM changes under this approval
 
 Application source is fixed at `7a4201c824be3db2396b51c14d62e6758f43e860`.
 [CI 41226090997](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/41226090997)
-passed on that exact source, including the isolated PostgreSQL gate. The new
-tooling source requires its own passing CI before dispatch. API image digest,
-build run, tooling SHA, saved-plan run/checksum and artifact expiry are pending
-actual execution receipts; they must not be inferred from fixtures or old plans.
+passed on that exact source, including the isolated PostgreSQL gate. Tooling
+source `621047b3291e41362dd74266dc1e989f7c763aa9` passed full
+[CI 41228163371](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/41228163371)
+before either dispatch. Actual image/plan receipts are recorded below, not
+inferred from fixtures or historical plans.
+
+## Exact prepared packet — 1 November 2026 handoff
+
+| Binding                                 | Verified value                                                                               |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Application source                      | `7a4201c824be3db2396b51c14d62e6758f43e860`                                                   |
+| Tooling source                          | `621047b3291e41362dd74266dc1e989f7c763aa9`                                                   |
+| Preserved branch                        | `verify/s22-staging-recovery-capacity`                                                       |
+| Successful API-only build               | [41228545634](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/41228545634) |
+| Immutable API SHA256                    | `624e2d17ca48394af37bd70ac305e9b3104712afe25c83b3f3e2449711e2e2b9`                           |
+| Registry / architecture                 | `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/api` / `linux/amd64`            |
+| Successful saved-plan run               | [41228923359](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/41228923359) |
+| Workflow/action/phase                   | `staging-terraform.yml` / `plan` / `connection-fault-code`                                   |
+| Saved binary                            | `s22.tfplan`                                                                                 |
+| Binary SHA256                           | `4ad4d987a961c05af28375f4721adcf469da84bbb43a7c500445291dbcbc1269`                           |
+| Artifact                                | `s22-terraform-plan-connection-fault-code-621047b3291e41362dd74266dc1e989f7c763aa9`          |
+| Artifact ID / expiry                    | `13052149758` / `2026-11-07T18:21:18Z` (7 November, 23:21:18 Asia/Tashkent)                  |
+| Proposed API provenance timestamp       | `2026-10-31T18:20:23Z`                                                                       |
+| Migration / Terraform / Google provider | `0032_s22_widget_recovery` / `1.14.7` / locked `7.46.1`                                      |
+| Full configuration review               | 88 managed resources; 1 in-place API update; 0 creates/deletes/replacements                  |
+
+The full image reference is the registry above followed by `@sha256:` and its
+verified digest. Build receipt/head, source, architecture, API-only scope and
+immutable manifest match; Web/worker/migrator build-and-push steps were skipped.
+The plan's authenticated repository, branch, workflow, source and successful
+status match. Its independently downloaded binary matches the artifact checksum;
+its full JSON passed the new guard against the actual locked provider schema.
+The only changed address is `google_cloud_run_v2_service.api[0]`; the fault
+profile and both explicit target-metadata variables remain absent.
+
+The executed-step review found only request/source/build validation, OIDC,
+Terraform initialization/state-preservation/validation/planning, the narrow guard
+and artifact handling (17 successful setup/work/cleanup steps). All apply, DB
+job, migration, diagnostic, customer/provider and unrelated evidence steps were
+skipped. No application deployment, enabled profile, fault, notification, IAM
+expansion or budget change occurred. Live application images remain the accepted
+baseline until an exact-plan-approved apply. This plan is not consumed yet.
 
 The legacy `api-image-update` guard is pinned to migration `0031`; it is not
 relaxed or reused. The isolated `connection-fault-code` phase supports the
@@ -103,3 +141,42 @@ worker/channel failure and queue drain, PITR/RPO/RTO, capacity, customer booking
 completion, or S22 acceptance. The [replacement design](s22-connection-fault-plan.md)
 and [remaining evidence register](s22-acceptance-evidence.md) keep those gates
 separate. **S22 remains unaccepted; S23 is not started.**
+
+## Local verification
+
+```text
+node --test .github/scripts/s22-connection-fault-code-plan-check.test.mjs .github/scripts/s22-monitoring-plan-check.test.mjs .github/scripts/s22-full-runtime-config-check.test.mjs .github/scripts/s22-recovery-rollout.test.mjs
+# 104/104 passed: 52 new code-rollout cases and 52 existing regressions
+node node_modules/vitest/vitest.mjs run tests/workspace/staging-infrastructure.test.ts tests/workspace/staging-acceptance-inventory.test.ts tests/workspace/staging-monitoring-boundary.test.ts tests/workspace/staging-connection-fault-code-boundary.test.ts --maxWorkers=1 --reporter=dot
+# 20/20 passed; after input-limit correction, both native CI wrappers passed again
+node node_modules/eslint/bin/eslint.js .github/scripts/s22-connection-fault-code-plan-check.mjs .github/scripts/s22-connection-fault-code-plan-check.test.mjs tests/workspace/staging-connection-fault-code-boundary.test.ts --max-warnings=0
+# exit 0
+bash -n .github/scripts/s22-connection-fault-code-plan-check.sh
+# exit 0 (Git Bash; no WSL/Docker startup)
+node scripts/check-boundaries.mjs
+# 336 source files passed
+```
+
+Scoped Prettier and whitespace checks passed. An ignored local, in-memory
+fixture derived from the historical retained plan also passed the new guard
+against the actual locked Google provider schema: 88 configurations / one API
+update. This checks provider-format compatibility, **not current live state**.
+No new dependency, migration or business/tenant authorization code is introduced.
+The owner's README, Instagram documentation and public-notices patch remain
+excluded. Full tooling CI passed **4,296 tests**, including **549 real PostgreSQL
+tests**; seven opt-in tests in two ordinary-test files were skipped. Formatting,
+lint, types, contracts, boundaries and application/package builds passed.
+
+Independent receipt review command:
+
+```text
+node .cache/s22-connection-fault-code/release.mjs review 41228923359
+# PASS: authenticated build and plan, exact binary SHA256, actual provider schema,
+# 88 configurations / 1 API update, profile absent, executed/skipped steps reviewed
+```
+
+The review helper and downloaded artifacts are ignored local evidence, not
+committed production tooling. Raw plan/state, credentials and artifact bodies
+are not added to Git. The next safe step is exact owner approval of saved plan
+`41228923359` and the checksum above for default-off API code deployment only.
+Do not enable or execute the later fault exercise under that approval.
