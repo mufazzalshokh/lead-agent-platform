@@ -1,10 +1,10 @@
 # S22 default-off connection-fault code rollout
 
-Status: **PREPARED; INDEPENDENT REVIEW PASS; NOT APPLIED**.
-The owner approved one API-only image build and one saved Terraform plan, after
-the new guard passes CI, under unchanged spending limits. Do not apply a plan
-until the owner approves its exact run/checksum. Do not enable a profile or run
-requests, notifications, migrations, AI calls or IAM changes under this approval.
+Status: **APPLIED; ZERO-CHANGE CONVERGENCE VERIFIED**.
+The owner approved **apply plan 41228923359 only**. That exact saved binary was
+consumed once; do not reapply it. The earlier build/plan authority and unchanged
+spending limits were preserved. This rollout does not authorize an enabled
+profile, fault requests, notifications, migrations, AI calls or IAM changes.
 
 ## Source and release boundary
 
@@ -16,7 +16,7 @@ source `621047b3291e41362dd74266dc1e989f7c763aa9` passed full
 before either dispatch. Actual image/plan receipts are recorded below, not
 inferred from fixtures or historical plans.
 
-## Exact prepared packet — 1 November 2026 handoff
+## Exact consumed packet — 1 November 2026
 
 | Binding                                 | Verified value                                                                               |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -32,7 +32,7 @@ inferred from fixtures or historical plans.
 | Binary SHA256                           | `4ad4d987a961c05af28375f4721adcf469da84bbb43a7c500445291dbcbc1269`                           |
 | Artifact                                | `s22-terraform-plan-connection-fault-code-621047b3291e41362dd74266dc1e989f7c763aa9`          |
 | Artifact ID / expiry                    | `13052149758` / `2026-11-07T18:21:18Z` (7 November, 23:21:18 Asia/Tashkent)                  |
-| Proposed API provenance timestamp       | `2026-10-31T18:20:23Z`                                                                       |
+| Retained API provenance timestamp       | `2026-10-31T18:20:23Z`                                                                       |
 | Migration / Terraform / Google provider | `0032_s22_widget_recovery` / `1.14.7` / locked `7.46.1`                                      |
 | Full configuration review               | 88 managed resources; 1 in-place API update; 0 creates/deletes/replacements                  |
 
@@ -50,8 +50,9 @@ Terraform initialization/state-preservation/validation/planning, the narrow guar
 and artifact handling (17 successful setup/work/cleanup steps). All apply, DB
 job, migration, diagnostic, customer/provider and unrelated evidence steps were
 skipped. No application deployment, enabled profile, fault, notification, IAM
-expansion or budget change occurred. Live application images remain the accepted
-baseline until an exact-plan-approved apply. This plan is not consumed yet.
+expansion or budget change occurred during preparation. The approved apply below
+then changed only the API image/provenance; the other runtimes remain at baseline.
+This plan is now consumed and must not be reapplied.
 
 The legacy `api-image-update` guard is pinned to migration `0031`; it is not
 relaxed or reused. The isolated `connection-fault-code` phase supports the
@@ -93,7 +94,10 @@ authoritative state and require its unchanged reviewed mode/session binding in
 the full plan. This is not a fresh session or paid-test authorization. Historical
 unknown costs, reservations, retired usage and all acceptance gaps remain intact.
 
-## Execution sequence and stop rules
+## Reviewed execution protocol — consumed, do not repeat
+
+This protocol is retained as the audit trail for the completed rollout, not
+authority to repeat its build, plan or apply.
 
 1. Pass new guard/native/workspace regressions, formatting/lint and full CI on
    the exact tooling commit; preserve the owner's unrelated local edits.
@@ -114,7 +118,7 @@ unknown costs, reservations, retired usage and all acceptance gaps remain intact
    guard; inspect executed/skipped steps. Publish actual receipt values before
    requesting exact-plan apply authority. An unsuccessful/ambiguous dispatch
    retains its ID and stops; do not blindly rerun or manufacture a new plan.
-5. Only after exact saved-plan approval, a future apply must reauthenticate the
+5. Only after exact saved-plan approval, the apply must reauthenticate the
    build and plan runs, recompute the binary checksum against owner approval,
    re-run the full guard and apply that binary. Require fresh no-op convergence
    across 88 resources with the new API provenance and fault profile absent.
@@ -134,8 +138,8 @@ No build or Terraform execution occurred in that failed validation run.
 
 ## Acceptance accounting
 
-This packet can close only the default-off code deployment prerequisite once
-actually applied and verified. It cannot establish live socket-cut recovery,
+The default-off code deployment prerequisite is closed by the approved apply and
+verified convergence below. This does not establish live socket-cut recovery,
 actual alert delivery, whole-instance SQL failure, transaction rollback,
 worker/channel failure and queue drain, PITR/RPO/RTO, capacity, customer booking
 completion, or S22 acceptance. The [replacement design](s22-connection-fault-plan.md)
@@ -177,6 +181,53 @@ node .cache/s22-connection-fault-code/release.mjs review 41228923359
 
 The review helper and downloaded artifacts are ignored local evidence, not
 committed production tooling. Raw plan/state, credentials and artifact bodies
-are not added to Git. The next safe step is exact owner approval of saved plan
-`41228923359` and the checksum above for default-off API code deployment only.
-Do not enable or execute the later fault exercise under that approval.
+are not added to Git.
+
+## Approved apply and independent verification — 1 November 2026
+
+[Apply 41277068065](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/41277068065)
+completed successfully at `2026-11-01T05:30:02Z` (10:30:02 Asia/Tashkent).
+Dispatch head was documentation receipt `06d086e`; the actual checked-out tooling
+was the CI-verified `621047b`. Their workflow and guard files were independently
+confirmed identical before dispatch. No new image or rollout plan was created.
+
+Fresh authenticated plan/build/artifact checks and provider-schema review passed
+before dispatch. The independently recomputed binary SHA256 matched the exact
+owner-approved checksum above; the workflow repeated provenance, integrity and
+full configuration guards before applying that binary. No newer deployment
+execution was present before this one-shot dispatch.
+
+Terraform recorded exactly **0 added / 1 changed / 0 destroyed**, with one API
+modification completion. The fresh post-apply no-op plan and full provider-schema
+guard verified **88 managed configurations / zero changes**, including exact new
+API image/source/timestamp/head and the absent fault profile/target metadata.
+All non-API resources and configuration, including SQL, identities, private VPC,
+secret references, worker binding, monitoring and budgets, remain preserved.
+
+The authenticated run/step/log/artifact review passed **22 successful steps**;
+all four unrelated evidence jobs and all migration/DB diagnostic/customer/AI
+execution steps were skipped. Apply evidence artifact:
+`s22-connection-fault-code-apply-evidence-41277068065`, ID `13071399846`, expires
+`2026-11-08T05:29:57Z` (8 November, 10:29:57 Asia/Tashkent). It records 88 verified
+configurations, zero changes, verification mode, profile absent and database
+execution disabled. No outage, fault, notification, replay, session replacement,
+provider-test call or budget expansion ran.
+
+```text
+node .cache/s22-connection-fault-code/apply-approved.mjs
+# Fresh exact-plan/build/checksum/schema/authority preflight PASS; one dispatch
+node .cache/s22-connection-fault-code/verify-approved-apply.mjs
+# PASS: authenticated apply/steps/logs/artifact, 0/1/0, 88 configurations / zero changes
+```
+
+Only this packet and the acceptance evidence register change in the apply
+receipt milestone; no application, guard, workflow, migration or test is changed.
+Existing source/tooling CI remains the code verification. Scoped receipt
+formatting/whitespace and final diff checks passed for its documentation
+handoff. Owner edits remain excluded.
+
+Next safe step: prepare the separately scoped connection-fault exercise profile,
+guard and evidence bindings for this deployed mixed-version runtime, without
+activating it. Historical readers pinned to the old API image must fail closed;
+do not loosen them or relabel default-off deployment as live recovery evidence.
+**S22 remains unaccepted; S23 is not started.**

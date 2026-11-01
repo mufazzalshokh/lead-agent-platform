@@ -3,6 +3,37 @@
 This register distinguishes completed deployment/onboarding evidence from remaining
 live product and recovery/capacity proof. It does not declare S22 acceptance.
 
+## 2026-11-01 — Exact default-off API plan applied once; convergence verified
+
+The owner approved **apply plan 41228923359 only**. Fresh authenticated
+build/plan/artifact checks, independent binary checksum and full provider-schema
+review passed before [apply 41277068065](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/41277068065).
+That execution consumed the exact approved binary once, with no new image or
+rollout plan. The [packet](s22-connection-fault-code-rollout-plan.md#approved-apply-and-independent-verification--1-november-2026)
+retains checksum, provenance and finite evidence. **Do not reapply 41228923359.**
+
+Terraform recorded **0 added / 1 changed / 0 destroyed**. Independent authenticated
+step/log/artifact inspection passed: **22 successful steps**, one API modification
+completion, and fresh provider-schema convergence across **88 configurations /
+zero changes**. API source is now `7a4201c`, digest
+`624e2d17ca48394af37bd70ac305e9b3104712afe25c83b3f3e2449711e2e2b9`, provenance
+timestamp `2026-10-31T18:20:23Z`, head `0032_s22_widget_recovery`. Other runtimes
+retain source `abc3071` and their accepted images/provenance.
+
+Fault profile/target metadata remain absent; SQL, private networking, identities,
+secret references, worker binding, monitoring and money caps are unchanged.
+All unrelated evidence jobs and migration/DB diagnostic steps were skipped.
+No fault, outage, notification, customer message, AI/provider-test call, session
+replacement, replay or budget increase occurred. Application/guard/workflow/test
+code was not changed in this apply milestone; only the two receipt documents
+are updated, preserving the owner's unrelated edits.
+
+This closes only the default-off code deployment prerequisite. Next is the
+separate guarded fault-exercise profile/evidence packet, not execution; old
+API-pinned readers must fail closed until deliberately rebound. Live recovery,
+alert delivery, transaction/queue/PITR/capacity and remaining customer acceptance
+proofs are not waived. **S22 remains unaccepted; S23 is not started.**
+
 ## 2026-11-01 — Default-off API code plan independently verified; not applied
 
 The [exact packet](s22-connection-fault-code-rollout-plan.md) now binds passing
