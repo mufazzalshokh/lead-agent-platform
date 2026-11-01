@@ -9,6 +9,40 @@ Current navigation: [completion checklist](s22-completion-checklist.md),
 The dated sections below preserve history; older pending wording does not
 reopen later explicitly scoped PASS evidence.
 
+## 2026-11-01 — Offline profile guards and browser controller; not activated
+
+C2 now has inert enable/remove/convergence guard libraries and an explicitly
+invoked same-origin browser controller. No Terraform variables, workflow phases
+or served browser entrypoint were added; deployment and live authority remain
+unavailable. The [exercise checkpoint](s22-connection-fault-exercise-plan.md#offline-implementation-checkpoint--1-november-2026)
+records the exact scope and next wiring milestone.
+
+Both inventories/configuration values, current mixed runtime pins, actual binary
+checksum and supplied authenticated provenance are checked without relaxing the
+historical default-off code guard. Removal remains structurally verifiable after
+expiry. Raw configuration and normalized runtime profile hashes are kept
+distinct so later server receipts cannot be correlated against the wrong hash.
+The browser has no automatic invocation, storage, cookie export or log output;
+setup, processing and requests have finite deadlines, absolute slots and no
+retry. Client evidence cannot itself prove a transport cut or delivered alert.
+
+Native offline guard/controller checks passed **114/114**, including parity with
+the actual deployed loader/admission state machine. The locally transformed
+historical plan/locked provider schema passes both synthetic enable/remove
+checks: **88 configurations / one synthetic API update** each. These are offline
+format/behavior fixtures, not fresh infrastructure or customer evidence.
+Including the unchanged historical code/monitoring guards, native regressions
+passed **202/202**. The workspace wrapper and existing admission/composition/
+HTTP/transport/TLS/failure-probe suites passed **63/63 across seven files**.
+
+Progress: **two of three C2 tooling substeps implemented; eight acceptance gate
+groups still open**. Next is default-off Terraform/workflow wiring plus its
+regressions and exact-tooling CI. No real profile/window/session collection,
+secret change, cloud dispatch, deployment, fault, notification, AI/provider call,
+migration, accounting reset or budget increase was performed. Owner edits to
+README/Instagram documentation and the public-notices patch remain excluded.
+**S22 remains unaccepted; S23 is not started.**
+
 ## 2026-11-01 — Status reconciled; bounded exercise specified, not executed
 
 The design/runbook now reflect the consumed default-off deployment rather than

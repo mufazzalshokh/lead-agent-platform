@@ -1,6 +1,6 @@
 # S22 bounded connection-fault exercise preparation
 
-Status: **SPECIFICATION PREPARED; ACTIVATION GUARD/CONTROLLER NOT IMPLEMENTED;
+Status: **OFFLINE GUARD/CONTROLLER IMPLEMENTED; TERRAFORM/WORKFLOW NOT WIRED;
 NO LIVE AUTHORITY**. This is not a saved Terraform rollout plan. There is no
 real exercise ID, session digest, UTC window, configuration-plan ID or approved
 activation checksum yet. Do not invent those values or start session setup.
@@ -210,5 +210,58 @@ separate evidence, even if every probe and email succeeds.
    review/apply removal and confirm zero-change convergence. Preserve all failed
    or inconclusive execution IDs. Do not call S22 complete from this one gate.
 
-The immediate next implementation task is gates 1–3 only. This document does not
-create a deployment plan, spend money, grant access or authorize any live request.
+## Offline implementation checkpoint — 1 November 2026
+
+The following are inert libraries, not a workflow dispatch path or customer UI:
+
+- `.github/scripts/s22-connection-fault-profile.mjs`: exact compact ten-key
+  validation, structural versus startup-time admission, fixed slots and deployed
+  normalized profile representation. Compact JSON is deliberately stricter than
+  the loader: duplicate keys and whitespace are denied during preparation.
+- `.github/scripts/s22-connection-fault-profile-plan-check.mjs`: dedicated
+  enable/remove and convergence verifiers. Both complete inventories and their
+  configuration values must match all 88 resource changes; provider-schema
+  projection preserves every unrelated configurable value. The current mixed
+  image/source baseline is fixed; the historical code guard remains unchanged.
+  The artifact helper checks actual binary bytes, exact checksum approval and
+  supplied authenticated Actions run metadata. It does not authenticate a JSON
+  object itself: the future workflow must fetch provenance through its existing
+  authenticated API and independently inspect the same binary with Terraform.
+- `.github/scripts/s22-connection-fault-browser.mjs`: explicit setup/run methods,
+  fixed authoritative top-level `/staff` browser context and GET path, ordinary
+  credentials, bounded body/header parsing, absolute slots and local deadlines,
+  one in flight, no retry/catch-up, finite stop/abort and no storage or logging.
+  It is not served to a browser or auto-executed. Do not paste/run it yet.
+
+The future Terraform contract is a non-sensitive selector
+`s22_connection_fault_enabled` plus sensitive `s22_connection_fault_profile`.
+Those variables and workflow phases do **not yet exist**. The verifier currently
+expects their raw plan-variable inputs as strings, like the retained real plan;
+the wiring milestone must test actual Terraform-generated enable/remove plans
+and sensitivity, not infer the final encoding from fixtures. No sensitive value
+may become a `for_each` key.
+
+Receipts distinguish `configuration_sha256` (exact raw JSON) from
+`runtime_profile_sha256` (the deployed loader's normalized object hash). They are
+not interchangeable. Removal takes the retained four-field profile-identity
+receipt, not an expired startup admission. Browser metadata contains no source
+or cut flag; browser observations therefore always retain
+`transport_cut_proven=false` and `notification_delivery_proven=false`. Deployment
+provenance and matching sanitized server transport receipts are still required.
+
+Offline fixtures cover both verifiers, the deployed loader/admission contract,
+44-GET ceiling, exact timing, nonce/session changes, late callbacks, clock skew,
+timeouts, overlap prevention and lost abort responses. A locally transformed
+historical plan with the locked real provider schema also passes enable/remove
+preservation (88 configurations, one synthetic change each). That is format
+compatibility only, not a fresh saved plan or live evidence.
+
+Progress within C2 tooling: **2 of 3 implementation substeps are implemented**
+(guard libraries; browser controller). The third is safe Terraform/workflow
+wiring with regression/full-CI verification. All **eight acceptance gate groups
+remain open**; no live profile, secret, setup GET, activation, fault, notification,
+AI/provider request or deployment was made by this implementation.
+
+The immediate next task is default-off Terraform/workflow wiring and its tests,
+still within gates 1–3. This document does not create a deployment plan, spend
+money, grant access or authorize any live request.

@@ -51,9 +51,12 @@ sequencing honestly: operational preparation is not customer acceptance, and
 neither M2 nor M3 may disappear from the final gate. This checklist does not
 silently authorize another order change or early promotion.
 
-Current work package: reconcile status and prepare C2's bounded exercise
-specification. Its next implementation package is **offline profile guards and
-browser-controller tests only**. Real bindings, saved configuration plans,
+Current work package: C2's offline exercise tooling. **Two of three tooling
+substeps are implemented**: dedicated profile guard libraries and the bounded
+browser controller with offline fixtures. The third is **default-off Terraform/
+workflow wiring and its regression/full-CI verification**. These are engineering
+substeps, not closed acceptance gates: **all eight groups above remain open**.
+Real bindings, saved configuration plans,
 activation, fault traffic and notification observation require their applicable
 authority/readiness; do not collect a session or schedule a window while tooling
 is incomplete. Keep one active work package with a finite closure criterion;
