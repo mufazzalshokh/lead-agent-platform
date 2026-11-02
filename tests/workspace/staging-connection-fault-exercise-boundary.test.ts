@@ -8,6 +8,7 @@ it("passes offline profile and browser exercise boundaries without network acces
       "--test",
       ".github/scripts/s22-connection-fault-profile-plan-check.test.mjs",
       ".github/scripts/s22-connection-fault-browser.test.mjs",
+      ".github/scripts/s22-connection-fault-profile-workflow.test.mjs",
     ],
     {
       encoding: "utf8",

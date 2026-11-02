@@ -30,6 +30,8 @@ on:
           - api-image-update
           - api-image-verify
           - connection-fault-code
+          - connection-fault-enable
+          - connection-fault-remove
           - monitoring-evidence
           - monitoring-policy
           - migrator-image-update
@@ -455,7 +457,7 @@ jobs:
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$TF_VAR_migration_head" == "0031_s22_widget_inbound_route_management" || "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]
           if [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]; then
-            [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" || "$PHASE" == "api-image-verify" || "$PHASE" == "monitoring-policy" || "$PHASE" == "connection-fault-code" ]]
+            [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" || "$PHASE" == "api-image-verify" || "$PHASE" == "monitoring-policy" || "$PHASE" == "connection-fault-code" || "$PHASE" == "connection-fault-enable" || "$PHASE" == "connection-fault-remove" ]]
           fi
           if [[ "$PHASE" == "full" && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
             [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -676,6 +678,12 @@ jobs:
               SQL_POLICY=ALWAYS
               WORKER_COUNT=1
               ;;
+            connection-fault-enable|connection-fault-remove)
+              DEPLOY_RUNTIME=true
+              PREPARE_MIGRATION=true
+              SQL_POLICY=ALWAYS
+              WORKER_COUNT=1
+              ;;
             migrator-image-update)
               DEPLOY_RUNTIME=true
               PREPARE_MIGRATION=true
@@ -772,6 +780,13 @@ jobs:
             echo "TF_VAR_api_deployment_timestamp=$API_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
             echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_migrator_deployment_timestamp=$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+          elif [[ "$PHASE" == "connection-fault-enable" || "$PHASE" == "connection-fault-remove" ]]; then
+            echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_git_commit_sha=$S22_API_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_api_deployment_timestamp=$S22_API_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
+            echo "TF_VAR_migrator_git_commit_sha=$S22_MIGRATOR_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
+            echo "TF_VAR_migrator_deployment_timestamp=$S22_MIGRATOR_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
           elif [[ "$PHASE" == "migration-resume" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" ]]; then
             echo "TF_VAR_git_commit_sha=$S22_RUNTIME_GIT_COMMIT_SHA" >> "$GITHUB_ENV"
             echo "TF_VAR_deployment_timestamp=$S22_RUNTIME_DEPLOYMENT_TIMESTAMP" >> "$GITHUB_ENV"
@@ -807,7 +822,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
           git fetch --no-tags origin "$DISPATCH_BRANCH"
           git merge-base --is-ancestor "$REQUESTED_SHA" "origin/$DISPATCH_BRANCH"
-          if [[ "$S22_PHASE" == "connection-fault-code" ]]; then
+          if [[ "$S22_PHASE" == "connection-fault-code" || "$S22_PHASE" == "connection-fault-enable" || "$S22_PHASE" == "connection-fault-remove" ]]; then
             git merge-base --is-ancestor "$S22_API_GIT_COMMIT_SHA" "$REQUESTED_SHA"
             git merge-base --is-ancestor "$S22_RUNTIME_GIT_COMMIT_SHA" "$REQUESTED_SHA"
           fi
@@ -842,6 +857,20 @@ jobs:
           node .github/scripts/s22-connection-fault-code-plan-check.mjs --build \
             "$BUILD_DIRECTORY/run.json" "$BUILD_DIRECTORY/s22-image-manifest.txt"
 
+      - name: Set up Node.js for connection-fault profile tooling
+        if: env.S22_PHASE == 'connection-fault-enable' || env.S22_PHASE == 'connection-fault-remove'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Validate connection-fault profile request and provenance
+        if: env.S22_PHASE == 'connection-fault-enable' || env.S22_PHASE == 'connection-fault-remove'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          S22_CONNECTION_FAULT_PROFILE: ${{ secrets.S22_CONNECTION_FAULT_PROFILE }}
+          S22_CONNECTION_FAULT_ACTIVATION_RUN_ID: ${{ inputs.phase == 'connection-fault-remove' && vars.S22_CONNECTION_FAULT_ACTIVATION_RUN_ID || '' }}
+        run: node .github/scripts/s22-connection-fault-profile-workflow.mjs request
+
       - name: Authenticate to Google Cloud without a key
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
@@ -852,6 +881,7 @@ jobs:
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: 1.14.7
+          terraform_wrapper: ${{ inputs.phase != 'connection-fault-enable' && inputs.phase != 'connection-fault-remove' }}
 
       - name: Initialize bootstrap Terraform
         if: env.S22_PHASE == 'bootstrap-iam' || env.S22_PHASE == 'bootstrap-log-viewer' || env.S22_PHASE == 'bootstrap-log-viewer-remove'
@@ -1989,8 +2019,16 @@ jobs:
           [[ "$FOUNDATION_STATE_COUNT" == "0" ]]
           echo "Authoritative foundation state resources before apply: $FOUNDATION_STATE_COUNT"
 
+      - name: Create bounded connection-fault profile plan
+        if: (env.S22_PHASE == 'connection-fault-enable' || env.S22_PHASE == 'connection-fault-remove') && env.S22_ACTION == 'plan'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          S22_CONNECTION_FAULT_PROFILE: ${{ secrets.S22_CONNECTION_FAULT_PROFILE }}
+          S22_CONNECTION_FAULT_ACTIVATION_RUN_ID: ${{ inputs.phase == 'connection-fault-remove' && vars.S22_CONNECTION_FAULT_ACTIVATION_RUN_ID || '' }}
+        run: node .github/scripts/s22-connection-fault-profile-workflow.mjs plan
+
       - name: Create reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'auth-callback-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
+        if: env.S22_PHASE != 'connection-fault-enable' && env.S22_PHASE != 'connection-fault-remove' && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation-reconcile-verify' && env.S22_PHASE != 'migration-diagnose' && env.S22_PHASE != 'migration-wiring-diagnose' && env.S22_PHASE != 'migration-error-read' && env.S22_PHASE != 'migration-validate' && env.S22_PHASE != 'api-image-verify' && env.S22_PHASE != 'migrator-image-verify' && env.S22_PHASE != 'runtime-preflight' && env.S22_PHASE != 'runtime-diagnose' && env.S22_PHASE != 'auth-callback-diagnose' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-verify' && env.S22_ACTION == 'plan'
         working-directory: infra/deploy/gcp/staging
         shell: bash
         run: |
@@ -2488,6 +2526,7 @@ jobs:
             infra/deploy/gcp/staging/s22-api-image-plan-evidence.txt
             infra/deploy/gcp/staging/s22-monitoring-plan-evidence.txt
             infra/deploy/gcp/staging/s22-connection-fault-code-plan-evidence.txt
+            infra/deploy/gcp/staging/s22-connection-fault-profile-plan-evidence.json
           if-no-files-found: error
           retention-days: 7
 
@@ -3732,8 +3771,25 @@ jobs:
           ' "$PLAN_JSON"
           rm -f "$PLAN_JSON"
 
+      - name: Apply bounded connection-fault profile and verify convergence
+        if: (env.S22_PHASE == 'connection-fault-enable' || env.S22_PHASE == 'connection-fault-remove') && env.S22_ACTION == 'apply'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          S22_CONNECTION_FAULT_PROFILE: ${{ secrets.S22_CONNECTION_FAULT_PROFILE }}
+          S22_CONNECTION_FAULT_ACTIVATION_RUN_ID: ${{ inputs.phase == 'connection-fault-remove' && vars.S22_CONNECTION_FAULT_ACTIVATION_RUN_ID || '' }}
+        run: node .github/scripts/s22-connection-fault-profile-workflow.mjs apply
+
+      - name: Preserve bounded connection-fault profile apply evidence
+        if: always() && (env.S22_PHASE == 'connection-fault-enable' || env.S22_PHASE == 'connection-fault-remove') && env.S22_ACTION == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: s22-connection-fault-profile-apply-${{ github.run_id }}
+          path: infra/deploy/gcp/staging/s22-connection-fault-profile-apply-evidence.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Apply exact reviewed plan
-        if: env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'connection-fault-enable' && env.S22_PHASE != 'connection-fault-remove' && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'migration-resume' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         working-directory: infra/deploy/gcp/staging
         run: terraform apply -lock-timeout=5m -auto-approve s22.tfplan
 
@@ -5781,7 +5837,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record deployment provenance
-        if: env.S22_PHASE != 'connection-fault-code' && env.S22_PHASE != 'monitoring-policy' && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
+        if: env.S22_PHASE != 'connection-fault-enable' && env.S22_PHASE != 'connection-fault-remove' && env.S22_PHASE != 'connection-fault-code' && env.S22_PHASE != 'monitoring-policy' && env.S22_PHASE != 'bootstrap-iam' && env.S22_PHASE != 'bootstrap-log-viewer' && env.S22_PHASE != 'bootstrap-log-viewer-remove' && env.S22_PHASE != 'foundation' && env.S22_PHASE != 'cloud-sql-start' && env.S22_PHASE != 'cloud-sql-phase-b' && env.S22_PHASE != 'instagram-verify-access' && env.S22_PHASE != 'instagram-verify-access-remove' && env.S22_PHASE != 'telegram-verify-access' && env.S22_PHASE != 'telegram-verify-access-remove' && env.S22_PHASE != 'owner-workspace-bootstrap' && env.S22_ACTION == 'apply'
         env:
           API_IMAGE: ${{ inputs.api_image }}
           DEPLOYED_AT: ${{ inputs.deployment_timestamp }}

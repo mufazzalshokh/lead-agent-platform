@@ -1,6 +1,6 @@
 # S22 current completion checklist
 
-Checkpoint: **1 November 2026. S22 remains unaccepted; S23 is not started.**
+Checkpoint: **2 November 2026. S22 remains unaccepted; S23 is not started.**
 This is the current navigation/status view, not a replacement for dated evidence
 or a new acceptance policy. Criteria come from the
 [S22a/S22b roadmap](11-adrs-roadmap-risks.md#codex-sized-implementation-roadmap),
@@ -51,12 +51,12 @@ sequencing honestly: operational preparation is not customer acceptance, and
 neither M2 nor M3 may disappear from the final gate. This checklist does not
 silently authorize another order change or early promotion.
 
-Current work package: C2's offline exercise tooling. **Two of three tooling
-substeps are implemented**: dedicated profile guard libraries and the bounded
-browser controller with offline fixtures. The third is **default-off Terraform/
-workflow wiring and its regression/full-CI verification**. These are engineering
-substeps, not closed acceptance gates: **all eight groups above remain open**.
-Real bindings, saved configuration plans,
+Current work package: C2's offline exercise tooling. **All three tooling
+substeps are implemented**: profile guards, bounded browser controller and
+default-off Terraform/workflow wiring, including mock-plan regressions. Require
+successful exact-source CI before the next packet. These are engineering substeps,
+not closed acceptance gates: **all eight groups above remain open**.
+Next is the bounded live-preparation authority/readiness packet. Real bindings, saved configuration plans,
 activation, fault traffic and notification observation require their applicable
 authority/readiness; do not collect a session or schedule a window while tooling
 is incomplete. Keep one active work package with a finite closure criterion;

@@ -9,6 +9,44 @@ Current navigation: [completion checklist](s22-completion-checklist.md),
 The dated sections below preserve history; older pending wording does not
 reopen later explicitly scoped PASS evidence.
 
+## 2026-11-02 — Default-off exercise workflow wired; no live activation
+
+The [current wiring checkpoint](s22-connection-fault-exercise-plan.md#default-off-workflow-wiring--2-november-2026)
+records C2 tooling at **three of three implementation substeps**, with all eight
+acceptance gate groups still open. New enable/remove phase choices retain the
+existing workflow/WIF path and 25-input limit. Only their three scoped adapter
+steps receive the private profile. The sensitive Terraform value is separate
+from the public enable selector/iteration keys; default-off adds no settings.
+
+The adapter requires exact-source CI, private-repository/artifact access,
+authenticated retained API build/plan provenance, the actual approved binary
+checksum and full 88-resource convergence. Per-run identity receipts freeze the
+profile across steps. Removal references an authenticated activation artifact,
+including a failed/ambiguous attempt when applicable, without reporting it as a
+successful exercise or bypassing fresh before-state/plan/approval checks.
+Finite failure stages replace private parser/provider diagnostics; Terraform's
+output wrapper is disabled in these phases to avoid implicit step-output copies.
+
+Local native regressions passed **270/270**, including **68 new wiring boundary
+cases** and unchanged historical code/monitoring guards. The real module's
+Google-mock suite executes nine offline runs; its generated default/enable/
+remove/converged plans pass **88/0, 88/1, 88/1, 88/0** configuration/change checks.
+Sensitivity and actual TF_VAR string encoding were checked; no `nonsensitive`
+conversion or sensitive iteration key is used. These mocks prove configuration
+behavior only, not a live fault or Google deployment. Full exact-source CI is
+required before later live preparation; use this commit's CI receipt.
+Local root TypeScript, dependency boundaries, scoped lint/formatting, and the
+infrastructure/journey-gate/exercise workspace suites also pass (**32 tests**).
+The real workflow's Bash boundary/resolver is exercised offline for both phases
+and both actions, rather than checking only manually assembled environment fixtures.
+
+No profile secret/activation pointer was created, no real session/window chosen,
+and no cloud dispatch, deployment, fault, notification, AI/provider call,
+migration, accounting reset or budget increase was performed. The next task is
+one bounded live-preparation authority/readiness packet, not automatic activation.
+Owner README/Instagram edits and the public-notices patch remain preserved.
+**S22 remains unaccepted; S23 is not started.**
+
 ## 2026-11-01 — Offline profile guards and browser controller; not activated
 
 C2 now has inert enable/remove/convergence guard libraries and an explicitly

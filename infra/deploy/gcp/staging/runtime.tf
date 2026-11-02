@@ -78,6 +78,14 @@ locals {
     WIDGET_SIGNING_KEY               = "widget-signing-key"
   }
 
+  # Keys are public and independent of the sensitive profile. Never merge this
+  # value into api_plain_env or declassify it to construct for_each keys.
+  connection_fault_env = {
+    S22_CONNECTION_FAULT_PROFILE = var.s22_connection_fault_profile
+    GOOGLE_CLOUD_PROJECT         = var.project_id
+    GOOGLE_CLOUD_REGION          = var.region
+  }
+
   worker_plain_env = merge(local.provenance_env, {
     AI_JOURNEY_MODE                 = var.ai_journey_mode
     AI_MODEL                        = "gemini-3.8-flash"
@@ -171,6 +179,14 @@ resource "google_cloud_run_v2_service" "api" {
         content {
           name  = env.key
           value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.s22_connection_fault_enabled ? toset(["S22_CONNECTION_FAULT_PROFILE", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_REGION"]) : toset([])
+        content {
+          name  = env.value
+          value = local.connection_fault_env[env.value]
         }
       }
 

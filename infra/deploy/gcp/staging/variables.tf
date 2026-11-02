@@ -20,6 +20,29 @@ variable "ai_journey_widget_session_id" {
   }
 }
 
+variable "s22_connection_fault_enabled" {
+  description = "Default-off, exact-plan-only S22 connection exercise; never enables a SQL stop or provider fault."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.s22_connection_fault_enabled || (var.deploy_runtime && !var.bootstrap_runtime && var.project_id == "lead-agent-stg-739284" && var.api_git_commit_sha == "7a4201c824be3db2396b51c14d62e6758f43e860")
+    error_message = "The connection exercise requires the reviewed full staging API runtime."
+  }
+}
+
+variable "s22_connection_fault_profile" {
+  description = "Private fixed exercise JSON. Sensitive values still exist in saved plans/state; the workflow validates the complete contract."
+  type        = string
+  sensitive   = true
+  default     = ""
+
+  validation {
+    condition     = var.s22_connection_fault_enabled ? (length(var.s22_connection_fault_profile) > 0 && length(var.s22_connection_fault_profile) <= 2048 && can(jsondecode(var.s22_connection_fault_profile))) : var.s22_connection_fault_profile == ""
+    error_message = "The connection profile must be bounded JSON only when enabled, and empty otherwise."
+  }
+}
+
 variable "project_id" {
   description = "Billing-enabled, staging-only Google Cloud project ID."
   type        = string

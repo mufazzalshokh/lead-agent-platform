@@ -8,7 +8,8 @@ import {
   validateConnectionFaultProfile,
 } from "./s22-connection-fault-profile.mjs";
 
-// Offline library only. Workflow/CLI authority must be wired and reviewed separately.
+// Pure guard library; the separate workflow adapter supplies authenticated
+// provenance and exact-binary authority. Importing this module has no effects.
 export const connectionFaultBaseline = Object.freeze({
   ...monitoringProfile,
   api_git_commit_sha: connectionFaultTarget.sourceSha,

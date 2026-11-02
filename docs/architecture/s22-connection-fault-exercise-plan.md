@@ -1,6 +1,6 @@
 # S22 bounded connection-fault exercise preparation
 
-Status: **OFFLINE GUARD/CONTROLLER IMPLEMENTED; TERRAFORM/WORKFLOW NOT WIRED;
+Status: **DEFAULT-OFF TOOLING WIRED; LIVE PREPARATION NOT AUTHORIZED;
 NO LIVE AUTHORITY**. This is not a saved Terraform rollout plan. There is no
 real exercise ID, session digest, UTC window, configuration-plan ID or approved
 activation checksum yet. Do not invent those values or start session setup.
@@ -212,6 +212,9 @@ separate evidence, even if every probe and email succeeds.
 
 ## Offline implementation checkpoint — 1 November 2026
 
+Historical checkpoint; the wiring status below is superseded by the
+[2 November checkpoint](#default-off-workflow-wiring--2-november-2026).
+
 The following are inert libraries, not a workflow dispatch path or customer UI:
 
 - `.github/scripts/s22-connection-fault-profile.mjs`: exact compact ten-key
@@ -262,6 +265,69 @@ wiring with regression/full-CI verification. All **eight acceptance gate groups
 remain open**; no live profile, secret, setup GET, activation, fault, notification,
 AI/provider request or deployment was made by this implementation.
 
-The immediate next task is default-off Terraform/workflow wiring and its tests,
-still within gates 1–3. This document does not create a deployment plan, spend
-money, grant access or authorize any live request.
+## Default-off workflow wiring — 2 November 2026
+
+All **three C2 tooling implementation substeps are implemented**: profile guards,
+bounded browser controller, and Terraform/workflow wiring. Eight acceptance gate
+groups remain open. Exact-source CI must pass before any later live preparation;
+local fixtures do not replace that check or create live authority.
+
+The existing `staging-terraform.yml` now has `connection-fault-enable` and
+`connection-fault-remove` phase choices, still **25 dispatch inputs**, using the
+same staging environment/WIF path. No new trust path or IAM permission is added.
+The historical code/monitoring guards retain their original semantics. API source,
+timestamp and immutable digest stay at the fixed deployed baseline; no new image
+build is performed. Generic plan/apply and application-release summaries exclude
+the two new phases.
+
+Terraform defines `s22_connection_fault_enabled=false` and an empty sensitive
+`s22_connection_fault_profile`. Only the non-sensitive selector controls three
+constant environment keys; the raw profile never becomes an iteration key.
+Actual TF_VAR input encoding was checked in an isolated built-in-provider fixture.
+The real module's mock-provider tests check default-off, enable, removal,
+convergence, sensitivity and invalid combinations. The generated plans pass the
+same guard: **88/0, 88/1, 88/1, 88/0** configurations/changes. Mock state is not a
+saved deployment binary or evidence that Google accepted a live configuration.
+See HashiCorp's [mock-provider contract](https://developer.hashicorp.com/terraform/language/tests/mocking).
+CI initializes with `-backend=false`, without Google authentication or secrets.
+
+`.github/scripts/s22-connection-fault-profile-workflow.mjs` is the narrow adapter:
+it validates the exact dispatch/workflow/source, private repository, successful
+source CI and the retained deployed API build before Google authentication.
+The existing build artifact must remain available; expiry/missing provenance
+stops preparation, not triggers an automatic rebuild. Only three phase-scoped
+steps receive `secrets.S22_CONNECTION_FAULT_PROFILE`; no private value is written
+to GITHUB_ENV, step outputs or summaries. The Terraform output wrapper is disabled
+for these phases, and raw child diagnostics are captured rather than printed.
+Failures report a finite stage/exit code, not private parser/provider fragments.
+A finite per-run profile-hash receipt rejects a change between steps.
+
+Later removal also needs a **non-secret staging environment variable**
+`S22_CONNECTION_FAULT_ACTIVATION_RUN_ID`, pointing to the retained activation
+apply run. Neither this variable nor the private secret was created or changed
+here. Their owner/API write authority must be confirmed in the future preparation
+packet, without scope expansion. The same exact tooling commit must be frozen
+through activation and removal. The authenticated activation artifact must bind
+its profile hashes, source, apply ID and original approved plan checksum.
+
+The adapter preserves a finite `attempted` receipt before apply and an `applied`
+receipt before convergence. Failed/cancelled/timed-out activation can therefore
+be referenced for cleanup without calling it successful. Removal still requires
+a fresh complete plan proving that its actual before-profile matches exactly,
+followed by separate exact-plan approval. A missing attempt artifact, different
+profile or unreviewed drift stops for investigation. A `verify` receipt requires
+successful full 88-resource no-op convergence. Expiry stops cuts independently;
+no cleanup path rearms or extends the exercise.
+
+Plan artifacts retain the exact binary, checksum and finite profile receipt;
+apply artifacts retain only the finite attempt/convergence receipt for seven
+days. No live exercise, browser GET, notification observation, provider call,
+migration, budget change or deployment occurred during implementation. Delivery
+configuration is removed only after separately authorized verified cleanup;
+historical plan/state copies and accounting are not erased.
+
+Next is the bounded **live-preparation authority/readiness packet** in gates 4–5:
+private delivery permissions, quiet window, operator/browser availability and
+the single setup GET/security writes must be explicitly in scope before choosing
+a real session/window or preparing the first saved activation plan. This document
+itself authorizes none of those actions.
