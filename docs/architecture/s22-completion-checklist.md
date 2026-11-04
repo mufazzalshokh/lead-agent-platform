@@ -1,6 +1,6 @@
 # S22 current completion checklist
 
-Checkpoint: **2 November 2026. S22 remains unaccepted; S23 is not started.**
+Checkpoint: **4 November 2026. S22 remains unaccepted; S23 is not started.**
 This is the current navigation/status view, not a replacement for dated evidence
 or a new acceptance policy. Criteria come from the
 [S22a/S22b roadmap](11-adrs-roadmap-risks.md#codex-sized-implementation-roadmap),
@@ -51,15 +51,23 @@ sequencing honestly: operational preparation is not customer acceptance, and
 neither M2 nor M3 may disappear from the final gate. This checklist does not
 silently authorize another order change or early promotion.
 
-Current work package: C2's offline exercise tooling. **All three tooling
-substeps are implemented**: profile guards, bounded browser controller and
-default-off Terraform/workflow wiring, including mock-plan regressions. Require
-successful exact-source CI before the next packet. These are engineering substeps,
-not closed acceptance gates: **all eight groups above remain open**.
-Next is the bounded live-preparation authority/readiness packet. Real bindings, saved configuration plans,
+Current work package: C2's [live-readiness decision](s22-connection-fault-readiness.md).
+**All three tooling substeps are implemented**: profile guards, bounded browser
+controller and default-off Terraform/workflow wiring, including mock-plan
+regressions. Exact-source CI `41861413597` is completed/success for `4d47807`.
+These are engineering prerequisites, not closed acceptance gates: **all eight
+groups above remain open**.
+
+The read-only readiness packet is **BLOCKED**: authenticated repository metadata
+reports public visibility, while the adapter requires a private repository.
+Private-environment account-plan compatibility is unverified. Do not weaken the
+guard, change visibility or buy a plan without the applicable owner decision.
+No profile secret, activation pointer or real session/window was created.
+Browser delivery and current operator readiness still need preparation after
+the privacy/execution decision. Real bindings, saved configuration plans,
 activation, fault traffic and notification observation require their applicable
-authority/readiness; do not collect a session or schedule a window while tooling
-is incomplete. Keep one active work package with a finite closure criterion;
+authority/readiness; do not collect a session or schedule a window now.
+Keep one active work package with a finite closure criterion;
 return to the remaining M2 matrix rather than letting operational preparation
 replace it. Telegram Business may run last when externally constrained, as the
 existing execution sequence permits.
