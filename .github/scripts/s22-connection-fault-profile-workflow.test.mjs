@@ -348,3 +348,14 @@ test("Terraform keeps sensitive values out of iteration keys and CI has no cloud
   assert.ok(ci.includes("s22-connection-fault-terraform-check.mjs"));
   assert.ok(!ci.includes("google-github-actions/auth") && !ci.includes("id-token: write"));
 });
+test("locks Windows and Linux package hashes for read-only provider installation", () => {
+  const lock = readFileSync("infra/deploy/gcp/staging/.terraform.lock.hcl", "utf8");
+  assert.match(lock, /provider "registry\.terraform\.io\/hashicorp\/google"/u);
+  assert.match(lock, /^\s+version\s+= "7\.46\.1"$/mu);
+  const hashes = [...lock.matchAll(/^\s+"(h1:[A-Za-z0-9+/=]+)",$/gmu)].map((match) => match[1]);
+  // Generated from the signed upstream Windows/Linux packages, not a mirror.
+  assert.deepEqual(hashes, [
+    "h1:BMf5TKc4/U6JTUCyY7bM+VtfKfCU7lT1BewErfS8RNw=",
+    "h1:Hgv4BX9846ucZ6XcEql0DPfACoXqlcLat9SjUAn7YLI=",
+  ]);
+});

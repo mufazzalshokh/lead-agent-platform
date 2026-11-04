@@ -9,6 +9,42 @@ Current navigation: [completion checklist](s22-completion-checklist.md),
 The dated sections below preserve history; older pending wording does not
 reopen later explicitly scoped PASS evidence.
 
+## 2026-11-04 — Cross-platform provider checksum correction; no live action
+
+[CI 41480518020](https://github.com/mufazzalshokh/lead-agent-platform/actions/runs/41480518020)
+for tooling source `30f1e15d738039710bc070fa4d70a0b4c8e80502` passed the full
+application/PostgreSQL/build verification, then failed the new offline Terraform
+step at provider validation. The existing lock contained the Windows unpacked
+package hash but not the Linux unpacked package hash; read-only initialization
+could not persist the additional hash required for subsequent Linux validation.
+This failed run is retained, not reported as a passing tooling gate or rerun
+blindly. No live workflow or fault exercise ran.
+
+The correction uses the official
+[multi-platform lock command](https://developer.hashicorp.com/terraform/cli/commands/providers/lock)
+for `linux_amd64` and `windows_amd64`, retaining Google provider `7.46.1`, its
+existing archive checksums and CI's `-lockfile=readonly`. Local disk exhaustion
+initially blocked that download without changing the lock. Owner-authorized
+cleanup removed only stale, regenerable editor/package/browser cache payloads;
+project files, installed dependencies/extensions, credentials, browser sessions,
+Downloads, active installers, Docker volumes and databases were preserved.
+
+Both downloaded packages were reported signed by HashiCorp. The lock diff adds
+only the Linux `h1` checksum; the existing Windows hash and all archive hashes
+remain unchanged. A new regression pins both platform hashes alongside the
+existing read-only/no-cloud-auth CI boundary. Local native regressions passed
+**271/271** across the workflow/profile/browser/historical code/monitoring suites.
+Terraform formatting and validation passed, as did all **nine Google-mock runs**
+with **88/0, 88/1, 88/1, 88/0** configuration/change guard results. Scoped lint,
+formatting and whitespace checks passed. No live resource was created or tested.
+
+Exact-source CI for the correction remains required before the next preparation
+packet; use the correction commit's authenticated CI receipt. This changes neither
+the deployed runtime nor live authority. No profile
+secret, session binding/window, configuration plan, deployment, fault, notification,
+AI/provider call, migration or budget increase is authorized by this correction.
+**All eight acceptance gate groups remain open; S22 remains unaccepted.**
+
 ## 2026-11-02 — Default-off exercise workflow wired; no live activation
 
 The [current wiring checkpoint](s22-connection-fault-exercise-plan.md#default-off-workflow-wiring--2-november-2026)
