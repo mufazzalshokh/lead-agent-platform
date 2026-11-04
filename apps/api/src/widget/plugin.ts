@@ -17,6 +17,11 @@ import {
   WidgetSessionCreateInputSchema,
   WidgetSessionCreateResponseSchema,
   WidgetTelemetryInputSchema,
+  WidgetRecoveryCodeIssueInputSchema,
+  WidgetRecoveryCodeResponseSchema,
+  WidgetRecoveryResumeInputSchema,
+  WidgetRecoveryResumeResponseSchema,
+  type WidgetRecoveryResumeInput,
   WidgetTelemetryResponseSchema,
   type RequestId,
   type WidgetEmbedGrantCreateInput,
@@ -35,6 +40,12 @@ import { WidgetOriginInvalidError, normalizeWidgetOrigin } from "@lead-agent/sec
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 const BODY_LIMIT = 32 * 1_024;
+export const WIDGET_LOG_REDACTION_PATHS = Object.freeze([
+  "body.recovery_code",
+  "body.data.recovery_code",
+  "req.body.recovery_code",
+  "res.body.data.recovery_code",
+]);
 const PREFLIGHT_METHODS = new Set(["GET", "POST"]);
 const PREFLIGHT_HEADERS = new Set([
   "authorization",
@@ -91,6 +102,71 @@ export const registerWidgetRoutes = (
   api: FastifyInstance,
   dependencies: WidgetDependencies,
 ): void => {
+  api.post<{ Body: Record<string, never> }>(
+    "/v1/widget/recovery-codes",
+    {
+      bodyLimit: BODY_LIMIT,
+      schema: {
+        body: WidgetRecoveryCodeIssueInputSchema,
+        response: {
+          201: WidgetRecoveryCodeResponseSchema,
+          "4xx": ProblemSchema,
+          "5xx": ProblemSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const origin = originOf(request);
+      const issued = await dependencies.useCases.issueRecoveryCode({
+        bearerToken: bearerOf(request),
+        origin,
+        requestId: requestId(request),
+      });
+      secureResponse(reply, origin);
+      return await reply.code(201).send({
+        data: {
+          recovery_code: issued.recoveryCode,
+          recovery_expires_at: issued.recoveryExpiresAt.toISOString(),
+        },
+        meta: { request_id: requestId(request) },
+      });
+    },
+  );
+  api.post<{ Body: WidgetRecoveryResumeInput }>(
+    "/v1/widget/recovery/resume",
+    {
+      bodyLimit: BODY_LIMIT,
+      schema: {
+        body: WidgetRecoveryResumeInputSchema,
+        response: {
+          201: WidgetRecoveryResumeResponseSchema,
+          "4xx": ProblemSchema,
+          "5xx": ProblemSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const origin = originOf(request);
+      const resumed = await dependencies.useCases.resumeConversation({
+        bearerToken: bearerOf(request),
+        body: request.body,
+        origin,
+        clientIp: request.ip,
+        requestId: requestId(request),
+      });
+      secureResponse(reply, origin);
+      return await reply.code(201).send({
+        data: {
+          bearer_token: resumed.bearerToken,
+          conversation_id: resumed.conversationId,
+          expires_at: resumed.expiresAt.toISOString(),
+          recovery_code: resumed.recoveryCode,
+          recovery_expires_at: resumed.recoveryExpiresAt.toISOString(),
+        },
+        meta: { request_id: requestId(request) },
+      });
+    },
+  );
   api.options("/v1/widget/*", async (request, reply) => {
     const origin = requirePreflightOrigin(request);
     requirePreflightCapabilities(request);

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
   WidgetConversationSchema,
@@ -14,6 +14,8 @@ import {
   type WidgetPersistenceStore,
   type WidgetProtectedMessageRecord,
   type WidgetSessionAuthority,
+  type WidgetRecoveryStore,
+  type WidgetRecoveryAuthority,
 } from "@lead-agent/application";
 import {
   WidgetOriginInvalidError,
@@ -50,6 +52,13 @@ type SessionRow = QueryResultRow & {
   session_token_jti_hash: Buffer;
   status: "active" | "expired" | "revoked";
   widget_allowed_origin_id: string;
+  recovery_token_hash: Buffer | null;
+  recovery_issued_at: Date | null;
+  recovery_expires_at: Date | null;
+  recovery_request_origin: string | null;
+  recovery_embedding_origin: string | null;
+  access_issued_at: Date | null;
+  access_expires_at: Date | null;
 };
 type IdempotencyRow = QueryResultRow & { request_hash: Buffer; status: string };
 type ConversationRow = QueryResultRow & {
@@ -75,7 +84,7 @@ type MessageRow = QueryResultRow & {
 };
 
 const equal = (left: Uint8Array, right: Uint8Array): boolean =>
-  Buffer.from(left).equals(Buffer.from(right));
+  left.byteLength === right.byteLength && timingSafeEqual(left, right);
 const principalHash = (sessionId: ResourceId): Uint8Array =>
   createHash("sha256").update(sessionId, "utf8").digest();
 
@@ -88,7 +97,9 @@ const selectSession = async (
     text: `select organization_id::text, channel_connection_id::text,
                   widget_allowed_origin_id::text, session_token_jti_hash, status,
                   requested_locale, contact_id::text, conversation_id::text,
-                  issued_at, last_seen_at, expires_at
+                  issued_at, last_seen_at, expires_at, recovery_token_hash, recovery_issued_at,
+                  recovery_expires_at, recovery_request_origin, recovery_embedding_origin,
+                  access_issued_at, access_expires_at
              from widget_sessions
             where organization_id = $1 and id = $2${forUpdate ? " for update" : ""}`,
     values: [organizationId, sessionId],
@@ -151,7 +162,7 @@ const authorizeInSession = async (
   )
     return null;
   if (
-    now.getTime() >= row.expires_at.getTime() ||
+    now.getTime() >= (row.access_expires_at ?? row.expires_at).getTime() ||
     now.getTime() - row.last_seen_at.getTime() >= IDLE_LIFETIME_MS
   ) {
     await executeTenantQuery(session, (organizationId) => ({
@@ -168,13 +179,210 @@ const authorizeInSession = async (
     channelConnectionId: claims.channelConnectionId,
     contactId: row.contact_id,
     conversationId: row.conversation_id as ConversationId | null,
-    expiresAt: row.expires_at,
-    issuedAt: row.issued_at,
+    expiresAt: row.access_expires_at ?? row.expires_at,
+    issuedAt: row.access_issued_at ?? row.issued_at,
     lastSeenAt: now > row.last_seen_at ? now : row.last_seen_at,
     organizationId: claims.organizationId,
     requestedLocale: row.requested_locale,
     sessionId: claims.sessionId,
   });
+};
+
+/** Independent reauthentication preserves the identity row and original expiry. */
+export const createWidgetRecoveryStore = (
+  runtime: TenantDatabaseRuntime,
+  identifiers: SecurityIdentifierFactory = createSecurityIdentifierFactory(),
+): WidgetRecoveryStore => {
+  const eligible = async (session: TenantDbSession, row: SessionRow): Promise<boolean> => {
+    if (row.contact_id === null || row.conversation_id === null) return false;
+    const result = await executeTenantQuery(session, (organizationId) => ({
+      text: `select c.id from conversations c join contacts ct on ct.organization_id=$1 and ct.id=c.contact_id
+        where c.organization_id=$1 and c.id=$2 and c.contact_id=$3 and c.channel_connection_id=$4
+          and c.status in ('open','awaiting_lead','awaiting_staff') and ct.status='active'
+        for share of c,ct`,
+      values: [organizationId, row.conversation_id, row.contact_id, row.channel_connection_id],
+    }));
+    return result.rows.length === 1;
+  };
+  const audit = async (
+    session: TenantDbSession,
+    row: SessionRow,
+    sessionId: ResourceId,
+    now: Date,
+    requestId: string,
+    action: string,
+  ) => {
+    await executeTenantQuery(session, (organizationId) => ({
+      text: `insert into audit_events (id,organization_id,event_type,actor_type,actor_id,target_type,target_id,action,result,request_id,correlation_id,metadata_redacted_jsonb,occurred_at)
+        values ($1,$2,$3,'customer',$4,'widget_session',$5,$3,'succeeded',$6,$7,$8::jsonb,$9)`,
+      values: [
+        identifiers.issueResourceId(now),
+        organizationId,
+        action,
+        row.contact_id,
+        sessionId,
+        requestId,
+        identifiers.issueResourceId(now),
+        JSON.stringify({
+          profile: "widget-recovery.v1",
+          original_expires_at: row.expires_at.toISOString(),
+        }),
+        now,
+      ],
+    }));
+  };
+  const result = (
+    row: SessionRow,
+    claims: Pick<WidgetTokenClaims, "organizationId" | "channelConnectionId" | "sessionId">,
+    now: Date,
+    issuedAt: Date,
+    expiresAt: Date,
+    recoveryIssuedAt: Date,
+    recoveryExpiresAt: Date,
+  ): WidgetRecoveryAuthority => ({
+    authority: {
+      ...claims,
+      contactId: row.contact_id,
+      conversationId: row.conversation_id as ConversationId,
+      issuedAt,
+      expiresAt,
+      lastSeenAt: now,
+      requestedLocale: row.requested_locale,
+    },
+    recoveryIssuedAt,
+    recoveryExpiresAt,
+  });
+  return {
+    issue: async (input) =>
+      runtime.withTenantTransaction(input.claims.organizationId, async (session) => {
+        const authority = await authorizeInSession(
+          session,
+          input.claims,
+          input.origin,
+          input.now,
+          true,
+        );
+        const row = await selectSession(session, input.claims.sessionId);
+        if (authority === null || row === null || !(await eligible(session, row))) return null;
+        const issuedAt = row.recovery_issued_at ?? input.now;
+        const expiresAt = row.recovery_expires_at ?? new Date(input.now.getTime() + 86_400_000);
+        if (expiresAt <= input.now) return null;
+        const embeddingOrigin = input.claims.embeddingOrigin ?? input.origin;
+        if (
+          row.recovery_request_origin !== null &&
+          (row.recovery_request_origin !== input.origin ||
+            row.recovery_embedding_origin !== embeddingOrigin)
+        )
+          return null;
+        await executeTenantQuery(session, (organizationId) => ({
+          text: `update widget_sessions set recovery_token_hash=$3,recovery_issued_at=$4,recovery_expires_at=$5,
+          recovery_request_origin=$6,recovery_embedding_origin=$7,version=version+1,updated_at=greatest(updated_at,$8)
+          where organization_id=$1 and id=$2`,
+          values: [
+            organizationId,
+            input.claims.sessionId,
+            Buffer.from(input.codeHash),
+            issuedAt,
+            expiresAt,
+            input.origin,
+            embeddingOrigin,
+            input.now,
+          ],
+        }));
+        await audit(
+          session,
+          row,
+          input.claims.sessionId,
+          input.now,
+          input.requestId,
+          "widget.recovery_code_issued",
+        );
+        return { authority, recoveryIssuedAt: issuedAt, recoveryExpiresAt: expiresAt };
+      }),
+    resume: async (input) =>
+      runtime.withTenantTransaction(input.grant.organizationId, async (session) => {
+        if (
+          input.context.organizationId !== input.grant.organizationId ||
+          input.context.channelConnectionId !== input.grant.channelConnectionId ||
+          input.context.sessionId === input.grant.sessionId ||
+          input.context.conversationId !== null ||
+          input.context.origin !== input.origin ||
+          (input.context.embeddingOrigin ?? input.origin) !== input.grant.embeddingOrigin
+        )
+          return null;
+        const context = await authorizeInSession(
+          session,
+          input.context,
+          input.origin,
+          input.now,
+          true,
+        );
+        if (context === null || context.contactId !== null || context.conversationId !== null)
+          return null;
+        const row = await selectSession(session, input.grant.sessionId, true);
+        if (
+          row === null ||
+          row.status === "revoked" ||
+          row.organization_id !== input.grant.organizationId ||
+          row.channel_connection_id !== input.grant.channelConnectionId ||
+          row.recovery_token_hash === null ||
+          !equal(row.recovery_token_hash, input.codeHash) ||
+          row.recovery_issued_at === null ||
+          row.recovery_expires_at === null ||
+          row.recovery_issued_at.getTime() !== input.grant.issuedAt.getTime() ||
+          row.recovery_expires_at.getTime() !== input.grant.expiresAt.getTime() ||
+          input.now >= row.recovery_expires_at ||
+          input.now < row.recovery_issued_at ||
+          row.recovery_request_origin !== input.origin ||
+          row.recovery_embedding_origin !== input.grant.embeddingOrigin ||
+          (await originAllowed(
+            session,
+            row.channel_connection_id,
+            input.grant.embeddingOrigin,
+            row.widget_allowed_origin_id,
+          )) === null ||
+          !(await eligible(session, row))
+        )
+          return null;
+        const expiresAt = new Date(
+          Math.min(input.now.getTime() + 7_200_000, row.recovery_expires_at.getTime()),
+        );
+        await executeTenantQuery(session, (organizationId) => ({
+          text: `update widget_sessions set session_token_jti_hash=$3,recovery_token_hash=$4,
+          access_issued_at=$5,access_expires_at=$6,last_seen_at=$5,status='active',version=version+1,updated_at=greatest(updated_at,$5)
+          where organization_id=$1 and id=$2`,
+          values: [
+            organizationId,
+            input.grant.sessionId,
+            Buffer.from(input.accessJtiHash),
+            Buffer.from(input.nextCodeHash),
+            input.now,
+            expiresAt,
+          ],
+        }));
+        await audit(
+          session,
+          row,
+          input.grant.sessionId,
+          input.now,
+          input.requestId,
+          "widget.conversation_reauthenticated",
+        );
+        await executeTenantQuery(session, (organizationId) => ({
+          text: `update widget_sessions set status='revoked',revoked_at=$3,revocation_reason='recovery_context_consumed',version=version+1,updated_at=greatest(updated_at,$3) where organization_id=$1 and id=$2`,
+          values: [organizationId, input.context.sessionId, input.now],
+        }));
+        return result(
+          row,
+          input.grant,
+          input.now,
+          input.now,
+          expiresAt,
+          row.recovery_issued_at,
+          row.recovery_expires_at,
+        );
+      }),
+  };
 };
 
 const inspectIdempotency = async (
@@ -289,7 +497,7 @@ export const createWidgetPersistenceStore = (
       )
         throw new WidgetOriginInvalidError();
       if (
-        input.now >= row.expires_at ||
+        input.now >= (row.access_expires_at ?? row.expires_at) ||
         input.now.getTime() - row.last_seen_at.getTime() >= IDLE_LIFETIME_MS
       )
         throw new WidgetTokenInvalidError();

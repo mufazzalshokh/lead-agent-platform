@@ -1,6 +1,7 @@
 import {
   InstagramApplicationError,
   InstagramProviderError,
+  type InstagramOnboardingFailure,
   type InstagramBusinessUseCases,
 } from "@lead-agent/application";
 import {
@@ -31,15 +32,22 @@ export type StaffInstagramSecurityBoundary = Readonly<{
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<AuthenticatedApplicationSession>;
+  resolveReadSession(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<AuthenticatedApplicationSession>;
 }>;
 
 export type StaffInstagramDependencies = Readonly<{
-  useCases: Pick<InstagramBusinessUseCases, "beginOnboarding" | "disconnect">;
+  useCases: Pick<InstagramBusinessUseCases, "beginOnboarding" | "disconnect" | "getStatus">;
 }>;
 export type InstagramWebhookDependencies = Readonly<{
   appSecret: string;
   webhookVerifyToken: string;
-  useCases: Pick<InstagramBusinessUseCases, "completeOnboarding" | "processMessage">;
+  useCases: Pick<
+    InstagramBusinessUseCases,
+    "completeOnboarding" | "processMessage" | "resolveOnboardingOrganization"
+  >;
   clock?: () => Date;
 }>;
 
@@ -116,24 +124,91 @@ export const registerInstagramPublicRoutes = (
       }
     },
   );
-  api.get<{ Querystring: { code: string; state: string } }>(
+  api.get<{
+    Querystring: {
+      code?: string;
+      error?: string;
+      error_description?: string;
+      error_reason?: string;
+      state: string;
+    };
+  }>(
     "/v1/integrations/instagram/callback",
     {
       schema: {
         querystring: {
           type: "object",
           additionalProperties: false,
-          required: ["code", "state"],
+          required: ["state"],
+          anyOf: [{ required: ["code"] }, { required: ["error"] }],
           properties: {
             code: { type: "string", minLength: 1, maxLength: 2048, pattern: "^[A-Za-z0-9_.|-]+$" },
+            error: { type: "string", minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9_.-]+$" },
+            error_description: { type: "string", maxLength: 1024 },
+            error_reason: { type: "string", maxLength: 128 },
             state: { type: "string", minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$" },
           },
         },
       },
     },
     async (request, reply) => {
-      await dependencies.useCases.completeOnboarding(request.query);
-      return reply.code(200).send({ status: "connected" });
+      const redirect = async (organizationId: string, result: "connected" | "failed") => {
+        const organization = encodeURIComponent(organizationId);
+        return await reply.redirect(
+          `/staff?organization=${organization}&integration=instagram&result=${result}#integrations`,
+          303,
+        );
+      };
+      if (request.query.code === undefined) {
+        request.log.warn(
+          { instagramCallbackFailure: "provider_authorization_denied", requestId: request.id },
+          "Instagram callback did not complete",
+        );
+        const resolved = await dependencies.useCases.resolveOnboardingOrganization({
+          state: request.query.state,
+        });
+        return await redirect(resolved.organizationId, "failed");
+      }
+      let failureReported = false;
+      const reportFailure = (failure: InstagramOnboardingFailure): void => {
+        failureReported = true;
+        request.log.warn(
+          {
+            instagramCallbackFailure: failure.failure,
+            instagramCallbackStage: failure.stage,
+            applicationCode: failure.applicationCode,
+            providerCategory: failure.providerCategory,
+            providerDiagnostic: failure.providerDiagnostic,
+            databaseCode: failure.databaseCode,
+            requestId: request.id,
+          },
+          "Instagram callback did not complete",
+        );
+      };
+      try {
+        const completed = await dependencies.useCases.completeOnboarding({
+          code: request.query.code,
+          state: request.query.state,
+          onFailure: reportFailure,
+        });
+        return await redirect(completed.organizationId, "connected");
+      } catch (error) {
+        if (!failureReported)
+          request.log.warn(
+            {
+              instagramCallbackFailure: "unclassified",
+              applicationCode: error instanceof InstagramApplicationError ? error.code : null,
+              providerCategory: error instanceof InstagramProviderError ? error.category : null,
+              requestId: request.id,
+            },
+            "Instagram callback did not complete",
+          );
+        if (instagramHttpProblem(error) === null) throw error;
+        const resolved = await dependencies.useCases.resolveOnboardingOrganization({
+          state: request.query.state,
+        });
+        return await redirect(resolved.organizationId, "failed");
+      }
     },
   );
 };
@@ -144,8 +219,14 @@ export const registerStaffInstagramManagement = (
   security: StaffInstagramSecurityBoundary,
 ): void => {
   const contexts = new WeakMap<FastifyRequest, AuthorizationContext>();
-  const authorize = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const session = await security.resolveMutationSession(request, reply);
+  const authorize = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    mutation = true,
+  ): Promise<void> => {
+    const session = mutation
+      ? await security.resolveMutationSession(request, reply)
+      : await security.resolveReadSession(request, reply);
     const organization = request.headers["x-organization-context"];
     if (!isSchemaValue(OrganizationIdSchema, organization)) throw new AuthorizationDeniedError();
     const context = await resolveAuthorizationContext(
@@ -161,10 +242,35 @@ export const registerStaffInstagramManagement = (
     if (value === undefined) throw new AuthorizationDeniedError();
     return value;
   };
+  api.get(
+    "/v1/staff/integrations/instagram/status",
+    {
+      preValidation: async (request, reply) => await authorize(request, reply, false),
+      schema: {
+        response: {
+          200: {
+            additionalProperties: false,
+            properties: {
+              status: {
+                enum: ["connected", "connection_pending", "needs_attention", "not_connected"],
+                type: "string",
+              },
+            },
+            required: ["status"],
+            type: "object",
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const result = await dependencies.useCases.getStatus({ authorization: context(request) });
+      return reply.code(200).send(result);
+    },
+  );
   api.post<{ Body: { display_name: string } }>(
     "/v1/staff/integrations/instagram/onboarding",
     {
-      preValidation: authorize,
+      preValidation: async (request, reply) => await authorize(request, reply, true),
       schema: {
         body: {
           type: "object",
@@ -193,7 +299,7 @@ export const registerStaffInstagramManagement = (
   api.post<{ Params: { id: ChannelConnectionId } }>(
     "/v1/staff/integrations/instagram/:id/disconnect",
     {
-      preValidation: authorize,
+      preValidation: async (request, reply) => await authorize(request, reply, true),
       schema: {
         params: {
           type: "object",

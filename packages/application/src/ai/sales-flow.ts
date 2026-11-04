@@ -8,11 +8,12 @@ import {
 } from "./grounding-query.js";
 import { createAIOrchestrator } from "./orchestrate.js";
 import { medicalSafetyText } from "./medical-safety.js";
-import { aiFallback } from "./policy.js";
+import { aiFallback, countUnmatchedCitations } from "./policy.js";
 import type {
   AIContextSnapshot,
   AIFallbackReason,
   AIOutcome,
+  AIExtractionRejectionField,
   SalesEvidence,
   SalesResult,
 } from "./ports.js";
@@ -241,42 +242,46 @@ export const evaluateSalesDecision = (
     return aiFallback("medical_safety_response");
   const evidence = resolveSalesEvidence(snapshot);
   // A model cannot manufacture customer facts, tenant identity, or escalation authority.
+  const rejected: AIExtractionRejectionField[] = [];
   if (
-    (decision.extracted_facts.service_id !== null &&
-      decision.extracted_facts.service_id !== evidence.serviceId &&
-      !snapshot.sales?.services.some(
-        (service) =>
-          service.id === decision.extracted_facts.service_id &&
-          namesMatch(snapshot.message, service.names),
-      )) ||
-    (decision.extracted_facts.location_id !== null &&
-      decision.extracted_facts.location_id !== evidence.locationId &&
-      !snapshot.sales?.locations.some(
-        (location) =>
-          location.id === decision.extracted_facts.location_id &&
-          namesMatch(snapshot.message, location.names),
-      )) ||
-    [
-      decision.extracted_facts.display_name,
-      decision.extracted_facts.phone_raw,
-      decision.extracted_facts.email_raw,
-    ].some((value) => value !== null && !snapshot.message.includes(value)) ||
+    decision.extracted_facts.service_id !== null &&
+    decision.extracted_facts.service_id !== evidence.serviceId &&
+    !snapshot.sales?.services.some(
+      (service) =>
+        service.id === decision.extracted_facts.service_id &&
+        namesMatch(snapshot.message, service.names),
+    )
+  )
+    rejected.push("service_id");
+  if (
+    decision.extracted_facts.location_id !== null &&
+    decision.extracted_facts.location_id !== evidence.locationId &&
+    !snapshot.sales?.locations.some(
+      (location) =>
+        location.id === decision.extracted_facts.location_id &&
+        namesMatch(snapshot.message, location.names),
+    )
+  )
+    rejected.push("location_id");
+  for (const field of ["display_name", "phone_raw", "email_raw"] as const) {
+    const value = decision.extracted_facts[field];
+    if (value !== null && !snapshot.message.includes(value)) rejected.push(field);
+  }
+  if (rejected.length > 0) return aiFallback("policy_denied", "untrusted_extraction", rejected);
+  if (
     decision.safety.risk_flags.some(
       (flag) => !["price_missing", "service_missing", "location_missing"].includes(flag),
     ) ||
     !decision.safety.safe_to_send ||
-    decision.message.mode !== "send_candidate" ||
-    decision.factual_claims.some(
-      (claim) =>
-        !snapshot.policy.facts.some(
-          (fact) => JSON.stringify(fact.reference) === JSON.stringify(claim),
-        ),
-    )
+    decision.message.mode !== "send_candidate"
   )
-    return aiFallback("policy_denied");
-  if (decision.action.type === "request_handoff") return aiFallback("policy_denied");
+    return aiFallback("policy_denied", "unsafe_response");
+  if (countUnmatchedCitations(decision.factual_claims, snapshot.policy.facts) > 0)
+    return aiFallback("policy_denied", "untrusted_citation");
+  if (decision.action.type === "request_handoff")
+    return aiFallback("policy_denied", "handoff_not_authorized");
   if (["confirm_appointment", "decline_appointment"].includes(decision.action.type))
-    return aiFallback("policy_denied");
+    return aiFallback("policy_denied", "confirmation_not_authorized");
   // No model wording or action is executed. S16 requests remain a typed application boundary.
   return Object.freeze({ kind: "decision", disposition: "candidate", applied: false, decision });
 };
@@ -326,6 +331,23 @@ export const planSalesFlow = (snapshot: AIContextSnapshot, outcome: AIOutcome): 
       handoffReason: null,
     };
   if (preflight !== null && preflight !== "staff_requested") return none(preflight);
+  if (
+    preflight === null &&
+    outcome.kind === "fallback_required" &&
+    outcome.reason === "policy_denied" &&
+    outcome.modelRejection !== undefined &&
+    snapshot.sales?.contactable === true
+  )
+    // Reject ALL model text/facts/actions. A current, contactable tenant context
+    // independently authorizes the application's policy-blocked staff fallback.
+    // Preflight injection, stale state and monetary dispatch denial never enter it.
+    return {
+      evidence,
+      result: { kind: "handoff_requested", reason: "policy_blocked", missing },
+      text: handoffText(locale, false),
+      sources: [],
+      handoffReason: "policy_blocked",
+    };
   if (
     outcome.kind === "fallback_required" &&
     ![

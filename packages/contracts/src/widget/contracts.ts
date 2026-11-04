@@ -52,6 +52,48 @@ const clientMessageId = () =>
 const messageText = () =>
   Type.String({ maxLength: 4_000, minLength: 1, pattern: SAFE_TEXT_PATTERN });
 
+const recoveryCode = () =>
+  Type.String({
+    minLength: 100,
+    maxLength: 2048,
+    pattern: "^wrc1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+  });
+export const WidgetRecoveryCodeIssueInputSchema = Type.Object(
+  {},
+  { $id: "WidgetRecoveryCodeIssueInput.v1", additionalProperties: false },
+);
+export const WidgetRecoveryResumeInputSchema = Type.Object(
+  { recovery_code: recoveryCode() },
+  { $id: "WidgetRecoveryResumeInput.v1", additionalProperties: false },
+);
+export type WidgetRecoveryResumeInput = Type.Static<typeof WidgetRecoveryResumeInputSchema>;
+export const WidgetRecoveryCodeResponseSchema = Type.Object(
+  {
+    data: Type.Object(
+      { recovery_code: recoveryCode(), recovery_expires_at: timestamp() },
+      { additionalProperties: false },
+    ),
+    meta: Type.Object({ request_id: requestId() }, { additionalProperties: false }),
+  },
+  { $id: "WidgetRecoveryCodeResponse.v1", additionalProperties: false },
+);
+export const WidgetRecoveryResumeResponseSchema = Type.Object(
+  {
+    data: Type.Object(
+      {
+        bearer_token: bearerToken(),
+        conversation_id: conversationId(),
+        expires_at: timestamp(),
+        recovery_code: recoveryCode(),
+        recovery_expires_at: timestamp(),
+      },
+      { additionalProperties: false },
+    ),
+    meta: Type.Object({ request_id: requestId() }, { additionalProperties: false }),
+  },
+  { $id: "WidgetRecoveryResumeResponse.v1", additionalProperties: false },
+);
+
 export const WidgetSessionCreateInputSchema = Type.Object(
   {
     page_url: pageUrl(),

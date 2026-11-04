@@ -8,6 +8,7 @@ import {
   type OrganizationId,
 } from "@lead-agent/contracts";
 import type {
+  TelegramManagementStatus,
   TelegramConnectionAuthority,
   TelegramPersistenceStore,
 } from "@lead-agent/application";
@@ -160,6 +161,44 @@ const selectConnection = async (
   return result.rows[0] ?? null;
 };
 
+const managementStatus = (rows: readonly ConnectionRow[], now: Date): TelegramManagementStatus => {
+  const parsed = rows.map((row) => ({
+    configuration: parseConfiguration(row.configuration_jsonb),
+    row,
+  }));
+  if (
+    parsed.some(
+      ({ configuration: value, row }) =>
+        row.status === "active" && value?.phase === "active" && value.is_enabled && value.can_reply,
+    )
+  ) {
+    return Object.freeze({ nextStep: null, status: "connected" });
+  }
+  if (
+    parsed.some(
+      ({ configuration: value, row }) =>
+        row.status === "pending" && value?.phase === "awaiting_connection",
+    )
+  ) {
+    return Object.freeze({ nextStep: "connect_business", status: "connection_pending" });
+  }
+  if (
+    parsed.some(
+      ({ configuration: value, row }) =>
+        row.status === "pending" &&
+        value?.phase === "awaiting_owner" &&
+        value.onboarding_expires_at !== null &&
+        Date.parse(value.onboarding_expires_at) > now.getTime(),
+    )
+  ) {
+    return Object.freeze({ nextStep: "open_bot", status: "connection_pending" });
+  }
+  return Object.freeze({
+    nextStep: null,
+    status: rows.length === 0 ? "not_connected" : "needs_attention",
+  });
+};
+
 const rotateRoute = async (
   session: TenantDbSession,
   channelConnectionId: ChannelConnectionId,
@@ -224,6 +263,20 @@ export const createTelegramPersistenceStore = (
           input.actor,
         );
         return Object.freeze({ channelConnectionId });
+      }),
+    loadManagementStatus: async (organizationId, now) =>
+      await runtime.withTenantTransaction(organizationId, async (session) => {
+        const result = await executeTenantQuery<ConnectionRow>(
+          session,
+          (trustedOrganizationId) => ({
+            text: `select cc.status, cc.provider_account_id_hash, cc.configuration_jsonb
+                   from channel_connections cc
+                  where cc.organization_id = $1 and cc.channel_type = 'telegram'
+                  order by cc.updated_at desc, cc.id desc`,
+            values: [trustedOrganizationId],
+          }),
+        );
+        return managementStatus(result.rows, now);
       }),
     bindOwner: async (input) =>
       await runtime.withTenantTransaction(input.context.organizationId, async (session) => {

@@ -296,6 +296,36 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       expect(await store().respond(await inbound(f, "yes"))).toMatchObject({ kind: "confirmed" });
       expect(await counts()).toMatchObject({ confirmed: 1, evidence: 1, transitions: 1 });
     });
+    it("confirms the existing staff offer through a recovered lease after original access expires", async () => {
+      const f = await prepared();
+      const pool = harness.privilegedPool();
+      const before = await pool.query(
+        "select id,contact_id,conversation_id,issued_at,expires_at from widget_sessions where conversation_id=$1",
+        [f.receipt.conversationId],
+      );
+      now = new Date(now.getTime() + 4_200_000);
+      // Model a previously authenticated recovery lease; never create a second identity.
+      await pool.query(
+        `update widget_sessions set recovery_token_hash=$3,recovery_issued_at=issued_at,
+          recovery_expires_at=issued_at+interval '24 hours',
+          recovery_request_origin='https://widget.example',recovery_embedding_origin='https://s12.example.com',
+          access_issued_at=$2,access_expires_at=$2::timestamptz+interval '1 hour',last_seen_at=$2
+          where conversation_id=$1`,
+        [f.receipt.conversationId, now, Buffer.alloc(32, 93)],
+      );
+      expect(await store().respond(await inbound(f, "yes, I'll be there"))).toMatchObject({
+        kind: "confirmed",
+      });
+      expect(await counts()).toMatchObject({ confirmed: 1, evidence: 1, transitions: 1 });
+      expect(
+        (
+          await pool.query(
+            "select id,contact_id,conversation_id,issued_at,expires_at from widget_sessions where conversation_id=$1",
+            [f.receipt.conversationId],
+          )
+        ).rows,
+      ).toEqual(before.rows);
+    });
     it("uses the approved decline→cancelled transition, not confirmation", async () => {
       const f = await prepared();
       expect(await store().respond(await inbound(f, "yoq ertaga bormiman"))).toMatchObject({

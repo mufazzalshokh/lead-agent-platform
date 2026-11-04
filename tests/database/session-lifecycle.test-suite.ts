@@ -3,6 +3,8 @@ import { UserIdSchema, isSchemaValue, type UserId } from "../../packages/contrac
 import {
   SessionDatabaseRoleError,
   createSessionDatabaseRuntime,
+  createSessionConnectionProbe,
+  SessionDatabaseError,
   type SessionDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import {
@@ -16,6 +18,16 @@ import {
 } from "../../packages/security/src/index.js";
 import type { Pool, PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
+import { createApi } from "../../apps/api/src/auth/plugin.js";
+import { createS22SessionProbe } from "../../apps/api/src/diagnostics/s22-connection-fault.js";
+import {
+  digestProbeSession,
+  S22_CONNECTION_FAULT_HEADER,
+} from "../../apps/api/src/diagnostics/s22-connection-fault-admission.js";
+import { loadS22ConnectionFaultProfile } from "../../packages/config/src/index.js";
+import { probeEnvironment, probeProfileValue } from "../security/s22-connection-fault-fixtures.js";
+import { staffFixture } from "../instagram/staff-fixtures.js";
+import { NOW } from "../telegram/fixtures.js";
 
 const AUTH_ROLE = "lead_agent_auth";
 const DEFINER_ROLE = "lead_agent_identity_definer";
@@ -31,6 +43,7 @@ export type SessionLifecycleHarness = Readonly<{
   privilegedPool: () => Pool;
   runtime: () => SessionDatabaseRuntime;
   runtimeConfiguration: () => IdentityDatabaseRuntimeConfig;
+  probeConfiguration: () => IdentityDatabaseRuntimeConfig;
 }>;
 
 const createEvidence = async (userId: UserId, authenticationLevel = "mfa") => {
@@ -80,6 +93,159 @@ const activeSessionCount = async (pool: Pool, userId: UserId): Promise<number> =
 
 export const registerSessionLifecycleTests = (harness: SessionLifecycleHarness): void => {
   describe("S6.3 application-owned session lifecycle", { timeout: 30_000 }, () => {
+    it("S22 HTTP uses real role-checked PostgreSQL for baseline, real TCP cuts for failure, and normal-pool recovery", async () => {
+      await insertUser(harness.privilegedPool(), USER_A);
+      const lifecycle = createApplicationSessionLifecycle(harness.runtime());
+      const issued = await lifecycle.createSession(await createEvidence(USER_A));
+      const auth = staffFixture();
+      const profileValue = {
+        ...probeProfileValue(),
+        sessionDigest: digestProbeSession(issued.session.sessionId),
+      };
+      const loaded = loadS22ConnectionFaultProfile(
+        { ...probeEnvironment(), S22_CONNECTION_FAULT_PROFILE: JSON.stringify(profileValue) },
+        NOW,
+      );
+      if (loaded.state !== "ready") throw new Error("Invalid synthetic HTTP probe profile");
+      const profile = loaded.profile;
+      const clock = { now: NOW.getTime(), mono: 0 };
+      const receipts: unknown[] = [];
+      const probe = createS22SessionProbe(
+        profile,
+        harness.probeConfiguration(),
+        {},
+        (receipt) => receipts.push(receipt),
+        { wall: () => clock.now, monotonic: () => clock.mono },
+      );
+      const sealed = auth.staffAuth.envelopeProtector.sealSession({
+        csrfSecret: issued.csrfSecret,
+        expiresAt: issued.session.absoluteExpiresAt,
+        sessionToken: issued.sessionToken,
+      });
+      const headers = {
+        ...auth.headers,
+        "sec-fetch-site": "same-origin",
+        cookie: `__Host-lead-session=${sealed}; __Host-lead-csrf=${issued.csrfSecret}`,
+      };
+      const api = createApi({
+        staffAuth: {
+          ...auth.staffAuth,
+          clock: () => new Date(),
+          sessions: lifecycle,
+          sessionConnectionProbe: probe,
+        },
+      });
+      api.addHook("onReady", () => probe.start());
+      api.addHook("onClose", () => probe.close());
+      let nonce = "-";
+      try {
+        // One setup GET, 4 baseline, 23 fault and 2 recovery: 30 total, below 44.
+        expect(
+          (await api.inject({ method: "GET", url: "/v1/staff/auth/session", headers })).statusCode,
+        ).toBe(200);
+        for (let sequence = 1; sequence <= 29; sequence++) {
+          clock.now =
+            sequence <= 4
+              ? profile.baselineAt + (sequence - 1) * 15000
+              : sequence <= 27
+                ? profile.faultAt + (sequence - 5) * 15000
+                : profile.expiresAt + (sequence - 28) * 30000;
+          clock.mono = clock.now - NOW.getTime();
+          const response = await api.inject({
+            method: "GET",
+            url: "/v1/staff/auth/session",
+            headers: {
+              ...headers,
+              [S22_CONNECTION_FAULT_HEADER]: `${profile.exerciseId}:${sequence}:${nonce}:read`,
+            },
+          });
+          expect(response.statusCode).toBe(sequence >= 5 && sequence <= 27 ? 500 : 200);
+          const metadata: unknown = JSON.parse(
+            String(response.headers[S22_CONNECTION_FAULT_HEADER]),
+          );
+          if (
+            typeof metadata !== "object" ||
+            metadata === null ||
+            !("nonce" in metadata) ||
+            typeof metadata.nonce !== "string"
+          )
+            throw new Error("Invalid probe metadata");
+          expect(metadata).toMatchObject({ sequence });
+          nonce = metadata.nonce;
+          if (sequence === 4) expect(metadata).toMatchObject({ state: "admitted" });
+          if (sequence === 29) expect(metadata).toMatchObject({ state: "recovered" });
+          expect(response.body).not.toContain(issued.sessionToken);
+          expect(response.headers["set-cookie"]).toBeUndefined();
+        }
+        expect(receipts).toHaveLength(29);
+        expect(JSON.stringify(receipts)).not.toContain(issued.sessionToken);
+        expect(JSON.stringify(receipts)).not.toContain(issued.session.sessionId);
+        expect(JSON.stringify(receipts)).not.toContain(
+          harness.probeConfiguration().connectionString,
+        );
+      } finally {
+        await api.close();
+      }
+    });
+
+    it("S22 resolves through real PostgreSQL, cuts only the probe, and preserves the shared pool and revocation", async () => {
+      await insertUser(harness.privilegedPool(), USER_A);
+      const lifecycle = createApplicationSessionLifecycle(harness.runtime());
+      const issued = await lifecycle.createSession(await createEvidence(USER_A));
+      const hash = hashSessionToken(issued.sessionToken);
+      if (hash === undefined) throw new Error("Invalid synthetic token");
+      const poolErrors: Error[] = [];
+      const probe = await createSessionConnectionProbe(
+        harness.probeConfiguration(),
+        {
+          onUnexpectedPoolError: (error) => poolErrors.push(error),
+        },
+        process.env,
+      );
+      try {
+        expect(await probe.resolveSession(hash, () => false)).toMatchObject({
+          sessionId: issued.session.sessionId,
+          userId: USER_A,
+        });
+        await expect(probe.resolveSession(hash, () => true)).rejects.toBeInstanceOf(
+          SessionDatabaseError,
+        );
+        expect(await lifecycle.resolveSession(issued.sessionToken)).toMatchObject({
+          sessionId: issued.session.sessionId,
+        });
+        expect(await probe.resolveSession(hash, () => false)).toMatchObject({
+          sessionId: issued.session.sessionId,
+        });
+        await lifecycle.revokeSession(issued.sessionToken);
+        expect(await probe.resolveSession(hash, () => false)).toBeNull();
+        await expect(lifecycle.resolveSession(issued.sessionToken)).rejects.toBeInstanceOf(
+          SessionAuthenticationRequiredError,
+        );
+        expect(poolErrors).toEqual([]);
+      } finally {
+        await probe.close();
+      }
+    });
+
+    it("S22 probe retains the non-owner authentication-role check with real PostgreSQL", async () => {
+      const errors: Error[] = [];
+      const probe = await createSessionConnectionProbe(
+        harness.runtimeConfiguration(),
+        {
+          onUnexpectedPoolError: (error) => errors.push(error),
+        },
+        process.env,
+      );
+      try {
+        await expect(probe.resolveSession(Buffer.alloc(32), () => false)).rejects.toBeInstanceOf(
+          SessionDatabaseRoleError,
+        );
+        expect(errors).toEqual([]);
+      } finally {
+        await probe.close();
+      }
+    });
+
     it("creates hash-only credentials with frozen lifetimes and no tenant authority", async () => {
       const pool = harness.privilegedPool();
       await insertUser(pool, USER_A);

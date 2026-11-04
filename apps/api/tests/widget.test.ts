@@ -10,6 +10,8 @@ import {
   WidgetMessageCollectionResponseSchema,
   WidgetMessageCreateResponseSchema,
   WidgetSessionCreateResponseSchema,
+  WidgetRecoveryCodeResponseSchema,
+  WidgetRecoveryResumeResponseSchema,
   isSchemaValue,
   type ConversationId,
   type MessageId,
@@ -22,6 +24,7 @@ import {
   WidgetTokenInvalidError,
 } from "@lead-agent/security";
 import { createApi } from "../src/app.js";
+import { WIDGET_LOG_REDACTION_PATHS } from "../src/widget/plugin.js";
 
 const CONVERSATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2b" as ConversationId;
 const OTHER_ID = "0193f1a8-7f65-7c28-a434-a10796c41c2c" as MessageId;
@@ -54,6 +57,21 @@ const visibleMessage: WidgetMessage = {
 const dependencies = () => {
   const calls = { ai: 0 };
   const useCases: WidgetUseCases = {
+    issueRecoveryCode: vi.fn(() =>
+      Promise.resolve({
+        recoveryCode: `wrc1.${"a".repeat(16)}.${"b".repeat(80)}.${"c".repeat(22)}`,
+        recoveryExpiresAt: new Date("2026-09-16T10:00:00.000Z"),
+      }),
+    ),
+    resumeConversation: vi.fn(() =>
+      Promise.resolve({
+        bearerToken: TOKEN,
+        conversationId: CONVERSATION_ID,
+        expiresAt: new Date("2026-09-15T12:00:00.000Z"),
+        recoveryCode: `wrc1.${"a".repeat(16)}.${"b".repeat(80)}.${"c".repeat(22)}`,
+        recoveryExpiresAt: new Date("2026-09-16T10:00:00.000Z"),
+      }),
+    ),
     bootstrap: vi.fn(() =>
       Promise.resolve({
         bearerToken: TOKEN,
@@ -118,6 +136,93 @@ const headers = (extra: Record<string, string> = {}) => ({
 });
 
 describe("S10 Widget Fastify API", () => {
+  it("redacts private recovery credentials from diagnostic request and response bodies", async () => {
+    const entries: string[] = [];
+    const api = createApi({
+      logger: {
+        level: "info",
+        redact: { censor: "[REDACTED]", paths: [...WIDGET_LOG_REDACTION_PATHS] },
+        stream: {
+          write: (entry: string) => {
+            entries.push(entry);
+          },
+        },
+      },
+      widget: dependencies(),
+    });
+    const code = `wrc1.${"a".repeat(16)}.${"b".repeat(80)}.${"c".repeat(22)}`;
+    try {
+      api.log.info({ body: { recovery_code: code, data: { recovery_code: code } } }, "Synthetic");
+      api.log.info({ req: { body: { recovery_code: code } } }, "Synthetic");
+      api.log.info({ res: { body: { data: { recovery_code: code } } } }, "Synthetic");
+      expect(entries.join()).not.toContain(code);
+      expect(entries.join()).toContain("[REDACTED]");
+    } finally {
+      await api.close();
+    }
+  });
+  it("keeps recovery credentials in no-store authenticated POST responses with finite schemas", async () => {
+    const widget = dependencies();
+    const api = createApi({ widget });
+    try {
+      const headers = { origin: PLATFORM_ORIGIN, authorization: `Bearer ${TOKEN}` };
+      const issued = await api.inject({
+        method: "POST",
+        url: "/v1/widget/recovery-codes",
+        headers,
+        payload: {},
+      });
+      expect(issued.statusCode).toBe(201);
+      const body: unknown = issued.json();
+      if (!isSchemaValue(WidgetRecoveryCodeResponseSchema, body))
+        throw new TypeError("Expected recovery code envelope");
+      expect(issued.headers["cache-control"]).toBe("no-store");
+      expect(issued.headers["referrer-policy"]).toBe("no-referrer");
+      expect(issued.headers).not.toHaveProperty("set-cookie");
+      expect(body.data).not.toHaveProperty("organization_id");
+      const resumed = await api.inject({
+        method: "POST",
+        url: "/v1/widget/recovery/resume",
+        headers,
+        payload: { recovery_code: body.data.recovery_code },
+      });
+      expect(resumed.statusCode).toBe(201);
+      expect(isSchemaValue(WidgetRecoveryResumeResponseSchema, resumed.json())).toBe(true);
+      expect(resumed.headers["access-control-allow-origin"]).toBe(PLATFORM_ORIGIN);
+      const smuggled = await api.inject({
+        method: "POST",
+        url: "/v1/widget/recovery/resume",
+        headers,
+        payload: { recovery_code: body.data.recovery_code, organization_id: CONVERSATION_ID },
+      });
+      expect(smuggled.statusCode).toBe(400);
+      expect(widget.useCases.resumeConversation).toHaveBeenCalledTimes(1);
+      expect(widget.calls.ai).toBe(0);
+    } finally {
+      await api.close();
+    }
+  });
+
+  it("does not echo failed recovery proof or reveal whether an old conversation exists", async () => {
+    const widget = dependencies();
+    vi.mocked(widget.useCases.resumeConversation).mockRejectedValue(new WidgetTokenInvalidError());
+    const api = createApi({ widget });
+    try {
+      const code = `wrc1.${"a".repeat(16)}.${"b".repeat(80)}.${"c".repeat(22)}`;
+      const response = await api.inject({
+        method: "POST",
+        url: "/v1/widget/recovery/resume",
+        headers: { origin: PLATFORM_ORIGIN, authorization: `Bearer ${TOKEN}` },
+        payload: { recovery_code: code },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.body).not.toContain(code);
+      expect(response.body).not.toContain(CONVERSATION_ID);
+      expect(response.headers["cache-control"]).toBe("no-store");
+    } finally {
+      await api.close();
+    }
+  });
   it("exchanges an allowed host grant without exposing the bearer to the host", async () => {
     const widget = dependencies();
     const api = createApi({ widget: { useCases: widget.useCases } });

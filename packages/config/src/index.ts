@@ -52,3 +52,17 @@ export {
   type CommercialV1AIConfig,
   type OpenAIHarnessConfig,
 } from "./ai.js";
+export {
+  S22_BOOKING_COHORT,
+  loadAIJourneyCohortConfig,
+  S22_WIDGET_ALLOWANCE,
+  S22_WIDGET_REPLACEMENT,
+  S22_WIDGET_DATE_CONTINUATION,
+  S22_WIDGET_SELECTION_ENVELOPE,
+  type AIJourneyCohortConfig,
+} from "./ai-journey.js";
+export {
+  loadS22ConnectionFaultProfile,
+  type S22ConnectionFaultConfiguration,
+  type S22ConnectionFaultProfile,
+} from "./s22-connection-fault.js";

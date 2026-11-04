@@ -60,6 +60,7 @@ const applicationRoleUrls = Object.freeze({
 
 const definerRoles = [
   "lead_agent_async_maintenance_definer",
+  "lead_agent_first_tenant_bootstrap_definer",
   "lead_agent_identity_definer",
   "lead_agent_inbound_route_definer",
   "lead_agent_membership_definer",
@@ -124,8 +125,21 @@ const dependencyUnavailable = () => {
   error.code = "DEPENDENCY_UNAVAILABLE";
   return error;
 };
+const migrationProfile = (head) => {
+  const count = new Map([
+    ["0031_s22_widget_inbound_route_management", 32],
+    ["0032_s22_widget_recovery", 33],
+  ]).get(head);
+  if (count === undefined) {
+    const error = new Error("Unreviewed migration head");
+    error.code = "MIGRATION_HEAD_UNREVIEWED";
+    throw error;
+  }
+  return { head, count };
+};
 
 const main = async () => {
+  const profile = migrationProfile(required("DEPLOYMENT_MIGRATION_HEAD"));
   const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
   const { Pool } = await import("pg");
   const { readStagingMigrationManifest, stagingRolePasswordFromUrl } =
@@ -139,25 +153,26 @@ const main = async () => {
   await check(
     {
       assertion: "migration_count",
-      expected: 30,
+      expected: profile.count,
       failureCode: "S22V001_MIGRATION_COUNT",
     },
     async () => {
       manifest = await readStagingMigrationManifest();
-      return { observed: manifest.entries.length, pass: manifest.entries.length === 30 };
+      const observed = manifest.entries.length;
+      return { observed, pass: observed === profile.count };
     },
   );
 
   await check(
     {
       assertion: "migration_head",
-      expected: "0029_s21_thread_automation_controls",
+      expected: profile.head,
       failureCode: "S22V002_MIGRATION_HEAD",
     },
     async () => {
       manifest ??= await readStagingMigrationManifest();
       const observed = manifest.entries.at(-1)?.tag ?? "unavailable";
-      return { observed, pass: observed === "0029_s21_thread_automation_controls" };
+      return { observed, pass: observed === profile.head };
     },
   );
 
@@ -204,7 +219,7 @@ const main = async () => {
   await check(
     {
       assertion: "applied_migration_count",
-      expected: 30,
+      expected: profile.count,
       failureCode: "S22V004_APPLIED_MIGRATION_COUNT",
     },
     () =>
@@ -213,14 +228,14 @@ const main = async () => {
           "select count(*)::integer as count from drizzle.__drizzle_migrations",
         );
         const observed = applied.rows[0]?.count ?? 0;
-        return { observed, pass: observed === 30 };
+        return { observed, pass: observed === profile.count };
       }),
   );
 
   await check(
     {
       assertion: "applied_migration_head",
-      expected: "0029_s21_thread_automation_controls",
+      expected: profile.head,
       failureCode: "S22V005_APPLIED_MIGRATION_HEAD",
     },
     () =>
@@ -237,12 +252,88 @@ const main = async () => {
         };
         return {
           observed,
-          pass:
-            head?.tag === "0029_s21_thread_automation_controls" &&
-            latestAppliedWhen === String(head.when),
+          pass: head?.tag === profile.head && latestAppliedWhen === String(head.when),
         };
       }),
   );
+
+  if (profile.head === "0032_s22_widget_recovery") {
+    await check(
+      {
+        assertion: "widget_recovery_columns",
+        expected: 7,
+        failureCode: "S22V034_WIDGET_RECOVERY_COLUMNS",
+      },
+      () =>
+        withAdmin(async (client) => {
+          const columns = await client.query(
+            "select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'widget_sessions' and column_name = any($1::text[]) order by column_name",
+            [
+              [
+                "recovery_token_hash",
+                "recovery_issued_at",
+                "recovery_expires_at",
+                "recovery_request_origin",
+                "recovery_embedding_origin",
+                "access_issued_at",
+                "access_expires_at",
+              ],
+            ],
+          );
+          return {
+            observed: columns.rows.length,
+            pass:
+              columns.rows.length === 7 &&
+              columns.rows.every(
+                (row) =>
+                  row.is_nullable === "YES" &&
+                  row.data_type ===
+                    (row.column_name === "recovery_token_hash"
+                      ? "bytea"
+                      : row.column_name.endsWith("_origin")
+                        ? "character varying"
+                        : "timestamp with time zone"),
+              ),
+          };
+        }),
+    );
+    await check(
+      {
+        assertion: "widget_recovery_constraints",
+        expected: 4,
+        failureCode: "S22V035_WIDGET_RECOVERY_CONSTRAINTS",
+      },
+      () =>
+        withAdmin(async (client) => {
+          const constraints = await client.query(
+            "select conname, convalidated, pg_get_constraintdef(oid) as definition from pg_constraint where conrelid = 'public.widget_sessions'::regclass and contype = 'c' and conname = any($1::text[]) order by conname",
+            [
+              [
+                "widget_sessions_access_shape_check",
+                "widget_sessions_recovery_shape_check",
+                "widget_sessions_lifetime_check",
+                "widget_sessions_revocation_check",
+              ],
+            ],
+          );
+          return {
+            observed: constraints.rows.length,
+            pass:
+              constraints.rows.length === 4 &&
+              constraints.rows.every(
+                (row) =>
+                  row.convalidated === true &&
+                  row.definition.includes(
+                    row.conname === "widget_sessions_recovery_shape_check" ||
+                      row.conname === "widget_sessions_revocation_check"
+                      ? "recovery_expires_at"
+                      : "access_expires_at",
+                  ),
+              ),
+          };
+        }),
+    );
+  }
 
   await check(
     {

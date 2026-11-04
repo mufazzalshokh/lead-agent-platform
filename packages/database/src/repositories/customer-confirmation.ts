@@ -187,7 +187,7 @@ const boundChannel = async (
     const bindings = await executeTenantRead(
       session,
       `select id from widget_sessions where organization_id=$1 and channel_connection_id=$2 and conversation_id=$3 and contact_id=$4
-      and status='active' and revoked_at is null and expires_at>$5 limit 1`,
+      and status='active' and revoked_at is null and coalesce(access_expires_at,expires_at)>$5 limit 1`,
       [conversation.channelConnectionId, conversation.conversationId, conversation.contactId, now],
     );
     return bindings.length === 1 ? "customer_session" : null;

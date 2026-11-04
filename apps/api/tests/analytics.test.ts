@@ -111,7 +111,7 @@ const fixture = () => {
   const now = new Date("2026-09-19T10:00:00.000Z");
   const config = createStaffWebAuthConfig({
     browserEnvelopeKey: Buffer.alloc(32, 71).toString("base64url"),
-    callbackUri: "https://api.example.test/v1/staff/auth/callback",
+    callbackUri: "https://staff.example.test/v1/staff/auth/callback",
     clientId: "staff-client",
     clientSecret: "synthetic-test-value",
     environment: "production",

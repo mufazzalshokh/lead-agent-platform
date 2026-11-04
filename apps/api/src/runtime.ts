@@ -8,6 +8,7 @@ import {
   loadInstagramPlatformConfig,
   loadWidgetSecurityConfig,
   loadWidgetEmbedConfig,
+  loadS22ConnectionFaultProfile,
 } from "@lead-agent/config";
 import {
   createAuthorizationDatabaseRuntime,
@@ -30,15 +31,21 @@ import {
 import type { FastifyInstance } from "fastify";
 
 import { createApi, STAFF_AUTH_LOG_REDACTION_PATHS } from "./auth/plugin.js";
+import { WIDGET_LOG_REDACTION_PATHS } from "./widget/plugin.js";
 import { createStaffConfigurationDependencies } from "./configuration/composition.js";
 import { createStaffOperationsDependencies } from "./staff/composition.js";
 import { createS9ConversationComposition } from "./conversations/composition.js";
-import { createWidgetDependencies } from "./widget/composition.js";
+import {
+  createStaffWidgetManagementDependencies,
+  createWidgetDependencies,
+} from "./widget/composition.js";
+import { createStaffS22WidgetCohortDependencies } from "./staff/s22-widget-cohort-composition.js";
 import { createTelegramApiComposition } from "./telegram/composition.js";
 import { createInstagramApiComposition } from "./instagram/composition.js";
 import type { CredentialSecretStore } from "@lead-agent/application";
 import { createOperationalMetrics } from "@lead-agent/observability";
 import { createStaffAnalyticsDependencies } from "./analytics/composition.js";
+import { createS22SessionProbe } from "./diagnostics/s22-connection-fault.js";
 
 const requireEnvironment = (environment: NodeJS.ProcessEnv, name: string): string => {
   const value = environment[name];
@@ -120,10 +127,23 @@ export const createApiFromEnvironment = (
   const oidcVerifier = createAuth0OidcIdentityVerifier(
     createAuth0OidcVerifierConfig({ audience: web.clientId, issuer: web.issuer }),
   );
+  const faultProfile = loadS22ConnectionFaultProfile(environment);
+  const sessionConnectionProbe =
+    faultProfile.state === "ready"
+      ? createS22SessionProbe(
+          faultProfile.profile,
+          authenticationDatabase,
+          environment,
+          (receipt) => api.log.info(receipt, "Bounded staging connection probe"),
+        )
+      : undefined;
   const api = createApi({
     logger: {
       level: "info",
-      redact: { censor: "[REDACTED]", paths: [...STAFF_AUTH_LOG_REDACTION_PATHS] },
+      redact: {
+        censor: "[REDACTED]",
+        paths: [...STAFF_AUTH_LOG_REDACTION_PATHS, ...WIDGET_LOG_REDACTION_PATHS],
+      },
     },
     staffAuth: {
       authorizationResolver: authorizationRuntime,
@@ -147,10 +167,15 @@ export const createApiFromEnvironment = (
       oidcClient: createAuth0BrowserOidcClient(web),
       oidcVerifier,
       sessions: createApplicationSessionLifecycle(sessionRuntime),
+      ...(sessionConnectionProbe === undefined ? {} : { sessionConnectionProbe }),
     },
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffOperations: createStaffOperationsDependencies(tenantRuntime, web.browserEnvelopeKey),
     staffAnalytics: createStaffAnalyticsDependencies(tenantRuntime, metrics),
+    staffWidgetManagement: createStaffWidgetManagementDependencies(tenantRuntime),
+    ...(environment["DEPLOYMENT_ENVIRONMENT"] === "staging"
+      ? { staffS22WidgetCohort: createStaffS22WidgetCohortDependencies(tenantRuntime) }
+      : {}),
     staffConversations: conversations.staff,
     staffTelegram: telegram.staff,
     telegramWebhook: telegram.webhook,
@@ -166,8 +191,18 @@ export const createApiFromEnvironment = (
       metrics,
     ),
   });
+  if (faultProfile.state === "not_admitted") {
+    api.log.warn(
+      { operation: "s22_connection_fault", outcome: "not_admitted" },
+      "Connection probe disabled",
+    );
+  }
+  if (sessionConnectionProbe !== undefined) {
+    api.addHook("onReady", () => sessionConnectionProbe.start());
+  }
   api.addHook("onClose", async () => {
     await Promise.all([
+      sessionConnectionProbe?.close(),
       membershipRuntime.close(),
       authorizationRuntime.close(),
       identityRuntime.close(),

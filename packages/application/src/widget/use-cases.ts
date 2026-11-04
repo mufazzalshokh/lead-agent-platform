@@ -5,6 +5,7 @@ import {
   WidgetConversationCreateInputSchema,
   WidgetMessageCreateInputSchema,
   WidgetTelemetryInputSchema,
+  WidgetRecoveryResumeInputSchema,
   isSchemaValue,
   type CanonicalInboundEvent,
   type ChannelConnectionId,
@@ -17,6 +18,7 @@ import {
   type WidgetMessage,
   type WidgetMessageCreateInput,
   type WidgetTelemetryInput,
+  type WidgetRecoveryResumeInput,
 } from "@lead-agent/contracts";
 import {
   WidgetOriginInvalidError,
@@ -32,6 +34,9 @@ import {
 } from "@lead-agent/security";
 
 import type { InboundRouteResolver, TrustedInboundRoute } from "../channels/index.js";
+import type { WidgetRecoveryStore } from "./recovery.js";
+import type { WidgetSessionAuthority } from "./authority.js";
+export type { WidgetSessionAuthority } from "./authority.js";
 
 import {
   createCanonicalInboundUseCases,
@@ -46,18 +51,6 @@ const EXCHANGE_LIFETIME_MS = 60 * 1_000;
 
 export type WidgetRoute = TrustedInboundRoute;
 export type WidgetRouteResolver = InboundRouteResolver;
-
-export type WidgetSessionAuthority = Readonly<{
-  channelConnectionId: ChannelConnectionId;
-  contactId: string | null;
-  conversationId: ConversationId | null;
-  expiresAt: Date;
-  issuedAt: Date;
-  lastSeenAt: Date;
-  organizationId: OrganizationId;
-  requestedLocale: "en" | "ru" | "uz";
-  sessionId: ResourceId;
-}>;
 
 export type WidgetProtectedMessageRecord = Readonly<{
   bodyCiphertext: Uint8Array | null;
@@ -169,6 +162,26 @@ export class WidgetApplicationError extends Error {
 }
 
 export type WidgetUseCases = Readonly<{
+  issueRecoveryCode(
+    input: Readonly<{ bearerToken: string; origin: unknown; requestId: string }>,
+  ): Promise<Readonly<{ recoveryCode: string; recoveryExpiresAt: Date }>>;
+  resumeConversation(
+    input: Readonly<{
+      bearerToken: string;
+      body: WidgetRecoveryResumeInput;
+      origin: unknown;
+      clientIp: string;
+      requestId: string;
+    }>,
+  ): Promise<
+    Readonly<{
+      bearerToken: string;
+      conversationId: ConversationId;
+      expiresAt: Date;
+      recoveryCode: string;
+      recoveryExpiresAt: Date;
+    }>
+  >;
   bootstrap(
     input: Readonly<{
       clientIp: string;
@@ -310,6 +323,7 @@ export const createWidgetUseCases = (
     rateLimiter: WidgetRateLimiter;
     routeResolver: WidgetRouteResolver;
     tokens: WidgetTokenService;
+    recovery?: Readonly<{ grants: WidgetExchangeGrantService; store: WidgetRecoveryStore }>;
     telemetry?: Readonly<{
       observe(
         input: Readonly<{
@@ -412,6 +426,91 @@ export const createWidgetUseCases = (
     return { ...authenticated, newJti, receipt: result.value } as const;
   };
   return Object.freeze({
+    issueRecoveryCode: async ({ bearerToken, origin: rawOrigin, requestId }) => {
+      if (!dependencies.recovery) throw new WidgetApplicationError("channel_unavailable");
+      const { claims, now, origin } = await verifyRequest(bearerToken, rawOrigin, "mutation");
+      const jti = dependencies.recovery.grants.createJti();
+      const result = await dependencies.recovery.store.issue({
+        claims,
+        now,
+        origin,
+        codeHash: dependencies.tokens.hashJti(jti),
+        requestId,
+      });
+      if (result === null || result.authority.conversationId === null)
+        throw new WidgetTokenInvalidError();
+      return {
+        recoveryCode: dependencies.recovery.grants.issue({
+          channelConnectionId: claims.channelConnectionId,
+          organizationId: claims.organizationId,
+          sessionId: claims.sessionId,
+          embeddingOrigin: claims.embeddingOrigin ?? origin,
+          jti,
+          issuedAt: result.recoveryIssuedAt,
+          expiresAt: result.recoveryExpiresAt,
+        }),
+        recoveryExpiresAt: result.recoveryExpiresAt,
+      };
+    },
+    resumeConversation: async ({ bearerToken, body, origin: rawOrigin, clientIp, requestId }) => {
+      if (!dependencies.recovery) throw new WidgetApplicationError("channel_unavailable");
+      if (!isSchemaValue(WidgetRecoveryResumeInputSchema, body))
+        throw new WidgetApplicationError("validation_failed");
+      const now = clock(),
+        origin = normalizeWidgetOrigin(rawOrigin);
+      // Consume before decrypt/lookup; attacker-controlled code cannot create limiter buckets.
+      dependencies.rateLimiter.consume(["recovery-ip", clientIp], 5);
+      const context = await dependencies.tokens.verify(bearerToken, now);
+      if (context.origin !== origin || context.conversationId !== null)
+        throw new WidgetTokenInvalidError();
+      const grant = dependencies.recovery.grants.open(body.recovery_code, now);
+      if (
+        context.organizationId !== grant.organizationId ||
+        context.channelConnectionId !== grant.channelConnectionId ||
+        (context.embeddingOrigin ?? origin) !== grant.embeddingOrigin
+      )
+        throw new WidgetTokenInvalidError();
+      dependencies.rateLimiter.consume(["recovery-session", grant.sessionId], 5);
+      dependencies.rateLimiter.consume(["tenant-authenticated", grant.organizationId], 300);
+      const jti = dependencies.tokens.createJti(),
+        nextCodeJti = dependencies.recovery.grants.createJti();
+      const result = await dependencies.recovery.store.resume({
+        grant,
+        context,
+        origin,
+        now,
+        codeHash: dependencies.tokens.hashJti(grant.jti),
+        nextCodeHash: dependencies.tokens.hashJti(nextCodeJti),
+        accessJtiHash: dependencies.tokens.hashJti(jti),
+        requestId,
+      });
+      if (result === null || result.authority.conversationId === null)
+        throw new WidgetTokenInvalidError();
+      const authority = result.authority;
+      if (authority.conversationId === null) throw new WidgetTokenInvalidError();
+      return {
+        bearerToken: await dependencies.tokens.issue({
+          channelConnectionId: authority.channelConnectionId,
+          conversationId: authority.conversationId,
+          organizationId: authority.organizationId,
+          sessionId: authority.sessionId,
+          embeddingOrigin: grant.embeddingOrigin,
+          origin,
+          jti,
+          issuedAt: now,
+          expiresAt: authority.expiresAt,
+        }),
+        conversationId: authority.conversationId,
+        expiresAt: authority.expiresAt,
+        recoveryCode: dependencies.recovery.grants.issue({
+          ...grant,
+          jti: nextCodeJti,
+          issuedAt: result.recoveryIssuedAt,
+          expiresAt: result.recoveryExpiresAt,
+        }),
+        recoveryExpiresAt: result.recoveryExpiresAt,
+      };
+    },
     bootstrap: async (input) => {
       const now = clock();
       const origin = normalizeWidgetOrigin(input.origin);

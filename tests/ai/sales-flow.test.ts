@@ -9,6 +9,7 @@ import {
   salesPreflight,
   salesLocale,
   selectGroundingFacts,
+  validateAgentDecision,
   createSalesFlowOrchestrator,
   medicalSafetyText,
   type AIContextSnapshot,
@@ -93,6 +94,58 @@ const knownService = {
 };
 
 describe("S15 shared deterministic sales flow", () => {
+  it("identifies every rejected extraction field without retaining its value", () => {
+    const snapshot = context("Salom");
+    const outcome = evaluateSalesDecision(
+      decision(snapshot, {
+        extracted_facts: {
+          ...validDecision().extracted_facts,
+          service_id: fixtureId(41901),
+          location_id: fixtureId(41902),
+          display_name: "PRIVATE_NAME",
+          phone_raw: "+998900000000",
+          email_raw: "private@example.invalid",
+        },
+      }),
+      snapshot,
+    );
+    expect(outcome).toMatchObject({
+      reason: "policy_denied",
+      modelRejection: "untrusted_extraction",
+      extractionRejectionFields: [
+        "service_id",
+        "location_id",
+        "display_name",
+        "phone_raw",
+        "email_raw",
+      ],
+    });
+    expect(JSON.stringify(outcome)).not.toMatch(/PRIVATE_NAME|998900000000|private@example/u);
+    expect(planSalesFlow(snapshot, outcome)).toMatchObject({
+      sources: [],
+      handoffReason: "policy_blocked",
+    });
+  });
+  it.each(["display_name", "phone_raw", "email_raw"] as const)(
+    "history-only %s stays rejected; verbatim current-message extraction remains valid",
+    (field) => {
+      const value = "SYNTHETIC_CUSTOMER_VALUE";
+      const snapshot = {
+        ...context("Salom"),
+        history: [{ role: "customer" as const, sequence: 1, text: value, messageId: earlierId }],
+      };
+      const proposed = decision(snapshot, {
+        extracted_facts: { ...validDecision().extracted_facts, [field]: value },
+      });
+      expect(evaluateSalesDecision(proposed, snapshot)).toMatchObject({
+        modelRejection: "untrusted_extraction",
+        extractionRejectionFields: [field],
+      });
+      expect(evaluateSalesDecision(proposed, { ...snapshot, message: value }).kind).toBe(
+        "decision",
+      );
+    },
+  );
   it.each([
     "oka lazer nechi pul",
     "Лазер нархи қанча?",
@@ -155,11 +208,176 @@ describe("S15 shared deterministic sales flow", () => {
     expect(value.result.kind).toBe("handoff_requested");
     expect(value.text).not.toMatch(/\?|qualified|band qilindi/u);
   });
-  it("model handoff proposal is not application authority", () => {
+  it("a rejected model handoff cannot silently consume the S22 price/duration turn", () => {
+    const snapshot = context("Salom, konsultatsiya narxi qancha va qancha davom etadi?");
+    const proposed = decision(snapshot, {
+      action: { type: "request_handoff", reason: "customer_requested" },
+    });
+    const outcome = evaluateSalesDecision(proposed, snapshot);
+    expect(outcome).toMatchObject({ kind: "fallback_required", reason: "policy_denied" });
+    const value = planSalesFlow(snapshot, outcome);
+    // Application policy, not the model's customer_requested proposal, owns this fallback.
+    expect(value.result).toMatchObject({ kind: "handoff_requested", reason: "policy_blocked" });
+    expect(value.handoffReason).toBe("policy_blocked");
+    expect(value.text).toContain("xodimga so'rov yuborildi");
+    expect(value.text).not.toMatch(/UNTRUSTED|SECRET|99%|approved|250 000/u);
+    expect(value.sources).toEqual([]);
+  });
+  it.each([
+    { code: "unsafe_response", extra: { safety: { safe_to_send: false, risk_flags: [] } } },
+    { code: "unsafe_response", extra: { message: { mode: "suppress", draft_text: null } } },
+    {
+      code: "unsafe_response",
+      extra: { message: { mode: "use_safe_template", draft_text: null } },
+    },
+    {
+      code: "untrusted_extraction",
+      extra: {
+        extracted_facts: { ...validDecision().extracted_facts, phone_raw: "+998900000000" },
+      },
+    },
+    {
+      code: "confirmation_not_authorized",
+      extra: { action: { type: "confirm_appointment", appointment_request_id: fixtureId(41009) } },
+    },
+    {
+      code: "confirmation_not_authorized",
+      extra: { action: { type: "decline_appointment", appointment_request_id: fixtureId(41009) } },
+    },
+  ])("rejected $code output gets only an application-owned safe fallback", ({ code, extra }) => {
+    const snapshot = context("lazer narxi"),
+      outcome = evaluateSalesDecision(decision(snapshot, extra), snapshot),
+      value = planSalesFlow(snapshot, outcome);
+    expect(outcome).toMatchObject({
+      reason: "policy_denied",
+      modelRejection: code,
+      applied: false,
+    });
+    expect(value).toMatchObject({
+      handoffReason: "policy_blocked",
+      sources: [],
+      result: { kind: "handoff_requested" },
+    });
+    expect(value.text).not.toMatch(/UNTRUSTED|SECRET|99%|\+998|250 000/u);
+  });
+  it("unknown citations are denied, never included in the safe fallback", () => {
+    const snapshot = context("lazer narxi"),
+      claim = snapshot.policy.facts[0]?.reference;
+    if (claim === undefined) throw new Error("Missing approved citation fixture");
+    const outcome = evaluateSalesDecision(
+      decision(snapshot, {
+        factual_claims: [{ ...claim, source_version: claim.source_version + 1 }],
+      }),
+      snapshot,
+    );
+    expect(outcome).toMatchObject({
+      modelRejection: "untrusted_citation",
+      reason: "policy_denied",
+    });
+    expect(planSalesFlow(snapshot, outcome).sources).toEqual([]);
+  });
+  const citationKeys = ["claim_kind", "source_type", "source_id", "source_version"] as const;
+  const permutations = <T>(values: readonly T[]): T[][] =>
+    values.length === 0
+      ? [[]]
+      : values.flatMap((value, index) =>
+          permutations(values.filter((_, position) => position !== index)).map((rest) => [
+            value,
+            ...rest,
+          ]),
+        );
+  it.each(permutations(citationKeys).map((keys) => ({ keys, label: keys.join(",") })))(
+    "accepts the exact approved citation independent of JSON property order: $label",
+    ({ keys }) => {
+      const snapshot = context("lazer narxi");
+      expect(snapshot.policy.facts.length).toBeGreaterThan(0);
+      const candidate: unknown = JSON.parse(
+        JSON.stringify({
+          ...decision(snapshot),
+          factual_claims: snapshot.policy.facts.map(({ reference }) =>
+            Object.fromEntries(keys.map((key) => [key, reference[key]])),
+          ),
+        }),
+      );
+      if (!validateAgentDecision(candidate)) throw new Error("Invalid reordered citation fixture");
+      const outcome = evaluateSalesDecision(candidate, snapshot);
+      expect(outcome.kind).toBe("decision");
+      const result = planSalesFlow(snapshot, outcome);
+      expect(result.handoffReason).toBeNull();
+      expect(result.text).toContain("250 000 UZS");
+      expect(result.text).not.toContain("UNTRUSTED");
+      expect(result.sources.length).toBeGreaterThan(0);
+    },
+  );
+  it.each(citationKeys)("still denies a changed citation %s with reordered properties", (key) => {
+    const snapshot = context("lazer narxi"),
+      approved = snapshot.policy.facts[0]?.reference;
+    if (approved === undefined) throw new Error("Missing approved citation fixture");
+    const changed = {
+      claim_kind: "hours",
+      source_type: "location",
+      source_id: fixtureId(41999),
+      source_version: approved.source_version + 1,
+    };
+    const candidate: unknown = {
+      ...decision(snapshot),
+      factual_claims: [
+        Object.fromEntries(
+          [...citationKeys]
+            .reverse()
+            .map((field) => [field, field === key ? changed[field] : approved[field]]),
+        ),
+      ],
+    };
+    if (!validateAgentDecision(candidate)) throw new Error("Invalid changed citation fixture");
+    const outcome = evaluateSalesDecision(candidate, snapshot);
+    expect(outcome).toMatchObject({
+      reason: "policy_denied",
+      modelRejection: "untrusted_citation",
+    });
+    expect(planSalesFlow(snapshot, outcome)).toMatchObject({
+      sources: [],
+      handoffReason: "policy_blocked",
+    });
     expect(
-      plan(context("Salom"), { action: { type: "request_handoff", reason: "customer_requested" } })
-        .handoffReason,
-    ).toBeNull();
+      evaluateSalesDecision(candidate, {
+        ...snapshot,
+        policy: { ...snapshot.policy, facts: [] },
+      }),
+    ).toMatchObject({ modelRejection: "untrusted_citation" });
+  });
+  it("budget dispatch denial is not a model rejection and cannot create a fallback Handoff", () => {
+    const value = planSalesFlow(context("lazer narxi"), {
+      kind: "fallback_required",
+      reason: "policy_denied",
+      applied: false,
+    });
+    expect(value.text).toBeNull();
+    expect(value.handoffReason).toBeNull();
+  });
+  it.each(["paused", "staff"] as const)(
+    "model rejection cannot override %s state",
+    (automationMode) => {
+      const snapshot = context("lazer narxi"),
+        outcome = evaluateSalesDecision(
+          decision(snapshot, { action: { type: "request_handoff", reason: "customer_requested" } }),
+          snapshot,
+        );
+      const value = planSalesFlow(
+        { ...snapshot, policy: { ...snapshot.policy, automationMode } },
+        outcome,
+      );
+      expect(value.text).toBeNull();
+      expect(value.handoffReason).toBeNull();
+    },
+  );
+  it("model rejection without trusted contactability cannot send or create a Handoff", () => {
+    const snapshot = context("lazer narxi", { contactable: false }),
+      outcome = evaluateSalesDecision(
+        decision(snapshot, { action: { type: "request_handoff", reason: "customer_requested" } }),
+        snapshot,
+      );
+    expect(planSalesFlow(snapshot, outcome)).toMatchObject({ text: null, handoffReason: null });
   });
   it("missing authoritative discounts take the bounded staff path", () => {
     const value = plan(context("lazer chegirma bormi", { stored: knownService }));
@@ -190,7 +408,10 @@ describe("S15 shared deterministic sales flow", () => {
   it("a model-invented or foreign-tenant service is rejected", () => {
     const snapshot = context("Salom"),
       facts = { ...decision(snapshot).extracted_facts, service_id: service.service_id };
-    expect(plan(snapshot, { extracted_facts: facts }).text).toBeNull();
+    const value = plan(snapshot, { extracted_facts: facts });
+    expect(value.handoffReason).toBe("policy_blocked");
+    expect(value.evidence.serviceId).toBeNull();
+    expect(value.sources).toEqual([]);
   });
   it("valid model extraction never defeats grounded price rendering", () => {
     const snapshot = context("lazer narxi");
@@ -202,11 +423,12 @@ describe("S15 shared deterministic sales flow", () => {
   });
   it("invented name/email/phone never become persisted facts", () => {
     const snapshot = context("lazer narxi");
-    expect(
-      plan(snapshot, {
-        extracted_facts: { ...decision(snapshot).extracted_facts, phone_raw: "+998900000000" },
-      }).text,
-    ).toBeNull();
+    const value = plan(snapshot, {
+      extracted_facts: { ...decision(snapshot).extracted_facts, phone_raw: "+998900000000" },
+    });
+    expect(value.handoffReason).toBe("policy_blocked");
+    expect(value.text).not.toContain("+998900000000");
+    expect(value.sources).toEqual([]);
   });
   it("staff/system content never becomes customer evidence", () => {
     const snapshot = {

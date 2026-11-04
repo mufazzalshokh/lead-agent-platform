@@ -32,27 +32,101 @@ const validDate = (date: string): boolean => {
   const instant = Date.parse(`${date}T00:00:00Z`);
   return Number.isFinite(instant) && new Date(instant).toISOString().slice(0, 10) === date;
 };
+// Presentation aliases only; every language shares the same date validation.
+const monthNames: readonly (readonly string[])[] = [
+  ["yanvar", "yanvarya", "january"],
+  ["fevral", "fevralya", "february"],
+  ["mart", "marta", "march"],
+  ["aprel", "aprelya", "april"],
+  ["may", "maya"],
+  ["iyun", "iyunya", "june"],
+  ["iyul", "iyulya", "july"],
+  ["avgust", "avgusta", "august"],
+  ["sentabr", "sentyabr", "sentyabrya", "september"],
+  ["oktabr", "oktyabr", "oktyabrya", "october"],
+  ["noyabr", "noyabrya", "november"],
+  ["dekabr", "dekabrya", "december"],
+];
+const monthNumbers = new Map(
+  monthNames.flatMap((names, index) => names.map((name) => [name, index + 1] as const)),
+);
+const namedMonths = [...monthNumbers.keys()].join("|");
+const namedDatePattern = new RegExp(
+  `\\b(?:(\\d{1,3}) (${namedMonths})(?: (\\d{4,}))?|(${namedMonths}) (\\d{1,3})(?: (\\d{4,}))?)\\b`,
+  "gu",
+);
+const monthMentionPattern = new RegExp(`\\b(${namedMonths})\\b`, "gu");
+const dateMentions = (text: string) => {
+  const query = normalizeGroundingQuery(text);
+  const named = [...query.matchAll(namedDatePattern)];
+  return {
+    query,
+    absolute: [...text.normalize("NFKC").matchAll(/\b(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})\b/gu)],
+    relative: [
+      ...query.matchAll(
+        /\b(bugun|ertaga|indin|segodnya|zavtra|poslezavtra|today|tomorrow|day after tomorrow)\b/gu,
+      ),
+    ],
+    named,
+    months: [...query.matchAll(monthMentionPattern)].filter(
+      (match) =>
+        match[0] !== "may" ||
+        named.some(
+          (date) => match.index >= date.index && match.index < date.index + date[0].length,
+        ) ||
+        !/^ (?:i|you|we|he|she|they|it|come|go|book|be|have|need|want|cost)\b/u.test(
+          query.slice(match.index + match[0].length),
+        ),
+    ),
+  };
+};
+/** Invalid/competing dates must invalidate earlier customer date evidence too. */
+export const appointmentDateMentioned = (text: string): boolean => {
+  const { absolute, relative, months } = dateMentions(text);
+  return absolute.length + relative.length + months.length > 0;
+};
 export const parseAppointmentDate = (
   text: string,
   receivedAt: string,
   zone: string,
 ): string | null => {
-  const query = normalizeGroundingQuery(text);
-  const absolute = [
-    ...text.normalize("NFKC").matchAll(/\b(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})\b/gu),
-  ];
-  const relative = [
-    ...query.matchAll(
-      /\b(bugun|ertaga|indin|segodnya|zavtra|poslezavtra|today|tomorrow|day after tomorrow)\b/gu,
-    ),
-  ];
+  const { query, absolute, relative, named, months } = dateMentions(text);
   // Competing dates are a clarification, never a guessed selection.
-  if (absolute.length + relative.length !== 1) return null;
+  if (absolute.length + relative.length + named.length !== 1 || months.length !== named.length)
+    return null;
   const raw = absolute[0]?.[1];
   if (raw !== undefined) {
     const date = /^\d{4}-/u.test(raw)
       ? raw
       : `${raw.slice(6)}-${raw.slice(3, 5)}-${raw.slice(0, 2)}`;
+    return validDate(date) ? date : null;
+  }
+  const namedDate = named[0];
+  if (namedDate !== undefined) {
+    const before = query.slice(0, namedDate.index);
+    const after = query.slice(namedDate.index + namedDate[0].length);
+    // Do not accept only the last/first day of "12-13 October" or "October 12 or 13".
+    // Unsupported adjacent year forms also require clarification, not a default year.
+    if (
+      /\b\d{1,2}(?: (?:or|yoki|ili|and|va|i|to))? $/u.test(before) ||
+      /^ (?:or|yoki|ili|and|va|i|to) \d{1,2}\b(?!:)/u.test(after) ||
+      /^ \d+\b(?!:)/u.test(after) ||
+      /\b\d{4,}(?:\p{L}+)?(?: (?:yil\w*|god\w*|year))? $/u.test(before) ||
+      /^ \d{4,}\p{L}+/u.test(after)
+    )
+      return null;
+    const month = monthNumbers.get(namedDate[2] ?? namedDate[4] ?? "");
+    const day = namedDate[1] ?? namedDate[5];
+    const explicitYear = namedDate[3] ?? namedDate[6];
+    if (
+      month === undefined ||
+      day === undefined ||
+      (explicitYear !== undefined && explicitYear.length !== 4)
+    )
+      return null;
+    // Missing year uses receipt's local year, never a guessed next occurrence.
+    const year = explicitYear ?? localAppointmentDate(receivedAt, zone).slice(0, 4);
+    const date = `${year}-${String(month).padStart(2, "0")}-${String(Number(day)).padStart(2, "0")}`;
     return validDate(date) ? date : null;
   }
   const word = relative[0]?.[1];
