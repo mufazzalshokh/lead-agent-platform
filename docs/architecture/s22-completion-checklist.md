@@ -7,6 +7,8 @@ or a new acceptance policy. Criteria come from the
 [staging freeze](26-s22-staging-recovery-capacity.md) and the detailed
 [evidence register](s22-acceptance-evidence.md#shortest-execution-sequence-and-evidence-limits).
 Historical pending headings are superseded only by explicitly scoped later proof.
+The [P0 release evidence matrix](s22-p0-release-matrix.md) maps C6 requirements to
+normal entry points, retained evidence, and the remaining product work.
 
 ## Retain accepted proof — do not repeat it
 
