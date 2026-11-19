@@ -194,7 +194,7 @@ type Controls = {
   sessionValid: boolean;
 };
 
-const createFixture = (withOperations = false) => {
+const createFixture = (withOperations = false, authenticationTime = NOW) => {
   const controls: Controls = { calls: [], role: "staff", sessionValid: true };
   const record = <Value>(operation: string, authorization: unknown, value: Value) => {
     controls.calls.push({ authorization, operation });
@@ -231,7 +231,7 @@ const createFixture = (withOperations = false) => {
   const session: AuthenticatedApplicationSession = {
     absoluteExpiresAt: new Date("2026-09-16T08:00:00.000Z"),
     authenticationLevel: "mfa",
-    authenticationTime: NOW,
+    authenticationTime,
     createdAt: NOW,
     idleExpiresAt: new Date("2026-09-15T09:00:00.000Z"),
     lastSeenAt: NOW,
@@ -290,6 +290,12 @@ const createFixture = (withOperations = false) => {
       return Promise.resolve({ items: [staffWorkFixture], next: null });
     },
     get: () => Promise.resolve(staffWorkFixture),
+    confirmation: () =>
+      Promise.resolve({
+        appointment_version: staffWorkFixture.version,
+        offline_offer: null,
+        attestation: null,
+      }),
     outcomes: () => Promise.resolve({ items: [], next: null }),
     mutate: (input) => {
       controls.calls.push({
@@ -350,6 +356,41 @@ const createFixture = (withOperations = false) => {
 };
 
 describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () => {
+  it("requires fresh MFA and explicit evidence on the offline confirmation route", async () => {
+    const f = createFixture(true, new Date(NOW.getTime() - 15 * 60_000));
+    try {
+      const url = `/v1/staff/appointment-requests/${staffWorkFixture.id}/attest-customer-confirmation`;
+      const headers = {
+        ...f.headers(),
+        origin: STAFF_ORIGIN,
+        "x-csrf-token": f.csrf,
+        "idempotency-key": "s18-offline-attestation",
+        "if-match": `"${staffWorkFixture.id}:${staffWorkFixture.version}"`,
+      };
+      const payload = {
+        offer_version: 1,
+        attestation_method: "phone",
+        customer_acted_at: NOW.toISOString(),
+        explicit_confirmation: true,
+      };
+      const invalid = await f.api.inject({
+        method: "POST",
+        url,
+        headers,
+        payload: { ...payload, explicit_confirmation: false },
+      });
+      expect(invalid.statusCode).toBe(400);
+      const stale = await f.api.inject({ method: "POST", url, headers, payload });
+      expect(stale.statusCode).toBe(403);
+      expect(stale.json()).toMatchObject({
+        code: "permission_denied",
+        type: "https://lead-agent.invalid/problems/step_up_required",
+      });
+      expect(f.controls.calls).toHaveLength(0);
+    } finally {
+      await f.api.close();
+    }
+  });
   it("queues a staff reply only through the authenticated versioned mutation boundary", async () => {
     const f = createFixture(true);
     const url = `/v1/staff/conversations/${staffWorkFixture.id}/messages`;

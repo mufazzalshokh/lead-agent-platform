@@ -19,6 +19,8 @@ import {
   staffAcceptAppointmentRequest,
   rejectAppointmentRequest,
   cancelAppointmentRequest,
+  confirmAppointmentRequest,
+  validateAppointmentOfferVersion,
   validateAppointmentRequestReasonCode,
   validateHandoffQueueKey,
   validateHandoffResolutionCode,
@@ -39,7 +41,11 @@ import {
   readExactAppointmentPreferences,
 } from "./appointment-domain.js";
 import { createConversationRepository } from "./conversations.js";
-import { boundConfirmationChannel } from "./customer-confirmation.js";
+import {
+  boundConfirmationChannel,
+  isOfflineWidgetCustomer,
+  persistConfirmationDecision,
+} from "./customer-confirmation.js";
 import { createHandoffNotificationRepository } from "./handoffs.js";
 import { persistDomainMutationPlan } from "./mutations.js";
 import { insertQueuedCustomerMessage, queueCustomerReply } from "./customer-replies.js";
@@ -276,6 +282,78 @@ export const persistStaffAppointmentDecision = async (
       now,
     );
   }
+};
+
+export const persistStaffCustomerAttestation = async (
+  session: TenantDbSession,
+  input: StaffPreparedOperation,
+  nextId: () => string,
+): Promise<void> => {
+  if (input.operation.action !== "attest-customer-confirmation")
+    throw new StaffOperationError("validation_failed");
+  const repo = createAppointmentRepository(session);
+  const initial = await repo.getAppointmentRequest(mapAppointmentRequestId(input.id));
+  await executeTenantRead(
+    session,
+    `select id from conversations where organization_id=$1 and id=$2 for update`,
+    [initial.conversationId],
+  );
+  await executeTenantRead(
+    session,
+    `select id from appointment_requests where organization_id=$1 and id=$2 for update`,
+    [initial.appointmentRequestId],
+  );
+  const row = await repo.getAppointmentRequest(initial.appointmentRequestId);
+  const body = input.operation.input;
+  if (row.version !== input.expectedVersion || row.offerVersion !== body.offer_version)
+    throw new StaffOperationError("version_conflict");
+  const now = new Date(input.occurredAt);
+  const conversation = await createConversationRepository(session).getConversation(
+    row.conversationId,
+  );
+  if (
+    row.status !== "awaiting_customer_confirmation" ||
+    row.contactId !== conversation.contactId ||
+    row.leadId !== conversation.leadId ||
+    !(await isOfflineWidgetCustomer(session, row.conversationId, now))
+  )
+    throw new StaffOperationError("business_rule_failed");
+  const preferences = await readExactAppointmentPreferences(session, row.appointmentRequestId);
+  if (preferences === null) throw new StaffOperationError("business_rule_failed");
+  const request = await loadAppointmentForDecision(session, row, preferences);
+  const offerVersion = validateAppointmentOfferVersion(row.offerVersion);
+  const reason = validateAppointmentRequestReasonCode("customer_confirmed_offline");
+  if (!offerVersion.ok || !reason.ok) throw new RepositoryDataIntegrityError();
+  const organizationId = session.organizationId;
+  const actor = staffActor(input);
+  const result = confirmAppointmentRequest(request, {
+    actor,
+    organizationId,
+    expectedVersion: request.version,
+    now: input.occurredAt,
+    evidence: {
+      appointmentRequest: { organizationId, appointmentRequestId: request.appointmentRequestId },
+      contact: { organizationId, contactId: request.contactId },
+      evidence: { organizationId, evidenceId: mapResourceId(nextId()) },
+      source: "staff_attested_external",
+      offerVersion: offerVersion.value,
+      customerAct: "explicit_confirmation",
+      customerActedAt: body.customer_acted_at,
+      attestationMethod: body.attestation_method,
+      attestationReasonCode: reason.value,
+      protectedEvidence: null,
+      staff: { organizationId, membershipId: input.authorization.membershipId },
+    },
+  });
+  if (!result.ok) throw new StaffOperationError("business_rule_failed");
+  await persistConfirmationDecision(session, request, result, {
+    actor,
+    correlation: mapCorrelationId(input.correlationId),
+    causation: null,
+    now,
+    nextId,
+    staffRequestId: input.requestId,
+  });
 };
 export const persistStaffHandoff = async (
   session: TenantDbSession,

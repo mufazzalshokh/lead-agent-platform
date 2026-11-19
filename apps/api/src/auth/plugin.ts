@@ -6,6 +6,7 @@ import {
   OrganizationIdSchema,
   RequestIdSchema,
   StaffMeResponseSchema,
+  StaffStepUpNavigationSchema,
   isSchemaValue,
   type OrganizationId,
 } from "@lead-agent/contracts";
@@ -373,6 +374,7 @@ const createAuditContext = (
 const safeProblem = (request: FastifyRequest, error: unknown) => {
   let code = "internal_error";
   let status = 500;
+  const stepUpRequired = error instanceof StaffOperationError && error.code === "step_up_required";
   if (
     error instanceof SessionAuthenticationRequiredError ||
     error instanceof ExternalIdentityDeniedError ||
@@ -423,9 +425,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
                 ? 422
                 : 429;
   } else if (error instanceof StaffOperationError) {
-    code = error.code;
+    code = stepUpRequired ? "permission_denied" : error.code;
     status =
-      error.code === "permission_denied"
+      error.code === "permission_denied" || error.code === "step_up_required"
         ? 403
         : error.code === "resource_not_found"
           ? 404
@@ -523,12 +525,16 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
     body: {
       code,
       detail:
-        status >= 500 ? "Authentication service is temporarily unavailable" : "Request denied",
+        status >= 500
+          ? "Authentication service is temporarily unavailable"
+          : stepUpRequired
+            ? "Fresh MFA is required for offline customer confirmation"
+            : "Request denied",
       instance: request.url.split("?", 1)[0],
       request_id: requestId,
       status,
       title: status >= 500 ? "Service unavailable" : "Request denied",
-      type: "https://lead-agent.invalid/problems/" + code,
+      type: "https://lead-agent.invalid/problems/" + (stepUpRequired ? "step_up_required" : code),
     },
     status,
   };
@@ -678,6 +684,7 @@ const registerStaffAuth = async (
       invitationTokenHash?: string;
     }> = {},
     forceProviderAuthentication = false,
+    respondWithNavigation = false,
   ): Promise<void> => {
     const now = clock();
     const authorization = await dependencies.oidcClient.begin(
@@ -698,7 +705,12 @@ const registerStaffAuth = async (
       state: authorization.state,
     });
     setTransactionCookie(reply, transaction);
-    await reply.redirect(authorization.authorizationUrl, 302);
+    if (respondWithNavigation) {
+      const navigation = { authorization_url: authorization.authorizationUrl };
+      if (!isSchemaValue(StaffStepUpNavigationSchema, navigation))
+        throw new TypeError("Invalid step-up navigation");
+      await reply.header("cache-control", "no-store").send(navigation);
+    } else await reply.redirect(authorization.authorizationUrl, 302);
   };
 
   api.get(STAFF_AUTH_PREFIX + "/login", async (request, reply) => {
@@ -731,10 +743,17 @@ const registerStaffAuth = async (
   api.post(STAFF_AUTH_PREFIX + "/step-up", async (request, reply) => {
     const resolved = await requireMutationSession(request, reply);
     const body = requireObjectBody(request.body);
-    await begin("step_up", resolveSafeReturnPath(body["return_to"], "/"), reply, {
-      expectedSessionId: resolved.session.sessionId,
-      expectedUserId: resolved.session.userId,
-    });
+    await begin(
+      "step_up",
+      resolveSafeReturnPath(body["return_to"], "/"),
+      reply,
+      {
+        expectedSessionId: resolved.session.sessionId,
+        expectedUserId: resolved.session.userId,
+      },
+      false,
+      request.headers.accept === "application/json",
+    );
   });
 
   api.get(STAFF_AUTH_PREFIX + "/callback", async (request, reply) => {

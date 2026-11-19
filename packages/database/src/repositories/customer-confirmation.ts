@@ -14,12 +14,14 @@ import {
   OrganizationIdSchema,
   ConversationIdSchema,
   MessageIdSchema,
+  MembershipIdSchema,
   CorrelationIdSchema,
   RequestIdSchema,
   EventIdSchema,
   isSchemaValue,
   type ActorRef,
   type CorrelationId,
+  type MembershipId,
   type MessageId,
   type Locale,
 } from "@lead-agent/contracts";
@@ -125,6 +127,241 @@ export const boundConfirmationChannel = async (
   return identities.length === 1 ? channel : null;
 };
 
+// The outer alias c is a canonical tenant Conversation. Only a previously bound
+// Widget customer with no live session qualifies for this offline path.
+export const offlineWidgetCustomerSql = (now: string): string => `exists (
+  select 1 from channel_connections cc
+  join contacts p on p.organization_id=cc.organization_id and p.id=c.contact_id
+  where cc.organization_id=c.organization_id and cc.id=c.channel_connection_id
+    and cc.channel_type='widget' and cc.status='active' and p.status='active'
+    and c.status not in ('closed','resolved')
+    and exists (
+      select 1 from widget_sessions w where w.organization_id=c.organization_id
+        and w.channel_connection_id=cc.id and w.conversation_id=c.id and w.contact_id=c.contact_id
+    )
+    and not exists (
+      select 1 from widget_sessions w where w.organization_id=c.organization_id
+        and w.channel_connection_id=cc.id and w.conversation_id=c.id and w.contact_id=c.contact_id
+        and w.status='active' and w.revoked_at is null and coalesce(w.access_expires_at,w.expires_at)>${now}
+    )
+)`;
+export const isOfflineWidgetCustomer = async (
+  session: TenantDbSession,
+  conversationId: string,
+  now: Date,
+): Promise<boolean> =>
+  (
+    await executeTenantRead(
+      session,
+      `select c.id from conversations c where c.organization_id=$1 and c.id=$2 and ${offlineWidgetCustomerSql("$3")}`,
+      [conversationId, now],
+    )
+  ).length === 1;
+
+export const persistConfirmationDecision = async (
+  session: TenantDbSession,
+  request: AppointmentRequest,
+  result: AppointmentRequestCommandResult,
+  context: Readonly<{
+    actor: Extract<ActorRef, { actor_type: "customer" | "system" | "member" }>;
+    correlation: CorrelationId;
+    causation: string | null;
+    now: Date;
+    nextId: () => string;
+    sourceMessageId?: MessageId | null;
+    staffRequestId?: string;
+  }>,
+): Promise<void> => {
+  if (!result.ok) throw new RepositoryDataIntegrityError();
+  const {
+    actor,
+    correlation,
+    causation,
+    now,
+    nextId,
+    sourceMessageId = null,
+    staffRequestId,
+  } = context;
+  let actorMembershipId: MembershipId | null = null;
+  if (actor.actor_type === "member") {
+    const membershipId: unknown = actor.actor_id;
+    if (!isSchemaValue(MembershipIdSchema, membershipId)) throw new RepositoryDataIntegrityError();
+    actorMembershipId = membershipId;
+  }
+  const evidence = result.value.nextAggregate.confirmationEvidence;
+  const attestation = evidence?.source === "staff_attested_external" ? evidence : null;
+  const aggregates: CoreAggregateMutation[] = [
+    {
+      aggregateType: "appointment_request",
+      mode: "update",
+      expectedVersion: request.version,
+      nextAggregate: result.value.nextAggregate,
+      ...(attestation === null
+        ? {}
+        : {
+            storage: { confirmationTokenHash: null, confirmationTokenConsumedAt: null },
+          }),
+    },
+  ];
+  const transitions: CoreTransitionPersistence[] = result.value.transitionRecords.map((record) => ({
+    transitionType: "appointment_request",
+    record,
+    transitionId: mapResourceId(nextId()),
+    correlationId: correlation,
+    sourceMessageId,
+    metadata: { confirmation_profile: CUSTOMER_CONFIRMATION_PROFILE },
+  }));
+  const drafts: Readonly<{
+    draft: CoreDomainEventDraft;
+    id: string;
+    type: "appointment_request" | "lead";
+  }>[] = result.value.events.map((draft) => ({
+    draft,
+    id: request.appointmentRequestId,
+    type: "appointment_request",
+  }));
+  if (result.value.nextAggregate.status === "confirmed") {
+    await executeTenantRead(
+      session,
+      `select id from leads where organization_id=$1 and id=$2 for update`,
+      [request.leadId],
+    );
+    const leadRow = await createLeadRepository(session).getLead(request.leadId),
+      evaluations = await createLeadRepository(session).listQualificationEvaluations(
+        request.leadId,
+        { limit: 1, result: "qualified", businessPolicyId: request.businessPolicyId },
+      );
+    const evaluation = evaluations.items[0];
+    if (
+      leadRow.status !== "booking_requested" ||
+      leadRow.qualificationPolicyId !== request.businessPolicyId ||
+      evaluation?.result !== "qualified" ||
+      evaluation.businessPolicyId !== request.businessPolicyId
+    )
+      throw new RepositoryDataIntegrityError();
+    const lead: Lead = {
+      leadId: leadRow.leadId,
+      contactId: leadRow.contactId,
+      organizationId: session.organizationId,
+      status: leadRow.status,
+      version: mapAggregateVersion(leadRow.version),
+      appointmentRequestId: request.appointmentRequestId,
+      qualification: {
+        evaluationId: evaluation.evaluationId,
+        policyId: evaluation.businessPolicyId,
+        result: "qualified",
+        reasonCodes: [],
+      },
+    };
+    const converted = convertLead(lead, {
+      organizationId: session.organizationId,
+      actor,
+      expectedVersion: lead.version,
+      occurredAt: mapUtcTimestamp(now),
+      appointmentRequest: {
+        organizationId: session.organizationId,
+        appointmentRequestId: request.appointmentRequestId,
+      },
+    });
+    if (!converted.ok) throw new RepositoryDataIntegrityError();
+    aggregates.push({
+      aggregateType: "lead",
+      mode: "update",
+      expectedVersion: lead.version,
+      nextAggregate: converted.value.nextAggregate,
+    });
+    transitions.push(
+      ...converted.value.transitionRecords.map((record) => ({
+        transitionType: "lead" as const,
+        record,
+      })),
+    );
+    drafts.push(
+      ...converted.value.events.map((draft) => ({
+        draft,
+        id: request.leadId,
+        type: "lead" as const,
+      })),
+    );
+  }
+  const events = drafts.map(({ draft, id, type }): DomainEventAppend => {
+    const value: unknown = {
+      ...draft,
+      actor,
+      organization_id: session.organizationId,
+      aggregate_type: type,
+      aggregate_id: id,
+      event_id: nextId(),
+      occurred_at: now.toISOString(),
+      correlation_id: correlation,
+      causation_id: causation,
+      request_id: staffRequestId ?? null,
+    };
+    if (isSchemaValue(AppointmentRequestConfirmedDomainEventV2Schema, value))
+      return { draft, envelope: value };
+    if (
+      !isSchemaValue(DomainEventSchema, value) ||
+      (value.aggregate_type !== "appointment_request" && value.aggregate_type !== "lead")
+    )
+      throw new RepositoryDataIntegrityError();
+    return { draft, envelope: value };
+  });
+  const requestId = staffRequestId ?? `s18:${causation}`;
+  if (!isSchemaValue(RequestIdSchema, requestId)) throw new RepositoryDataIntegrityError();
+  await persistDomainMutationPlan(session, {
+    aggregates: nonempty(aggregates),
+    transitions: nonempty(transitions),
+    events: nonempty(events),
+    audits: nonempty(
+      aggregates.map((mutation) => ({
+        actor,
+        actorMembershipId,
+        auditId: mapResourceId(nextId()),
+        correlationId: correlation,
+        occurredAt: mapUtcTimestamp(now),
+        requestId,
+        target:
+          mutation.aggregateType === "lead"
+            ? { targetType: "lead" as const, targetId: request.leadId }
+            : {
+                targetType: "appointment_request" as const,
+                targetId: request.appointmentRequestId,
+              },
+        metadataRedacted: {
+          confirmation_profile: CUSTOMER_CONFIRMATION_PROFILE,
+          expected_version: request.version,
+          ...(attestation === null
+            ? {}
+            : {
+                confirmation_source: attestation.source,
+                attestation_method: attestation.attestationMethod,
+                offer_version: attestation.offerVersion,
+              }),
+        },
+      })),
+    ),
+    ...(evidence === null
+      ? {}
+      : {
+          confirmationEvidence: [
+            {
+              evidence,
+              correlationId: correlation,
+            },
+          ],
+        }),
+  });
+  // This existing committed fact is the finite durable expiry task, still owned by analytics.
+  // The separate message.response_queued intent is deliverable immediately.
+  if (result.value.nextAggregate.status === "awaiting_customer_confirmation") {
+    await executeTenantWrite(
+      session,
+      `update outbox_events set available_at=$3 where organization_id=$1 and id=$2 and status='pending'`,
+      [events[0]?.envelope.event_id, result.value.nextAggregate.confirmationOffer?.expiresAt],
+    );
+  }
+};
+
 export const createCustomerConfirmationStore = (
   runtime: TenantDatabaseRuntime,
   options: Readonly<{ dataProtection: CustomerDataProtection; clock?: () => Date }>,
@@ -132,7 +369,7 @@ export const createCustomerConfirmationStore = (
   const clock = options.clock ?? (() => new Date()),
     identifiers = createSecurityIdentifierFactory();
   const nextId = (): string => identifiers.issueResourceId(clock());
-  const persist = async (
+  const persist = (
     session: TenantDbSession,
     request: AppointmentRequest,
     result: AppointmentRequestCommandResult,
@@ -141,169 +378,15 @@ export const createCustomerConfirmationStore = (
     causation: string,
     now: Date,
     sourceMessageId: MessageId | null = null,
-  ): Promise<void> => {
-    if (!result.ok) throw new RepositoryDataIntegrityError();
-    const aggregates: CoreAggregateMutation[] = [
-      {
-        aggregateType: "appointment_request",
-        mode: "update",
-        expectedVersion: request.version,
-        nextAggregate: result.value.nextAggregate,
-      },
-    ];
-    const transitions: CoreTransitionPersistence[] = result.value.transitionRecords.map(
-      (record) => ({
-        transitionType: "appointment_request",
-        record,
-        transitionId: mapResourceId(nextId()),
-        correlationId: correlation,
-        sourceMessageId,
-        metadata: { confirmation_profile: CUSTOMER_CONFIRMATION_PROFILE },
-      }),
-    );
-    const drafts: Readonly<{
-      draft: CoreDomainEventDraft;
-      id: string;
-      type: "appointment_request" | "lead";
-    }>[] = result.value.events.map((draft) => ({
-      draft,
-      id: request.appointmentRequestId,
-      type: "appointment_request",
-    }));
-    if (result.value.nextAggregate.status === "confirmed") {
-      await executeTenantRead(
-        session,
-        `select id from leads where organization_id=$1 and id=$2 for update`,
-        [request.leadId],
-      );
-      const leadRow = await createLeadRepository(session).getLead(request.leadId),
-        evaluations = await createLeadRepository(session).listQualificationEvaluations(
-          request.leadId,
-          { limit: 1, result: "qualified", businessPolicyId: request.businessPolicyId },
-        );
-      const evaluation = evaluations.items[0];
-      if (
-        leadRow.status !== "booking_requested" ||
-        leadRow.qualificationPolicyId !== request.businessPolicyId ||
-        evaluation?.result !== "qualified" ||
-        evaluation.businessPolicyId !== request.businessPolicyId
-      )
-        throw new RepositoryDataIntegrityError();
-      const lead: Lead = {
-        leadId: leadRow.leadId,
-        contactId: leadRow.contactId,
-        organizationId: session.organizationId,
-        status: leadRow.status,
-        version: mapAggregateVersion(leadRow.version),
-        appointmentRequestId: request.appointmentRequestId,
-        qualification: {
-          evaluationId: evaluation.evaluationId,
-          policyId: evaluation.businessPolicyId,
-          result: "qualified",
-          reasonCodes: [],
-        },
-      };
-      const converted = convertLead(lead, {
-        organizationId: session.organizationId,
-        actor,
-        expectedVersion: lead.version,
-        occurredAt: mapUtcTimestamp(now),
-        appointmentRequest: {
-          organizationId: session.organizationId,
-          appointmentRequestId: request.appointmentRequestId,
-        },
-      });
-      if (!converted.ok) throw new RepositoryDataIntegrityError();
-      aggregates.push({
-        aggregateType: "lead",
-        mode: "update",
-        expectedVersion: lead.version,
-        nextAggregate: converted.value.nextAggregate,
-      });
-      transitions.push(
-        ...converted.value.transitionRecords.map((record) => ({
-          transitionType: "lead" as const,
-          record,
-        })),
-      );
-      drafts.push(
-        ...converted.value.events.map((draft) => ({
-          draft,
-          id: request.leadId,
-          type: "lead" as const,
-        })),
-      );
-    }
-    const events = drafts.map(({ draft, id, type }): DomainEventAppend => {
-      const value: unknown = {
-        ...draft,
-        actor,
-        organization_id: session.organizationId,
-        aggregate_type: type,
-        aggregate_id: id,
-        event_id: nextId(),
-        occurred_at: now.toISOString(),
-        correlation_id: correlation,
-        causation_id: causation,
-        request_id: null,
-      };
-      if (isSchemaValue(AppointmentRequestConfirmedDomainEventV2Schema, value))
-        return { draft, envelope: value };
-      if (
-        !isSchemaValue(DomainEventSchema, value) ||
-        (value.aggregate_type !== "appointment_request" && value.aggregate_type !== "lead")
-      )
-        throw new RepositoryDataIntegrityError();
-      return { draft, envelope: value };
+  ): Promise<void> =>
+    persistConfirmationDecision(session, request, result, {
+      actor,
+      correlation,
+      causation,
+      now,
+      nextId,
+      sourceMessageId,
     });
-    const requestId = `s18:${causation}`;
-    if (!isSchemaValue(RequestIdSchema, requestId)) throw new RepositoryDataIntegrityError();
-    await persistDomainMutationPlan(session, {
-      aggregates: nonempty(aggregates),
-      transitions: nonempty(transitions),
-      events: nonempty(events),
-      audits: nonempty(
-        aggregates.map((mutation) => ({
-          actor,
-          actorMembershipId: null,
-          auditId: mapResourceId(nextId()),
-          correlationId: correlation,
-          occurredAt: mapUtcTimestamp(now),
-          requestId,
-          target:
-            mutation.aggregateType === "lead"
-              ? { targetType: "lead" as const, targetId: request.leadId }
-              : {
-                  targetType: "appointment_request" as const,
-                  targetId: request.appointmentRequestId,
-                },
-          metadataRedacted: {
-            confirmation_profile: CUSTOMER_CONFIRMATION_PROFILE,
-            expected_version: request.version,
-          },
-        })),
-      ),
-      ...(result.value.nextAggregate.confirmationEvidence === null
-        ? {}
-        : {
-            confirmationEvidence: [
-              {
-                evidence: result.value.nextAggregate.confirmationEvidence,
-                correlationId: correlation,
-              },
-            ],
-          }),
-    });
-    // This existing committed fact is the finite durable expiry task, still owned by analytics.
-    // The separate message.response_queued intent is deliverable immediately.
-    if (result.value.nextAggregate.status === "awaiting_customer_confirmation") {
-      await executeTenantWrite(
-        session,
-        `update outbox_events set available_at=$3 where organization_id=$1 and id=$2 and status='pending'`,
-        [events[0]?.envelope.event_id, result.value.nextAggregate.confirmationOffer?.expiresAt],
-      );
-    }
-  };
   const reply = async (
     session: TenantDbSession,
     conversation: ConversationRecord,
@@ -412,7 +495,11 @@ export const createCustomerConfirmationStore = (
           );
           return "expired";
         }
-        if ((await boundConfirmationChannel(session, conversation, now)) === null)
+        const channel = await boundConfirmationChannel(session, conversation, now);
+        if (
+          channel === null &&
+          !(await isOfflineWidgetCustomer(session, conversation.conversationId, now))
+        )
           return "unavailable";
         await persist(
           session,
@@ -434,6 +521,8 @@ export const createCustomerConfirmationStore = (
           event.event_id,
           now,
         );
+        // An offline Widget prompt is durable and becomes visible if this
+        // customer later returns with a valid session for this Conversation.
         await reply(
           session,
           conversation,

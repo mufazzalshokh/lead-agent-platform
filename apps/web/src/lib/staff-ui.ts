@@ -95,6 +95,8 @@ export const readCsrfCookie = (cookieHeader: string): string | null => {
 
 export const staffActionMessage = (status: number, code?: string): string => {
   if (status === 401) return "Your session ended. Please sign in again.";
+  if (code === "step_up_required")
+    return "Verify MFA, then reopen the appointment and record confirmation.";
   if (status === 403) return "You do not have access to this workspace action.";
   if (status === 409 || code === "version_conflict" || code === "state_conflict") {
     return "This request was already handled.";

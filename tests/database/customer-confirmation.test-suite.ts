@@ -23,6 +23,7 @@ import {
   MembershipIdSchema,
   UserIdSchema,
   StaffAcceptAppointmentInputSchema,
+  StaffAttestCustomerConfirmationInputSchema,
   isSchemaValue,
 } from "../../packages/contracts/src/index.js";
 import {
@@ -120,18 +121,20 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         idleExpiresAt: new Date(now.getTime() + 3600000),
         absoluteExpiresAt: new Date(now.getTime() + 86400000),
       };
-      const auth = await resolveAuthorizationContext(session, organizationId, {
-        resolveCurrentMembership: () =>
-          Promise.resolve({
-            organizationId,
-            membershipId,
-            userId,
-            role: "owner",
-            status: "active",
-            locationScope: "all",
-            allowedLocationIds: [],
-          }),
-      });
+      const authorizeAt = (authenticationTime: Date) =>
+        resolveAuthorizationContext({ ...session, authenticationTime }, organizationId, {
+          resolveCurrentMembership: () =>
+            Promise.resolve({
+              organizationId,
+              membershipId,
+              userId,
+              role: "owner",
+              status: "active",
+              locationScope: "all",
+              allowedLocationIds: [],
+            }),
+        });
+      const auth = await authorizeAt(now);
       const ops = createStaffOperationsDependencies(
         harness.runtime(),
         new Uint8Array(32).fill(17),
@@ -176,6 +179,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         tenant,
         ops,
         auth,
+        authorizeAt,
         item,
         channelConnectionId: channel,
         channelType,
@@ -256,6 +260,125 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         "unused",
       );
     };
+    const revokeWidget = async (f: Awaited<ReturnType<typeof accepted>>) => {
+      await harness.privilegedPool().query(
+        `update widget_sessions set status='revoked',revoked_at=$3
+          where organization_id=$1 and conversation_id=$2 and status='active'`,
+        [f.organizationId, f.receipt.conversationId, now],
+      );
+    };
+    const attest = (
+      f: Awaited<ReturnType<typeof accepted>>,
+      version: number,
+      offerVersion: number,
+      actedAt: Date,
+      method: "phone" | "in_person" = "phone",
+    ) => {
+      const input: unknown = {
+        offer_version: offerVersion,
+        attestation_method: method,
+        customer_acted_at: actedAt.toISOString(),
+        explicit_confirmation: true,
+      };
+      if (!isSchemaValue(StaffAttestCustomerConfirmationInputSchema, input))
+        throw new Error("Invalid attestation fixture");
+      return f.ops.mutate(
+        f.auth,
+        "appointment_request",
+        f.item.id,
+        version,
+        "offline-attestation",
+        { action: "attest-customer-confirmation", input },
+        "s18:offline-confirmation",
+        "unused",
+      );
+    };
+    it.each(["phone", "in_person"] as const)(
+      "prepares an offline Widget offer and records one attributed %s confirmation",
+      async (method) => {
+        const f = await accepted();
+        await revokeWidget(f);
+        expect(await store().prepare(f.event)).toBe("prepared");
+        const context = await f.ops.confirmation(f.auth, f.item.id);
+        const offer = context.offline_offer;
+        if (offer === null) throw new Error("Expected an offline offer");
+        const actedAt = new Date(now.getTime() + 60_000);
+        now = new Date(now.getTime() + 120_000);
+        const pool = harness.privilegedPool();
+        await pool.query(`update appointment_requests set confirmation_token_hash=$2 where id=$1`, [
+          f.item.id,
+          Buffer.alloc(32, 12),
+        ]);
+        const replay = () =>
+          attest(f, context.appointment_version, offer.offer_version, actedAt, method);
+        const [first, second] = await Promise.all([replay(), replay()]);
+        expect(first.resource.status).toBe("confirmed");
+        expect(second).toEqual(first);
+        expect(await counts()).toMatchObject({ evidence: 1, confirmed: 1, transitions: 1 });
+        expect(await f.ops.confirmation(f.auth, f.item.id)).toMatchObject({
+          offline_offer: null,
+          attestation: {
+            attestation_method: method,
+            customer_acted_at: actedAt.toISOString(),
+            recorded_at: now.toISOString(),
+            recorded_by_membership_id: f.auth.membershipId,
+          },
+        });
+        expect(
+          (
+            await pool.query(
+              `select a.confirmation_source,l.status,a.confirmation_token_hash
+           from appointment_requests a join leads l on l.organization_id=a.organization_id and l.id=a.lead_id where a.id=$1`,
+              [f.item.id],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            confirmation_source: "staff_attested_external",
+            status: "converted",
+            confirmation_token_hash: null,
+          },
+        ]);
+        expect(
+          (
+            await pool.query(
+              `select actor_id, metadata_redacted_jsonb->>'attestation_method' as method
+           from audit_events where target_id=$1 and metadata_redacted_jsonb->>'confirmation_source'='staff_attested_external'`,
+              [f.item.id],
+            )
+          ).rows,
+        ).toEqual([{ actor_id: f.auth.membershipId, method }]);
+        expect((await cancel(f)).resource.status).toBe("cancelled");
+        expect((await f.ops.confirmation(f.auth, f.item.id)).attestation?.attestation_method).toBe(
+          method,
+        );
+      },
+    );
+    it("rejects online, wrong-offer, pre-issuance, and equal-expiry attestations", async () => {
+      const f = await prepared();
+      const context = await f.ops.confirmation(f.auth, f.item.id);
+      expect(context.offline_offer).toBeNull();
+      const version = context.appointment_version;
+      const offerVersion = f.event.payload.offer_version;
+      await expect(attest(f, version, offerVersion, now)).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      await revokeWidget(f);
+      await expect(attest(f, version, offerVersion + 1, now)).rejects.toMatchObject({
+        code: "version_conflict",
+      });
+      await expect(
+        attest(f, version, offerVersion, new Date(now.getTime() - 1)),
+      ).rejects.toMatchObject({ code: "business_rule_failed" });
+      const expiry = requireDate((await state())[0]?.offer_expires_at);
+      now = expiry;
+      expect((await f.ops.confirmation(f.auth, f.item.id)).offline_offer).toBeNull();
+      const renewed = { ...f, auth: await f.authorizeAt(now) };
+      await expect(attest(renewed, version, offerVersion, now)).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      expect(await counts()).toMatchObject({ evidence: 0, confirmed: 0, transitions: 0 });
+    });
     it("cancels staff acceptance before a confirmation job prepares any prompt", async () => {
       const f = await accepted();
       expect((await cancel(f)).resource.status).toBe("cancelled");

@@ -8,7 +8,9 @@ import {
 import {
   StaffWorkItemSchema,
   StaffOutcomeSchema,
+  ResourceVersionSchema,
   isSchemaValue,
+  type StaffAppointmentConfirmation,
   type StaffWorkItem,
   type StaffOutcome,
   type ResourceId,
@@ -21,7 +23,15 @@ import {
   type TenantPermission,
 } from "@lead-agent/security";
 import type { TenantDbSession } from "../runtime/tenant.js";
-import { executeTenantRead, mapLocationId, mapUtcTimestamp } from "./shared.js";
+import { createAppointmentRepository } from "./appointments.js";
+import { isOfflineWidgetCustomer, offlineWidgetCustomerSql } from "./customer-confirmation.js";
+import {
+  executeTenantRead,
+  mapAppointmentRequestId,
+  mapLocationId,
+  mapUtcTimestamp,
+  RepositoryDataIntegrityError,
+} from "./shared.js";
 
 /** Recheck the trusted membership inside the same transaction as each read/write. */
 export const requireStaffActor = async (
@@ -88,12 +98,14 @@ const times = {
   notification: "n.created_at",
 } as const;
 const activeHandoff = "h.status in ('requested','assigned','in_progress')";
+const activeAppointment = `(a.status='requested' or (a.status='awaiting_customer_confirmation'
+  and a.offer_expires_at>current_timestamp and ${offlineWidgetCustomerSql("current_timestamp")}))`;
 const actionable = (kind: StaffWorkKind): string =>
   kind === "appointment_request"
-    ? "a.status='requested'"
+    ? activeAppointment
     : kind === "handoff"
       ? activeHandoff
-      : `coalesce(c.status='awaiting_staff' or ${activeHandoff} or a.status='requested',false)`;
+      : `coalesce(c.status='awaiting_staff' or ${activeHandoff} or ${activeAppointment},false)`;
 const location = (kind: StaffWorkKind): string =>
   kind === "appointment_request"
     ? "a.location_id"
@@ -213,6 +225,53 @@ export const getStaffWork = async (
   const value = (await readStaffWork(session, authorization, kind, { id, limit: 1 })).items[0];
   if (value === undefined) throw new StaffOperationError("resource_not_found");
   return value;
+};
+export const readStaffConfirmation = async (
+  session: TenantDbSession,
+  authorization: AuthorizationContext,
+  id: ResourceId,
+  now: Date,
+): Promise<StaffAppointmentConfirmation> => {
+  await getStaffWork(session, authorization, "appointment_request", id);
+  const repo = createAppointmentRepository(session);
+  const row = await repo.getAppointmentRequest(mapAppointmentRequestId(id));
+  let offlineOffer: StaffAppointmentConfirmation["offline_offer"] = null;
+  if (
+    row.status === "awaiting_customer_confirmation" &&
+    row.startAt !== null &&
+    row.confirmationIssuedAt !== null &&
+    row.offerExpiresAt !== null &&
+    now.getTime() < Date.parse(row.offerExpiresAt) &&
+    (await isOfflineWidgetCustomer(session, row.conversationId, now))
+  ) {
+    if (!isSchemaValue(ResourceVersionSchema, row.offerVersion))
+      throw new RepositoryDataIntegrityError();
+    offlineOffer = {
+      offer_version: row.offerVersion,
+      start_at: row.startAt,
+      issued_at: row.confirmationIssuedAt,
+      expires_at: row.offerExpiresAt,
+    };
+  }
+  let attestation: StaffAppointmentConfirmation["attestation"] = null;
+  if (row.confirmationSource === "staff_attested_external") {
+    const evidence = (await repo.listConfirmationEvidence(row.appointmentRequestId, { limit: 1 }))
+      .items[0];
+    if (
+      evidence?.source !== "staff_attested_external" ||
+      evidence.offerVersion !== row.offerVersion ||
+      evidence.recordedByMembershipId === null ||
+      (evidence.attestationMethod !== "phone" && evidence.attestationMethod !== "in_person")
+    )
+      throw new RepositoryDataIntegrityError();
+    attestation = {
+      attestation_method: evidence.attestationMethod,
+      customer_acted_at: evidence.customerActedAt,
+      recorded_at: evidence.recordedAt,
+      recorded_by_membership_id: evidence.recordedByMembershipId,
+    };
+  }
+  return { appointment_version: row.version, offline_offer: offlineOffer, attestation };
 };
 export const readStaffOutcomes = async (
   session: TenantDbSession,

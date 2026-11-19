@@ -1,6 +1,7 @@
 export {
   resolveAuthorizationContext,
   isAuthorizationContext,
+  hasFreshAuthorizationMfa,
   type AuthorizationContext,
   type CurrentMembershipAuthorization,
   type CurrentMembershipAuthorizationResolver,

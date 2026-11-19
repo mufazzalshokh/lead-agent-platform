@@ -1,4 +1,9 @@
-import { STAFF_REPLY_MAX_BYTES } from "@lead-agent/contracts";
+import {
+  STAFF_REPLY_MAX_BYTES,
+  StaffAppointmentConfirmationSchema,
+  isSchemaValue,
+  type StaffAppointmentConfirmation,
+} from "@lead-agent/contracts";
 import { makeIdempotencyKey, staffActionMessage } from "./staff-ui";
 
 export type RecordValue = Readonly<Record<string, unknown>>;
@@ -28,6 +33,7 @@ export type WorkItem = Readonly<{
 
 export type DetailState = Readonly<{
   appointment: RecordValue | null;
+  confirmation?: StaffAppointmentConfirmation | null;
   contact: RecordValue | null;
   conversation: RecordValue | null;
   handoff: RecordValue | null;
@@ -281,7 +287,25 @@ export const createStaffWorkflow = (
     const activeHandoffId = result.conversation?.["active_handoff_id"];
     if (activeHandoffId != null && activeHandoffId !== item.handoffId)
       throw new Error("changed_active_handoff");
-    return result;
+    const appointmentIdentity = actionIdentity(result.appointment);
+    const status = result.appointment?.["status"];
+    const confirmation =
+      appointmentIdentity !== null &&
+      (status === "awaiting_customer_confirmation" ||
+        status === "confirmed" ||
+        status === "cancelled")
+        ? await get(`/v1/staff/appointment-requests/${appointmentIdentity.id}/confirmation`).catch(
+            () => null,
+          )
+        : null;
+    return {
+      ...result,
+      confirmation:
+        isSchemaValue(StaffAppointmentConfirmationSchema, confirmation) &&
+        confirmation.appointment_version === appointmentIdentity?.version
+          ? confirmation
+          : null,
+    };
   };
   const refreshDetail = async (item: WorkItem): Promise<boolean> => {
     const epoch = ++detailEpoch;
@@ -308,7 +332,8 @@ export const createStaffWorkflow = (
           actionable:
             status === "awaiting_staff" ||
             ["requested", "assigned", "in_progress"].includes(handoffStatus ?? "") ||
-            appointmentStatus === "requested",
+            appointmentStatus === "requested" ||
+            detail.confirmation?.offline_offer != null,
         },
       });
       return true;
@@ -417,7 +442,11 @@ export const createStaffWorkflow = (
         const problem: unknown = await response.json().catch(() => null);
         notice = staffActionMessage(
           response.status,
-          isRecord(problem) ? (stringValue(problem["code"]) ?? undefined) : undefined,
+          isRecord(problem)
+            ? problem["type"] === "https://lead-agent.invalid/problems/step_up_required"
+              ? "step_up_required"
+              : (stringValue(problem["code"]) ?? undefined)
+            : undefined,
         );
       } else
         notice = isReply
@@ -428,7 +457,9 @@ export const createStaffWorkflow = (
               ? "Handoff resolved. Messages remain available in History when no staff work is pending."
               : path.endsWith("/cancel")
                 ? "Cancellation recorded. Check that the customer has been notified."
-                : "Action saved. The current appointment state is shown below.";
+                : path.endsWith("/attest-customer-confirmation")
+                  ? "The customer's offline confirmation was recorded."
+                  : "Action saved. The current appointment state is shown below.";
     } catch {
       notice = "We could not confirm that action. Review the refreshed state before trying again.";
     }

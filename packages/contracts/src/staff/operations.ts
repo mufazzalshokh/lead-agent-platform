@@ -109,6 +109,58 @@ export const StaffCancelAppointmentInputSchema = Type.Object(
   { reason_code: code() },
   { $id: "StaffCancelAppointmentInput.v1", additionalProperties: false },
 );
+const attestationMethod = () => Type.Union([Type.Literal("phone"), Type.Literal("in_person")]);
+export const StaffAttestCustomerConfirmationInputSchema = Type.Object(
+  {
+    offer_version: embed(ResourceVersionSchema),
+    attestation_method: attestationMethod(),
+    customer_acted_at: embed(UtcTimestampSchema),
+    explicit_confirmation: Type.Literal(true),
+  },
+  { $id: "StaffAttestCustomerConfirmationInput.v1", additionalProperties: false },
+);
+export const StaffAppointmentConfirmationSchema = Type.Object(
+  {
+    appointment_version: embed(ResourceVersionSchema),
+    offline_offer: Type.Union([
+      Type.Object(
+        {
+          offer_version: embed(ResourceVersionSchema),
+          start_at: embed(UtcTimestampSchema),
+          issued_at: embed(UtcTimestampSchema),
+          expires_at: embed(UtcTimestampSchema),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Null(),
+    ]),
+    attestation: Type.Union([
+      Type.Object(
+        {
+          attestation_method: attestationMethod(),
+          customer_acted_at: embed(UtcTimestampSchema),
+          recorded_at: embed(UtcTimestampSchema),
+          recorded_by_membership_id: embed(MembershipIdSchema),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Null(),
+    ]),
+  },
+  { $id: "StaffAppointmentConfirmation.v1", additionalProperties: false },
+);
+export const StaffAppointmentConfirmationResponseSchema = createSuccessEnvelopeSchema(
+  StaffAppointmentConfirmationSchema,
+  "StaffAppointmentConfirmationResponse.v1",
+);
+export const StaffStepUpNavigationSchema = Type.Object(
+  { authorization_url: Type.String({ maxLength: 8192, pattern: "^https://" }) },
+  { $id: "StaffStepUpNavigation.v1", additionalProperties: false },
+);
+export type StaffAppointmentConfirmation = Type.Static<typeof StaffAppointmentConfirmationSchema>;
+export type StaffAttestCustomerConfirmationInput = Type.Static<
+  typeof StaffAttestCustomerConfirmationInputSchema
+>;
 export const StaffClaimHandoffInputSchema = Type.Object(
   { conversation_version: embed(ResourceVersionSchema) },
   { $id: "StaffClaimHandoffInput.v1", additionalProperties: false },

@@ -3,6 +3,7 @@ import {
   OrganizationIdSchema,
   UserIdSchema,
   isSchemaValue,
+  StaffStepUpNavigationSchema,
   type MembershipId,
   type OrganizationId,
   type UserId,
@@ -751,45 +752,53 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
     }
   });
 
-  it("binds fresh step-up to the same session and User and rotates both credentials", async () => {
-    const fixture = createFixture();
-    try {
-      const established = await establishSession(fixture);
-      const initiated = await fixture.api.inject({
-        body: { return_to: "/settings/security" },
-        headers: {
-          cookie: cookieHeader(
-            ["__Host-lead-session", established.session],
-            ["__Host-lead-csrf", established.csrf],
-          ),
-          origin: STAFF_ORIGIN,
-          "sec-fetch-site": "same-origin",
-          "x-csrf-token": established.csrf,
-        },
-        method: "POST",
-        url: "/v1/staff/auth/step-up",
-      });
-      expect(initiated.statusCode).toBe(302);
-      const transaction = cookieValue(initiated.headers, "__Host-lead-auth-transaction");
-      const state = authorizationState(initiated.headers);
-      const callback = await fixture.api.inject({
-        headers: {
-          cookie: cookieHeader(
-            ["__Host-lead-auth-transaction", transaction],
-            ["__Host-lead-session", established.session],
-          ),
-        },
-        method: "GET",
-        url: "/v1/staff/auth/callback?code=x&state=" + state,
-      });
-      expect(callback.statusCode).toBe(303);
-      expect(callback.headers.location).toBe("/settings/security");
-      expect(fixture.controls.rotationCount).toBe(1);
-      expect(cookieValue(callback.headers, "__Host-lead-csrf")).toBe(ROTATED_CSRF);
-    } finally {
-      await fixture.api.close();
-    }
-  });
+  it.each([false, true])(
+    "binds fresh step-up and rotates both credentials (JSON navigation: %s)",
+    async (jsonNavigation) => {
+      const fixture = createFixture();
+      try {
+        const established = await establishSession(fixture);
+        const initiated = await fixture.api.inject({
+          body: { return_to: "/settings/security" },
+          headers: {
+            ...(jsonNavigation ? { accept: "application/json" } : {}),
+            cookie: cookieHeader(
+              ["__Host-lead-session", established.session],
+              ["__Host-lead-csrf", established.csrf],
+            ),
+            origin: STAFF_ORIGIN,
+            "sec-fetch-site": "same-origin",
+            "x-csrf-token": established.csrf,
+          },
+          method: "POST",
+          url: "/v1/staff/auth/step-up",
+        });
+        expect(initiated.statusCode).toBe(jsonNavigation ? 200 : 302);
+        const transaction = cookieValue(initiated.headers, "__Host-lead-auth-transaction");
+        const navigation: unknown = jsonNavigation ? initiated.json() : null;
+        if (jsonNavigation) expect(initiated.headers["cache-control"]).toBe("no-store");
+        const state = isSchemaValue(StaffStepUpNavigationSchema, navigation)
+          ? authorizationState({ location: navigation.authorization_url })
+          : authorizationState(initiated.headers);
+        const callback = await fixture.api.inject({
+          headers: {
+            cookie: cookieHeader(
+              ["__Host-lead-auth-transaction", transaction],
+              ["__Host-lead-session", established.session],
+            ),
+          },
+          method: "GET",
+          url: "/v1/staff/auth/callback?code=x&state=" + state,
+        });
+        expect(callback.statusCode).toBe(303);
+        expect(callback.headers.location).toBe("/settings/security");
+        expect(fixture.controls.rotationCount).toBe(1);
+        expect(cookieValue(callback.headers, "__Host-lead-csrf")).toBe(ROTATED_CSRF);
+      } finally {
+        await fixture.api.close();
+      }
+    },
+  );
 
   it("denies a step-up User swap", async () => {
     const fixture = createFixture();

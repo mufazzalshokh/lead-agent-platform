@@ -48627,6 +48627,289 @@
     },
     {
       "category": "api",
+      "export_name": "StaffAppointmentConfirmationResponseSchema",
+      "schema": {
+        "$id": "StaffAppointmentConfirmationResponse.v1",
+        "additionalProperties": false,
+        "description": "V1 successful single-resource response envelope.",
+        "properties": {
+          "data": {
+            "$id": "StaffAppointmentConfirmation.v1",
+            "additionalProperties": false,
+            "properties": {
+              "appointment_version": {
+                "description": "Positive safe integer used for optimistic concurrency.",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "attestation": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attestation_method": {
+                        "anyOf": [
+                          {
+                            "const": "phone",
+                            "type": "string"
+                          },
+                          {
+                            "const": "in_person",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "customer_acted_at": {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      },
+                      "recorded_at": {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      },
+                      "recorded_by_membership_id": {
+                        "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                        "maxLength": 36,
+                        "minLength": 36,
+                        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "attestation_method",
+                      "customer_acted_at",
+                      "recorded_at",
+                      "recorded_by_membership_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "offline_offer": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expires_at": {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      },
+                      "issued_at": {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      },
+                      "offer_version": {
+                        "description": "Positive safe integer used for optimistic concurrency.",
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "start_at": {
+                        "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                        "format": "date-time",
+                        "maxLength": 30,
+                        "minLength": 20,
+                        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "offer_version",
+                      "start_at",
+                      "issued_at",
+                      "expires_at"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "appointment_version",
+              "offline_offer",
+              "attestation"
+            ],
+            "type": "object"
+          },
+          "meta": {
+            "additionalProperties": false,
+            "description": "Correlation metadata returned by a successful API request.",
+            "properties": {
+              "request_id": {
+                "description": "Bounded opaque operational identifier; never authorization evidence.",
+                "maxLength": 128,
+                "minLength": 8,
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._:-]{6,126}[A-Za-z0-9])$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffAppointmentConfirmationResponse.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "StaffAppointmentConfirmationSchema",
+      "schema": {
+        "$id": "StaffAppointmentConfirmation.v1",
+        "additionalProperties": false,
+        "properties": {
+          "appointment_version": {
+            "description": "Positive safe integer used for optimistic concurrency.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "attestation": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "attestation_method": {
+                    "anyOf": [
+                      {
+                        "const": "phone",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_person",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "customer_acted_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "recorded_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "recorded_by_membership_id": {
+                    "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+                    "maxLength": 36,
+                    "minLength": 36,
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "attestation_method",
+                  "customer_acted_at",
+                  "recorded_at",
+                  "recorded_by_membership_id"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "offline_offer": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "expires_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "issued_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  },
+                  "offer_version": {
+                    "description": "Positive safe integer used for optimistic concurrency.",
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "start_at": {
+                    "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+                    "format": "date-time",
+                    "maxLength": 30,
+                    "minLength": 20,
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "offer_version",
+                  "start_at",
+                  "issued_at",
+                  "expires_at"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "appointment_version",
+          "offline_offer",
+          "attestation"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffAppointmentConfirmation.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
       "export_name": "StaffAttendanceInputSchema",
       "schema": {
         "$id": "StaffAttendanceInput.v1",
@@ -48676,6 +48959,55 @@
         "type": "object"
       },
       "schema_id": "StaffAttendanceInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "StaffAttestCustomerConfirmationInputSchema",
+      "schema": {
+        "$id": "StaffAttestCustomerConfirmationInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "attestation_method": {
+            "anyOf": [
+              {
+                "const": "phone",
+                "type": "string"
+              },
+              {
+                "const": "in_person",
+                "type": "string"
+              }
+            ]
+          },
+          "customer_acted_at": {
+            "description": "Canonical RFC 3339 UTC instant using an uppercase Z suffix.",
+            "format": "date-time",
+            "maxLength": 30,
+            "minLength": 20,
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$",
+            "type": "string"
+          },
+          "explicit_confirmation": {
+            "const": true,
+            "type": "boolean"
+          },
+          "offer_version": {
+            "description": "Positive safe integer used for optimistic concurrency.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "offer_version",
+          "attestation_method",
+          "customer_acted_at",
+          "explicit_confirmation"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffAttestCustomerConfirmationInput.v1",
       "schema_version": "1"
     },
     {
@@ -60824,6 +61156,27 @@
         ]
       },
       "schema_id": "StaffRevenueInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
+      "export_name": "StaffStepUpNavigationSchema",
+      "schema": {
+        "$id": "StaffStepUpNavigation.v1",
+        "additionalProperties": false,
+        "properties": {
+          "authorization_url": {
+            "maxLength": 8192,
+            "pattern": "^https://",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_url"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffStepUpNavigation.v1",
       "schema_version": "1"
     },
     {

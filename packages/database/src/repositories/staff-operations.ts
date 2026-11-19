@@ -9,7 +9,11 @@ import {
   type StaffMutationResult,
   type ResourceId,
 } from "@lead-agent/contracts";
-import { createSecurityIdentifierFactory, type CustomerDataProtection } from "@lead-agent/security";
+import {
+  createSecurityIdentifierFactory,
+  hasFreshAuthorizationMfa,
+  type CustomerDataProtection,
+} from "@lead-agent/security";
 import type { TenantDatabaseRuntime } from "../runtime/tenant.js";
 import {
   finalizeRepositoryIdempotency,
@@ -19,11 +23,18 @@ import {
 } from "./location-configuration.js";
 import {
   persistStaffAppointmentDecision,
+  persistStaffCustomerAttestation,
   persistStaffHandoff,
   persistStaffReply,
 } from "./staff-domain.js";
 import { persistStaffOutcome, appendStaffAudit } from "./staff-outcomes.js";
-import { getStaffWork, readStaffWork, readStaffOutcomes, requireStaffActor } from "./staff-work.js";
+import {
+  getStaffWork,
+  readStaffWork,
+  readStaffOutcomes,
+  readStaffConfirmation,
+  requireStaffActor,
+} from "./staff-work.js";
 import {
   executeTenantWrite,
   RepositoryVersionConflictError,
@@ -47,6 +58,10 @@ export const createStaffOperationsStore = (
       runtime.withTenantTransaction(input.authorization.organizationId, (session) =>
         getStaffWork(session, input.authorization, input.kind, input.id),
       ),
+    confirmation: (authorization, id, now) =>
+      runtime.withTenantTransaction(authorization.organizationId, (session) =>
+        readStaffConfirmation(session, authorization, id, now),
+      ),
     outcomes: (input) =>
       runtime.withTenantTransaction(input.authorization.organizationId, (session) =>
         readStaffOutcomes(session, input),
@@ -63,6 +78,11 @@ export const createStaffOperationsStore = (
               input.authorization,
               staffMutationPermission(input.operation),
             );
+            if (
+              input.operation.action === "attest-customer-confirmation" &&
+              !hasFreshAuthorizationMfa(input.authorization, new Date(input.occurredAt))
+            )
+              throw new StaffOperationError("step_up_required");
             // Replay must still pass current membership/location/resource authorization.
             const before = await getStaffWork(session, input.authorization, input.kind, input.id);
             if (input.operation.action === "acknowledge" && !before.acknowledgment_supported)
@@ -92,6 +112,8 @@ export const createStaffOperationsStore = (
               input.operation.action === "cancel"
             )
               await persistStaffAppointmentDecision(session, input, nextId, customerData);
+            else if (input.operation.action === "attest-customer-confirmation")
+              await persistStaffCustomerAttestation(session, input, nextId);
             else if (input.operation.action === "claim" || input.operation.action === "resolve")
               await persistStaffHandoff(session, input, nextId);
             else if (input.operation.action === "reply")

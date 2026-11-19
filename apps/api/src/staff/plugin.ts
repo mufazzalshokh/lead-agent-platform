@@ -14,6 +14,8 @@ import {
   StaffAcceptAppointmentInputSchema,
   StaffRejectAppointmentInputSchema,
   StaffCancelAppointmentInputSchema,
+  StaffAttestCustomerConfirmationInputSchema,
+  StaffAppointmentConfirmationResponseSchema,
   StaffClaimHandoffInputSchema,
   StaffResolveHandoffInputSchema,
   StaffReplyInputSchema,
@@ -116,6 +118,12 @@ export const registerStaffOperations = (
     ["appointment-requests", "appointment_request", "accept", StaffAcceptAppointmentInputSchema],
     ["appointment-requests", "appointment_request", "reject", StaffRejectAppointmentInputSchema],
     ["appointment-requests", "appointment_request", "cancel", StaffCancelAppointmentInputSchema],
+    [
+      "appointment-requests",
+      "appointment_request",
+      "attest-customer-confirmation",
+      StaffAttestCustomerConfirmationInputSchema,
+    ],
     ["handoffs", "handoff", "claim", StaffClaimHandoffInputSchema],
     ["handoffs", "handoff", "resolve", StaffResolveHandoffInputSchema],
     ["notifications", "notification", "acknowledge", StaffAcknowledgeInputSchema],
@@ -159,6 +167,11 @@ export const registerStaffOperations = (
           isSchemaValue(StaffCancelAppointmentInputSchema, request.body)
         )
           operation = { action, input: request.body };
+        else if (
+          action === "attest-customer-confirmation" &&
+          isSchemaValue(StaffAttestCustomerConfirmationInputSchema, request.body)
+        )
+          operation = { action, input: request.body };
         else if (action === "claim" && isSchemaValue(StaffClaimHandoffInputSchema, request.body))
           operation = { action, input: request.body };
         else if (
@@ -194,6 +207,22 @@ export const registerStaffOperations = (
       },
     );
   }
+  api.get<{ Params: { id: ResourceId } }>(
+    "/v1/staff/appointment-requests/:id/confirmation",
+    {
+      schema: {
+        params: StaffWorkParamsSchema,
+        response: { 200: StaffAppointmentConfirmationResponseSchema },
+      },
+    },
+    async (request, reply) => ({
+      data: await dependencies.operations.confirmation(
+        await authorize(request, reply),
+        request.params.id,
+      ),
+      meta: { request_id: requestId(request) },
+    }),
+  );
   for (const [path, kind] of [
     ["attendance", "attendance"],
     ["revenue-attributions", "revenue"],

@@ -5,6 +5,7 @@ import { STAFF_APPOINTMENT_WITHDRAWAL_REASON, STAFF_REPLY_MAX_BYTES } from "@lea
 
 import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/staff-request";
 import { CopyWidgetCodeButton } from "./CopyWidgetCodeButton";
+import { OfflineAppointmentConfirmation } from "./OfflineAppointmentConfirmation";
 import { S22WidgetCohort } from "./S22WidgetCohort";
 import {
   buildStaffSignInPath,
@@ -503,6 +504,8 @@ export function StaffWorkspace({
   const reply = replyText.trim();
   const replyTooLong = new TextEncoder().encode(reply).byteLength > STAFF_REPLY_MAX_BYTES;
   const appointmentAction = actionIdentity(detail?.appointment ?? null);
+  const offlineOffer = detail?.confirmation?.offline_offer ?? null;
+  const attestation = detail?.confirmation?.attestation ?? null;
   const appointmentPreference = selected?.preferences[0] ?? null;
   return (
     <main className="staff-shell">
@@ -798,6 +801,17 @@ export function StaffWorkspace({
                         <dd>{humanizeStaffStatus(selected.appointmentStatus)}</dd>
                       </div>
                     )}
+                    {attestation !== null && (
+                      <div>
+                        <dt>Offline confirmation</dt>
+                        <dd>
+                          {attestation.attestation_method === "phone" ? "Phone" : "In person"}
+                          {", "}
+                          {formatStaffDateTime(attestation.customer_acted_at)}
+                        </dd>
+                        <dd>Recorded by member {attestation.recorded_by_membership_id}</dd>
+                      </div>
+                    )}
                     {appointmentPreference !== null && (
                       <div>
                         <dt>Requested time</dt>
@@ -812,6 +826,26 @@ export function StaffWorkspace({
                       </div>
                     )}
                   </dl>
+                  {appointmentAction !== null &&
+                    offlineOffer !== null &&
+                    organizationId !== null &&
+                    membershipRole !== null &&
+                    membershipRole !== "analyst" && (
+                      <OfflineAppointmentConfirmation
+                        key={`${appointmentAction.id}:${offlineOffer.offer_version}`}
+                        offer={offlineOffer}
+                        organizationId={organizationId}
+                        disabled={working || !versionsCurrent}
+                        request={request}
+                        recordConfirmation={(input) =>
+                          void mutate(
+                            `/v1/staff/appointment-requests/${appointmentAction.id}/attest-customer-confirmation`,
+                            appointmentAction,
+                            input,
+                          )
+                        }
+                      />
+                    )}
                   {selected.handoffId !== null &&
                     ["requested", "assigned", "in_progress"].includes(
                       selected.handoffStatus ?? "",

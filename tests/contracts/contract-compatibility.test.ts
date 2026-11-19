@@ -146,8 +146,25 @@ const sameVersionDrift = (mutate: (schema: Record<string, unknown>) => void) => 
   );
 };
 
-const buildPreStaffCancellationSnapshot = () => {
+const offlineConfirmationSchemaNames = new Set([
+  "StaffAttestCustomerConfirmationInputSchema",
+  "StaffAppointmentConfirmationSchema",
+  "StaffAppointmentConfirmationResponseSchema",
+  "StaffStepUpNavigationSchema",
+]);
+
+const buildPreOfflineConfirmationSnapshot = () => {
   const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => !offlineConfirmationSchemaNames.has(contract.export_name),
+    ),
+  };
+};
+
+const buildPreStaffCancellationSnapshot = () => {
+  const snapshot = buildPreOfflineConfirmationSnapshot();
   return {
     ...snapshot,
     contracts: snapshot.contracts.filter(
@@ -189,10 +206,10 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(384);
+    expect(snapshot.contracts).toHaveLength(388);
     expect(counts).toEqual({
       ai: 16,
-      api: 46,
+      api: 50,
       channel: 24,
       configuration: 65,
       conversation: 37,
@@ -408,9 +425,17 @@ describe("public contract inventory and snapshot", () => {
   it("adds the staff cancellation input while preserving every accepted contract", () => {
     const legacy = buildPreStaffCancellationSnapshot();
     expect(legacy.contracts).toHaveLength(383);
-    const findings = compareContractSnapshots(legacy, buildContractSnapshot());
+    const findings = compareContractSnapshots(legacy, buildPreOfflineConfirmationSnapshot());
     expect(findings).toHaveLength(1);
     expect(findings[0]?.classification).toBe("additive");
+  });
+
+  it("adds offline confirmation contracts while preserving every accepted contract", () => {
+    const legacy = buildPreOfflineConfirmationSnapshot();
+    expect(legacy.contracts).toHaveLength(384);
+    const findings = compareContractSnapshots(legacy, buildContractSnapshot());
+    expect(findings).toHaveLength(4);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 
   it("keeps the runtime export surface explicit", () => {

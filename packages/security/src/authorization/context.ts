@@ -11,6 +11,7 @@ import {
 } from "@lead-agent/contracts";
 
 import type { AuthenticatedApplicationSession } from "../session/lifecycle.js";
+import { isFreshStepUp } from "../session/policy.js";
 import { AuthorizationDeniedError, AuthorizationStateInvalidError } from "./errors.js";
 import {
   isLocationScope,
@@ -22,6 +23,7 @@ import {
 } from "./permissions.js";
 
 const authorizationContextBrand: unique symbol = Symbol("AuthorizationContext");
+const authorizationMfa: unique symbol = Symbol("AuthorizationMfa");
 
 export type CurrentMembershipAuthorization = Readonly<{
   allowedLocationIds: readonly LocationId[];
@@ -48,6 +50,7 @@ export type AuthorizationContext = Readonly<{
   role: MembershipRole;
   userId: UserId;
   [authorizationContextBrand]: true;
+  [authorizationMfa]: number | null;
 }>;
 
 const validLocationIds = (value: unknown): value is readonly LocationId[] =>
@@ -97,6 +100,8 @@ const buildAuthorizationContext = (
     role: current.role,
     userId: current.userId,
     [authorizationContextBrand]: true as const,
+    [authorizationMfa]:
+      session.authenticationLevel === "mfa" ? session.authenticationTime.getTime() : null,
   });
 };
 
@@ -104,6 +109,14 @@ export const isAuthorizationContext = (value: unknown): value is AuthorizationCo
   typeof value === "object" &&
   value !== null &&
   Reflect.get(value, authorizationContextBrand) === true;
+
+export const hasFreshAuthorizationMfa = (context: AuthorizationContext, now: Date): boolean => {
+  const time = context[authorizationMfa];
+  return (
+    time !== null &&
+    isFreshStepUp({ authenticationLevel: "mfa", authenticationTime: new Date(time) }, now)
+  );
+};
 
 export const resolveAuthorizationContext = async (
   session: AuthenticatedApplicationSession,

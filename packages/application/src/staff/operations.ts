@@ -6,6 +6,8 @@ import {
   StaffAcceptAppointmentInputSchema,
   StaffRejectAppointmentInputSchema,
   StaffCancelAppointmentInputSchema,
+  StaffAttestCustomerConfirmationInputSchema,
+  StaffAppointmentConfirmationSchema,
   StaffClaimHandoffInputSchema,
   StaffResolveHandoffInputSchema,
   StaffReplyInputSchema,
@@ -25,6 +27,8 @@ import {
   type StaffAcceptAppointmentInput,
   type StaffRejectAppointmentInput,
   type StaffCancelAppointmentInput,
+  type StaffAttestCustomerConfirmationInput,
+  type StaffAppointmentConfirmation,
   type StaffClaimHandoffInput,
   type StaffResolveHandoffInput,
   type StaffReplyInput,
@@ -38,6 +42,7 @@ import {
   createSecurityIdentifierFactory,
   hasPermission,
   isAuthorizationContext,
+  hasFreshAuthorizationMfa,
   type AuthorizationContext,
   type TenantPermission,
 } from "@lead-agent/security";
@@ -50,6 +55,10 @@ export type StaffOperation =
   | Readonly<{ action: "accept"; input: StaffAcceptAppointmentInput }>
   | Readonly<{ action: "reject"; input: StaffRejectAppointmentInput }>
   | Readonly<{ action: "cancel"; input: StaffCancelAppointmentInput }>
+  | Readonly<{
+      action: "attest-customer-confirmation";
+      input: StaffAttestCustomerConfirmationInput;
+    }>
   | Readonly<{ action: "claim"; input: StaffClaimHandoffInput }>
   | Readonly<{ action: "resolve"; input: StaffResolveHandoffInput }>
   | Readonly<{ action: "reply"; input: StaffReplyInput }>
@@ -58,6 +67,7 @@ export type StaffOperation =
   | Readonly<{ action: "revenue"; input: StaffRevenueInput }>;
 export type StaffOperationCode =
   | "permission_denied"
+  | "step_up_required"
   | "resource_not_found"
   | "validation_failed"
   | "version_conflict"
@@ -94,6 +104,11 @@ export interface StaffOperationsStore {
   get(
     input: Readonly<{ authorization: AuthorizationContext; kind: StaffWorkKind; id: ResourceId }>,
   ): Promise<StaffWorkItem>;
+  confirmation(
+    authorization: AuthorizationContext,
+    id: ResourceId,
+    now: Date,
+  ): Promise<StaffAppointmentConfirmation>;
   outcomes(
     input: Readonly<{
       authorization: AuthorizationContext;
@@ -120,6 +135,10 @@ export interface StaffOperations {
     kind: StaffWorkKind,
     id: ResourceId,
   ) => Promise<StaffWorkItem>;
+  readonly confirmation: (
+    authorization: AuthorizationContext,
+    id: ResourceId,
+  ) => Promise<StaffAppointmentConfirmation>;
   readonly outcomes: (
     authorization: AuthorizationContext,
     id: ResourceId,
@@ -160,6 +179,11 @@ const mutationPolicy = {
     kind: "appointment_request",
     permission: "appointments.manage",
     schema: StaffCancelAppointmentInputSchema,
+  },
+  "attest-customer-confirmation": {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffAttestCustomerConfirmationInputSchema,
   },
   claim: { kind: "handoff", permission: "handoffs.manage", schema: StaffClaimHandoffInputSchema },
   resolve: {
@@ -277,6 +301,14 @@ export const createStaffOperations = (
         throw new StaffOperationError("validation_failed");
       return store.get({ authorization, kind, id });
     },
+    confirmation: async (authorization: AuthorizationContext, id: ResourceId) => {
+      requireAuthorization(authorization, "appointments.read");
+      if (!isSchemaValue(ResourceIdSchema, id)) throw new StaffOperationError("validation_failed");
+      const value = await store.confirmation(authorization, id, clock());
+      if (!isSchemaValue(StaffAppointmentConfirmationSchema, value))
+        throw new TypeError("Invalid appointment confirmation projection");
+      return value;
+    },
     outcomes: async (
       authorization: AuthorizationContext,
       id: ResourceId,
@@ -323,6 +355,11 @@ export const createStaffOperations = (
         throw new StaffOperationError("validation_failed");
       const now = clock(),
         occurredAt = now.toISOString();
+      if (
+        operation.action === "attest-customer-confirmation" &&
+        !hasFreshAuthorizationMfa(authorization, now)
+      )
+        throw new StaffOperationError("step_up_required");
       if (!isSchemaValue(UtcTimestampSchema, occurredAt))
         throw new TypeError("Invalid staff operation clock");
       const scope = `s17:${kind}:${id}:${operation.action}`;
