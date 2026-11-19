@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { createStaffOperationsDependencies } from "../../apps/api/src/staff/composition.js";
 import {
   createCustomerConfirmationStore,
+  createInstagramOutboundPersistenceStore,
+  createTelegramOutboundPersistenceStore,
   migrationsFolder,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
@@ -238,6 +240,106 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       if (!row) throw new Error("Missing S18 fixture counts");
       return row;
     };
+    const cancel = async (f: Awaited<ReturnType<typeof accepted>>) => {
+      const current = await f.ops.get(f.auth, "appointment_request", f.item.id);
+      return await f.ops.mutate(
+        f.auth,
+        "appointment_request",
+        f.item.id,
+        current.version,
+        "s18-staff-cancel",
+        {
+          action: "cancel",
+          input: { reason_code: "clinic_cancelled" },
+        },
+        "s18:staff-cancel",
+        "unused",
+      );
+    };
+    it("cancels staff acceptance before a confirmation job prepares any prompt", async () => {
+      const f = await accepted();
+      expect((await cancel(f)).resource.status).toBe("cancelled");
+      expect(await store().prepare(f.event)).toBe("unavailable");
+      const { rows } = await harness
+        .privilegedPool()
+        .query<{ kind: string }>(
+          `select knowledge_manifest_jsonb->>'confirmation_kind' as kind from messages where organization_id=$1 and knowledge_manifest_jsonb ? 'confirmation_kind'`,
+          [f.organizationId],
+        );
+      expect(rows).toEqual([{ kind: "offer_withdrawn" }]);
+    });
+    it.each(["telegram", "instagram"] as const)(
+      "suppresses the queued %s confirmation prompt after staff cancels",
+      async (channel) => {
+        const f = await accepted("a", undefined, channel);
+        expect(await store().prepare(f.event)).toBe("prepared");
+        const pool = harness.privilegedPool();
+        const promptId = (
+          await pool.query<{ id: unknown }>(
+            `select id from messages where organization_id=$1 and knowledge_manifest_jsonb->>'confirmation_kind'='prompt'`,
+            [f.organizationId],
+          )
+        ).rows[0]?.id;
+        if (!isSchemaValue(MessageIdSchema, promptId))
+          throw new Error("Missing confirmation prompt");
+        await pool.query(`update appointment_requests set confirmation_token_hash=$2 where id=$1`, [
+          f.item.id,
+          Buffer.alloc(32, 10),
+        ]);
+        expect((await cancel(f)).resource.status).toBe("cancelled");
+        const dispatch =
+          channel === "telegram"
+            ? createTelegramOutboundPersistenceStore(harness.runtime())
+            : createInstagramOutboundPersistenceStore(harness.runtime());
+        expect(await dispatch.load(f.organizationId, promptId)).toEqual({
+          kind: "withdrawn_confirmation_prompt",
+        });
+        expect(
+          (
+            await pool.query(
+              `select confirmation_token_hash, cancelled_by_type from appointment_requests where id=$1`,
+              [f.item.id],
+            )
+          ).rows[0],
+        ).toEqual({
+          confirmation_token_hash: null,
+          cancelled_by_type: "member",
+        });
+        expect(await store().respond(await inbound(f, "yes"))).not.toMatchObject({
+          kind: "confirmed",
+        });
+        expect((await state())[0]?.status).toBe("cancelled");
+      },
+    );
+    it("preserves the confirmation and audit history of a cancelled confirmed appointment", async () => {
+      const f = await prepared();
+      expect(await store().respond(await inbound(f, "yes"))).toMatchObject({ kind: "confirmed" });
+      const pool = harness.privilegedPool();
+      const before = (
+        await pool.query<{ confirmed_at: Date; confirmation_source: string }>(
+          `select confirmed_at, confirmation_source from appointment_requests where id=$1`,
+          [f.item.id],
+        )
+      ).rows[0];
+      expect((await cancel(f)).resource.status).toBe("cancelled");
+      expect(
+        (
+          await pool.query<{ confirmed_at: Date; confirmation_source: string }>(
+            `select confirmed_at, confirmation_source from appointment_requests where id=$1`,
+            [f.item.id],
+          )
+        ).rows[0],
+      ).toEqual(before);
+      expect(await counts()).toMatchObject({ confirmed: 1, evidence: 1, transitions: 1 });
+      expect(
+        (
+          await pool.query(
+            `select actor_membership_id,reason_code from appointment_request_transitions where appointment_request_id=$1 and to_status='cancelled'`,
+            [f.item.id],
+          )
+        ).rows,
+      ).toEqual([{ actor_membership_id: f.auth.membershipId, reason_code: "clinic_cancelled" }]);
+    });
     it("proves grounded price → qualification → requested → real staff acceptance → one prompt without confirmation", async () => {
       const f = await accepted();
       expect((await state())[0]).toMatchObject({ status: "staff_accepted" });

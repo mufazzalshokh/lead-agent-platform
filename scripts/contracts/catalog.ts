@@ -98,6 +98,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
     ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     "StaffReplyInputSchema",
+    "StaffCancelAppointmentInputSchema",
     "ApiErrorCodeSchema",
     "ValidationIssueSchema",
     "ProblemSchema",

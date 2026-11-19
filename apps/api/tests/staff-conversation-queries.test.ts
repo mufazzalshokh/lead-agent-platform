@@ -299,8 +299,8 @@ const createFixture = (withOperations = false) => {
       return Promise.resolve({
         resource: {
           ...staffWorkFixture,
-          status: "staff_accepted",
-          appointment_status: "staff_accepted",
+          status: input.operation.action === "cancel" ? "cancelled" : "staff_accepted",
+          appointment_status: input.operation.action === "cancel" ? "cancelled" : "staff_accepted",
           version: 2,
         },
         outcome_id: null,
@@ -480,6 +480,42 @@ describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () 
         /awaiting_customer_confirmation|"confirmed"|confirmation_sent/u,
       );
       expect(f.controls.calls[0]?.operation).toBe("accept");
+    } finally {
+      await f.api.close();
+    }
+  });
+  it("accepts a versioned staff cancellation with a bounded reason and rejects a bad CSRF token", async () => {
+    const f = createFixture(true);
+    try {
+      const url = `/v1/staff/appointment-requests/${staffWorkFixture.id}/cancel`;
+      const headers = {
+        ...f.headers(),
+        origin: STAFF_ORIGIN,
+        "x-csrf-token": f.csrf,
+        "idempotency-key": "staff-cancel",
+        "if-match": `"${staffWorkFixture.id}:1"`,
+      };
+      const payload = { reason_code: "clinic_cancelled" };
+      expect(
+        (
+          await f.api.inject({
+            method: "POST",
+            url,
+            headers: { ...headers, "x-csrf-token": "wrong" },
+            payload,
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect((await f.api.inject({ method: "POST", url, headers, payload: {} })).statusCode).toBe(
+        400,
+      );
+      expect(f.controls.calls).toHaveLength(0);
+      const response = await f.api.inject({ method: "POST", url, headers, payload });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        data: { resource: { appointment_status: "cancelled" } },
+      });
+      expect(f.controls.calls[0]?.operation).toBe("cancel");
     } finally {
       await f.api.close();
     }

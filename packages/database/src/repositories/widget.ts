@@ -30,6 +30,7 @@ import type { QueryResultRow } from "pg";
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
 import { executeTenantQuery } from "../runtime/tenant.js";
 import { createCanonicalInboundTenantSessionStore } from "./inbound-conversations.js";
+import { WITHDRAWN_CONFIRMATION_PROMPT_SQL } from "./customer-replies.js";
 
 const IDLE_LIFETIME_MS = 30 * 60 * 1_000;
 const IDEMPOTENCY_LIFETIME_MS = 24 * 60 * 60 * 1_000;
@@ -638,10 +639,11 @@ export const createWidgetPersistenceStore = (
         const result = await executeTenantQuery<MessageRow>(session, (organizationId) => ({
           text: `select id::text, conversation_id::text, channel_connection_id::text, direction,
                         sequence_no::text, content_type, body_ciphertext, locale, redacted_at, created_at
-                   from messages
+                   from messages m
                   where organization_id = $1 and conversation_id = $2 and sequence_no > $3
                     and direction in ('inbound', 'outbound')
                     and content_type in ('text', 'quick_reply', 'attachment')
+                    and not ${WITHDRAWN_CONFIRMATION_PROMPT_SQL}
                   order by sequence_no asc, id asc limit $4`,
           values: [organizationId, conversationId, after, limit + 1],
         }));

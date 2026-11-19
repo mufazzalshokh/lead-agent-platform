@@ -127,7 +127,15 @@ export const confirmationLocale = (text: string, preferred: Locale): Locale => {
 };
 
 export const confirmationText = (
-  kind: "prompt" | "confirmed" | "declined" | "clarify" | "expired" | "medical",
+  kind:
+    | "prompt"
+    | "confirmed"
+    | "declined"
+    | "offer_withdrawn"
+    | "cancelled_by_staff"
+    | "clarify"
+    | "expired"
+    | "medical",
   locale: Locale,
   localStart: string,
 ): string => {
@@ -149,6 +157,16 @@ export const confirmationText = (
       uz: "Tushunarli, bu so'rov bekor qilindi. Boshqa vaqt kerak bo'lsa, yozing.",
       ru: "Понятно, этот запрос отменён. Напишите, если нужно другое время.",
       en: "Understood, this request has been cancelled. Let us know if you need another time.",
+    },
+    cancelled_by_staff: {
+      uz: `Xodim ${date} soat ${time} dagi qabulni bekor qildi. Boshqa vaqt kerak bo'lsa, yozing.`,
+      ru: `Сотрудник отменил приём на ${date} в ${time}. Напишите, если нужно другое время.`,
+      en: `Staff cancelled the appointment for ${date} at ${time}. Let us know if you need another time.`,
+    },
+    offer_withdrawn: {
+      uz: `Xodim ${date} soat ${time} uchun taklif qilingan vaqtni bekor qildi. Boshqa vaqt kerak bo'lsa, yozing.`,
+      ru: `Сотрудник отменил предложенное время на ${date} в ${time}. Напишите, если нужно другое время.`,
+      en: `Staff withdrew the proposed appointment time for ${date} at ${time}. Let us know if you need another time.`,
     },
     clarify: {
       uz: "Qaysi sana va vaqtni tasdiqlamoqchisiz? Vaqtni o'zgartirish kerak bo'lsa, xodim bilan qayta kelishamiz.",

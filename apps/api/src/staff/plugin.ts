@@ -13,6 +13,7 @@ import {
   StaffWorkCollectionResponseSchema,
   StaffAcceptAppointmentInputSchema,
   StaffRejectAppointmentInputSchema,
+  StaffCancelAppointmentInputSchema,
   StaffClaimHandoffInputSchema,
   StaffResolveHandoffInputSchema,
   StaffReplyInputSchema,
@@ -114,6 +115,7 @@ export const registerStaffOperations = (
     ["conversations", "conversation", "messages", StaffReplyInputSchema],
     ["appointment-requests", "appointment_request", "accept", StaffAcceptAppointmentInputSchema],
     ["appointment-requests", "appointment_request", "reject", StaffRejectAppointmentInputSchema],
+    ["appointment-requests", "appointment_request", "cancel", StaffCancelAppointmentInputSchema],
     ["handoffs", "handoff", "claim", StaffClaimHandoffInputSchema],
     ["handoffs", "handoff", "resolve", StaffResolveHandoffInputSchema],
     ["notifications", "notification", "acknowledge", StaffAcknowledgeInputSchema],
@@ -150,6 +152,11 @@ export const registerStaffOperations = (
         else if (
           action === "reject" &&
           isSchemaValue(StaffRejectAppointmentInputSchema, request.body)
+        )
+          operation = { action, input: request.body };
+        else if (
+          action === "cancel" &&
+          isSchemaValue(StaffCancelAppointmentInputSchema, request.body)
         )
           operation = { action, input: request.body };
         else if (action === "claim" && isSchemaValue(StaffClaimHandoffInputSchema, request.body))

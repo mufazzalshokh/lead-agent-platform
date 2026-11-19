@@ -48680,6 +48680,28 @@
     },
     {
       "category": "api",
+      "export_name": "StaffCancelAppointmentInputSchema",
+      "schema": {
+        "$id": "StaffCancelAppointmentInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "reason_code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason_code"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffCancelAppointmentInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
       "export_name": "StaffClaimHandoffInputSchema",
       "schema": {
         "$id": "StaffClaimHandoffInput.v1",

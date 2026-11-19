@@ -63,6 +63,15 @@ processing pointer. Duplicate or racing workers cannot create a second fact set.
 Decline uses the already-approved `cancelled` transition. Changed time preferences
 do not confirm or automatically reschedule.
 
+Staff cancellation uses the same domain transition under the staff permission,
+version, idempotency, and audit controls. It revokes a pending confirmation
+capability and preserves existing confirmation evidence. An active, bound channel
+receives a queued notice. The workspace asks staff to check customer notification,
+including when the channel is unavailable. Customer reads and provider dispatch
+skip a confirmation prompt for an offer that staff withdrew. A provider request
+already in flight can still complete. A subsequent customer response cannot
+confirm the cancelled request.
+
 ## Instagram additive compatibility
 
 V1 remains unchanged: `customer_session | telegram | staff_attested_external`.

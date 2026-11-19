@@ -146,8 +146,18 @@ const sameVersionDrift = (mutate: (schema: Record<string, unknown>) => void) => 
   );
 };
 
-const buildPreStaffReplySnapshot = () => {
+const buildPreStaffCancellationSnapshot = () => {
   const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffCancelAppointmentInputSchema",
+    ),
+  };
+};
+
+const buildPreStaffReplySnapshot = () => {
+  const snapshot = buildPreStaffCancellationSnapshot();
   return {
     ...snapshot,
     contracts: snapshot.contracts.filter(
@@ -179,10 +189,10 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(383);
+    expect(snapshot.contracts).toHaveLength(384);
     expect(counts).toEqual({
       ai: 16,
-      api: 45,
+      api: 46,
       channel: 24,
       configuration: 65,
       conversation: 37,
@@ -390,6 +400,14 @@ describe("public contract inventory and snapshot", () => {
   it("adds the staff reply input while preserving every accepted contract", () => {
     const legacy = buildPreStaffReplySnapshot();
     expect(legacy.contracts).toHaveLength(382);
+    const findings = compareContractSnapshots(legacy, buildPreStaffCancellationSnapshot());
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.classification).toBe("additive");
+  });
+
+  it("adds the staff cancellation input while preserving every accepted contract", () => {
+    const legacy = buildPreStaffCancellationSnapshot();
+    expect(legacy.contracts).toHaveLength(383);
     const findings = compareContractSnapshots(legacy, buildContractSnapshot());
     expect(findings).toHaveLength(1);
     expect(findings[0]?.classification).toBe("additive");
@@ -400,6 +418,7 @@ describe("public contract inventory and snapshot", () => {
     const nonSchemaExports = [
       "DOMAIN_EVENT_NAMES",
       "STAFF_REPLY_MAX_BYTES",
+      "STAFF_APPOINTMENT_WITHDRAWAL_REASON",
       "DomainEventPayloadSchemas",
       "DomainEventPayloadSchemasByVersion",
       "DomainEventSchemas",

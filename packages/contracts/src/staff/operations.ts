@@ -104,6 +104,11 @@ export const StaffRejectAppointmentInputSchema = Type.Object(
   { reason_code: code() },
   { $id: "StaffRejectAppointmentInput.v1", additionalProperties: false },
 );
+export const STAFF_APPOINTMENT_WITHDRAWAL_REASON = "customer_withdrew";
+export const StaffCancelAppointmentInputSchema = Type.Object(
+  { reason_code: code() },
+  { $id: "StaffCancelAppointmentInput.v1", additionalProperties: false },
+);
 export const StaffClaimHandoffInputSchema = Type.Object(
   { conversation_version: embed(ResourceVersionSchema) },
   { $id: "StaffClaimHandoffInput.v1", additionalProperties: false },
@@ -201,6 +206,7 @@ export type StaffMutationResult = Type.Static<typeof StaffMutationResultSchema>;
 export type StaffOutcome = Type.Static<typeof StaffOutcomeSchema>;
 export type StaffAcceptAppointmentInput = Type.Static<typeof StaffAcceptAppointmentInputSchema>;
 export type StaffRejectAppointmentInput = Type.Static<typeof StaffRejectAppointmentInputSchema>;
+export type StaffCancelAppointmentInput = Type.Static<typeof StaffCancelAppointmentInputSchema>;
 export type StaffClaimHandoffInput = Type.Static<typeof StaffClaimHandoffInputSchema>;
 export type StaffResolveHandoffInput = Type.Static<typeof StaffResolveHandoffInputSchema>;
 export type StaffReplyInput = Type.Static<typeof StaffReplyInputSchema>;

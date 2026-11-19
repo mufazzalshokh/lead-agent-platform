@@ -1,10 +1,15 @@
-import { StaffOperationError, type StaffPreparedOperation } from "@lead-agent/application";
+import {
+  CUSTOMER_CONFIRMATION_PROFILE,
+  StaffOperationError,
+  confirmationText,
+  type StaffPreparedOperation,
+} from "@lead-agent/application";
 import {
   ActorRefSchema,
   DomainEventSchema,
-  IanaTimeZoneSchema,
   RequestIdSchema,
   CorrelationIdSchema,
+  STAFF_APPOINTMENT_WITHDRAWAL_REASON,
   isSchemaValue,
   type ActorRef,
   type ResourceId,
@@ -13,6 +18,7 @@ import {
 import {
   staffAcceptAppointmentRequest,
   rejectAppointmentRequest,
+  cancelAppointmentRequest,
   validateAppointmentRequestReasonCode,
   validateHandoffQueueKey,
   validateHandoffResolutionCode,
@@ -21,17 +27,22 @@ import {
   terminateHandoffAndResumeAiWorkflow,
   terminateHandoffAndResolveConversationWorkflow,
   queueStaffResponse,
-  type AppointmentRequest,
   type Conversation,
   type Handoff,
 } from "@lead-agent/domain";
 import type { CustomerDataProtection } from "@lead-agent/security";
 import type { TenantDbSession } from "../runtime/tenant.js";
 import { createAppointmentRepository } from "./appointments.js";
+import {
+  loadAppointmentForDecision,
+  localSlotText,
+  readExactAppointmentPreferences,
+} from "./appointment-domain.js";
 import { createConversationRepository } from "./conversations.js";
+import { boundConfirmationChannel } from "./customer-confirmation.js";
 import { createHandoffNotificationRepository } from "./handoffs.js";
 import { persistDomainMutationPlan } from "./mutations.js";
-import { insertQueuedCustomerMessage } from "./customer-replies.js";
+import { insertQueuedCustomerMessage, queueCustomerReply } from "./customer-replies.js";
 import type {
   CoreDomainEventDraft,
   CoreTransitionPersistence,
@@ -65,20 +76,6 @@ const nonempty = <T>(values: readonly T[]): NonEmptyReadonlyArray<T> => {
   const [first, ...rest] = values;
   if (first === undefined) throw new RepositoryDataIntegrityError();
   return [first, ...rest];
-};
-export const localSlotText = (instant: string, zone: string): string => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: zone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(instant));
-  const part = (name: string) => parts.find((value) => value.type === name)?.value;
-  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}:${part("second")}`;
 };
 const envelope = (
   input: StaffPreparedOperation,
@@ -133,73 +130,36 @@ const audit = (
     expected_version: input.expectedVersion,
   },
 });
-/** S17 may decide only a requested appointment. It cannot prepare or confirm it. */
 export const persistStaffAppointmentDecision = async (
   session: TenantDbSession,
   input: StaffPreparedOperation,
   nextId: () => string,
+  protection: CustomerDataProtection,
 ): Promise<void> => {
-  const repo = createAppointmentRepository(session),
-    row = await repo.getAppointmentRequest(mapAppointmentRequestId(input.id));
-  if (row.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
-  if (row.status !== "requested") throw new StaffOperationError("business_rule_failed");
-  // Keep the prerequisite state stable until the appointment CAS commits.
+  const repo = createAppointmentRepository(session);
+  const initial = await repo.getAppointmentRequest(mapAppointmentRequestId(input.id));
+  if (initial.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
+  const cancelling = input.operation.action === "cancel";
+  if (!cancelling && initial.status !== "requested")
+    throw new StaffOperationError("business_rule_failed");
+  // Confirmation takes the conversation lock before touching the appointment.
   await executeTenantRead(
     session,
-    `select id from conversations where organization_id=$1 and id=$2 for share`,
-    [row.conversationId],
+    `select id from conversations where organization_id=$1 and id=$2 for ${cancelling ? "update" : "share"}`,
+    [initial.conversationId],
   );
+  const row = cancelling ? await repo.getAppointmentRequest(initial.appointmentRequestId) : initial;
+  if (row.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
+  if (row.status === "cancelled" || row.status === "rejected" || row.status === "expired")
+    throw new StaffOperationError("business_rule_failed");
   const conversation = await createConversationRepository(session).getConversation(
     row.conversationId,
   );
-  if (conversation.status === "closed" || conversation.status === "resolved")
+  if (!cancelling && (conversation.status === "closed" || conversation.status === "resolved"))
     throw new StaffOperationError("business_rule_failed");
-  const stored = await repo.listPreferences(row.appointmentRequestId, { limit: 20 });
-  if (stored.next !== null) throw new StaffOperationError("business_rule_failed");
-  const preferences = stored.items.map((pref) => {
-    if (
-      pref.precision !== "exact" ||
-      pref.startAt === null ||
-      pref.endAt === null ||
-      pref.localStart === null ||
-      pref.localEnd === null ||
-      !isSchemaValue(IanaTimeZoneSchema, pref.timeZone)
-    )
-      throw new StaffOperationError("business_rule_failed");
-    return {
-      ...pref,
-      precision: "exact" as const,
-      startAt: pref.startAt,
-      endAt: pref.endAt,
-      localStart: pref.localStart,
-      localEnd: pref.localEnd,
-      timeZone: pref.timeZone,
-    };
-  });
-  const request: AppointmentRequest = {
-    appointmentRequestId: row.appointmentRequestId,
-    organizationId: session.organizationId,
-    leadId: row.leadId,
-    contactId: row.contactId,
-    conversationId: row.conversationId,
-    sourceMessageId: row.sourceMessageId,
-    serviceId: row.serviceId,
-    serviceVersionId: row.serviceVersionId,
-    locationId: row.locationId,
-    locationVersionId: row.locationVersionId,
-    businessPolicyId: row.businessPolicyId,
-    preferences,
-    status: "requested",
-    version: mapAggregateVersion(row.version),
-    createdAt: row.createdAt,
-    staffDecision: null,
-    offer: null,
-    confirmationOffer: null,
-    confirmationEvidence: null,
-    confirmedAt: null,
-    cancellation: null,
-    expiration: null,
-  };
+  const preferences = await readExactAppointmentPreferences(session, row.appointmentRequestId);
+  if (preferences === null) throw new StaffOperationError("business_rule_failed");
+  const request = await loadAppointmentForDecision(session, row, preferences);
   const context = {
       actor: staffActor(input),
       organizationId: session.organizationId,
@@ -235,9 +195,22 @@ export const persistStaffAppointmentDecision = async (
     const reason = validateAppointmentRequestReasonCode(input.operation.input.reason_code);
     if (!reason.ok) throw new StaffOperationError("validation_failed");
     result = rejectAppointmentRequest(request, { ...context, staff, reasonCode: reason.value });
+  } else if (input.operation.action === "cancel") {
+    const reason = validateAppointmentRequestReasonCode(input.operation.input.reason_code);
+    if (!reason.ok) throw new StaffOperationError("validation_failed");
+    if (row.status === "requested" && reason.value !== STAFF_APPOINTMENT_WITHDRAWAL_REASON)
+      throw new StaffOperationError("business_rule_failed");
+    result = cancelAppointmentRequest(request, {
+      ...context,
+      initiator: { kind: "staff", staff },
+      reasonCode: reason.value,
+    });
   } else throw new StaffOperationError("validation_failed");
   if (!result.ok) throw new StaffOperationError("business_rule_failed");
   const value = result.value;
+  const events = nonempty(
+    value.events.map((draft) => envelope(input, draft, "appointment_request", input.id, nextId)),
+  );
   await persistDomainMutationPlan(session, {
     aggregates: [
       {
@@ -245,6 +218,11 @@ export const persistStaffAppointmentDecision = async (
         mode: "update",
         expectedVersion: context.expectedVersion,
         nextAggregate: value.nextAggregate,
+        ...(cancelling && row.status !== "confirmed"
+          ? {
+              storage: { confirmationTokenHash: null, confirmationTokenConsumedAt: null },
+            }
+          : {}),
       },
     ],
     transitions: nonempty(
@@ -255,9 +233,7 @@ export const persistStaffAppointmentDecision = async (
         correlationId: mapCorrelationId(input.correlationId),
       })),
     ),
-    events: nonempty(
-      value.events.map((draft) => envelope(input, draft, "appointment_request", input.id, nextId)),
-    ),
+    events,
     audits: [
       audit(
         input,
@@ -266,6 +242,40 @@ export const persistStaffAppointmentDecision = async (
       ),
     ],
   });
+  const now = new Date(input.occurredAt);
+  if (
+    cancelling &&
+    request.offer !== null &&
+    (await boundConfirmationChannel(session, conversation, now)) !== null
+  ) {
+    const kind = row.status === "confirmed" ? "cancelled_by_staff" : "offer_withdrawn";
+    await queueCustomerReply(
+      session,
+      {
+        conversationId: conversation.conversationId,
+        channelConnectionId: conversation.channelConnectionId,
+        conversationVersion: conversation.version,
+        locale: conversation.preferredLocale,
+        text: confirmationText(kind, conversation.preferredLocale, request.offer.localStart),
+        replyToMessageId: null,
+        aiRunId: null,
+        correlationId: mapCorrelationId(input.correlationId),
+        causationId: events[0].envelope.event_id,
+        requestId: input.requestId,
+        manifest: {
+          sources: [],
+          confirmation_profile: CUSTOMER_CONFIRMATION_PROFILE,
+          confirmation_kind: kind,
+          confirmation_request_id: request.appointmentRequestId,
+          confirmation_offer_version: request.offer.offerVersion,
+        },
+        updatePreferredLocale: false,
+      },
+      protection,
+      nextId,
+      now,
+    );
+  }
 };
 export const persistStaffHandoff = async (
   session: TenantDbSession,

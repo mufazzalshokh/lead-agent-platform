@@ -1,4 +1,5 @@
 import { DomainEventSchemasByVersion, isSchemaValue } from "@lead-agent/contracts";
+import { CUSTOMER_CONFIRMATION_PROFILE } from "@lead-agent/application";
 import type { CustomerDataProtection } from "@lead-agent/security";
 import type { TenantDbSession } from "../runtime/tenant.js";
 import {
@@ -35,6 +36,19 @@ export type QueuedCustomerReply = Readonly<{
   sequence: number;
   conversationVersion: number;
 }>;
+export type WithdrawnConfirmationPrompt = Readonly<{ kind: "withdrawn_confirmation_prompt" }>;
+
+// Shared predicate for customer message projections using the messages alias m.
+export const WITHDRAWN_CONFIRMATION_PROMPT_SQL = `exists (
+  select 1 from appointment_requests ar
+   where m.direction='outbound' and m.ai_run_id is null
+     and m.knowledge_manifest_jsonb->>'confirmation_profile'='${CUSTOMER_CONFIRMATION_PROFILE}'
+     and m.knowledge_manifest_jsonb->>'confirmation_kind'='prompt'
+     and ar.organization_id=m.organization_id and ar.conversation_id=m.conversation_id
+     and ar.id::text=m.knowledge_manifest_jsonb->>'confirmation_request_id'
+     and ar.offer_version::text=m.knowledge_manifest_jsonb->>'confirmation_offer_version'
+     and ar.status='cancelled' and ar.cancelled_by_type='member'
+)`;
 type QueuedCustomerMessage = Pick<
   CustomerReplyInput,
   "conversationId" | "channelConnectionId" | "text" | "locale" | "replyToMessageId" | "aiRunId"

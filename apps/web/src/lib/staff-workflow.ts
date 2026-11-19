@@ -426,7 +426,9 @@ export const createStaffWorkflow = (
             ? "Handoff claimed. You can now continue handling the conversation."
             : path.endsWith("/resolve")
               ? "Handoff resolved. Messages remain available in History when no staff work is pending."
-              : "Action saved. The current appointment state is shown below.";
+              : path.endsWith("/cancel")
+                ? "Cancellation recorded. Check that the customer has been notified."
+                : "Action saved. The current appointment state is shown below.";
     } catch {
       notice = "We could not confirm that action. Review the refreshed state before trying again.";
     }

@@ -27,6 +27,10 @@ import {
   type TenantDatabaseRuntime,
   type TenantDbSession,
 } from "../runtime/tenant.js";
+import {
+  WITHDRAWN_CONFIRMATION_PROMPT_SQL,
+  type WithdrawnConfirmationPrompt,
+} from "./customer-replies.js";
 
 type InstagramConfiguration = Readonly<{
   schema_version: 1;
@@ -481,7 +485,12 @@ export interface InstagramOutboundPersistenceStore {
   load(
     organizationId: OrganizationId,
     messageId: MessageId,
-  ): Promise<InstagramOutboundRecord | Readonly<{ kind: "not_instagram" }> | null>;
+  ): Promise<
+    | InstagramOutboundRecord
+    | Readonly<{ kind: "not_instagram" }>
+    | WithdrawnConfirmationPrompt
+    | null
+  >;
   markFailed(organizationId: OrganizationId, messageId: MessageId): Promise<boolean>;
   markSent(
     organizationId: OrganizationId,
@@ -490,6 +499,7 @@ export interface InstagramOutboundPersistenceStore {
   ): Promise<boolean>;
 }
 type OutboundRow = ConnectionRow & {
+  withdrawn_confirmation_prompt: boolean;
   body_ciphertext: Buffer | null;
   channel_connection_id: unknown;
   channel_type: unknown;
@@ -549,6 +559,7 @@ export const createInstagramOutboundPersistenceStore = (
           text: `select m.channel_connection_id::text,m.body_ciphertext,m.content_type,m.delivery_status,
             cc.channel_type,cc.status,cc.configuration_jsonb,cc.credential_secret_ref,cc.credential_version,cc.provider_account_id_hash,
             c.external_thread_hash,ci.value_ciphertext as recipient_ciphertext,
+            ${WITHDRAWN_CONFIRMATION_PROMPT_SQL} as withdrawn_confirmation_prompt,
             (select max(mi.external_sent_at) from messages mi where mi.organization_id=$1 and mi.conversation_id=m.conversation_id and mi.direction='inbound') as last_inbound_at
             from messages m join conversations c on c.organization_id=m.organization_id and c.id=m.conversation_id
             join channel_connections cc on cc.organization_id=m.organization_id and cc.id=m.channel_connection_id
@@ -561,6 +572,8 @@ export const createInstagramOutboundPersistenceStore = (
         const row = result.rows[0];
         if (row !== undefined && row.channel_type !== "instagram")
           return Object.freeze({ kind: "not_instagram" as const });
+        if (row?.delivery_status === "queued" && row.withdrawn_confirmation_prompt === true)
+          return Object.freeze({ kind: "withdrawn_confirmation_prompt" as const });
         const connection = mappedConnection(row ?? null);
         if (
           row === undefined ||

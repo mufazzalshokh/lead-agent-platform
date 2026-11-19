@@ -338,7 +338,7 @@ Service/Location lifecycle command.
 | `GET /appointment-requests/{id}` | `appointments.read` | Includes transition history visible to staff. |
 | `POST /appointment-requests/{id}/accept` | `appointments.manage` | Staff supplies proposed appointment instant/location/optional staff note; `If-Match` and `Idempotency-Key`. Commits `staff_accepted` plus a prepare-confirmation outbox event and returns `202` with that durable state. |
 | `POST /appointment-requests/{id}/reject` | `appointments.manage` | Reason code plus optional customer-safe message; `If-Match` and idempotency. |
-| `POST /appointment-requests/{id}/cancel` | `appointments.manage` | Policy-authorized cancellation; idempotent command. |
+| `POST /appointment-requests/{id}/cancel` | `appointments.manage` | Versioned and idempotent staff cancellation with `{ reason_code }`. Requires `If-Match` and `Idempotency-Key`. A request still in `requested` requires `customer_withdrew`. Offered and confirmed appointments may be cancelled with an explicit reason. Returns `200` with the updated work item. |
 | `POST /appointment-requests/{id}/attest-customer-confirmation` | `appointments.manage` | For an offline/unreachable customer only: requires MFA step-up within 15 minutes, an `attestation_method` of `phone` or `in_person`, actual confirmation time, `If-Match`, idempotency, and an audit event with source `staff_attested_external`. |
 | `GET /appointment-requests/{id}/attendance` | `appointments.read` | Current attendance fact plus immutable correction history. |
 | `POST /appointment-requests/{id}/attendance` | `attendance.manage` | Record an initial `attended`, `did_not_attend`, or `unknown` fact for a confirmed request after its offered start; `If-Match`, idempotency, actor/source/audit required. |

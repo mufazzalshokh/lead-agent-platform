@@ -5,6 +5,7 @@ import {
   StaffWorkParamsSchema,
   StaffAcceptAppointmentInputSchema,
   StaffRejectAppointmentInputSchema,
+  StaffCancelAppointmentInputSchema,
   StaffClaimHandoffInputSchema,
   StaffResolveHandoffInputSchema,
   StaffReplyInputSchema,
@@ -23,6 +24,7 @@ import {
   type StaffOutcome,
   type StaffAcceptAppointmentInput,
   type StaffRejectAppointmentInput,
+  type StaffCancelAppointmentInput,
   type StaffClaimHandoffInput,
   type StaffResolveHandoffInput,
   type StaffReplyInput,
@@ -47,6 +49,7 @@ export type StaffWorkKind = StaffWorkItem["kind"];
 export type StaffOperation =
   | Readonly<{ action: "accept"; input: StaffAcceptAppointmentInput }>
   | Readonly<{ action: "reject"; input: StaffRejectAppointmentInput }>
+  | Readonly<{ action: "cancel"; input: StaffCancelAppointmentInput }>
   | Readonly<{ action: "claim"; input: StaffClaimHandoffInput }>
   | Readonly<{ action: "resolve"; input: StaffResolveHandoffInput }>
   | Readonly<{ action: "reply"; input: StaffReplyInput }>
@@ -152,6 +155,11 @@ const mutationPolicy = {
     kind: "appointment_request",
     permission: "appointments.manage",
     schema: StaffRejectAppointmentInputSchema,
+  },
+  cancel: {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffCancelAppointmentInputSchema,
   },
   claim: { kind: "handoff", permission: "handoffs.manage", schema: StaffClaimHandoffInputSchema },
   resolve: {

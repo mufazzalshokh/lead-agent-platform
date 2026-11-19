@@ -15,7 +15,6 @@ import {
   ConversationIdSchema,
   MessageIdSchema,
   CorrelationIdSchema,
-  IanaTimeZoneSchema,
   RequestIdSchema,
   EventIdSchema,
   isSchemaValue,
@@ -30,7 +29,6 @@ import {
   cancelAppointmentRequest,
   expireAppointmentRequest,
   convertLead,
-  validateAppointmentOfferVersion,
   validateAppointmentRequestReasonCode,
   type AppointmentRequest,
   type AppointmentRequestCommandResult,
@@ -42,7 +40,10 @@ import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.j
 import { createAppointmentRepository, type AppointmentRequestRecord } from "./appointments.js";
 import { createConversationRepository, type ConversationRecord } from "./conversations.js";
 import { createLeadRepository } from "./leads.js";
-import { localSlotText } from "./staff-domain.js";
+import {
+  loadAppointmentForDecision,
+  readExactAppointmentPreferences,
+} from "./appointment-domain.js";
 import { queueCustomerReply } from "./customer-replies.js";
 import { persistDomainMutationPlan } from "./mutations.js";
 import type {
@@ -75,88 +76,10 @@ const reason = (value: string): AppointmentRequestReasonCode => {
   if (!parsed.ok) throw new RepositoryDataIntegrityError();
   return parsed.value;
 };
-const loadRequest = async (
-  session: TenantDbSession,
-  row: AppointmentRequestRecord,
-): Promise<AppointmentRequest> => {
-  const preferences = await createAppointmentRepository(session).listPreferences(
-    row.appointmentRequestId,
-    { limit: 20 },
-  );
-  const offerVersion = validateAppointmentOfferVersion(row.offerVersion);
-  if (
-    preferences.next !== null ||
-    !offerVersion.ok ||
-    row.staffDecidedAt === null ||
-    row.staffDecidedByMembershipId === null ||
-    row.startAt === null ||
-    row.endAt === null ||
-    row.offeredTimeZone === null ||
-    !isSchemaValue(IanaTimeZoneSchema, row.offeredTimeZone)
-  )
-    throw new RepositoryDataIntegrityError();
-  return {
-    appointmentRequestId: row.appointmentRequestId,
-    organizationId: session.organizationId,
-    leadId: row.leadId,
-    contactId: row.contactId,
-    conversationId: row.conversationId,
-    sourceMessageId: row.sourceMessageId,
-    serviceId: row.serviceId,
-    serviceVersionId: row.serviceVersionId,
-    locationId: row.locationId,
-    locationVersionId: row.locationVersionId,
-    businessPolicyId: row.businessPolicyId,
-    status: row.status,
-    version: mapAggregateVersion(row.version),
-    createdAt: row.createdAt,
-    preferences: preferences.items.map((pref) => {
-      if (
-        pref.precision !== "exact" ||
-        pref.startAt === null ||
-        pref.endAt === null ||
-        pref.localStart === null ||
-        pref.localEnd === null ||
-        !isSchemaValue(IanaTimeZoneSchema, pref.timeZone)
-      )
-        throw new RepositoryDataIntegrityError();
-      return {
-        ...pref,
-        precision: "exact",
-        startAt: pref.startAt,
-        endAt: pref.endAt,
-        localStart: pref.localStart,
-        localEnd: pref.localEnd,
-        timeZone: pref.timeZone,
-      };
-    }),
-    staffDecision: {
-      outcome: "accepted",
-      decidedAt: row.staffDecidedAt,
-      membershipId: row.staffDecidedByMembershipId,
-    },
-    offer: {
-      startAt: row.startAt,
-      endAt: row.endAt,
-      localStart: localSlotText(row.startAt, row.offeredTimeZone),
-      localEnd: localSlotText(row.endAt, row.offeredTimeZone),
-      timeZone: row.offeredTimeZone,
-      locationId: row.locationId,
-      offerVersion: offerVersion.value,
-    },
-    confirmationOffer:
-      row.confirmationIssuedAt === null || row.offerExpiresAt === null
-        ? null
-        : {
-            issuedAt: row.confirmationIssuedAt,
-            expiresAt: row.offerExpiresAt,
-            offerVersion: offerVersion.value,
-          },
-    confirmationEvidence: null,
-    confirmedAt: null,
-    cancellation: null,
-    expiration: null,
-  };
+const loadRequest = async (session: TenantDbSession, row: AppointmentRequestRecord) => {
+  const preferences = await readExactAppointmentPreferences(session, row.appointmentRequestId);
+  if (preferences === null) throw new RepositoryDataIntegrityError();
+  return await loadAppointmentForDecision(session, row, preferences);
 };
 const lockConversation = async (
   session: TenantDbSession,
@@ -170,7 +93,7 @@ const lockConversation = async (
   );
   return rows.length === 0 ? null : await createConversationRepository(session).getConversation(id);
 };
-const boundChannel = async (
+export const boundConfirmationChannel = async (
   session: TenantDbSession,
   conversation: ConversationRecord,
   now: Date,
@@ -489,7 +412,8 @@ export const createCustomerConfirmationStore = (
           );
           return "expired";
         }
-        if ((await boundChannel(session, conversation, now)) === null) return "unavailable";
+        if ((await boundConfirmationChannel(session, conversation, now)) === null)
+          return "unavailable";
         await persist(
           session,
           request,
@@ -657,7 +581,7 @@ export const createCustomerConfirmationStore = (
           }
           return { kind: "not_applicable", reason: null };
         }
-        const channel = await boundChannel(session, conversation, now);
+        const channel = await boundConfirmationChannel(session, conversation, now);
         if (channel === null) return { kind: "ignored", reason: "customer_binding_invalid" };
         const newer = await executeTenantRead(
           session,

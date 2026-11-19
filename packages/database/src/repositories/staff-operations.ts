@@ -86,8 +86,12 @@ export const createStaffOperationsStore = (
             if (before.version !== input.expectedVersion)
               throw new StaffOperationError("version_conflict");
             let outcomeId: ResourceId | null = null;
-            if (input.operation.action === "accept" || input.operation.action === "reject")
-              await persistStaffAppointmentDecision(session, input, nextId);
+            if (
+              input.operation.action === "accept" ||
+              input.operation.action === "reject" ||
+              input.operation.action === "cancel"
+            )
+              await persistStaffAppointmentDecision(session, input, nextId, customerData);
             else if (input.operation.action === "claim" || input.operation.action === "resolve")
               await persistStaffHandoff(session, input, nextId);
             else if (input.operation.action === "reply")

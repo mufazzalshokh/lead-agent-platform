@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { STAFF_REPLY_MAX_BYTES } from "@lead-agent/contracts";
+import { STAFF_APPOINTMENT_WITHDRAWAL_REASON, STAFF_REPLY_MAX_BYTES } from "@lead-agent/contracts";
 
 import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/staff-request";
 import { CopyWidgetCodeButton } from "./CopyWidgetCodeButton";
@@ -925,6 +925,71 @@ export function StaffWorkspace({
                           booking.
                         </p>
                       </div>
+                    )}
+                  {appointmentAction !== null &&
+                    membershipRole !== null &&
+                    membershipRole !== "analyst" &&
+                    [
+                      "requested",
+                      "staff_accepted",
+                      "awaiting_customer_confirmation",
+                      "confirmed",
+                    ].includes(selected.appointmentStatus ?? "") && (
+                      <details className="action-box" key={appointmentAction.id}>
+                        <summary>
+                          {selected.appointmentStatus === "requested"
+                            ? "Record customer withdrawal"
+                            : "Cancel appointment"}
+                        </summary>
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            const reason =
+                              selected.appointmentStatus === "requested"
+                                ? STAFF_APPOINTMENT_WITHDRAWAL_REASON
+                                : new FormData(event.currentTarget).get("reason_code");
+                            if (typeof reason === "string" && reason !== "")
+                              void mutate(
+                                `/v1/staff/appointment-requests/${appointmentAction.id}/cancel`,
+                                appointmentAction,
+                                { reason_code: reason },
+                              );
+                          }}
+                        >
+                          {selected.appointmentStatus === "requested" ? (
+                            <p className="help-text">
+                              Use this when the customer has withdrawn their request.
+                            </p>
+                          ) : (
+                            <label>
+                              Cancellation reason
+                              <select
+                                name="reason_code"
+                                required
+                                defaultValue=""
+                                disabled={working}
+                              >
+                                <option value="" disabled>
+                                  Select a reason
+                                </option>
+                                <option value={STAFF_APPOINTMENT_WITHDRAWAL_REASON}>
+                                  Customer withdrew
+                                </option>
+                                <option value="clinic_cancelled">Clinic cancelled</option>
+                              </select>
+                            </label>
+                          )}
+                          <button
+                            className="danger-button"
+                            type="submit"
+                            disabled={working || !versionsCurrent}
+                          >
+                            {selected.appointmentStatus === "requested"
+                              ? "Confirm withdrawal"
+                              : "Confirm cancellation"}
+                          </button>
+                        </form>
+                      </details>
                     )}
                 </aside>
               </div>

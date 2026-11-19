@@ -16,6 +16,7 @@ import {
   UserIdSchema,
   ResourceIdSchema,
   StaffAcceptAppointmentInputSchema,
+  STAFF_APPOINTMENT_WITHDRAWAL_REASON,
   StaffAttendanceInputSchema,
   StaffRevenueInputSchema,
   isSchemaValue,
@@ -161,6 +162,36 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
     return row;
   };
   describe("S17 real PostgreSQL private operations", () => {
+    it("records a customer withdrawal from a requested appointment without allowing staff to relabel rejection", async () => {
+      const f = await requested();
+      const cancel = (reason: string, version = f.item.version) =>
+        f.ops.mutate(
+          f.auth,
+          "appointment_request",
+          f.item.id,
+          version,
+          "staff-withdrawal",
+          {
+            action: "cancel",
+            input: { reason_code: reason },
+          },
+          "request:withdrawal",
+          "unused",
+        );
+      await expect(cancel("clinic_cancelled")).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      const result = await cancel(STAFF_APPOINTMENT_WITHDRAWAL_REASON);
+      expect(result.resource).toMatchObject({ status: "cancelled", version: f.item.version + 1 });
+      expect(await cancel(STAFF_APPOINTMENT_WITHDRAWAL_REASON)).toEqual(result);
+      const events = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          `select count(*)::int as count from outbox_events where organization_id=$1 and aggregate_id=$2 and event_type='appointment_request.cancelled'`,
+          [f.auth.organizationId, f.item.id],
+        );
+      expect(events.rows[0]?.count).toBe(1);
+    });
     it("opens S16 no-phone requested work with preferences and existing conversation/contact context", async () => {
       const f = await requested(),
         page = await f.ops.list(f.auth, "conversation", {});
