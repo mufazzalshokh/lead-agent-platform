@@ -146,9 +146,19 @@ const sameVersionDrift = (mutate: (schema: Record<string, unknown>) => void) => 
   );
 };
 
-// Freeze historical stage comparisons independently of the approved recovery addition.
-const buildPreRecoverySnapshot = () => {
+const buildPreStaffReplySnapshot = () => {
   const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffReplyInputSchema",
+    ),
+  };
+};
+
+// Freeze historical stage comparisons independently of later additive contracts.
+const buildPreRecoverySnapshot = () => {
+  const snapshot = buildPreStaffReplySnapshot();
   return {
     ...snapshot,
     contracts: snapshot.contracts.filter(
@@ -169,10 +179,10 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(382);
+    expect(snapshot.contracts).toHaveLength(383);
     expect(counts).toEqual({
       ai: 16,
-      api: 44,
+      api: 45,
       channel: 24,
       configuration: 65,
       conversation: 37,
@@ -369,7 +379,7 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds only four recovery contracts while preserving every accepted pre-recovery schema", () => {
-    const candidate = buildContractSnapshot();
+    const candidate = buildPreStaffReplySnapshot();
     const legacy = buildPreRecoverySnapshot();
     expect(legacy.contracts).toHaveLength(378);
     const findings = compareContractSnapshots(legacy, candidate);
@@ -377,10 +387,19 @@ describe("public contract inventory and snapshot", () => {
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 
+  it("adds the staff reply input while preserving every accepted contract", () => {
+    const legacy = buildPreStaffReplySnapshot();
+    expect(legacy.contracts).toHaveLength(382);
+    const findings = compareContractSnapshots(legacy, buildContractSnapshot());
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.classification).toBe("additive");
+  });
+
   it("keeps the runtime export surface explicit", () => {
     const staticSchemaExports = Object.values(PUBLIC_STATIC_SCHEMA_NAMES).flat();
     const nonSchemaExports = [
       "DOMAIN_EVENT_NAMES",
+      "STAFF_REPLY_MAX_BYTES",
       "DomainEventPayloadSchemas",
       "DomainEventPayloadSchemasByVersion",
       "DomainEventSchemas",

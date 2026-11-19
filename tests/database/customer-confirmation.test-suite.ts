@@ -133,6 +133,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       const ops = createStaffOperationsDependencies(
         harness.runtime(),
         new Uint8Array(32).fill(17),
+        harness.dataProtection,
         () => now,
       ).operations;
       const item = (await ops.list(auth, "appointment_request", {})).items[0];

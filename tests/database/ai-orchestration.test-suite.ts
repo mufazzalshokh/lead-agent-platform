@@ -2039,7 +2039,13 @@ export const registerAIOrchestrationTests = (harness: Harness): void => {
     await flow.run(reference(third));
     return third;
   };
-  registerStaffPrivateOperationsTests({ ...harness, seedRequest });
+  registerStaffPrivateOperationsTests({
+    ...harness,
+    seedRequest,
+    dataProtection,
+    inbound: (text, sequence, receivedAt) =>
+      accept(harness, { text, sequence, tenant: "a", receivedAt, channelType: "widget" }),
+  });
   registerCustomerConfirmationTests({
     ...harness,
     seedRequest,

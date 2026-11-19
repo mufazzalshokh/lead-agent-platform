@@ -331,7 +331,7 @@ Service/Location lifecycle command.
 | `GET /conversations/{id}/messages` | `conversations.read` | Cursor list with redacted/authorized message representations. |
 | `GET /conversations/{id}/ai-runs` | `conversations.read` | Redacted run/action-evaluation/source/policy summaries; no raw prompts, hidden reasoning, secrets, or unrestricted provider bodies. |
 | `GET /ai-runs/{id}` | `conversations.read` | Tenant/location-authorized diagnostic representation with model/profile/schema/prompt versions, usage, outcome and safe failure codes. |
-| `POST /conversations/{id}/messages` | `conversations.manage` | Staff reply; requires `Idempotency-Key`; persists message + outbox atomically. |
+| `POST /conversations/{id}/messages` | `conversations.manage` | Staff reply `{ text }`, at most 1,000 UTF-8 bytes. Requires `If-Match`, `Idempotency-Key`, and the current assignee of the active staff-owned handoff. Returns `202` with the updated work item after atomic message, state, audit and outbox persistence. |
 | `POST /conversations/{id}/resolve` | `conversations.manage` | `If-Match`, `Idempotency-Key`; state machine validates. |
 | `POST /conversations/{id}/reopen` | `conversations.manage` | `If-Match`, `Idempotency-Key`; policy-controlled. |
 | `GET /appointment-requests` | `appointments.read` | Cursor list; status/location/date filters. |

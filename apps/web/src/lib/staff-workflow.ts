@@ -1,3 +1,4 @@
+import { STAFF_REPLY_MAX_BYTES } from "@lead-agent/contracts";
 import { makeIdempotencyKey, staffActionMessage } from "./staff-ui";
 
 export type RecordValue = Readonly<Record<string, unknown>>;
@@ -104,6 +105,19 @@ export const actionIdentity = (
   return id === null || version === null ? null : { id, version };
 };
 
+export const staffReplyTarget = (detail: DetailState | null, membershipId: string | null) => {
+  const conversation = detail?.conversation;
+  const handoff = detail?.handoff;
+  return membershipId !== null &&
+    conversation?.["status"] === "awaiting_staff" &&
+    conversation["automation_mode"] === "staff" &&
+    conversation["active_handoff_id"] === handoff?.["id"] &&
+    handoff?.["assigned_membership_id"] === membershipId &&
+    (handoff["status"] === "assigned" || handoff["status"] === "in_progress")
+    ? actionIdentity(conversation)
+    : null;
+};
+
 export type StaffWorkView = "active" | "history";
 type WorkflowState = Readonly<{
   view: StaffWorkView;
@@ -154,6 +168,8 @@ export const createStaffWorkflow = (
   let listEpoch = 0,
     detailEpoch = 0,
     mutationEpoch = 0;
+  let pendingReply: Readonly<{ id: string; version: number; text: string; key: string }> | null =
+    null;
   const listeners = new Set<() => void>();
   const update = (patch: Partial<WorkflowState>) => {
     state = Object.freeze({ ...state, ...patch });
@@ -331,23 +347,29 @@ export const createStaffWorkflow = (
     path: string,
     resource: Readonly<{ id: string; version: number }>,
     body: RecordValue,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const item = state.selected;
-    if (state.working || item === null || !state.versionsCurrent || state.detailLoading) return;
-    const authoritative = path.startsWith("/v1/staff/handoffs/")
-      ? actionIdentity(state.detail?.handoff ?? null)
-      : actionIdentity(state.detail?.appointment ?? null);
+    if (state.working || item === null || !state.versionsCurrent || state.detailLoading)
+      return false;
+    const isReply = path === `/v1/staff/conversations/${resource.id}/messages`;
+    const isHandoff = path.startsWith("/v1/staff/handoffs/");
+    const authoritative = actionIdentity(
+      (isReply
+        ? state.detail?.conversation
+        : isHandoff
+          ? state.detail?.handoff
+          : state.detail?.appointment) ?? null,
+    );
     if (
       authoritative?.id !== resource.id ||
       authoritative.version !== resource.version ||
-      (path.startsWith("/v1/staff/handoffs/") &&
-        body["conversation_version"] !== item.conversationVersion)
+      (isHandoff && body["conversation_version"] !== item.conversationVersion)
     ) {
       update({
         versionsCurrent: false,
         notice: "The work changed. Refresh before taking another action.",
       });
-      return;
+      return false;
     }
     let csrf: string | null;
     try {
@@ -357,41 +379,62 @@ export const createStaffWorkflow = (
     }
     if (csrf === null) {
       update({ notice: "Your session needs to be refreshed before this action." });
-      return;
+      return false;
     }
+    const text = isReply ? stringValue(body["text"]) : null;
+    if (
+      isReply &&
+      (text === null ||
+        !/\S/u.test(text) ||
+        new TextEncoder().encode(text).byteLength > STAFF_REPLY_MAX_BYTES)
+    )
+      return false;
+    const retry =
+      pendingReply?.id === resource.id && pendingReply.text === text ? pendingReply : null;
+    const key = retry?.key ?? makeIdempotencyKey("work", options.randomId());
+    const version = retry?.version ?? resource.version;
+    if (text !== null) pendingReply = { id: resource.id, text, version, key };
     const epoch = ++mutationEpoch;
     update({ working: true, versionsCurrent: false, notice: null });
     let notice: string;
+    let accepted = false;
     try {
       const response = await options.request(path, {
         body: JSON.stringify(body),
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "idempotency-key": makeIdempotencyKey("work", options.randomId()),
-          "if-match": `"${resource.id}:${resource.version}"`,
+          "idempotency-key": key,
+          "if-match": `"${resource.id}:${version}"`,
           "x-csrf-token": csrf,
         },
       });
-      if (!response.ok) {
+      if (epoch !== mutationEpoch) return false;
+      accepted = response.ok;
+      if (isReply && (accepted || [400, 403, 404, 409, 412, 422].includes(response.status)))
+        pendingReply = null;
+      if (!accepted) {
         const problem: unknown = await response.json().catch(() => null);
         notice = staffActionMessage(
           response.status,
           isRecord(problem) ? (stringValue(problem["code"]) ?? undefined) : undefined,
         );
       } else
-        notice = path.endsWith("/claim")
-          ? "Handoff claimed. You can now continue handling the conversation."
-          : path.endsWith("/resolve")
-            ? "Handoff resolved. Messages remain available in History when no staff work is pending."
-            : "Action saved. The current appointment state is shown below.";
+        notice = isReply
+          ? "Reply queued for delivery."
+          : path.endsWith("/claim")
+            ? "Handoff claimed. You can now continue handling the conversation."
+            : path.endsWith("/resolve")
+              ? "Handoff resolved. Messages remain available in History when no staff work is pending."
+              : "Action saved. The current appointment state is shown below.";
     } catch {
       notice = "We could not confirm that action. Review the refreshed state before trying again.";
     }
-    if (epoch !== mutationEpoch) return;
+    if (epoch !== mutationEpoch) return false;
     update({ notice });
     await refresh();
     if (epoch === mutationEpoch) update({ working: false });
+    return accepted;
   };
   return Object.freeze({
     getSnapshot: () => state,
@@ -422,6 +465,7 @@ export const createStaffWorkflow = (
       listEpoch++;
       detailEpoch++;
       mutationEpoch++;
+      pendingReply = null;
     },
   });
 };

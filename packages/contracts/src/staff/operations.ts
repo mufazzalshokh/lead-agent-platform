@@ -120,6 +120,11 @@ export const StaffAcknowledgeInputSchema = Type.Object(
   {},
   { $id: "StaffAcknowledgeInput.v1", additionalProperties: false },
 );
+export const STAFF_REPLY_MAX_BYTES = 1_000;
+export const StaffReplyInputSchema = Type.Object(
+  { text: Type.String({ minLength: 1, maxLength: STAFF_REPLY_MAX_BYTES, pattern: "\\S" }) },
+  { $id: "StaffReplyInput.v1", additionalProperties: false },
+);
 
 export const StaffAttendanceInputSchema = Type.Object(
   {
@@ -198,5 +203,6 @@ export type StaffAcceptAppointmentInput = Type.Static<typeof StaffAcceptAppointm
 export type StaffRejectAppointmentInput = Type.Static<typeof StaffRejectAppointmentInputSchema>;
 export type StaffClaimHandoffInput = Type.Static<typeof StaffClaimHandoffInputSchema>;
 export type StaffResolveHandoffInput = Type.Static<typeof StaffResolveHandoffInputSchema>;
+export type StaffReplyInput = Type.Static<typeof StaffReplyInputSchema>;
 export type StaffAttendanceInput = Type.Static<typeof StaffAttendanceInputSchema>;
 export type StaffRevenueInput = Type.Static<typeof StaffRevenueInputSchema>;

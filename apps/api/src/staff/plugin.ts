@@ -15,6 +15,7 @@ import {
   StaffRejectAppointmentInputSchema,
   StaffClaimHandoffInputSchema,
   StaffResolveHandoffInputSchema,
+  StaffReplyInputSchema,
   StaffAcknowledgeInputSchema,
   StaffAttendanceInputSchema,
   StaffRevenueInputSchema,
@@ -110,6 +111,7 @@ export const registerStaffOperations = (
     );
   }
   const mutations = [
+    ["conversations", "conversation", "messages", StaffReplyInputSchema],
     ["appointment-requests", "appointment_request", "accept", StaffAcceptAppointmentInputSchema],
     ["appointment-requests", "appointment_request", "reject", StaffRejectAppointmentInputSchema],
     ["handoffs", "handoff", "claim", StaffClaimHandoffInputSchema],
@@ -139,7 +141,8 @@ export const registerStaffOperations = (
         const key = request.headers["idempotency-key"];
         if (typeof key !== "string") throw new StaffOperationError("validation_failed");
         const expected = parseConfigurationIfMatch(request.headers["if-match"], id);
-        const action = route === "revenue-attributions" ? "revenue" : route;
+        const action =
+          route === "revenue-attributions" ? "revenue" : route === "messages" ? "reply" : route;
         let operation: StaffOperation;
         // Narrow each validated input rather than casting untrusted JSON into a protected command.
         if (action === "accept" && isSchemaValue(StaffAcceptAppointmentInputSchema, request.body))
@@ -155,6 +158,8 @@ export const registerStaffOperations = (
           action === "resolve" &&
           isSchemaValue(StaffResolveHandoffInputSchema, request.body)
         )
+          operation = { action, input: request.body };
+        else if (action === "reply" && isSchemaValue(StaffReplyInputSchema, request.body))
           operation = { action, input: request.body };
         else if (
           action === "acknowledge" &&
@@ -177,7 +182,7 @@ export const registerStaffOperations = (
           requestId(request),
         );
         reply.header("etag", formatConfigurationEtag(result.resource.id, result.resource.version));
-        reply.code(action === "accept" ? 202 : 200);
+        reply.code(action === "accept" || action === "reply" ? 202 : 200);
         return { data: result, meta: { request_id: requestId(request) } };
       },
     );

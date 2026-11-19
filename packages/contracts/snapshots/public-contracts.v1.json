@@ -60652,6 +60652,28 @@
     },
     {
       "category": "api",
+      "export_name": "StaffReplyInputSchema",
+      "schema": {
+        "$id": "StaffReplyInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffReplyInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
       "export_name": "StaffResolveHandoffInputSchema",
       "schema": {
         "$id": "StaffResolveHandoffInput.v1",

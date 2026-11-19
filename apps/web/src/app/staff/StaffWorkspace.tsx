@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { STAFF_REPLY_MAX_BYTES } from "@lead-agent/contracts";
 
 import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/staff-request";
 import { CopyWidgetCodeButton } from "./CopyWidgetCodeButton";
@@ -31,6 +32,7 @@ import {
   actionIdentity,
   createStaffWorkflow,
   focusStaffConversation,
+  staffReplyTarget,
   type DetailState,
   type RecordValue,
   type WorkItem,
@@ -151,6 +153,8 @@ export function StaffWorkspace({
   const conversationRegion = useRef<HTMLElement>(null);
   const [analytics, setAnalytics] = useState<AnalyticsView | null>(null);
   const [membershipRole, setMembershipRole] = useState<StaffMembershipRole | null>(null);
+  const [membershipId, setMembershipId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
   const [integrationNotice, setIntegrationNotice] = useState<string | null>(() =>
     initialInstagramResult === "connected"
       ? "Instagram Professional connected successfully."
@@ -182,6 +186,8 @@ export function StaffWorkspace({
       setAuthRecovery("reauthenticate");
       setAuthState("signed-out");
       setMembershipRole(null);
+      setMembershipId(null);
+      setReplyText("");
       setAnalytics(null);
     }),
   );
@@ -241,6 +247,7 @@ export function StaffWorkspace({
     if (working) return;
     setStartAt("");
     setEndAt("");
+    if (item.id !== selected?.id) setReplyText("");
     focusStaffConversation(conversationRegion.current);
     void workflow.open(item);
   };
@@ -328,13 +335,17 @@ export function StaffWorkspace({
             setAuthState("signed-out");
             return;
           }
-          const role = me.ok ? readStaffMembershipRole(await responseData(me)) : null;
+          const identity = me.ok ? recordValue(await responseData(me)) : null;
+          const role = readStaffMembershipRole(identity);
           if (cancelled || authentication.isRequired()) return;
           if (role === null) {
             setAuthState("denied");
             return;
           }
           setMembershipRole(role);
+          setMembershipId(
+            stringValue(recordValue(identity?.["active_organization"])?.["membership_id"]),
+          );
           setAuthState("ready");
           if (canManageIntegrations(role)) void loadIntegrationStatuses();
           void loadAnalytics().catch(() => {
@@ -488,6 +499,9 @@ export function StaffWorkspace({
   }
 
   const handoffAction = actionIdentity(detail?.handoff ?? null);
+  const replyTarget = staffReplyTarget(detail, membershipId);
+  const reply = replyText.trim();
+  const replyTooLong = new TextEncoder().encode(reply).byteLength > STAFF_REPLY_MAX_BYTES;
   const appointmentAction = actionIdentity(detail?.appointment ?? null);
   const appointmentPreference = selected?.preferences[0] ?? null;
   return (
@@ -695,17 +709,63 @@ export function StaffWorkspace({
                           String(numberValue(message["sequence_no"]) ?? 0);
                         const text = stringValue(message["body_text"]) ?? "Message removed";
                         const created = stringValue(message["created_at"]);
+                        const delivery = stringValue(message["delivery_status"]);
                         return (
                           <article className={messageClass(message)} key={id}>
                             <p>{text}</p>
                             {created !== null && (
                               <time dateTime={created}>{formatStaffDateTime(created)}</time>
                             )}
+                            {message["sender_type"] === "member" &&
+                              (delivery === "queued" || delivery === "failed") && (
+                                <small>
+                                  {delivery === "queued" ? "Queued" : "Delivery failed"}
+                                </small>
+                              )}
                           </article>
                         );
                       })
                     )}
                   </div>
+                  {replyTarget !== null && (
+                    <form
+                      className="staff-reply-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        if (reply === "" || replyTooLong) return;
+                        void mutate(
+                          `/v1/staff/conversations/${replyTarget.id}/messages`,
+                          replyTarget,
+                          { text: reply },
+                        ).then((accepted) => {
+                          if (accepted) setReplyText("");
+                        });
+                      }}
+                    >
+                      <label htmlFor="staff-reply">Reply to customer</label>
+                      <textarea
+                        id="staff-reply"
+                        rows={3}
+                        maxLength={STAFF_REPLY_MAX_BYTES}
+                        value={replyText}
+                        disabled={working}
+                        onChange={(event) => setReplyText(event.target.value)}
+                      />
+                      {replyTooLong && <p role="status">Shorten your reply before sending.</p>}
+                      <button
+                        type="submit"
+                        disabled={
+                          working ||
+                          !versionsCurrent ||
+                          detailLoading ||
+                          reply === "" ||
+                          replyTooLong
+                        }
+                      >
+                        Send reply
+                      </button>
+                    </form>
+                  )}
                 </div>
                 <aside className="context-panel" id="context">
                   <h3>Customer context</h3>

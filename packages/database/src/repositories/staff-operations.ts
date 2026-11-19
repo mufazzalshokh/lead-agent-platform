@@ -9,7 +9,7 @@ import {
   type StaffMutationResult,
   type ResourceId,
 } from "@lead-agent/contracts";
-import { createSecurityIdentifierFactory } from "@lead-agent/security";
+import { createSecurityIdentifierFactory, type CustomerDataProtection } from "@lead-agent/security";
 import type { TenantDatabaseRuntime } from "../runtime/tenant.js";
 import {
   finalizeRepositoryIdempotency,
@@ -17,7 +17,11 @@ import {
   LocationConfigurationIdempotencyError,
   type LocationConfigurationReplayProtector,
 } from "./location-configuration.js";
-import { persistStaffAppointmentDecision, persistStaffHandoff } from "./staff-domain.js";
+import {
+  persistStaffAppointmentDecision,
+  persistStaffHandoff,
+  persistStaffReply,
+} from "./staff-domain.js";
 import { persistStaffOutcome, appendStaffAudit } from "./staff-outcomes.js";
 import { getStaffWork, readStaffWork, readStaffOutcomes, requireStaffActor } from "./staff-work.js";
 import {
@@ -31,6 +35,7 @@ import {
 export const createStaffOperationsStore = (
   runtime: TenantDatabaseRuntime,
   protector: LocationConfigurationReplayProtector,
+  customerData: CustomerDataProtection,
   nextId: () => string = () => createSecurityIdentifierFactory().issueResourceId(new Date()),
 ): StaffOperationsStore =>
   Object.freeze<StaffOperationsStore>({
@@ -47,6 +52,8 @@ export const createStaffOperationsStore = (
         readStaffOutcomes(session, input),
       ),
     mutate: async (input) => {
+      if ((input.kind === "conversation") !== (input.operation.action === "reply"))
+        throw new StaffOperationError("validation_failed");
       try {
         return await runtime.withTenantTransaction(
           input.authorization.organizationId,
@@ -83,6 +90,8 @@ export const createStaffOperationsStore = (
               await persistStaffAppointmentDecision(session, input, nextId);
             else if (input.operation.action === "claim" || input.operation.action === "resolve")
               await persistStaffHandoff(session, input, nextId);
+            else if (input.operation.action === "reply")
+              await persistStaffReply(session, input, customerData, nextId);
             else if (input.operation.action === "acknowledge") {
               const updated = await executeTenantWrite(
                 session,
@@ -107,8 +116,14 @@ export const createStaffOperationsStore = (
             );
             if (ciphertext.byteLength < 1 || ciphertext.byteLength > 65_536)
               throw new TypeError("Invalid protected staff replay size");
-            if (input.kind === "conversation") throw new StaffOperationError("validation_failed");
-            await finalizeRepositoryIdempotency(session, input, input.kind, input.id, ciphertext);
+            await finalizeRepositoryIdempotency(
+              session,
+              input,
+              input.kind,
+              input.id,
+              ciphertext,
+              input.operation.action === "reply" ? 202 : 200,
+            );
             return result;
           },
         );

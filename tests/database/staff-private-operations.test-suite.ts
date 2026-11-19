@@ -23,6 +23,7 @@ import {
 import {
   resolveAuthorizationContext,
   type AuthenticatedApplicationSession,
+  type CustomerDataProtection,
   type MembershipRole,
 } from "../../packages/security/src/index.js";
 import { fixtureId } from "../ai/fixtures.js";
@@ -30,13 +31,16 @@ import { fixtureId } from "../ai/fixtures.js";
 type Harness = Readonly<{
   privilegedPool: () => Pool;
   runtime: () => TenantDatabaseRuntime;
+  dataProtection: CustomerDataProtection;
   seedRequest: (tenant: "a" | "b") => Promise<CanonicalInboundReceipt>;
+  inbound: (text: string, sequence: number, receivedAt: string) => Promise<CanonicalInboundReceipt>;
 }>;
 export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
   const now = new Date("2026-09-18T09:00:00.000Z"),
     rootKey = new Uint8Array(32).fill(17);
   const operations = () =>
-    createStaffOperationsDependencies(harness.runtime(), rootKey, () => now).operations;
+    createStaffOperationsDependencies(harness.runtime(), rootKey, harness.dataProtection, () => now)
+      .operations;
   const authorization = async (
     receipt: CanonicalInboundReceipt,
     role: MembershipRole = "staff",
@@ -99,6 +103,27 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
     const item = (await ops.list(auth, "appointment_request", {})).items[0];
     if (item === undefined) throw new Error("S17 requires an S16 requested fixture");
     return { receipt, auth, ops, item };
+  };
+  const withHandoff = async () => {
+    const f = await requested();
+    const id = requireResource(fixtureId(27004));
+    const pool = harness.privilegedPool();
+    await pool.query(
+      `insert into handoffs(id,organization_id,conversation_id,lead_id,location_id,status,trigger_reason,queue_key,requested_at,sla_due_at,created_at,updated_at) values ($1,$2,$3,$4,$5,'requested','customer_requested','staff',$6,$6::timestamptz+interval '1 hour',$6,$6)`,
+      [
+        id,
+        f.auth.organizationId,
+        f.receipt.conversationId,
+        f.receipt.leadId,
+        f.item.location_id,
+        now,
+      ],
+    );
+    await pool.query(
+      `update conversations set status='awaiting_staff',automation_mode='paused',active_handoff_id=$1 where id=$2`,
+      [id, f.receipt.conversationId],
+    );
+    return { ...f, handoff: await f.ops.get(f.auth, "handoff", id) };
   };
   const acceptSlot = { start_at: "2026-09-19T12:00:00.000Z", end_at: "2026-09-19T12:30:00.000Z" };
   const mutation = (f: Awaited<ReturnType<typeof requested>>, key = "s17-accept") =>
@@ -363,29 +388,9 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       });
     });
     it("claims/starts and resolves Handoff with coupled Conversation CAS and explicit disposition", async () => {
-      const f = await requested(),
-        handoff = fixtureId(27004);
-      await harness
-        .privilegedPool()
-        .query(
-          `insert into handoffs(id,organization_id,conversation_id,lead_id,location_id,status,trigger_reason,queue_key,requested_at,sla_due_at,created_at,updated_at) values ($1,$2,$3,$4,$5,'requested','customer_requested','staff',$6,$6::timestamptz+interval '1 hour',$6,$6)`,
-          [
-            handoff,
-            f.auth.organizationId,
-            f.receipt.conversationId,
-            f.receipt.leadId,
-            f.item.location_id,
-            now,
-          ],
-        );
-      await harness
-        .privilegedPool()
-        .query(
-          `update conversations set status='awaiting_staff',automation_mode='paused',active_handoff_id=$1 where id=$2`,
-          [handoff, f.receipt.conversationId],
-        );
-      const id = requireResource(handoff),
-        item = await f.ops.get(f.auth, "handoff", id);
+      const f = await withHandoff(),
+        item = f.handoff,
+        id = item.id;
       if (item.conversation_version === null) throw new Error("Missing version");
       const command = {
         action: "claim" as const,
@@ -448,6 +453,110 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
             ])
         ).rows[0],
       ).toEqual({ status: "resolved", active_handoff_id: null });
+    });
+    it("queues one encrypted staff reply and keeps handoff ownership on the next customer message", async () => {
+      const f = await withHandoff();
+      const id = requireResource(f.receipt.conversationId);
+      const claimVersion = f.handoff.conversation_version;
+      if (claimVersion === null) throw new Error("Missing conversation version");
+      const text = "We can help you with your visit.";
+      const send = (version: number, key = "staff-reply", auth = f.auth) =>
+        f.ops.mutate(
+          auth,
+          "conversation",
+          id,
+          version,
+          key,
+          { action: "reply", input: { text } },
+          "request:staff-reply",
+          "unused",
+        );
+      await expect(send(claimVersion)).rejects.toMatchObject({ code: "business_rule_failed" });
+      const { resource: claimed } = await f.ops.mutate(
+        f.auth,
+        "handoff",
+        f.handoff.id,
+        f.handoff.version,
+        "staff-reply-claim",
+        { action: "claim", input: { conversation_version: claimVersion } },
+        "request:staff-reply",
+        "unused",
+      );
+      const version = claimed.conversation_version;
+      if (version === null) throw new Error("Missing claimed version");
+      const other = await requested("b");
+      await expect(send(version, "foreign-staff-reply", other.auth)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      const restricted = await authorization(f.receipt, "staff", "restricted");
+      await expect(send(version, "restricted", restricted)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      await authorization(f.receipt);
+
+      const pool = harness.privilegedPool();
+      await pool.query(
+        `alter table outbox_events add constraint staff_reply_test_rollback check (event_type <> 'message.response_queued') not valid`,
+      );
+      try {
+        await expect(send(version)).rejects.toThrow();
+        expect(await f.ops.get(f.auth, "conversation", id)).toMatchObject({
+          status: "awaiting_staff",
+          version,
+        });
+      } finally {
+        await pool.query(`alter table outbox_events drop constraint staff_reply_test_rollback`);
+      }
+
+      const [result, replay] = await Promise.all([send(version), send(version)]);
+      expect(replay).toEqual(result);
+      expect(result.resource).toMatchObject({ status: "awaiting_lead", version: version + 1 });
+      await expect(send(version, "stale-staff-reply")).rejects.toMatchObject({
+        code: "version_conflict",
+      });
+      const { rows } = await pool.query<{
+        delivery_status: string;
+        body_ciphertext: Buffer;
+        queued_count: number;
+        actor_membership_id: string;
+        audit_count: number;
+      }>(
+        `select m.delivery_status,m.body_ciphertext,m.sender_membership_id as actor_membership_id,
+        (select count(*)::int from outbox_events where organization_id=m.organization_id and aggregate_id=m.conversation_id
+          and event_type='message.response_queued' and payload_jsonb->'payload'->>'message_id'=m.id::text
+          and payload_jsonb->'actor'->>'actor_id'=m.sender_membership_id::text) as queued_count,
+        (select count(*)::int from audit_events where organization_id=m.organization_id and target_id=m.conversation_id
+          and actor_membership_id=m.sender_membership_id and metadata_redacted_jsonb->>'staff_operation'='reply') as audit_count
+        from messages m where m.conversation_id=$1 and m.direction='outbound' and m.sender_type='member'`,
+        [id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        delivery_status: "queued",
+        actor_membership_id: f.auth.membershipId,
+        queued_count: 1,
+        audit_count: 1,
+      });
+      expect(rows[0]?.body_ciphertext.includes(Buffer.from(text))).toBe(false);
+
+      const inbound = await harness.inbound(
+        "Thank you",
+        4,
+        new Date(now.getTime() + 60_000).toISOString(),
+      );
+      expect(inbound.conversationId).toBe(id);
+      expect(
+        (
+          await pool.query(
+            `select status,automation_mode,active_handoff_id from conversations where id=$1`,
+            [id],
+          )
+        ).rows[0],
+      ).toEqual({
+        status: "awaiting_staff",
+        automation_mode: "staff",
+        active_handoff_id: claimed.id,
+      });
     });
     it("paginates equal-time queue items without duplication and binds cursors to actor/tenant", async () => {
       const f = await requested(),
@@ -571,6 +680,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       const ops = createStaffOperationsDependencies(
         harness.runtime(),
         rootKey,
+        harness.dataProtection,
         () => new Date("2026-09-20T09:00:00Z"),
       ).operations;
       const recorded = await ops.mutate(
@@ -753,6 +863,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
         createStaffOperationsStore(
           harness.runtime(),
           { protect: (_scope, bytes) => bytes, reveal: (_scope, bytes) => bytes },
+          harness.dataProtection,
           () => occupied,
         ),
         createStaffQueryCursorCodec(rootKey),

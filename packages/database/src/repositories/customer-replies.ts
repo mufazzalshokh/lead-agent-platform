@@ -12,6 +12,7 @@ import type {
   ConversationId,
   CorrelationId,
   Locale,
+  MembershipId,
   MessageId,
 } from "@lead-agent/contracts";
 
@@ -34,6 +35,52 @@ export type QueuedCustomerReply = Readonly<{
   sequence: number;
   conversationVersion: number;
 }>;
+type QueuedCustomerMessage = Pick<
+  CustomerReplyInput,
+  "conversationId" | "channelConnectionId" | "text" | "locale" | "replyToMessageId" | "aiRunId"
+> &
+  Readonly<{
+    messageId: MessageId;
+    sequence: number;
+    senderMembershipId: MembershipId | null;
+    manifest: CustomerReplyInput["manifest"] | null;
+  }>;
+
+export const insertQueuedCustomerMessage = async (
+  session: TenantDbSession,
+  input: QueuedCustomerMessage,
+  protection: CustomerDataProtection,
+  occurredAt: Date,
+): Promise<void> => {
+  const body = protection.protectMessageBody({
+    organizationId: session.organizationId,
+    channelConnectionId: input.channelConnectionId,
+    contentType: "text",
+    content: { type: "text", text: input.text, locale_hint: input.locale },
+  });
+  await executeTenantWrite(
+    session,
+    `insert into messages (organization_id,id,conversation_id,channel_connection_id,direction,sender_type,
+      sender_membership_id,sequence_no,content_type,body_ciphertext,body_hash,locale,processing_status,delivery_status,
+      reply_to_message_id,ai_run_id,knowledge_manifest_jsonb,created_at)
+      values ($1,$2,$3,$4,'outbound',$5,$6,$7,'text',$8,$9,$10,'processed','queued',$11,$12,$13::jsonb,$14)`,
+    [
+      input.messageId,
+      input.conversationId,
+      input.channelConnectionId,
+      input.senderMembershipId === null ? "system" : "member",
+      input.senderMembershipId,
+      input.sequence,
+      body.ciphertext,
+      body.hash,
+      input.locale,
+      input.replyToMessageId,
+      input.aiRunId,
+      input.manifest === null ? null : JSON.stringify(input.manifest),
+      occurredAt,
+    ],
+  );
+};
 /** Shared encrypted customer delivery intent, always inside the caller's tenant transaction. */
 export const queueCustomerReply = async (
   session: TenantDbSession,
@@ -44,12 +91,6 @@ export const queueCustomerReply = async (
 ): Promise<QueuedCustomerReply> => {
   if (Buffer.byteLength(input.text, "utf8") > 1_000) throw new RepositoryDataIntegrityError();
   const messageId = mapMessageId(nextId());
-  const body = protection.protectMessageBody({
-    organizationId: session.organizationId,
-    channelConnectionId: input.channelConnectionId,
-    contentType: "text",
-    content: { type: "text", text: input.text, locale_hint: input.locale },
-  });
   const sequences = await executeTenantWrite(
     session,
     `update conversations set next_sequence_no=next_sequence_no+1,version=version+1,
@@ -65,25 +106,11 @@ export const queueCustomerReply = async (
   if (sequences.rowCount !== 1 || sequences.rows.length !== 1)
     throw new RepositoryDataIntegrityError();
   const sequence = mapSafeBigInt(sequences.rows[0]?.["sequence_no"]);
-  await executeTenantWrite(
+  await insertQueuedCustomerMessage(
     session,
-    `insert into messages (organization_id,id,conversation_id,channel_connection_id,direction,sender_type,
-      sequence_no,content_type,body_ciphertext,body_hash,locale,processing_status,delivery_status,
-      reply_to_message_id,ai_run_id,knowledge_manifest_jsonb,created_at)
-      values ($1,$2,$3,$4,'outbound','system',$5,'text',$6,$7,$8,'processed','queued',$9,$10,$11::jsonb,$12)`,
-    [
-      messageId,
-      input.conversationId,
-      input.channelConnectionId,
-      sequence,
-      body.ciphertext,
-      body.hash,
-      input.locale,
-      input.replyToMessageId,
-      input.aiRunId,
-      JSON.stringify(input.manifest),
-      occurredAt,
-    ],
+    { ...input, messageId, sequence, senderMembershipId: null },
+    protection,
+    occurredAt,
   );
   const schema = DomainEventSchemasByVersion["message.response_queued"]["1"];
   const schemaId: unknown = Reflect.get(schema, "$id");

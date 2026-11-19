@@ -7,6 +7,8 @@ import {
   StaffRejectAppointmentInputSchema,
   StaffClaimHandoffInputSchema,
   StaffResolveHandoffInputSchema,
+  StaffReplyInputSchema,
+  STAFF_REPLY_MAX_BYTES,
   StaffAcknowledgeInputSchema,
   StaffAttendanceInputSchema,
   StaffRevenueInputSchema,
@@ -23,6 +25,7 @@ import {
   type StaffRejectAppointmentInput,
   type StaffClaimHandoffInput,
   type StaffResolveHandoffInput,
+  type StaffReplyInput,
   type StaffAttendanceInput,
   type StaffRevenueInput,
   type ResourceId,
@@ -46,6 +49,7 @@ export type StaffOperation =
   | Readonly<{ action: "reject"; input: StaffRejectAppointmentInput }>
   | Readonly<{ action: "claim"; input: StaffClaimHandoffInput }>
   | Readonly<{ action: "resolve"; input: StaffResolveHandoffInput }>
+  | Readonly<{ action: "reply"; input: StaffReplyInput }>
   | Readonly<{ action: "acknowledge"; input: Readonly<object> }>
   | Readonly<{ action: "attendance"; input: StaffAttendanceInput }>
   | Readonly<{ action: "revenue"; input: StaffRevenueInput }>;
@@ -138,16 +142,49 @@ export const staffReadPermission = (kind: StaffWorkKind): TenantPermission =>
       : kind === "notification"
         ? "notifications.read"
         : "conversations.read";
+const mutationPolicy = {
+  accept: {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffAcceptAppointmentInputSchema,
+  },
+  reject: {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffRejectAppointmentInputSchema,
+  },
+  claim: { kind: "handoff", permission: "handoffs.manage", schema: StaffClaimHandoffInputSchema },
+  resolve: {
+    kind: "handoff",
+    permission: "handoffs.manage",
+    schema: StaffResolveHandoffInputSchema,
+  },
+  reply: {
+    kind: "conversation",
+    permission: "conversations.manage",
+    schema: StaffReplyInputSchema,
+  },
+  acknowledge: {
+    kind: "notification",
+    permission: "notifications.read",
+    schema: StaffAcknowledgeInputSchema,
+  },
+  attendance: {
+    kind: "appointment_request",
+    permission: "attendance.manage",
+    schema: StaffAttendanceInputSchema,
+  },
+  revenue: {
+    kind: "appointment_request",
+    permission: "revenue_attribution.manage",
+    schema: StaffRevenueInputSchema,
+  },
+} as const satisfies Record<
+  StaffOperation["action"],
+  { kind: StaffWorkKind; permission: TenantPermission; schema: object }
+>;
 export const staffMutationPermission = (operation: StaffOperation): TenantPermission =>
-  operation.action === "claim" || operation.action === "resolve"
-    ? "handoffs.manage"
-    : operation.action === "acknowledge"
-      ? "notifications.read"
-      : operation.action === "attendance"
-        ? "attendance.manage"
-        : operation.action === "revenue"
-          ? "revenue_attribution.manage"
-          : "appointments.manage";
+  mutationPolicy[operation.action].permission;
 const requireAuthorization = (
   authorization: AuthorizationContext,
   permission: TenantPermission,
@@ -160,15 +197,6 @@ const timestamp = (value: Date): UtcTimestamp => {
   const text = value.toISOString();
   if (!isSchemaValue(UtcTimestampSchema, text)) throw new TypeError("Invalid staff timestamp");
   return text;
-};
-const schemas = {
-  accept: StaffAcceptAppointmentInputSchema,
-  reject: StaffRejectAppointmentInputSchema,
-  claim: StaffClaimHandoffInputSchema,
-  resolve: StaffResolveHandoffInputSchema,
-  acknowledge: StaffAcknowledgeInputSchema,
-  attendance: StaffAttendanceInputSchema,
-  revenue: StaffRevenueInputSchema,
 };
 export const createStaffOperations = (
   store: StaffOperationsStore,
@@ -274,18 +302,15 @@ export const createStaffOperations = (
       correlationId: string,
     ) => {
       requireAuthorization(authorization, staffMutationPermission(operation));
-      const expectedKind =
-        operation.action === "claim" || operation.action === "resolve"
-          ? "handoff"
-          : operation.action === "acknowledge"
-            ? "notification"
-            : "appointment_request";
+      const policy = mutationPolicy[operation.action];
       if (
-        kind !== expectedKind ||
+        kind !== policy.kind ||
         !isSchemaValue(ResourceIdSchema, id) ||
         !isSchemaValue(ResourceVersionSchema, expectedVersion) ||
         !isSchemaValue(ConfigurationIdempotencyKeySchema, key) ||
-        !isSchemaValue(schemas[operation.action], operation.input)
+        !isSchemaValue(policy.schema, operation.input) ||
+        (operation.action === "reply" &&
+          new TextEncoder().encode(operation.input.text).byteLength > STAFF_REPLY_MAX_BYTES)
       )
         throw new StaffOperationError("validation_failed");
       const now = clock(),

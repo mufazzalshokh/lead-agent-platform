@@ -350,6 +350,53 @@ const createFixture = (withOperations = false) => {
 };
 
 describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () => {
+  it("queues a staff reply only through the authenticated versioned mutation boundary", async () => {
+    const f = createFixture(true);
+    const url = `/v1/staff/conversations/${staffWorkFixture.id}/messages`;
+    const headers = {
+      ...f.headers(),
+      origin: STAFF_ORIGIN,
+      "x-csrf-token": f.csrf,
+      "idempotency-key": "staff-reply-fixture",
+      "if-match": `"${staffWorkFixture.id}:1"`,
+    };
+    const text = "Thanks, we can help.";
+    try {
+      expect(
+        (
+          await f.api.inject({
+            method: "POST",
+            url,
+            headers: { ...headers, "x-csrf-token": "wrong" },
+            payload: { text },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (await f.api.inject({ method: "POST", url, headers, payload: { text: "Я".repeat(501) } }))
+          .statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await f.api.inject({
+            method: "POST",
+            url,
+            headers,
+            payload: { text, organization_id: OTHER_ORGANIZATION_ID },
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(f.controls.calls).toHaveLength(0);
+      const response = await f.api.inject({ method: "POST", url, headers, payload: { text } });
+      expect(response.statusCode).toBe(202);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.body).not.toContain(text);
+      expect(f.controls.calls).toHaveLength(1);
+      expect(f.controls.calls[0]?.operation).toBe("reply");
+    } finally {
+      await f.api.close();
+    }
+  });
   it("lists only through authenticated membership and a bounded explicit response", async () => {
     const f = createFixture(true);
     try {

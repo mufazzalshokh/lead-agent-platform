@@ -25,6 +25,7 @@ import {
 import {
   createApplicationSessionLifecycle,
   createBrowserAuthEnvelopeProtector,
+  createCustomerDataProtection,
   createInvitationEmailTargetProtector,
   createMembershipLifecycle,
 } from "@lead-agent/security";
@@ -170,7 +171,11 @@ export const createApiFromEnvironment = (
       ...(sessionConnectionProbe === undefined ? {} : { sessionConnectionProbe }),
     },
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),
-    staffOperations: createStaffOperationsDependencies(tenantRuntime, web.browserEnvelopeKey),
+    staffOperations: createStaffOperationsDependencies(
+      tenantRuntime,
+      web.browserEnvelopeKey,
+      createCustomerDataProtection(customerDataConfig),
+    ),
     staffAnalytics: createStaffAnalyticsDependencies(tenantRuntime, metrics),
     staffWidgetManagement: createStaffWidgetManagementDependencies(tenantRuntime),
     ...(environment["DEPLOYMENT_ENVIRONMENT"] === "staging"

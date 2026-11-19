@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createStaffWorkflow, focusStaffConversation, parseWorkItem } from "./staff-workflow";
+import {
+  createStaffWorkflow,
+  focusStaffConversation,
+  parseWorkItem,
+  staffReplyTarget,
+} from "./staff-workflow";
 
 const item = (id = "conversation-a") => {
   const parsed = parseWorkItem({
@@ -48,12 +53,14 @@ const harness = () => {
     failList = false,
     conflict = false,
     networkFailure = false;
+  let requestId = 0;
   const request = vi.fn(async (path: string, init?: RequestInit): Promise<Response> => {
     await Promise.resolve();
     if (init?.method === "POST") {
       if (networkFailure) throw new Error("private dependency details must not reach UI");
       if (conflict) return Response.json({ code: "version_conflict" }, { status: 412 });
       conversationVersion++;
+      if (path.endsWith("/messages")) return new Response(null, { status: 202 });
       handoffVersion++;
       handoffStatus = path.endsWith("/claim") ? "in_progress" : "resolved";
       return data({});
@@ -68,6 +75,7 @@ const harness = () => {
         version: conversationVersion,
         status: handoffStatus === "resolved" ? "open" : "awaiting_staff",
         active_handoff_id: handoffStatus === "resolved" ? null : `handoff-${id}`,
+        automation_mode: handoffStatus === "in_progress" ? "staff" : "paused",
       });
     }
     if (path.includes("/messages?"))
@@ -78,11 +86,16 @@ const harness = () => {
         version: handoffVersion,
         conversation_version: conversationVersion,
         status: handoffStatus,
+        assigned_membership_id: handoffStatus === "in_progress" ? "acting-member" : null,
       });
     throw new Error(`unexpected fixture request: ${path}`);
   });
   const csrf = vi.fn((): string | null => "synthetic-csrf");
-  const workflow = createStaffWorkflow({ request, csrf, randomId: () => "synthetic-request-id" });
+  const workflow = createStaffWorkflow({
+    request,
+    csrf,
+    randomId: () => `synthetic-request-id-${++requestId}`,
+  });
   return {
     workflow,
     request,
@@ -96,8 +109,11 @@ const harness = () => {
     setConflict: () => {
       conflict = true;
     },
-    setNetworkFailure: () => {
-      networkFailure = true;
+    setNetworkFailure: (value = true) => {
+      networkFailure = value;
+    },
+    advanceConversation: () => {
+      conversationVersion++;
     },
   };
 };
@@ -109,6 +125,33 @@ const claim = async (test: ReturnType<typeof harness>, version = 1, conversation
   );
 
 describe("S22 staff conversation workflow", () => {
+  it("offers reply only to the assignee and retains the exact CAS and key after an ambiguous send", async () => {
+    const test = harness();
+    await test.workflow.open(item());
+    expect(staffReplyTarget(test.workflow.getSnapshot().detail, "acting-member")).toBeNull();
+    await claim(test);
+    expect(staffReplyTarget(test.workflow.getSnapshot().detail, "other-member")).toBeNull();
+    const send = async () => {
+      const target = staffReplyTarget(test.workflow.getSnapshot().detail, "acting-member");
+      if (target === null) throw new Error("Expected a staff-owned target");
+      return test.workflow.mutate(`/v1/staff/conversations/${target.id}/messages`, target, {
+        text: "Thank you",
+      });
+    };
+    test.setNetworkFailure();
+    expect(await send()).toBe(false);
+    test.setNetworkFailure(false);
+    test.advanceConversation();
+    await test.workflow.refresh();
+    expect(await send()).toBe(true);
+    const posts = test.request.mock.calls.filter(
+      ([path, init]) => path.endsWith("/messages") && init?.method === "POST",
+    );
+    expect(posts).toHaveLength(2);
+    expect(posts[0]?.[1]).toMatchObject({ headers: { "if-match": '"conversation-a:8"' } });
+    expect(posts[1]?.[1]).toEqual(posts[0]?.[1]);
+    expect(test.workflow.getSnapshot().notice).toBe("Reply queued for delivery.");
+  });
   it("uses the real history contract, paginates, and does not close an open conversation", async () => {
     const test = harness();
     await test.workflow.open(item());

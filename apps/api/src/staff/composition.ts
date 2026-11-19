@@ -10,10 +10,12 @@ import {
   type TenantDatabaseRuntime,
 } from "@lead-agent/database";
 import type { StaffOperationsDependencies } from "./plugin.js";
+import type { CustomerDataProtection } from "@lead-agent/security";
 
 export const createStaffOperationsDependencies = (
   runtime: TenantDatabaseRuntime,
   rootKey: Uint8Array,
+  customerData: CustomerDataProtection,
   clock: () => Date = () => new Date(),
 ): StaffOperationsDependencies => {
   const derive = (purpose: string) =>
@@ -46,7 +48,7 @@ export const createStaffOperationsDependencies = (
   };
   return {
     operations: createStaffOperations(
-      createStaffOperationsStore(runtime, protector),
+      createStaffOperationsStore(runtime, protector, customerData),
       createStaffQueryCursorCodec(derive("cursor-v1")),
       clock,
     ),

@@ -20,15 +20,18 @@ import {
   takeHandoffStaffOwnershipWorkflow,
   terminateHandoffAndResumeAiWorkflow,
   terminateHandoffAndResolveConversationWorkflow,
+  queueStaffResponse,
   type AppointmentRequest,
   type Conversation,
   type Handoff,
 } from "@lead-agent/domain";
+import type { CustomerDataProtection } from "@lead-agent/security";
 import type { TenantDbSession } from "../runtime/tenant.js";
 import { createAppointmentRepository } from "./appointments.js";
 import { createConversationRepository } from "./conversations.js";
 import { createHandoffNotificationRepository } from "./handoffs.js";
 import { persistDomainMutationPlan } from "./mutations.js";
+import { insertQueuedCustomerMessage } from "./customer-replies.js";
 import type {
   CoreDomainEventDraft,
   CoreTransitionPersistence,
@@ -41,9 +44,12 @@ import {
   mapAppointmentRequestId,
   mapConversationId,
   mapHandoffId,
+  mapMessageId,
   mapResourceId,
+  mapSafeBigInt,
   RepositoryDataIntegrityError,
   executeTenantRead,
+  executeTenantWrite,
 } from "./shared.js";
 import { getStaffWork } from "./staff-work.js";
 
@@ -403,6 +409,103 @@ export const persistStaffHandoff = async (
         nextId,
       ),
     ],
+  });
+};
+export const persistStaffReply = async (
+  session: TenantDbSession,
+  input: StaffPreparedOperation,
+  protection: CustomerDataProtection,
+  nextId: () => string,
+): Promise<void> => {
+  if (input.operation.action !== "reply") throw new StaffOperationError("validation_failed");
+  const row = await createConversationRepository(session).getConversation(
+    mapConversationId(input.id),
+  );
+  if (row.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
+  if (row.activeHandoffId === null) throw new StaffOperationError("business_rule_failed");
+  // Handoff workflows lock the handoff before the conversation. Hold ownership stable through commit.
+  const ownership = await executeTenantRead<{ status: unknown }>(
+    session,
+    `select status from handoffs where organization_id=$1 and id=$2 and conversation_id=$3
+      and assigned_membership_id=$4 and status in ('assigned','in_progress') for share`,
+    [row.activeHandoffId, row.conversationId, input.authorization.membershipId],
+  );
+  const handoffStatus = ownership[0]?.["status"];
+  if (handoffStatus !== "assigned" && handoffStatus !== "in_progress")
+    throw new StaffOperationError("business_rule_failed");
+  await getStaffWork(session, input.authorization, "handoff", mapResourceId(row.activeHandoffId));
+  const channels = await executeTenantRead(
+    session,
+    `select id from channel_connections where organization_id=$1 and id=$2 and status='active'
+      and channel_type in ('widget','telegram','instagram')`,
+    [row.channelConnectionId],
+  );
+  if (channels.length !== 1) throw new StaffOperationError("business_rule_failed");
+  const expectedVersion = mapAggregateVersion(row.version);
+  const messageId = mapMessageId(nextId());
+  const result = queueStaffResponse(
+    {
+      ...row,
+      organizationId: session.organizationId,
+      version: expectedVersion,
+      activeHandoff: {
+        handoffId: row.activeHandoffId,
+        organizationId: session.organizationId,
+        status: handoffStatus,
+      },
+    },
+    {
+      actor: staffActor(input),
+      organizationId: session.organizationId,
+      expectedVersion,
+      occurredAt: input.occurredAt,
+      message: { messageId, organizationId: session.organizationId },
+    },
+  );
+  if (!result.ok) throw new StaffOperationError("business_rule_failed");
+  // Reserve the message sequence under the same CAS without advancing the domain version twice.
+  const sequence = await executeTenantWrite<{ sequence_no: unknown }>(
+    session,
+    `update conversations set next_sequence_no=next_sequence_no+1
+      where organization_id=$1 and id=$2 and version=$3 returning next_sequence_no-1 as sequence_no`,
+    [row.conversationId, expectedVersion],
+  );
+  if (sequence.rowCount !== 1) throw new StaffOperationError("version_conflict");
+  await insertQueuedCustomerMessage(
+    session,
+    {
+      messageId,
+      sequence: mapSafeBigInt(sequence.rows[0]?.["sequence_no"]),
+      conversationId: row.conversationId,
+      channelConnectionId: row.channelConnectionId,
+      text: input.operation.input.text,
+      locale: row.preferredLocale,
+      senderMembershipId: input.authorization.membershipId,
+      replyToMessageId: null,
+      aiRunId: null,
+      manifest: null,
+    },
+    protection,
+    new Date(input.occurredAt),
+  );
+  await persistDomainMutationPlan(session, {
+    aggregates: [
+      {
+        aggregateType: "conversation",
+        mode: "update",
+        expectedVersion,
+        nextAggregate: result.value.nextAggregate,
+      },
+    ],
+    transitions: nonempty(
+      result.value.transitionRecords.map((record) => ({ transitionType: "conversation", record })),
+    ),
+    events: nonempty(
+      result.value.events.map((draft) =>
+        envelope(input, draft, "conversation", row.conversationId, nextId),
+      ),
+    ),
+    audits: [audit(input, { targetType: "conversation", targetId: row.conversationId }, nextId)],
   });
 };
 export const requireStaffTarget = (
