@@ -295,6 +295,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "WidgetConversationReadParamsSchema",
     "WidgetConversationResponseSchema",
     "WidgetConversationSchema",
+    "WidgetPhoneChoiceInputSchema",
     ...S19_WIDGET_SCHEMA_NAMES,
     ...S20_WIDGET_SCHEMA_NAMES,
     "WidgetMessageCollectionResponseSchema",

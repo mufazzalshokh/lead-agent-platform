@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
   WidgetConversationSchema,
+  ContactIdSchema,
   isSchemaValue,
   type ConversationId,
   type MessageId,
@@ -29,7 +30,10 @@ import type { QueryResultRow } from "pg";
 
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
 import { executeTenantQuery } from "../runtime/tenant.js";
-import { createCanonicalInboundTenantSessionStore } from "./inbound-conversations.js";
+import {
+  createCanonicalInboundTenantSessionStore,
+  persistWidgetPhoneChoice,
+} from "./inbound-conversations.js";
 import { WITHDRAWN_CONFIRMATION_PROMPT_SQL } from "./customer-replies.js";
 
 const IDLE_LIFETIME_MS = 30 * 60 * 1_000;
@@ -426,12 +430,13 @@ const persistIdempotency = async (
   requestHash: Uint8Array,
   now: Date,
   identifiers: SecurityIdentifierFactory,
+  responseStatus: 202 | 204 = 202,
 ): Promise<void> => {
   await executeTenantQuery(session, (organizationId) => ({
     text: `insert into idempotency_keys
       (id, organization_id, scope, key_hash, principal_type, principal_id_hash,
        request_hash, status, response_status, locked_until, expires_at, created_at, completed_at)
-      values ($2, $1, $3, $4, 'widget_session', $5, $6, 'succeeded', 202, null, $7, $8, $8)`,
+      values ($2, $1, $3, $4, 'widget_session', $5, $6, 'succeeded', $9, null, $7, $8, $8)`,
     values: [
       organizationId,
       identifiers.issueResourceId(now),
@@ -441,6 +446,7 @@ const persistIdempotency = async (
       Buffer.from(requestHash),
       new Date(now.getTime() + IDEMPOTENCY_LIFETIME_MS),
       now,
+      responseStatus,
     ],
   }));
 };
@@ -603,6 +609,54 @@ export const createWidgetPersistenceStore = (
       accept(input, true),
     acceptBoundInbound: (input: Parameters<WidgetPersistenceStore["acceptBoundInbound"]>[0]) =>
       accept(input, false),
+    recordPhoneChoice: (input: Parameters<WidgetPersistenceStore["recordPhoneChoice"]>[0]) =>
+      runtime.withTenantTransaction(input.claims.organizationId, async (session) => {
+        const authority = await authorizeInSession(
+          session,
+          input.claims,
+          input.origin,
+          input.now,
+          true,
+        );
+        if (authority === null) throw new WidgetTokenInvalidError();
+        if (
+          authority.conversationId !== input.conversationId ||
+          !isSchemaValue(ContactIdSchema, authority.contactId)
+        )
+          throw new WidgetApplicationError("resource_not_found");
+        const scope = "widget.phone_choice.v1";
+        if (
+          await inspectIdempotency(
+            session,
+            scope,
+            input.claims,
+            input.idempotencyKeyHash,
+            input.requestHash,
+          )
+        )
+          return;
+        await persistWidgetPhoneChoice(
+          session,
+          {
+            channelConnectionId: authority.channelConnectionId,
+            contactId: authority.contactId,
+            conversationId: input.conversationId,
+          },
+          input.prepared,
+          identifiers,
+          input.now,
+        );
+        await persistIdempotency(
+          session,
+          scope,
+          input.claims,
+          input.idempotencyKeyHash,
+          input.requestHash,
+          input.now,
+          identifiers,
+          204,
+        );
+      }),
     authorize: async (input: Parameters<WidgetPersistenceStore["authorize"]>[0]) =>
       await runtime.withTenantTransaction(input.claims.organizationId, (session) =>
         authorizeInSession(session, input.claims, input.origin, input.now, true),

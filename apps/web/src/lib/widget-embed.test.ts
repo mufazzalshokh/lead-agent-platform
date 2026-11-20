@@ -108,6 +108,10 @@ type FrameSession = Readonly<{
   resumeChat: Element;
   recoveryCode: Element;
   recoveryNotice: Element;
+  phonePanel: Element;
+  phoneNumber: Element;
+  phoneGrant: Element;
+  phoneResult: Element;
   timers: Map<number, () => void>;
 }>;
 
@@ -190,6 +194,14 @@ const setup = (options: SetupOptions = {}) => {
         "resume-chat",
         "recovery-code",
         "recovery-notice",
+        "phone-choice",
+        "phone-title",
+        "phone-purpose",
+        "phone-label",
+        "phone-number",
+        "phone-grant",
+        "phone-decline",
+        "phone-result",
       ].map((name) => [name, new Element(name === "composer" ? "form" : "div")]),
     );
     const node = (name: string): Element => {
@@ -210,11 +222,16 @@ const setup = (options: SetupOptions = {}) => {
       resumeChat: node("resume-chat"),
       recoveryCode: node("recovery-code"),
       recoveryNotice: node("recovery-notice"),
+      phonePanel: node("phone-choice"),
+      phoneNumber: node("phone-number"),
+      phoneGrant: node("phone-grant"),
+      phoneResult: node("phone-result"),
       timers,
     });
     runInNewContext(
       generated,
       {
+        navigator: { language: "en-US" },
         document: {
           querySelector: (selector: string) => node(selector.slice(1)),
           createElement: (tag: string) => new Element(tag),
@@ -237,6 +254,7 @@ const setup = (options: SetupOptions = {}) => {
         fetch: async (url: string, init?: RequestInit) => {
           const path = new URL(url).pathname;
           requests.push({ realm: "frame", path });
+          if (path.endsWith("/phone-choice")) return new Response(null, { status: 204 });
           if (path === "/v1/widget/recovery-codes")
             return response(
               {
@@ -423,6 +441,26 @@ const setup = (options: SetupOptions = {}) => {
 };
 
 describe("generated Widget loader/frame handshake and lifecycle", () => {
+  it("offers an optional phone choice after the chat starts and submits it only on agreement", async () => {
+    const state = setup({ messageResponse: "success" });
+    await state.click();
+    const frame = state.latest();
+    expect(frame.phonePanel.hidden).toBe(true);
+    frame.input.value = "Can I book a consultation?";
+    frame.input.dispatch("input");
+    frame.send.dispatch("click");
+    await settle();
+    expect(frame.phonePanel.hidden).toBe(false);
+    frame.phoneNumber.value = "+1 (202) 555-0134";
+    const attempts = () => state.requests.filter((item) => item.path.endsWith("/phone-choice"));
+    expect(attempts()).toHaveLength(0);
+    frame.phoneGrant.dispatch("click");
+    await settle();
+    expect(attempts()).toHaveLength(1);
+    expect(frame.phoneNumber.value).toBe("");
+    expect(frame.phonePanel.hidden).toBe(true);
+    expect(frame.phoneResult.textContent).toBe("Your phone choice was saved.");
+  });
   it("routes arrow clicks directly to one send and blocks concurrent click/Enter dispatch", async () => {
     const state = setup({ messageResponse: "success" });
     await state.click();

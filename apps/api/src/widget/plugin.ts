@@ -13,6 +13,7 @@ import {
   WidgetMessageCollectionResponseSchema,
   WidgetMessageCreateInputSchema,
   WidgetMessageCreateResponseSchema,
+  WidgetPhoneChoiceInputSchema,
   WidgetMessageListQuerySchema,
   WidgetSessionCreateInputSchema,
   WidgetSessionCreateResponseSchema,
@@ -30,6 +31,7 @@ import {
   type WidgetConversationCreateInput,
   type WidgetConversationReadParams,
   type WidgetMessageCreateInput,
+  type WidgetPhoneChoiceInput,
   type WidgetMessageListQuery,
   type WidgetSessionCreateInput,
   type WidgetTelemetryInput,
@@ -44,6 +46,8 @@ export const WIDGET_LOG_REDACTION_PATHS = Object.freeze([
   "body.recovery_code",
   "body.data.recovery_code",
   "req.body.recovery_code",
+  "body.phone",
+  "req.body.phone",
   "res.body.data.recovery_code",
 ]);
 const PREFLIGHT_METHODS = new Set(["GET", "POST"]);
@@ -447,6 +451,31 @@ export const registerWidgetRoutes = (
         },
         meta: { request_id: requestId(request) },
       });
+    },
+  );
+
+  api.post<{ Body: WidgetPhoneChoiceInput; Params: WidgetConversationReadParams }>(
+    "/v1/widget/conversations/:id/phone-choice",
+    {
+      bodyLimit: BODY_LIMIT,
+      schema: {
+        params: WidgetConversationReadParamsSchema,
+        body: WidgetPhoneChoiceInputSchema,
+        response: { "4xx": ProblemSchema, "5xx": ProblemSchema },
+      },
+    },
+    async (request, reply) => {
+      const origin = originOf(request);
+      await dependencies.useCases.recordPhoneChoice({
+        bearerToken: bearerOf(request),
+        body: request.body,
+        conversationId: request.params.id,
+        idempotencyKey: idempotencyOf(request),
+        origin,
+        requestId: requestId(request),
+      });
+      secureResponse(reply, origin);
+      return reply.code(204).send();
     },
   );
 

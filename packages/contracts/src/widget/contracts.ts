@@ -104,6 +104,66 @@ export const WidgetSessionCreateInputSchema = Type.Object(
 );
 export type WidgetSessionCreateInput = Type.Static<typeof WidgetSessionCreateInputSchema>;
 
+export const WIDGET_PHONE_NOTICE_VERSION = 1;
+export const WIDGET_PHONE_NOTICE = {
+  en: {
+    title: "Add a phone number (optional)",
+    purpose:
+      "The clinic can call this number to follow up about your booking. You can continue in chat without sharing it.",
+    phone: "Phone number with country code",
+    grant: "I agree to booking follow-up by phone",
+    decline: "Continue without adding a number",
+    saved: "Your phone choice was saved.",
+    invalid: "Enter a phone number with a country code, starting with +.",
+    failed: "We could not save your phone choice. You can retry or continue chatting.",
+  },
+  ru: {
+    title: "Добавить номер телефона (необязательно)",
+    purpose:
+      "Клиника может позвонить по этому номеру по поводу вашей записи. Вы можете продолжить общение в чате без номера.",
+    phone: "Номер телефона с кодом страны",
+    grant: "Согласен на звонок по поводу записи",
+    decline: "Продолжить без добавления номера",
+    saved: "Ваш выбор сохранён.",
+    invalid: "Введите номер с кодом страны, начиная со знака +.",
+    failed: "Не удалось сохранить ваш выбор. Повторите попытку или продолжите общение в чате.",
+  },
+  uz: {
+    title: "Telefon raqamini qo‘shish (ixtiyoriy)",
+    purpose:
+      "Klinika yozilishingiz bo‘yicha shu raqamga qo‘ng‘iroq qilishi mumkin. Raqam bermasdan chatni davom ettirishingiz mumkin.",
+    phone: "Davlat kodi bilan telefon raqami",
+    grant: "Yozilish bo‘yicha telefon orqali bog‘lanishga roziman",
+    decline: "Raqam qo‘shmasdan davom etish",
+    saved: "Tanlovingiz saqlandi.",
+    invalid: "Raqamni davlat kodi va + belgisi bilan kiriting.",
+    failed: "Tanlovingiz saqlanmadi. Qayta urinishingiz yoki chatni davom ettirishingiz mumkin.",
+  },
+} as const;
+export const WidgetPhoneChoiceInputSchema = Type.Union(
+  [
+    Type.Object(
+      {
+        decision: Type.Literal("granted"),
+        locale: locale(),
+        notice_version: Type.Literal(WIDGET_PHONE_NOTICE_VERSION),
+        phone: Type.String({ minLength: 2, maxLength: 40 }),
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        decision: Type.Literal("declined"),
+        locale: locale(),
+        notice_version: Type.Literal(WIDGET_PHONE_NOTICE_VERSION),
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  { $id: "WidgetPhoneChoiceInput.v1" },
+);
+export type WidgetPhoneChoiceInput = Type.Static<typeof WidgetPhoneChoiceInputSchema>;
+
 export const WidgetEmbedGrantCreateInputSchema = Type.Object(
   {
     page_url: pageUrl(),

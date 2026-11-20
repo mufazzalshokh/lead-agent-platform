@@ -65363,6 +65363,95 @@
     },
     {
       "category": "widget",
+      "export_name": "WidgetPhoneChoiceInputSchema",
+      "schema": {
+        "$id": "WidgetPhoneChoiceInput.v1",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "decision": {
+                "const": "granted",
+                "type": "string"
+              },
+              "locale": {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              "notice_version": {
+                "const": 1,
+                "type": "number"
+              },
+              "phone": {
+                "maxLength": 40,
+                "minLength": 2,
+                "type": "string"
+              }
+            },
+            "required": [
+              "decision",
+              "locale",
+              "notice_version",
+              "phone"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "decision": {
+                "const": "declined",
+                "type": "string"
+              },
+              "locale": {
+                "anyOf": [
+                  {
+                    "const": "uz",
+                    "type": "string"
+                  },
+                  {
+                    "const": "ru",
+                    "type": "string"
+                  },
+                  {
+                    "const": "en",
+                    "type": "string"
+                  }
+                ],
+                "description": "Supported V1 customer presentation locale."
+              },
+              "notice_version": {
+                "const": 1,
+                "type": "number"
+              }
+            },
+            "required": [
+              "decision",
+              "locale",
+              "notice_version"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "schema_id": "WidgetPhoneChoiceInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "widget",
       "export_name": "WidgetPublicConfigurationSchema",
       "schema": {
         "$id": "WidgetPublicConfiguration.v1",

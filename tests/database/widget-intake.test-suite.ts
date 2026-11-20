@@ -8,7 +8,14 @@ import {
   createWidgetEmbedConfig,
   createWidgetSecurityConfig,
 } from "../../packages/config/src/index.js";
-import type { ChannelConnectionId, OrganizationId } from "../../packages/contracts/src/index.js";
+import {
+  RequestIdSchema,
+  WIDGET_PHONE_NOTICE_VERSION,
+  isSchemaValue,
+  type ChannelConnectionId,
+  type OrganizationId,
+  type WidgetPhoneChoiceInput,
+} from "../../packages/contracts/src/index.js";
 import {
   createWidgetManagementStore,
   createWidgetPersistenceStore,
@@ -41,12 +48,14 @@ const OTHER_ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf1" as Organiza
 const OTHER_CHANNEL_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf2" as ChannelConnectionId;
 
 export const registerWidgetIntakeTests = (options: Options): void => {
-  const createFixture = (clock: () => Date = () => NOW) => {
-    const customerData = createCustomerDataProtection({
+  const fixtureCustomerData = () =>
+    createCustomerDataProtection({
       currentEncryptionKey: Buffer.alloc(32, 21),
       currentKeyId: "s10-test-v1",
       lookupKey: Buffer.alloc(32, 22),
     });
+  const createFixture = (clock: () => Date = () => NOW) => {
+    const customerData = fixtureCustomerData();
     const tokens = createWidgetTokenService(
       createWidgetSecurityConfig(Buffer.alloc(32, 23).toString("base64url")),
     );
@@ -90,6 +99,126 @@ export const registerWidgetIntakeTests = (options: Options): void => {
   };
 
   describe("S10.A secure Widget persistence", () => {
+    it("records optional Widget phone choice with protected contact and replay evidence", async () => {
+      await options.seed();
+      const useCases = createFixture();
+      const pool = options.privilegedPool();
+      const openChat = async (suffix: string) => {
+        const session = await useCases.bootstrap({
+          clientIp: "127.0.0.1",
+          origin: ORIGIN,
+          pageUrl: ORIGIN,
+          requestedLocale: "en",
+          widgetKey: WIDGET_KEY,
+        });
+        return useCases.createConversation({
+          bearerToken: session.bearerToken,
+          origin: ORIGIN,
+          idempotencyKey: `phone-open-${suffix}`,
+          body: {
+            client_message_id: `phone-message-${suffix}`,
+            kind: "text",
+            locale_hint: "en",
+            text: "Can I request a consultation?",
+          },
+        });
+      };
+      const chat = await openChat("one");
+      const requestId = "request:phone-choice-test";
+      if (!isSchemaValue(RequestIdSchema, requestId))
+        throw new Error("Invalid request identifier fixture");
+      const base = { locale: "en", notice_version: WIDGET_PHONE_NOTICE_VERSION } as const;
+      const record = (
+        body: WidgetPhoneChoiceInput,
+        idempotencyKey: string,
+        target = chat,
+        origin = ORIGIN,
+      ) =>
+        useCases.recordPhoneChoice({
+          bearerToken: chat.bearerToken,
+          conversationId: target.conversation.id,
+          origin,
+          requestId,
+          idempotencyKey,
+          body,
+        });
+      const grant = { ...base, decision: "granted" as const, phone: "+1 (202) 555-0134" };
+      expect(
+        (await pool.query("select id from contact_identities where identity_type='phone'"))
+          .rowCount,
+      ).toBe(0);
+      await expect(
+        record({ ...grant, phone: "202 555 0134" }, "phone-invalid"),
+      ).rejects.toMatchObject({ code: "validation_failed" });
+      await expect(
+        record(grant, "phone-wrong-origin", chat, "https://elsewhere.example"),
+      ).rejects.toMatchObject({ code: "origin_not_allowed" });
+      await record({ ...base, decision: "declined" }, "phone-decline");
+      expect(
+        (await pool.query("select id from contact_identities where identity_type='phone'"))
+          .rowCount,
+      ).toBe(0);
+      await Promise.all([record(grant, "phone-grant"), record(grant, "phone-grant")]);
+      await expect(
+        record({ ...grant, phone: "+12025550135" }, "phone-grant"),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+      const identities = await pool.query<{
+        id: string;
+        value_ciphertext: Buffer;
+        display_redacted: string;
+        lookup_hash: Buffer;
+      }>(
+        "select id,value_ciphertext,display_redacted,lookup_hash from contact_identities where identity_type='phone'",
+      );
+      expect(identities.rows).toHaveLength(1);
+      const identity = identities.rows[0];
+      if (identity === undefined) throw new Error("Missing phone evidence");
+      expect(identity.display_redacted).toBe("*** 0134");
+      expect(
+        fixtureCustomerData().revealContactIdentity({
+          organizationId: options.organizationId,
+          channelConnectionId: null,
+          identityType: "phone",
+          ciphertext: identity.value_ciphertext,
+        }),
+      ).toBe("+12025550134");
+      const evidence = await pool.query(
+        `select r.status,r.purpose,r.notice_key,r.notice_version,r.contact_identity_id,m.processing_status
+         from consent_records r join messages m on m.organization_id=r.organization_id and m.id=r.source_message_id
+         order by m.sequence_no`,
+      );
+      const common = {
+        purpose: "booking_follow_up",
+        notice_key: "widget_booking_follow_up",
+        notice_version: 1,
+        processing_status: "suppressed",
+      };
+      expect(evidence.rows).toEqual([
+        { ...common, status: "declined", contact_identity_id: null },
+        { ...common, status: "granted", contact_identity_id: identity.id },
+      ]);
+      expect(
+        (await pool.query("select id from outbox_events where event_type='message.received'"))
+          .rowCount,
+      ).toBe(1);
+      const second = await openChat("two");
+      await expect(record(grant, "phone-other-chat", second)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      await useCases.recordPhoneChoice({
+        bearerToken: second.bearerToken,
+        conversationId: second.conversation.id,
+        origin: ORIGIN,
+        requestId,
+        idempotencyKey: "phone-second-chat",
+        body: grant,
+      });
+      const separate = await pool.query<{ contact_id: string; lookup_hash: Buffer }>(
+        "select contact_id,lookup_hash from contact_identities where identity_type='phone'",
+      );
+      expect(new Set(separate.rows.map((row) => row.contact_id)).size).toBe(2);
+      expect(new Set(separate.rows.map((row) => row.lookup_hash.toString("hex"))).size).toBe(2);
+    });
     it("atomically redeems an embed grant once and keeps host Origin authorization", async () => {
       await options.seed();
       const pool = options.privilegedPool();

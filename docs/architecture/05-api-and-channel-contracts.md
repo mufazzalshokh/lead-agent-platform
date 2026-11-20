@@ -602,6 +602,7 @@ tenant budget.
 | `GET /conversations/{id}` | conversation-bound token | Returns only the lead-visible state. Cross-conversation IDs return `404`. |
 | `GET /conversations/{id}/messages` | conversation-bound token | Cursor/`after` retrieval; only customer-visible messages. |
 | `POST /conversations/{id}/messages` | conversation-bound token | Text only in V1; idempotency required. Returns `202` when orchestration is queued. |
+| `POST /conversations/{id}/phone-choice` | conversation-bound token | Optional booking follow-up choice after the disclosed notice. Accepts `{ decision, locale, notice_version }` and requires `phone` for `granted`. Declining omits the number. Requires `Idempotency-Key` and returns `204` after recording the choice. |
 | `POST /appointment-requests/{id}/confirm` | conversation-bound token + one-time confirmation grant | Deterministically confirms only from `awaiting_customer_confirmation` when expected aggregate version and current `offer_version` both match and explicit `now` is in the grant's half-open validity interval; idempotent. |
 | `POST /appointment-requests/{id}/decline` | same | Deterministically cancels/declines according to policy; idempotent. |
 | `POST /handoffs` | conversation-bound token | Explicit human request; idempotent and safe if one active handoff already exists. |

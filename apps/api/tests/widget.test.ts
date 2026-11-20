@@ -118,6 +118,7 @@ const dependencies = () => {
         sequenceNo: 2,
       }),
     ),
+    recordPhoneChoice: vi.fn(() => Promise.resolve()),
     recordTelemetry: vi.fn(() => Promise.resolve()),
     redeemEmbedSession: vi.fn(({ origin }) => {
       if (origin !== PLATFORM_ORIGIN) throw new WidgetOriginInvalidError();
@@ -136,7 +137,48 @@ const headers = (extra: Record<string, string> = {}) => ({
 });
 
 describe("S10 Widget Fastify API", () => {
-  it("redacts private recovery credentials from diagnostic request and response bodies", async () => {
+  it("accepts an explicit Widget phone choice with an empty response", async () => {
+    const fixture = dependencies();
+    const api = createApi({ widget: { useCases: fixture.useCases } });
+    try {
+      const url = `/v1/widget/conversations/${CONVERSATION_ID}/phone-choice`;
+      const requestHeaders = headers({ "idempotency-key": "widget-phone-choice" });
+      const selection = {
+        decision: "granted",
+        locale: "en",
+        notice_version: 1,
+        phone: "+1 (202) 555-0134",
+      };
+      const malformed = await api.inject({
+        method: "POST",
+        url,
+        headers: requestHeaders,
+        payload: { ...selection, notice_version: 2 },
+      });
+      expect(malformed.statusCode).toBe(400);
+      const response = await api.inject({
+        method: "POST",
+        url,
+        headers: requestHeaders,
+        payload: selection,
+      });
+      expect(response.statusCode).toBe(204);
+      expect(response.payload).toBe("");
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(fixture.useCases.recordPhoneChoice).toHaveBeenCalledOnce();
+      expect(fixture.useCases.recordPhoneChoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bearerToken: TOKEN,
+          conversationId: CONVERSATION_ID,
+          idempotencyKey: "widget-phone-choice",
+          body: selection,
+        }),
+      );
+    } finally {
+      await api.close();
+    }
+  });
+  it("redacts Widget phone numbers and private recovery credentials from diagnostic logs", async () => {
     const entries: string[] = [];
     const api = createApi({
       logger: {
@@ -155,6 +197,9 @@ describe("S10 Widget Fastify API", () => {
       api.log.info({ body: { recovery_code: code, data: { recovery_code: code } } }, "Synthetic");
       api.log.info({ req: { body: { recovery_code: code } } }, "Synthetic");
       api.log.info({ res: { body: { data: { recovery_code: code } } } }, "Synthetic");
+      const phone = "+12025550134";
+      api.log.info({ body: { phone }, req: { body: { phone } } }, "Synthetic");
+      expect(entries.join()).not.toContain(phone);
       expect(entries.join()).not.toContain(code);
       expect(entries.join()).toContain("[REDACTED]");
     } finally {

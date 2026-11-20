@@ -513,6 +513,18 @@ export function StaffWorkspace({
   const appointmentAction = actionIdentity(detail?.appointment ?? null);
   const offlineOffer = detail?.confirmation?.offline_offer ?? null;
   const attestation = detail?.confirmation?.attestation ?? null;
+  const contactIdentities = detail?.contact?.["identities"];
+  const activePhones = Array.isArray(contactIdentities)
+    ? contactIdentities
+        .filter(isRecord)
+        .filter(
+          (identity) =>
+            identity["identity_type"] === "phone" &&
+            identity["status"] === "active" &&
+            typeof identity["id"] === "string" &&
+            typeof identity["display_redacted"] === "string",
+        )
+    : [];
   const appointmentPreference = selected?.preferences[0] ?? null;
   return (
     <main className="staff-shell">
@@ -786,6 +798,27 @@ export function StaffWorkspace({
                 <aside className="context-panel" id="context">
                   <h3>Customer context</h3>
                   <dl>
+                    {activePhones.length > 0 && (
+                      <div>
+                        <dt>Phone</dt>
+                        {activePhones.map((identity) => {
+                          const masked = stringValue(identity["display_redacted"]);
+                          const value = stringValue(identity["value"]);
+                          return (
+                            <dd key={stringValue(identity["id"])}>
+                              {value === null ? (
+                                masked
+                              ) : (
+                                <details>
+                                  <summary>{masked} · Show number</summary>
+                                  {value}
+                                </details>
+                              )}
+                            </dd>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div>
                       <dt>Lead</dt>
                       <dd>

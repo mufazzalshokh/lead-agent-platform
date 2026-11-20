@@ -153,8 +153,18 @@ const offlineConfirmationSchemaNames = new Set([
   "StaffStepUpNavigationSchema",
 ]);
 
-const buildPreHandoffAssignmentSnapshot = () => {
+const buildPreWidgetPhoneChoiceSnapshot = () => {
   const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "WidgetPhoneChoiceInputSchema",
+    ),
+  };
+};
+
+const buildPreHandoffAssignmentSnapshot = () => {
+  const snapshot = buildPreWidgetPhoneChoiceSnapshot();
   return {
     ...snapshot,
     contracts: snapshot.contracts.filter(
@@ -216,7 +226,7 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(389);
+    expect(snapshot.contracts).toHaveLength(390);
     expect(counts).toEqual({
       ai: 16,
       api: 51,
@@ -225,7 +235,7 @@ describe("public contract inventory and snapshot", () => {
       conversation: 37,
       event: 135,
       shared: 28,
-      widget: 33,
+      widget: 34,
     });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
@@ -451,9 +461,19 @@ describe("public contract inventory and snapshot", () => {
   it("adds the handoff assignment input while preserving every accepted contract", () => {
     const legacy = buildPreHandoffAssignmentSnapshot();
     expect(legacy.contracts).toHaveLength(388);
-    const findings = compareContractSnapshots(legacy, buildContractSnapshot());
+    const findings = compareContractSnapshots(legacy, buildPreWidgetPhoneChoiceSnapshot());
     expect(findings).toHaveLength(1);
     expect(findings[0]?.classification).toBe("additive");
+  });
+
+  it("adds the Widget phone choice without changing an accepted contract", () => {
+    const legacy = buildPreWidgetPhoneChoiceSnapshot();
+    expect(legacy.contracts).toHaveLength(389);
+    expect(
+      compareContractSnapshots(legacy, buildContractSnapshot()).map(
+        (finding) => finding.classification,
+      ),
+    ).toEqual(["additive"]);
   });
 
   it("keeps the runtime export surface explicit", () => {
@@ -462,6 +482,8 @@ describe("public contract inventory and snapshot", () => {
       "DOMAIN_EVENT_NAMES",
       "STAFF_REPLY_MAX_BYTES",
       "STAFF_APPOINTMENT_WITHDRAWAL_REASON",
+      "WIDGET_PHONE_NOTICE",
+      "WIDGET_PHONE_NOTICE_VERSION",
       "DomainEventPayloadSchemas",
       "DomainEventPayloadSchemasByVersion",
       "DomainEventSchemas",
