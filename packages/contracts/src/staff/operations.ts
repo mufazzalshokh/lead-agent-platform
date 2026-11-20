@@ -165,6 +165,14 @@ export const StaffClaimHandoffInputSchema = Type.Object(
   { conversation_version: embed(ResourceVersionSchema) },
   { $id: "StaffClaimHandoffInput.v1", additionalProperties: false },
 );
+export const StaffAssignHandoffInputSchema = Type.Object(
+  {
+    conversation_version: embed(ResourceVersionSchema),
+    assignee_membership_id: embed(MembershipIdSchema),
+  },
+  { $id: "StaffAssignHandoffInput.v1", additionalProperties: false },
+);
+export type StaffAssignHandoffInput = Type.Static<typeof StaffAssignHandoffInputSchema>;
 export const StaffResolveHandoffInputSchema = Type.Object(
   {
     conversation_version: embed(ResourceVersionSchema),

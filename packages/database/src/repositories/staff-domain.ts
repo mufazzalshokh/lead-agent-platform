@@ -12,6 +12,7 @@ import {
   STAFF_APPOINTMENT_WITHDRAWAL_REASON,
   isSchemaValue,
   type ActorRef,
+  type MembershipId,
   type ResourceId,
   type StaffWorkItem,
 } from "@lead-agent/contracts";
@@ -26,13 +27,15 @@ import {
   validateHandoffResolutionCode,
   validateConversationResolutionCode,
   takeHandoffStaffOwnershipWorkflow,
+  reassignHandoff,
+  startHandoff,
   terminateHandoffAndResumeAiWorkflow,
   terminateHandoffAndResolveConversationWorkflow,
   queueStaffResponse,
   type Conversation,
   type Handoff,
 } from "@lead-agent/domain";
-import type { CustomerDataProtection } from "@lead-agent/security";
+import { hasPermission, isMembershipRole, type CustomerDataProtection } from "@lead-agent/security";
 import type { TenantDbSession } from "../runtime/tenant.js";
 import { createAppointmentRepository } from "./appointments.js";
 import {
@@ -355,20 +358,75 @@ export const persistStaffCustomerAttestation = async (
     staffRequestId: input.requestId,
   });
 };
+const requireHandoffAssignee = async (
+  session: TenantDbSession,
+  handoff: Handoff,
+  id: MembershipId,
+): Promise<void> => {
+  const [member] = await executeTenantRead(
+    session,
+    `select role,location_scope from memberships where organization_id=$1 and id=$2 and status='active' for share`,
+    [id],
+  );
+  const role = member?.["role"];
+  if (
+    !isMembershipRole(role) ||
+    !hasPermission(role, "handoffs.manage") ||
+    !hasPermission(role, "conversations.manage")
+  )
+    throw new StaffOperationError("permission_denied");
+  const scope = member?.["location_scope"];
+  if (scope === "all") return;
+  if (scope !== "restricted" || handoff.locationId === null)
+    throw new StaffOperationError("permission_denied");
+  // The member needs access to the handoff and the conversation it owns.
+  const allowed = await executeTenantRead(
+    session,
+    `select l.id from leads l
+      join membership_location_scopes h on h.organization_id=l.organization_id
+        and h.membership_id=$2 and h.location_id=$3
+      join membership_location_scopes c on c.organization_id=l.organization_id
+        and c.membership_id=$2 and c.location_id=l.location_id
+      where l.organization_id=$1 and l.id=$4`,
+    [id, handoff.locationId, handoff.leadId],
+  );
+  if (allowed.length !== 1) throw new StaffOperationError("permission_denied");
+};
+
 export const persistStaffHandoff = async (
   session: TenantDbSession,
   input: StaffPreparedOperation,
   nextId: () => string,
 ): Promise<void> => {
-  const row = await createHandoffNotificationRepository(session).getHandoff(mapHandoffId(input.id));
+  const operation = input.operation;
+  if (
+    operation.action !== "claim" &&
+    operation.action !== "assign" &&
+    operation.action !== "resolve"
+  )
+    throw new StaffOperationError("validation_failed");
+  const id = mapHandoffId(input.id);
+  // Match the reply lock order. For handoff-only transitions, the Conversation
+  // version must stay current even though no Conversation event is written.
+  if (operation.action !== "resolve")
+    await executeTenantRead(
+      session,
+      `select id from handoffs where organization_id=$1 and id=$2 for update`,
+      [id],
+    );
+  const row = await createHandoffNotificationRepository(session).getHandoff(id);
+  if (operation.action !== "resolve")
+    await executeTenantRead(
+      session,
+      `select id from conversations where organization_id=$1 and id=$2 for update`,
+      [row.conversationId],
+    );
   const conversationRow = await createConversationRepository(session).getConversation(
     row.conversationId,
   );
-  if (input.operation.action !== "claim" && input.operation.action !== "resolve")
-    throw new StaffOperationError("validation_failed");
   if (
     row.version !== input.expectedVersion ||
-    conversationRow.version !== input.operation.input.conversation_version
+    conversationRow.version !== operation.input.conversation_version
   )
     throw new StaffOperationError("version_conflict");
   const queue = validateHandoffQueueKey(row.queueKey);
@@ -408,34 +466,57 @@ export const persistStaffHandoff = async (
   };
   const conversationContext = {
       ...context,
-      expectedVersion: mapAggregateVersion(input.operation.input.conversation_version),
+      expectedVersion: mapAggregateVersion(operation.input.conversation_version),
     },
     handoffContext = { ...context, expectedVersion: mapAggregateVersion(input.expectedVersion) };
+  const assignee = {
+    organizationId: session.organizationId,
+    membershipId:
+      operation.action === "assign"
+        ? operation.input.assignee_membership_id
+        : input.authorization.membershipId,
+  };
+  if (operation.action === "assign") {
+    if (handoff.status !== "requested" && handoff.status !== "assigned")
+      throw new StaffOperationError("business_rule_failed");
+    await requireHandoffAssignee(session, handoff, assignee.membershipId);
+  }
   let result;
-  if (input.operation.action === "claim")
+  if (operation.action !== "resolve" && handoff.status === "assigned") {
+    if (conversation.automationMode !== "staff")
+      throw new StaffOperationError("business_rule_failed");
+    const transition =
+      operation.action === "assign"
+        ? reassignHandoff(handoff, { ...handoffContext, assignee })
+        : startHandoff(handoff, { ...handoffContext, starter: assignee });
+    if (!transition.ok) throw new StaffOperationError("business_rule_failed");
+    result = {
+      ok: true as const,
+      value: {
+        handoff: transition.value.nextAggregate,
+        conversation,
+        events: transition.value.events,
+        transitionRecords: transition.value.transitionRecords,
+      },
+    };
+  } else if (operation.action !== "resolve") {
     result = takeHandoffStaffOwnershipWorkflow(handoff, conversation, {
       conversation: conversationContext,
       handoff: {
-        action: "claim_and_start",
-        command: {
-          ...handoffContext,
-          assignee: {
-            organizationId: session.organizationId,
-            membershipId: input.authorization.membershipId,
-          },
-        },
+        action: operation.action === "assign" ? "assign" : "claim_and_start",
+        command: { ...handoffContext, assignee },
       },
     });
-  else {
-    const code = validateHandoffResolutionCode(input.operation.input.resolution_code),
-      convCode = validateConversationResolutionCode(input.operation.input.resolution_code);
+  } else {
+    const code = validateHandoffResolutionCode(operation.input.resolution_code),
+      convCode = validateConversationResolutionCode(operation.input.resolution_code);
     if (!code.ok || !convCode.ok) throw new StaffOperationError("validation_failed");
     const terminal = {
       action: "resolved" as const,
       command: { ...handoffContext, resolutionCode: code.value },
     };
     result =
-      input.operation.input.disposition === "resume_ai"
+      operation.input.disposition === "resume_ai"
         ? terminateHandoffAndResumeAiWorkflow(handoff, conversation, {
             disposition: "resume_ai",
             conversation: conversationContext,
@@ -450,13 +531,14 @@ export const persistStaffHandoff = async (
   }
   if (!result.ok) throw new StaffOperationError("business_rule_failed");
   const value = result.value;
+  const conversationChanged = value.conversation.version !== conversation.version;
   const transitions: CoreTransitionPersistence[] = value.transitionRecords.map((record) =>
     "handoffId" in record
       ? {
           transitionType: "handoff",
           record,
           conversationDisposition:
-            input.operation.action === "resolve" ? input.operation.input.disposition : null,
+            operation.action === "resolve" ? operation.input.disposition : null,
           transitionId: mapResourceId(nextId()),
           correlationId: mapCorrelationId(input.correlationId),
         }
@@ -470,12 +552,16 @@ export const persistStaffHandoff = async (
         expectedVersion: handoffContext.expectedVersion,
         nextAggregate: value.handoff,
       },
-      {
-        aggregateType: "conversation",
-        mode: "update",
-        expectedVersion: conversationContext.expectedVersion,
-        nextAggregate: value.conversation,
-      },
+      ...(conversationChanged
+        ? [
+            {
+              aggregateType: "conversation" as const,
+              mode: "update" as const,
+              expectedVersion: conversationContext.expectedVersion,
+              nextAggregate: value.conversation,
+            },
+          ]
+        : []),
     ],
     transitions: nonempty(transitions),
     events: nonempty(
@@ -491,11 +577,18 @@ export const persistStaffHandoff = async (
     ),
     audits: [
       audit(input, { targetType: "handoff", targetId: handoff.handoffId }, nextId),
-      audit(
-        input,
-        { targetType: "conversation", targetId: mapConversationId(conversationRow.conversationId) },
-        nextId,
-      ),
+      ...(conversationChanged
+        ? [
+            audit(
+              input,
+              {
+                targetType: "conversation",
+                targetId: mapConversationId(conversationRow.conversationId),
+              },
+              nextId,
+            ),
+          ]
+        : []),
     ],
   });
 };

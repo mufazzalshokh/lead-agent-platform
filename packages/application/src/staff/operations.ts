@@ -9,6 +9,7 @@ import {
   StaffAttestCustomerConfirmationInputSchema,
   StaffAppointmentConfirmationSchema,
   StaffClaimHandoffInputSchema,
+  StaffAssignHandoffInputSchema,
   StaffResolveHandoffInputSchema,
   StaffReplyInputSchema,
   STAFF_REPLY_MAX_BYTES,
@@ -30,6 +31,7 @@ import {
   type StaffAttestCustomerConfirmationInput,
   type StaffAppointmentConfirmation,
   type StaffClaimHandoffInput,
+  type StaffAssignHandoffInput,
   type StaffResolveHandoffInput,
   type StaffReplyInput,
   type StaffAttendanceInput,
@@ -60,6 +62,7 @@ export type StaffOperation =
       input: StaffAttestCustomerConfirmationInput;
     }>
   | Readonly<{ action: "claim"; input: StaffClaimHandoffInput }>
+  | Readonly<{ action: "assign"; input: StaffAssignHandoffInput }>
   | Readonly<{ action: "resolve"; input: StaffResolveHandoffInput }>
   | Readonly<{ action: "reply"; input: StaffReplyInput }>
   | Readonly<{ action: "acknowledge"; input: Readonly<object> }>
@@ -186,6 +189,7 @@ const mutationPolicy = {
     schema: StaffAttestCustomerConfirmationInputSchema,
   },
   claim: { kind: "handoff", permission: "handoffs.manage", schema: StaffClaimHandoffInputSchema },
+  assign: { kind: "handoff", permission: "handoffs.manage", schema: StaffAssignHandoffInputSchema },
   resolve: {
     kind: "handoff",
     permission: "handoffs.manage",

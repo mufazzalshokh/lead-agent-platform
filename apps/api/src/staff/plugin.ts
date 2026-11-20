@@ -17,6 +17,7 @@ import {
   StaffAttestCustomerConfirmationInputSchema,
   StaffAppointmentConfirmationResponseSchema,
   StaffClaimHandoffInputSchema,
+  StaffAssignHandoffInputSchema,
   StaffResolveHandoffInputSchema,
   StaffReplyInputSchema,
   StaffAcknowledgeInputSchema,
@@ -125,6 +126,7 @@ export const registerStaffOperations = (
       StaffAttestCustomerConfirmationInputSchema,
     ],
     ["handoffs", "handoff", "claim", StaffClaimHandoffInputSchema],
+    ["handoffs", "handoff", "assign", StaffAssignHandoffInputSchema],
     ["handoffs", "handoff", "resolve", StaffResolveHandoffInputSchema],
     ["notifications", "notification", "acknowledge", StaffAcknowledgeInputSchema],
     ["appointment-requests", "appointment_request", "attendance", StaffAttendanceInputSchema],
@@ -173,6 +175,8 @@ export const registerStaffOperations = (
         )
           operation = { action, input: request.body };
         else if (action === "claim" && isSchemaValue(StaffClaimHandoffInputSchema, request.body))
+          operation = { action, input: request.body };
+        else if (action === "assign" && isSchemaValue(StaffAssignHandoffInputSchema, request.body))
           operation = { action, input: request.body };
         else if (
           action === "resolve" &&

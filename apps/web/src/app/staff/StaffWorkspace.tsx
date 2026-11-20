@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { STAFF_APPOINTMENT_WITHDRAWAL_REASON, STAFF_REPLY_MAX_BYTES } from "@lead-agent/contracts";
+import {
+  MembershipIdSchema,
+  STAFF_APPOINTMENT_WITHDRAWAL_REASON,
+  STAFF_REPLY_MAX_BYTES,
+  isSchemaValue,
+} from "@lead-agent/contracts";
 
 import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/staff-request";
 import { CopyWidgetCodeButton } from "./CopyWidgetCodeButton";
@@ -500,6 +505,8 @@ export function StaffWorkspace({
   }
 
   const handoffAction = actionIdentity(detail?.handoff ?? null);
+  const handoffAssignee = stringValue(detail?.handoff?.["assigned_membership_id"]);
+  const canManageHandoff = membershipRole !== null && membershipRole !== "analyst";
   const replyTarget = staffReplyTarget(detail, membershipId);
   const reply = replyText.trim();
   const replyTooLong = new TextEncoder().encode(reply).byteLength > STAFF_REPLY_MAX_BYTES;
@@ -552,6 +559,12 @@ export function StaffWorkspace({
           <a className="staff-nav-link" href="#integrations">
             Integrations
           </a>
+          {canManageHandoff && membershipId !== null && (
+            <details>
+              <summary>My membership ID</summary>
+              <code style={{ overflowWrap: "anywhere" }}>{membershipId}</code>
+            </details>
+          )}
         </nav>
         <section className="staff-list" id="work" aria-busy={loading}>
           <div className="section-heading">
@@ -793,6 +806,16 @@ export function StaffWorkspace({
                       <div>
                         <dt>Handoff</dt>
                         <dd>{humanizeStaffStatus(selected.handoffStatus)}</dd>
+                        {handoffAssignee !== null && (
+                          <dd>
+                            Assigned to{" "}
+                            {handoffAssignee === membershipId ? (
+                              "you"
+                            ) : (
+                              <code>{handoffAssignee}</code>
+                            )}
+                          </dd>
+                        )}
                       </div>
                     )}
                     {selected.appointmentStatus !== null && (
@@ -847,6 +870,7 @@ export function StaffWorkspace({
                       />
                     )}
                   {selected.handoffId !== null &&
+                    canManageHandoff &&
                     ["requested", "assigned", "in_progress"].includes(
                       selected.handoffStatus ?? "",
                     ) &&
@@ -861,7 +885,9 @@ export function StaffWorkspace({
                               working ||
                               !versionsCurrent ||
                               selected.conversationVersion === null ||
-                              selected.handoffStatus === "in_progress"
+                              selected.handoffStatus === "in_progress" ||
+                              (selected.handoffStatus === "assigned" &&
+                                handoffAssignee !== membershipId)
                             }
                             onClick={() =>
                               void mutate(
@@ -898,6 +924,74 @@ export function StaffWorkspace({
                             Resolve
                           </button>
                         </div>
+                        {(selected.handoffStatus === "requested" ||
+                          selected.handoffStatus === "assigned") && (
+                          <details>
+                            <summary>
+                              {selected.handoffStatus === "assigned"
+                                ? "Reassign handoff"
+                                : "Assign handoff"}
+                            </summary>
+                            <form
+                              key={`${handoffAction.id}:${handoffAction.version}`}
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                if (
+                                  working ||
+                                  !versionsCurrent ||
+                                  selected.conversationVersion === null
+                                )
+                                  return;
+                                const field = event.currentTarget.elements.namedItem("assignee");
+                                if (!(field instanceof HTMLInputElement)) return;
+                                const assignee = field.value.trim();
+                                if (
+                                  !isSchemaValue(MembershipIdSchema, assignee) ||
+                                  assignee === handoffAssignee
+                                ) {
+                                  field.setCustomValidity(
+                                    "Enter a valid membership ID for a different assignee.",
+                                  );
+                                  field.reportValidity();
+                                  return;
+                                }
+                                void mutate(
+                                  `/v1/staff/handoffs/${handoffAction.id}/assign`,
+                                  handoffAction,
+                                  {
+                                    conversation_version: selected.conversationVersion,
+                                    assignee_membership_id: assignee,
+                                  },
+                                );
+                              }}
+                            >
+                              <label>
+                                Teammate’s membership ID
+                                <input
+                                  name="assignee"
+                                  autoComplete="off"
+                                  maxLength={36}
+                                  required
+                                  onChange={(event) => event.currentTarget.setCustomValidity("")}
+                                />
+                              </label>
+                              <p className="help-text">
+                                Ask the teammate for the membership ID shown in their workspace.
+                              </p>
+                              <button
+                                className="secondary-button"
+                                type="submit"
+                                disabled={
+                                  working ||
+                                  !versionsCurrent ||
+                                  selected.conversationVersion === null
+                                }
+                              >
+                                Save assignee
+                              </button>
+                            </form>
+                          </details>
+                        )}
                       </div>
                     )}
                   {selected.appointmentRequestId !== null &&

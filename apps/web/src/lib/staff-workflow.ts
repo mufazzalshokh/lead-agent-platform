@@ -451,15 +451,17 @@ export const createStaffWorkflow = (
       } else
         notice = isReply
           ? "Reply queued for delivery."
-          : path.endsWith("/claim")
-            ? "Handoff claimed. You can now continue handling the conversation."
-            : path.endsWith("/resolve")
-              ? "Handoff resolved. Messages remain available in History when no staff work is pending."
-              : path.endsWith("/cancel")
-                ? "Cancellation recorded. Check that the customer has been notified."
-                : path.endsWith("/attest-customer-confirmation")
-                  ? "The customer's offline confirmation was recorded."
-                  : "Action saved. The current appointment state is shown below.";
+          : path.endsWith("/assign")
+            ? "Handoff assignment saved."
+            : path.endsWith("/claim")
+              ? "Handoff claimed. You can now continue handling the conversation."
+              : path.endsWith("/resolve")
+                ? "Handoff resolved. Messages remain available in History when no staff work is pending."
+                : path.endsWith("/cancel")
+                  ? "Cancellation recorded. Check that the customer has been notified."
+                  : path.endsWith("/attest-customer-confirmation")
+                    ? "The customer's offline confirmation was recorded."
+                    : "Action saved. The current appointment state is shown below.";
     } catch {
       notice = "We could not confirm that action. Review the refreshed state before trying again.";
     }

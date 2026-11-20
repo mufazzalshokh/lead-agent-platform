@@ -391,6 +391,41 @@ describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () 
       await f.api.close();
     }
   });
+  it("validates a versioned handoff assignment before dispatching it", async () => {
+    const f = createFixture(true);
+    try {
+      const url = `/v1/staff/handoffs/${staffWorkFixture.id}/assign`;
+      const headers = {
+        ...f.headers(),
+        origin: STAFF_ORIGIN,
+        "x-csrf-token": f.csrf,
+        "idempotency-key": "s17-handoff-assignment",
+        "if-match": `"${staffWorkFixture.id}:${staffWorkFixture.version}"`,
+      };
+      const payload = { conversation_version: 2, assignee_membership_id: staffWorkFixture.id };
+      const denied = await f.api.inject({
+        method: "POST",
+        url,
+        headers: { ...headers, "x-csrf-token": "wrong" },
+        payload,
+      });
+      expect(denied.statusCode).toBe(403);
+      const invalid = await f.api.inject({
+        method: "POST",
+        url,
+        headers,
+        payload: { ...payload, assignee_membership_id: "unknown" },
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(f.controls.calls).toHaveLength(0);
+      const assigned = await f.api.inject({ method: "POST", url, headers, payload });
+      expect(assigned.statusCode).toBe(200);
+      expect(f.controls.calls).toHaveLength(1);
+      expect(f.controls.calls[0]?.operation).toBe("assign");
+    } finally {
+      await f.api.close();
+    }
+  });
   it("queues a staff reply only through the authenticated versioned mutation boundary", async () => {
     const f = createFixture(true);
     const url = `/v1/staff/conversations/${staffWorkFixture.id}/messages`;

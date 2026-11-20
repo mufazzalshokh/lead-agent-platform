@@ -13,6 +13,7 @@ import {
 import {
   OrganizationIdSchema,
   MembershipIdSchema,
+  type MembershipId,
   UserIdSchema,
   ResourceIdSchema,
   StaffAcceptAppointmentInputSchema,
@@ -46,13 +47,14 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
     receipt: CanonicalInboundReceipt,
     role: MembershipRole = "staff",
     locationScope: "all" | "restricted" = "all",
+    membershipId?: string,
   ) => {
     const row = (
       await harness
         .privilegedPool()
         .query(
-          `select organization_id,user_id,id from memberships where organization_id=(select organization_id from conversations where id=$1) order by id limit 1`,
-          [receipt.conversationId],
+          `select organization_id,user_id,id from memberships where organization_id=(select organization_id from conversations where id=$1) and ($2::uuid is null or id=$2::uuid) order by id limit 1`,
+          [receipt.conversationId, membershipId ?? null],
         )
     ).rows[0] as Record<string, unknown> | undefined;
     if (
@@ -484,6 +486,136 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
             ])
         ).rows[0],
       ).toEqual({ status: "resolved", active_handoff_id: null });
+    });
+    it("assigns and reassigns a handoff under membership and ownership guards", async () => {
+      const f = await withHandoff();
+      const other = await requested("b");
+      const member = fixtureId(27021);
+      if (!isSchemaValue(MembershipIdSchema, member)) throw new Error("Invalid assignee fixture");
+      const user = fixtureId(27020);
+      const pool = harness.privilegedPool();
+      await pool.query("insert into users(id,status) values ($1,'active')", [user]);
+      await pool.query(
+        "insert into memberships(id,organization_id,user_id,role,status,location_scope,activated_at) values ($1,$2,$3,'analyst','active','all',$4)",
+        [member, f.auth.organizationId, user, now],
+      );
+      const assign = (
+        item: typeof f.handoff,
+        assignee: MembershipId,
+        key: string,
+        auth = f.auth,
+      ) => {
+        if (item.conversation_version === null) throw new Error("Missing conversation version");
+        return f.ops.mutate(
+          auth,
+          "handoff",
+          item.id,
+          item.version,
+          key,
+          {
+            action: "assign",
+            input: {
+              conversation_version: item.conversation_version,
+              assignee_membership_id: assignee,
+            },
+          },
+          "s17:assignment",
+          "unused",
+        );
+      };
+      await expect(assign(f.handoff, member, "foreign-actor", other.auth)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      await expect(
+        assign(f.handoff, other.auth.membershipId, "foreign-target"),
+      ).rejects.toMatchObject({ code: "permission_denied" });
+      await expect(assign(f.handoff, member, "analyst-target")).rejects.toMatchObject({
+        code: "permission_denied",
+      });
+      await authorization(f.receipt, "staff", "restricted", member);
+      await expect(assign(f.handoff, member, "unscoped-target")).rejects.toMatchObject({
+        code: "permission_denied",
+      });
+      const newAssignee = await authorization(f.receipt, "staff", "all", member);
+      const { resource: assigned } = await assign(
+        f.handoff,
+        f.auth.membershipId,
+        "initial-assignment",
+      );
+      const [moved, replay] = await Promise.all([
+        assign(assigned, member, "transfer"),
+        assign(assigned, member, "transfer"),
+      ]);
+      expect(moved).toEqual(replay);
+      expect(moved.resource).toMatchObject({
+        version: assigned.version + 1,
+        status: "assigned",
+        conversation_version: assigned.conversation_version,
+        assigned_membership_id: member,
+      });
+      await expect(assign(assigned, f.auth.membershipId, "stale-transfer")).rejects.toMatchObject({
+        code: "version_conflict",
+      });
+      const version = moved.resource.conversation_version;
+      if (version === null) throw new Error("Missing assigned conversation version");
+      const start = (auth: typeof f.auth, key: string) =>
+        f.ops.mutate(
+          auth,
+          "handoff",
+          moved.resource.id,
+          moved.resource.version,
+          key,
+          { action: "claim", input: { conversation_version: version } },
+          "s17:start",
+          "unused",
+        );
+      const reply = (auth: typeof f.auth, key: string) =>
+        f.ops.mutate(
+          auth,
+          "conversation",
+          requireResource(f.receipt.conversationId),
+          version,
+          key,
+          { action: "reply", input: { text: "Hello from the handoff desk." } },
+          "s17:reply",
+          "unused",
+        );
+      await expect(start(f.auth, "previous-member-start")).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      await expect(reply(f.auth, "previous-member-reply")).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      const { resource: started } = await start(newAssignee, "assignee-start");
+      expect(started.status).toBe("in_progress");
+      await expect(
+        assign(started, f.auth.membershipId, "in-progress-transfer"),
+      ).rejects.toMatchObject({ code: "business_rule_failed" });
+      expect((await reply(newAssignee, "assignee-reply")).resource.status).toBe("awaiting_lead");
+      expect(
+        (
+          await pool.query(
+            "select from_assignee_id,to_assignee_id from handoff_transitions where handoff_id=$1 and from_status='assigned' and to_status='assigned'",
+            [assigned.id],
+          )
+        ).rows,
+      ).toEqual([{ from_assignee_id: f.auth.membershipId, to_assignee_id: member }]);
+      expect(
+        (
+          await pool.query(
+            "select actor_id from audit_events where target_id=$1 and metadata_redacted_jsonb->>'staff_operation'='assign'",
+            [assigned.id],
+          )
+        ).rows,
+      ).toEqual([{ actor_id: f.auth.membershipId }, { actor_id: f.auth.membershipId }]);
+      expect(
+        (
+          await pool.query(
+            "select payload_jsonb->'payload'->>'assignee_membership_id' as assignee from outbox_events where aggregate_id=$1 and event_type='handoff.assigned' order by aggregate_version",
+            [assigned.id],
+          )
+        ).rows,
+      ).toEqual([{ assignee: f.auth.membershipId }, { assignee: member }]);
     });
     it("queues one encrypted staff reply and keeps handoff ownership on the next customer message", async () => {
       const f = await withHandoff();

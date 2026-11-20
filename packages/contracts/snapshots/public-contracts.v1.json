@@ -48910,6 +48910,36 @@
     },
     {
       "category": "api",
+      "export_name": "StaffAssignHandoffInputSchema",
+      "schema": {
+        "$id": "StaffAssignHandoffInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "assignee_membership_id": {
+            "description": "Canonical lowercase RFC-variant UUIDv7 identifier.",
+            "maxLength": 36,
+            "minLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "conversation_version": {
+            "description": "Positive safe integer used for optimistic concurrency.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_version",
+          "assignee_membership_id"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffAssignHandoffInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
       "export_name": "StaffAttendanceInputSchema",
       "schema": {
         "$id": "StaffAttendanceInput.v1",

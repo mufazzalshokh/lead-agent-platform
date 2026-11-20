@@ -153,8 +153,18 @@ const offlineConfirmationSchemaNames = new Set([
   "StaffStepUpNavigationSchema",
 ]);
 
-const buildPreOfflineConfirmationSnapshot = () => {
+const buildPreHandoffAssignmentSnapshot = () => {
   const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffAssignHandoffInputSchema",
+    ),
+  };
+};
+
+const buildPreOfflineConfirmationSnapshot = () => {
+  const snapshot = buildPreHandoffAssignmentSnapshot();
   return {
     ...snapshot,
     contracts: snapshot.contracts.filter(
@@ -206,10 +216,10 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(388);
+    expect(snapshot.contracts).toHaveLength(389);
     expect(counts).toEqual({
       ai: 16,
-      api: 50,
+      api: 51,
       channel: 24,
       configuration: 65,
       conversation: 37,
@@ -433,9 +443,17 @@ describe("public contract inventory and snapshot", () => {
   it("adds offline confirmation contracts while preserving every accepted contract", () => {
     const legacy = buildPreOfflineConfirmationSnapshot();
     expect(legacy.contracts).toHaveLength(384);
-    const findings = compareContractSnapshots(legacy, buildContractSnapshot());
+    const findings = compareContractSnapshots(legacy, buildPreHandoffAssignmentSnapshot());
     expect(findings).toHaveLength(4);
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("adds the handoff assignment input while preserving every accepted contract", () => {
+    const legacy = buildPreHandoffAssignmentSnapshot();
+    expect(legacy.contracts).toHaveLength(388);
+    const findings = compareContractSnapshots(legacy, buildContractSnapshot());
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.classification).toBe("additive");
   });
 
   it("keeps the runtime export surface explicit", () => {

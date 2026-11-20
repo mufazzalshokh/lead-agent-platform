@@ -114,7 +114,11 @@ export const createStaffOperationsStore = (
               await persistStaffAppointmentDecision(session, input, nextId, customerData);
             else if (input.operation.action === "attest-customer-confirmation")
               await persistStaffCustomerAttestation(session, input, nextId);
-            else if (input.operation.action === "claim" || input.operation.action === "resolve")
+            else if (
+              input.operation.action === "claim" ||
+              input.operation.action === "assign" ||
+              input.operation.action === "resolve"
+            )
               await persistStaffHandoff(session, input, nextId);
             else if (input.operation.action === "reply")
               await persistStaffReply(session, input, customerData, nextId);

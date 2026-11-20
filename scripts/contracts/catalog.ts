@@ -103,6 +103,7 @@ export const PUBLIC_STATIC_SCHEMA_NAMES = {
     "StaffAppointmentConfirmationSchema",
     "StaffAppointmentConfirmationResponseSchema",
     "StaffStepUpNavigationSchema",
+    "StaffAssignHandoffInputSchema",
     "ApiErrorCodeSchema",
     "ValidationIssueSchema",
     "ProblemSchema",
