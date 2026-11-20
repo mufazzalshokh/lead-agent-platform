@@ -12,6 +12,7 @@ import { createStaffAuthenticationGuard, createStaffRequest } from "../../lib/st
 import { CopyWidgetCodeButton } from "./CopyWidgetCodeButton";
 import { OfflineAppointmentConfirmation } from "./OfflineAppointmentConfirmation";
 import { S22WidgetCohort } from "./S22WidgetCohort";
+import { StaffAppointmentOutcomes } from "./StaffAppointmentOutcomes";
 import {
   buildStaffSignInPath,
   formatStaffDateTime,
@@ -511,6 +512,7 @@ export function StaffWorkspace({
   const reply = replyText.trim();
   const replyTooLong = new TextEncoder().encode(reply).byteLength > STAFF_REPLY_MAX_BYTES;
   const appointmentAction = actionIdentity(detail?.appointment ?? null);
+  const appointmentStatus = detail?.appointment?.["status"];
   const offlineOffer = detail?.confirmation?.offline_offer ?? null;
   const attestation = detail?.confirmation?.attestation ?? null;
   const contactIdentities = detail?.contact?.["identities"];
@@ -1151,6 +1153,18 @@ export function StaffWorkspace({
                           </button>
                         </form>
                       </details>
+                    )}
+                  {appointmentAction !== null &&
+                    (appointmentStatus === "confirmed" || appointmentStatus === "cancelled") && (
+                      <StaffAppointmentOutcomes
+                        key={appointmentAction.id}
+                        appointmentId={appointmentAction.id}
+                        startAt={stringValue(detail?.appointment?.["start_at"])}
+                        canRecord={canManageHandoff && appointmentStatus === "confirmed"}
+                        disabled={working || !versionsCurrent}
+                        request={request}
+                        save={(path, body) => mutate(path, appointmentAction, body)}
+                      />
                     )}
                 </aside>
               </div>

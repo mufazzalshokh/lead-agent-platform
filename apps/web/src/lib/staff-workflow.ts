@@ -4,6 +4,7 @@ import {
   isSchemaValue,
   type StaffAppointmentConfirmation,
 } from "@lead-agent/contracts";
+import { attendancePath, revenuePath } from "./staff-appointment-outcomes";
 import { makeIdempotencyKey, staffActionMessage } from "./staff-ui";
 
 export type RecordValue = Readonly<Record<string, unknown>>;
@@ -176,6 +177,7 @@ export const createStaffWorkflow = (
     mutationEpoch = 0;
   let pendingReply: Readonly<{ id: string; version: number; text: string; key: string }> | null =
     null;
+  const pendingOutcomes = new Map<string, Readonly<{ key: string; version: number }>>();
   const listeners = new Set<() => void>();
   const update = (patch: Partial<WorkflowState>) => {
     state = Object.freeze({ ...state, ...patch });
@@ -416,16 +418,24 @@ export const createStaffWorkflow = (
       return false;
     const retry =
       pendingReply?.id === resource.id && pendingReply.text === text ? pendingReply : null;
-    const key = retry?.key ?? makeIdempotencyKey("work", options.randomId());
-    const version = retry?.version ?? resource.version;
+    const isAttendance = path === attendancePath(resource.id);
+    const isRevenue = path === revenuePath(resource.id);
+    const serializedBody = JSON.stringify(body);
+    const outcomeFingerprint =
+      isAttendance || isRevenue ? JSON.stringify([path, serializedBody]) : null;
+    const pendingOutcome =
+      outcomeFingerprint === null ? undefined : pendingOutcomes.get(outcomeFingerprint);
+    const key = pendingOutcome?.key ?? retry?.key ?? makeIdempotencyKey("work", options.randomId());
+    const version = pendingOutcome?.version ?? retry?.version ?? resource.version;
     if (text !== null) pendingReply = { id: resource.id, text, version, key };
+    if (outcomeFingerprint !== null) pendingOutcomes.set(outcomeFingerprint, { key, version });
     const epoch = ++mutationEpoch;
     update({ working: true, versionsCurrent: false, notice: null });
     let notice: string;
     let accepted = false;
     try {
       const response = await options.request(path, {
-        body: JSON.stringify(body),
+        body: serializedBody,
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -436,8 +446,10 @@ export const createStaffWorkflow = (
       });
       if (epoch !== mutationEpoch) return false;
       accepted = response.ok;
-      if (isReply && (accepted || [400, 403, 404, 409, 412, 422].includes(response.status)))
-        pendingReply = null;
+      if (accepted || [400, 403, 404, 409, 412, 422].includes(response.status)) {
+        if (isReply) pendingReply = null;
+        if (outcomeFingerprint !== null) pendingOutcomes.delete(outcomeFingerprint);
+      }
       if (!accepted) {
         const problem: unknown = await response.json().catch(() => null);
         notice = staffActionMessage(
@@ -448,6 +460,8 @@ export const createStaffWorkflow = (
               : (stringValue(problem["code"]) ?? undefined)
             : undefined,
         );
+      } else if (isAttendance || isRevenue) {
+        notice = isAttendance ? "Attendance recorded." : "Revenue history updated.";
       } else
         notice = isReply
           ? "Reply queued for delivery."
@@ -501,6 +515,7 @@ export const createStaffWorkflow = (
       detailEpoch++;
       mutationEpoch++;
       pendingReply = null;
+      pendingOutcomes.clear();
     },
   });
 };

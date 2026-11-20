@@ -457,6 +457,58 @@ describe("S22 staff conversation workflow", () => {
     ).toMatchObject({ headers: { "if-match": '"appointment-a:2"' } });
   });
 
+  it("reuses the original idempotency key and condition for an ambiguous revenue save", async () => {
+    const test = harness();
+    const appointmentItem = {
+      ...item(),
+      handoffId: null,
+      handoffStatus: null,
+      appointmentRequestId: "appointment-a",
+      appointmentStatus: "confirmed",
+    };
+    let version = 1;
+    let result = 503;
+    test.request.mockImplementation(async (path, init) => {
+      if (init?.method === "POST") {
+        version++;
+        return new Response(null, { status: result });
+      }
+      if (path.startsWith("/v1/staff/inbox")) return page();
+      if (path.includes("/messages?")) return data([]);
+      if (path.startsWith("/v2/staff/conversations/"))
+        return data({ id: "conversation-a", version: 7, status: "open", active_handoff_id: null });
+      return data({ id: "appointment-a", version, conversation_version: 7, status: "confirmed" });
+    });
+    const body = {
+      entry_type: "charge",
+      amount_minor: 1750,
+      currency: "UZS",
+      category_code: "consultation",
+      recognized_at: "2026-10-04T10:00:00.000Z",
+    };
+    const save = () =>
+      test.workflow.mutate(
+        "/v1/staff/appointment-requests/appointment-a/revenue-attributions",
+        { id: "appointment-a", version },
+        body,
+      );
+    await test.workflow.open(appointmentItem);
+    expect(await save()).toBe(false);
+    expect(test.workflow.getSnapshot().detail?.appointment?.["version"]).toBe(2);
+    result = 200;
+    expect(await save()).toBe(true);
+    expect(await save()).toBe(true);
+    const [original, replay, next] = test.request.mock.calls
+      .filter((call) => call[1]?.method === "POST")
+      .map((call) => call[1]);
+    expect(original).toMatchObject({ headers: { "if-match": '"appointment-a:1"' } });
+    expect(replay).toEqual(original);
+    expect(new Headers(next?.headers).get("idempotency-key")).not.toBe(
+      new Headers(original?.headers).get("idempotency-key"),
+    );
+    expect(test.workflow.getSnapshot().notice).toBe("Revenue history updated.");
+  });
+
   it("ignores pending work after component cleanup", async () => {
     const test = harness(),
       pending = deferred();
