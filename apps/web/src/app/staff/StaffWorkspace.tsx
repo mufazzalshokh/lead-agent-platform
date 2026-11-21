@@ -1330,8 +1330,8 @@ export function StaffWorkspace({
               {telegramStatus?.status === "connection_pending" && (
                 <p className="integration-detail">
                   {telegramStatus.nextStep === "connect_business"
-                    ? "Bot linked. In Telegram Business → Chatbots, connect @lead_agent_staging_bot and enable reply access, then check the connection."
-                    : "Press Start in the bot chat. Then connect @lead_agent_staging_bot under Telegram Business → Chatbots and allow it to reply."}
+                    ? "Bot linked. In Telegram Business → Chatbots, connect the bot you just linked and enable reply access. Then check the connection here."
+                    : "Press Start in the bot chat. Then add that bot under Telegram Business → Chatbots and allow it to reply."}
                 </p>
               )}
               {telegramStatus?.status === "needs_attention" && (

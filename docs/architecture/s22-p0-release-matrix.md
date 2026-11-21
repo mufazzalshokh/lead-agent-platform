@@ -13,6 +13,23 @@ The [product requirements](01-product-and-journeys.md#8-functional-requirements)
 
 ## Functional requirements
 
+**Fresh-clinic onboarding · implementation and evidence gap · C1/C6.** The
+[public entry](../../apps/web/src/app/page.tsx) redirects to staff sign-in. The
+[staff callback](../../apps/api/src/auth/plugin.ts) resolves an existing linked
+identity or issues proof for a tenant invitation. The organization-selection
+command requires an existing membership. The inspected routes have no
+first-owner registration that creates an organization and owner membership for
+a newly verified account. Existing [integration settings](../../apps/web/src/app/staff/StaffWorkspace.tsx)
+are usable after owner/admin membership is established. The retained staged
+tests cover a prepared tenant and owner. Fresh-clinic onboarding on the
+release candidate is unverified.
+
+Close this gap by proving a fresh verified user can create an isolated clinic
+workspace, receive its first owner membership, repeat the request without
+creating a second workspace, and connect their own eligible account through
+the normal owner controls. Verify that a supplied foreign workspace or account
+cannot grant access or bind the wrong tenant.
+
 | Requirement and journey | Normal entry point and retained evidence | Remaining criterion |
 | --- | --- | --- |
 | FR-001 · A, L · trusted tenancy | [Widget embed/session](../../apps/api/src/widget/plugin.ts), [Telegram](../../apps/api/src/telegram/plugin.ts) and [Instagram](../../apps/api/src/instagram/plugin.ts) webhook routes. Widget origin-denial receipt and [authorization resolver suite](../../tests/database/authorization-resolution.test-suite.ts). | **Evidence gap · C1/C7.** Verify current route/account/tenant binding on every launch channel. Exercise absent or foreign binding and origin denial with the candidate runtime role. |
