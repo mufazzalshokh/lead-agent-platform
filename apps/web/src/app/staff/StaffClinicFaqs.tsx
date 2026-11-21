@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import type { Faq, LocalizedText } from "@lead-agent/contracts";
+import { clinicLanguages } from "../../lib/staff-clinic-configuration";
 import {
-  faqLanguages,
   faqPublication,
   listClinicFaqs,
   loadFaqScope,
@@ -37,7 +37,7 @@ function FaqDraftFields({ editor, scope }: Readonly<{ editor: Editor; scope: Sco
       {editor.mode === "create" && faq !== null && (
         <input name="faq_key" type="hidden" value={faq.faq_key} />
       )}
-      <div className="clinic-faq-scope">
+      <div className="clinic-form-grid">
         <label>
           Location
           <select name="location_id" defaultValue={location ?? ""}>
@@ -70,7 +70,7 @@ function FaqDraftFields({ editor, scope }: Readonly<{ editor: Editor; scope: Sco
         </label>
       </div>
       <p>Enter a question and answer in at least your clinic’s default language.</p>
-      {faqLanguages.map(([locale, name]) => (
+      {clinicLanguages.map(([locale, name]) => (
         <div key={locale} className="clinic-faq-translation">
           <label>
             Question in {name}
@@ -221,12 +221,9 @@ export function StaffClinicFaqs({ request }: Readonly<{ request: StaffRequest }>
   const faq = editor?.faq;
 
   return (
-    <section className="integrations-overview" aria-label="Clinic knowledge">
-      <div className="integrations-overview__heading">
-        <h2>Clinic knowledge</h2>
-      </div>
+    <div>
       <details
-        className="clinic-faqs"
+        className="clinic-knowledge-panel"
         onToggle={(event) => {
           if (event.currentTarget.open && scope === null && !needsRefresh) void refresh();
         }}
@@ -278,7 +275,7 @@ export function StaffClinicFaqs({ request }: Readonly<{ request: StaffRequest }>
             {faqs.length === 0 ? (
               <p>No FAQs yet.</p>
             ) : (
-              <ul className="clinic-faq-list">
+              <ul className="clinic-record-list">
                 {faqs.map((row) => (
                   <li key={row.faq_id}>
                     <button
@@ -308,7 +305,7 @@ export function StaffClinicFaqs({ request }: Readonly<{ request: StaffRequest }>
         )}
         {editor !== null && scope !== null && (
           <div
-            className="action-box clinic-faq-editor"
+            className="action-box clinic-editor"
             key={`${editor.mode}:${faq?.faq_id ?? "new"}:${faq?.version_no ?? 0}`}
           >
             {editor.mode === "view" ? (
@@ -327,7 +324,7 @@ export function StaffClinicFaqs({ request }: Readonly<{ request: StaffRequest }>
                     : (scope.services.find((row) => row.service_id === editor.faq.service_id)
                         ?.code ?? "Unlisted service")}
                 </p>
-                {faqLanguages.map(
+                {clinicLanguages.map(
                   ([locale, name]) =>
                     (editor.faq.question_i18n[locale] !== undefined ||
                       editor.faq.answer_i18n[locale] !== undefined) && (
@@ -427,6 +424,6 @@ export function StaffClinicFaqs({ request }: Readonly<{ request: StaffRequest }>
           </div>
         )}
       </details>
-    </section>
+    </div>
   );
 }

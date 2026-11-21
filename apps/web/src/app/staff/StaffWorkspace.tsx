@@ -14,6 +14,7 @@ import { OfflineAppointmentConfirmation } from "./OfflineAppointmentConfirmation
 import { S22WidgetCohort } from "./S22WidgetCohort";
 import { StaffAppointmentOutcomes } from "./StaffAppointmentOutcomes";
 import { StaffClinicFaqs } from "./StaffClinicFaqs";
+import { StaffClinicLocations } from "./StaffClinicLocations";
 import {
   buildStaffSignInPath,
   formatStaffDateTime,
@@ -1175,7 +1176,17 @@ export function StaffWorkspace({
       </div>
       <div className="staff-settings" aria-label="Workspace settings and analytics">
         {(membershipRole === "admin" || membershipRole === "owner") && (
-          <StaffClinicFaqs key={organizationId} request={request} />
+          <section
+            key={organizationId}
+            className="integrations-overview"
+            aria-label="Clinic knowledge"
+          >
+            <div className="integrations-overview__heading">
+              <h2>Clinic knowledge</h2>
+            </div>
+            <StaffClinicLocations request={request} />
+            <StaffClinicFaqs request={request} />
+          </section>
         )}
         <section className="integrations-overview" id="integrations" aria-label="Integrations">
           <div className="integrations-overview__heading">
