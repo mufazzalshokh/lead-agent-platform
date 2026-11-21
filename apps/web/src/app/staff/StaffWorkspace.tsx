@@ -15,6 +15,7 @@ import { S22WidgetCohort } from "./S22WidgetCohort";
 import { StaffAppointmentOutcomes } from "./StaffAppointmentOutcomes";
 import { StaffClinicFaqs } from "./StaffClinicFaqs";
 import { StaffClinicLocations } from "./StaffClinicLocations";
+import { StaffClinicPolicies } from "./StaffClinicPolicies";
 import { StaffClinicPrices } from "./StaffClinicPrices";
 import { StaffClinicServices } from "./StaffClinicServices";
 import {
@@ -1190,6 +1191,7 @@ export function StaffWorkspace({
             <StaffClinicServices request={request} />
             <StaffClinicPrices request={request} />
             <StaffClinicFaqs request={request} />
+            <StaffClinicPolicies request={request} />
           </section>
         )}
         <section className="integrations-overview" id="integrations" aria-label="Integrations">
