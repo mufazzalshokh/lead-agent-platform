@@ -15,6 +15,7 @@ import { S22WidgetCohort } from "./S22WidgetCohort";
 import { StaffAppointmentOutcomes } from "./StaffAppointmentOutcomes";
 import { StaffClinicFaqs } from "./StaffClinicFaqs";
 import { StaffClinicLocations } from "./StaffClinicLocations";
+import { StaffClinicServices } from "./StaffClinicServices";
 import {
   buildStaffSignInPath,
   formatStaffDateTime,
@@ -1185,6 +1186,7 @@ export function StaffWorkspace({
               <h2>Clinic knowledge</h2>
             </div>
             <StaffClinicLocations request={request} />
+            <StaffClinicServices request={request} />
             <StaffClinicFaqs request={request} />
           </section>
         )}

@@ -1,7 +1,6 @@
 import {
   CreateFaqDraftInputSchema,
   FaqSchema,
-  ServiceRootSchema,
   UpdateFaqDraftInputSchema,
   createCollectionEnvelopeSchema,
   createSuccessEnvelopeSchema,
@@ -11,11 +10,13 @@ import {
 } from "@lead-agent/contracts";
 import {
   clinicLanguages,
+  readConfigurationCatalog,
   readConfigurationPage,
   readFormText,
   writeClinicConfiguration,
 } from "./staff-clinic-configuration";
 import { listClinicLocations } from "./staff-clinic-locations";
+import { listClinicServices } from "./staff-clinic-services";
 import type { StaffRequest } from "./staff-request";
 import { makeIdempotencyKey } from "./staff-ui";
 
@@ -25,10 +26,6 @@ const FaqCollection = createCollectionEnvelopeSchema(
   "StaffConfigurationFaqCollectionResponse.v1",
 );
 const FaqResponse = createSuccessEnvelopeSchema(FaqSchema, "StaffConfigurationFaqResponse.v1");
-const Services = createCollectionEnvelopeSchema(
-  ServiceRootSchema,
-  "StaffConfigurationServiceCollectionResponse.v1",
-);
 
 export const readFaqDraft = (form: FormData, current: Faq | null) => {
   const question: LocalizedText = {};
@@ -86,30 +83,13 @@ export const prepareFaqCommand = (command: FaqCommand, randomId: string) => ({
 
 export type PreparedFaqCommand = ReturnType<typeof prepareFaqCommand>;
 
-const readAll = async <Item>(
-  read: (cursor: string | null) => Promise<{ data: Item[]; meta: { next_cursor?: string | null } }>,
-) => {
-  const first = await read(null);
-  const rows = [...first.data];
-  const seen = new Set<string>();
-  let cursor = first.meta.next_cursor ?? null;
-  while (cursor !== null) {
-    if (seen.has(cursor)) throw new Error("Invalid configuration cursor");
-    seen.add(cursor);
-    const page = await read(cursor);
-    rows.push(...page.data);
-    cursor = page.meta.next_cursor ?? null;
-  }
-  return rows;
-};
-
 export const listClinicFaqs = (request: StaffRequest, cursor: string | null = null) =>
   readConfigurationPage(request, FAQ_PATH, FaqCollection, cursor);
 
 export const loadFaqScope = async (request: StaffRequest) => {
   const [locations, services] = await Promise.all([
-    readAll((cursor) => listClinicLocations(request, cursor)),
-    readAll((cursor) => readConfigurationPage(request, "/v1/staff/services", Services, cursor)),
+    readConfigurationCatalog((cursor) => listClinicLocations(request, cursor)),
+    readConfigurationCatalog((cursor) => listClinicServices(request, cursor)),
   ]);
   return { locations, services };
 };

@@ -21,7 +21,9 @@ export const readConfigurationPage = async <
   cursor: string | null,
 ) => {
   const response = await request(
-    cursor === null ? path : `${path}?cursor=${encodeURIComponent(cursor)}`,
+    cursor === null
+      ? path
+      : `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`,
   );
   if (!response.ok) throw new Error("Configuration could not be loaded");
   const value: unknown = await response.json();
@@ -29,12 +31,30 @@ export const readConfigurationPage = async <
   return value;
 };
 
+export const readConfigurationCatalog = async <Item>(
+  read: (cursor: string | null) => Promise<{ data: Item[]; meta: { next_cursor?: string | null } }>,
+) => {
+  const rows: Item[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const page = await read(cursor);
+    rows.push(...page.data);
+    cursor = page.meta.next_cursor ?? null;
+    if (cursor !== null) {
+      if (seen.has(cursor)) throw new Error("Invalid configuration cursor");
+      seen.add(cursor);
+    }
+  } while (cursor !== null);
+  return rows;
+};
+
 export const writeClinicConfiguration = async <Resource>(
   request: StaffRequest,
   command: Readonly<{
     body: string;
     idempotencyKey: string;
-    method: "PATCH" | "POST";
+    method: "PATCH" | "POST" | "PUT";
     path: string;
   }>,
   csrf: string | null,
