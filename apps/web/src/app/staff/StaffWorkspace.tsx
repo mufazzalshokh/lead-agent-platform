@@ -15,6 +15,7 @@ import { S22WidgetCohort } from "./S22WidgetCohort";
 import { StaffAppointmentOutcomes } from "./StaffAppointmentOutcomes";
 import { StaffClinicFaqs } from "./StaffClinicFaqs";
 import { StaffClinicLocations } from "./StaffClinicLocations";
+import { StaffClinicPrices } from "./StaffClinicPrices";
 import { StaffClinicServices } from "./StaffClinicServices";
 import {
   buildStaffSignInPath,
@@ -1187,6 +1188,7 @@ export function StaffWorkspace({
             </div>
             <StaffClinicLocations request={request} />
             <StaffClinicServices request={request} />
+            <StaffClinicPrices request={request} />
             <StaffClinicFaqs request={request} />
           </section>
         )}

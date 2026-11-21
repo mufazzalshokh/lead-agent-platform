@@ -74,6 +74,10 @@ return to the remaining M2 matrix rather than letting operational preparation
 replace it. Telegram Business may run last when externally constrained, as the
 existing execution sequence permits.
 
+Before starting the remaining step 4 rehearsals, address the recurring disk-space
+and memory warnings on the development workstation. Confirm the cause and verify
+that the machine can sustain the planned workload before starting the rehearsal.
+
 For every gate, attach source/environment, exact finite observation, result and
 remaining gap. A failed/ambiguous execution keeps its ID; investigate it instead
 of blindly rerunning, replacing a session or inventing a percentage. New customer
