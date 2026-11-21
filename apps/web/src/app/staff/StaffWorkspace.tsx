@@ -13,6 +13,7 @@ import { CopyWidgetCodeButton } from "./CopyWidgetCodeButton";
 import { OfflineAppointmentConfirmation } from "./OfflineAppointmentConfirmation";
 import { S22WidgetCohort } from "./S22WidgetCohort";
 import { StaffAppointmentOutcomes } from "./StaffAppointmentOutcomes";
+import { StaffClinicFaqs } from "./StaffClinicFaqs";
 import {
   buildStaffSignInPath,
   formatStaffDateTime,
@@ -1173,6 +1174,9 @@ export function StaffWorkspace({
         </section>
       </div>
       <div className="staff-settings" aria-label="Workspace settings and analytics">
+        {(membershipRole === "admin" || membershipRole === "owner") && (
+          <StaffClinicFaqs key={organizationId} request={request} />
+        )}
         <section className="integrations-overview" id="integrations" aria-label="Integrations">
           <div className="integrations-overview__heading">
             <div>
