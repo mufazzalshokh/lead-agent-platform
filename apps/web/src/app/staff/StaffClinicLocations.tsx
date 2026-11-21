@@ -1,7 +1,12 @@
 import { useRef, useState, type FormEvent } from "react";
-import type { BusinessHoursInterval, LocationRoot } from "@lead-agent/contracts";
+import type {
+  BusinessHoursInterval,
+  LocationClosureRecord,
+  LocationRoot,
+} from "@lead-agent/contracts";
 import { clinicLanguages } from "../../lib/staff-clinic-configuration";
 import {
+  getClinicLocation,
   listClinicLocations,
   prepareLocationCommand,
   readLocationCandidate,
@@ -9,8 +14,10 @@ import {
   writeClinicLocation,
   type PreparedLocationCommand,
 } from "../../lib/staff-clinic-locations";
+import { writeLocationClosure, type PreparedClosure } from "../../lib/staff-location-closures";
 import type { StaffRequest } from "../../lib/staff-request";
 import { readCsrfCookie } from "../../lib/staff-ui";
+import { StaffLocationClosures } from "./StaffLocationClosures";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -164,7 +171,8 @@ export function StaffClinicLocations({ request }: Readonly<{ request: StaffReque
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<PreparedLocationCommand | null>(null);
+  const [pending, setPending] = useState<PreparedLocationCommand | PreparedClosure | null>(null);
+  const [closureRecords, setClosureRecords] = useState<LocationClosureRecord[]>([]);
   const inFlight = useRef(false);
 
   const run = async (operation: () => Promise<void>) => {
@@ -202,7 +210,17 @@ export function StaffClinicLocations({ request }: Readonly<{ request: StaffReque
       }
     });
 
-  const save = (command: PreparedLocationCommand) =>
+  const updateLocation = (location: LocationRoot) => {
+    setLocations((current) => {
+      const rows = new Map(current?.map((row) => [row.location_id, row]));
+      rows.set(location.location_id, location);
+      return [...rows.values()];
+    });
+    setCreating(false);
+    setOpenLocation(location.location_id);
+  };
+
+  const save = (command: PreparedLocationCommand | PreparedClosure) =>
     run(async () => {
       setNotice(null);
       let csrf: string | null;
@@ -211,7 +229,10 @@ export function StaffClinicLocations({ request }: Readonly<{ request: StaffReque
       } catch {
         csrf = null;
       }
-      const result = await writeClinicLocation(request, command, csrf);
+      const result =
+        "closure" in command
+          ? await writeLocationClosure(request, command, csrf)
+          : await writeClinicLocation(request, command, csrf);
       if (result.kind !== "saved") {
         if (result.kind === "uncertain") setPending(command);
         else if (csrf !== null) setPending(null);
@@ -219,15 +240,36 @@ export function StaffClinicLocations({ request }: Readonly<{ request: StaffReque
         setError(result.message);
         return;
       }
-      const location = result.resource;
-      setLocations((current) => {
-        const rows = new Map(current?.map((row) => [row.location_id, row]));
-        rows.set(location.location_id, location);
-        return [...rows.values()];
-      });
       setPending(null);
-      setCreating(false);
-      setOpenLocation(location.location_id);
+      const resource = result.resource;
+      if ("closure_id" in resource && "closure" in command) {
+        setClosureRecords((current) => {
+          const remaining = current.filter(
+            (row) =>
+              row.closure_id !== resource.closure_id && row.closure_id !== resource.supersedes_id,
+          );
+          return resource.status === "active" ? [...remaining, resource] : remaining;
+        });
+        setNotice(
+          resource.status === "cancelled"
+            ? "Schedule change cancelled."
+            : "Schedule change published.",
+        );
+        try {
+          const location = await getClinicLocation(request, resource.location_id);
+          if (location.version <= command.target.version)
+            throw new Error("Location version did not advance");
+          updateLocation(location);
+        } catch {
+          setNeedsRefresh(true);
+          setError(
+            "The schedule change was saved. Refresh locations to load the latest version before making another change.",
+          );
+        }
+        return;
+      }
+      if ("closure" in command || "closure_id" in resource) return;
+      updateLocation(resource);
       setNotice(
         command.action === "create"
           ? "Location added. Publish its details to make it active."
@@ -415,6 +457,12 @@ export function StaffClinicLocations({ request }: Readonly<{ request: StaffReque
               </button>
             </fieldset>
           </form>
+          <StaffLocationClosures
+            location={selected}
+            records={closureRecords.filter((record) => record.location_id === selected.location_id)}
+            disabled={locked || needsRefresh}
+            save={(command) => void save(command)}
+          />
           <div className="action-row">
             <button
               className="secondary-button"

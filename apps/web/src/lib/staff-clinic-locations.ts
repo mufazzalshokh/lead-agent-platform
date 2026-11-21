@@ -34,6 +34,16 @@ const Location = createSuccessEnvelopeSchema(
 export const listClinicLocations = (request: StaffRequest, cursor: string | null = null) =>
   readConfigurationPage(request, path, Locations, cursor);
 
+export const getClinicLocation = async (request: StaffRequest, id: LocationRoot["location_id"]) => {
+  const response = await request(`${path}/${id}`, { cache: "no-store" });
+  if (!response.ok) throw new Error("Location could not be loaded");
+  const value: unknown = await response.json();
+  if (!isSchemaValue(Location, value) || value.data.location_id !== id) {
+    throw new Error("Invalid location response");
+  }
+  return value.data;
+};
+
 const withSeconds = (value: FormDataEntryValue | undefined) =>
   typeof value === "string" && /^\d\d:\d\d$/u.test(value) ? `${value}:00` : value;
 
