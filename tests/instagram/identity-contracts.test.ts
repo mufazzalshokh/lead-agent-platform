@@ -68,6 +68,15 @@ describe("Instagram additive identity/event version compatibility", () => {
       ...WIDGET_RECOVERY_SCHEMA_NAMES,
       "AppointmentRequestConfirmedDomainEventV2Schema",
       "AppointmentRequestConfirmedDomainEventPayloadV2Schema",
+      "StaffReplyInputSchema",
+      "StaffCancelAppointmentInputSchema",
+      "StaffAttestCustomerConfirmationInputSchema",
+      "StaffAppointmentConfirmationSchema",
+      "StaffAppointmentConfirmationResponseSchema",
+      "StaffStepUpNavigationSchema",
+      "StaffAssignHandoffInputSchema",
+      "WidgetPhoneChoiceInputSchema",
+      "StaffSignupInputSchema",
     ]);
     const legacy = buildContractSnapshot().contracts.filter(
       (contract) =>

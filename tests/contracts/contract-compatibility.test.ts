@@ -153,8 +153,18 @@ const offlineConfirmationSchemaNames = new Set([
   "StaffStepUpNavigationSchema",
 ]);
 
-const buildPreWidgetPhoneChoiceSnapshot = () => {
+const buildPreStaffSignupSnapshot = () => {
   const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffSignupInputSchema",
+    ),
+  };
+};
+
+const buildPreWidgetPhoneChoiceSnapshot = () => {
+  const snapshot = buildPreStaffSignupSnapshot();
   return {
     ...snapshot,
     contracts: snapshot.contracts.filter(
@@ -226,10 +236,10 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(390);
+    expect(snapshot.contracts).toHaveLength(391);
     expect(counts).toEqual({
       ai: 16,
-      api: 51,
+      api: 52,
       channel: 24,
       configuration: 65,
       conversation: 37,
@@ -470,10 +480,21 @@ describe("public contract inventory and snapshot", () => {
     const legacy = buildPreWidgetPhoneChoiceSnapshot();
     expect(legacy.contracts).toHaveLength(389);
     expect(
-      compareContractSnapshots(legacy, buildContractSnapshot()).map(
+      compareContractSnapshots(legacy, buildPreStaffSignupSnapshot()).map(
         (finding) => finding.classification,
       ),
     ).toEqual(["additive"]);
+  });
+
+  it("adds only the staff signup input and preserves all 390 prior contracts", () => {
+    const legacy = buildPreStaffSignupSnapshot();
+    expect(legacy.contracts).toHaveLength(390);
+    expect(createHash("sha256").update(JSON.stringify(legacy.contracts)).digest("hex")).toBe(
+      "0bdecab1ca9f7bbee848d41096cfd162707d52e5f32930a1b6aa89336e159340",
+    );
+    expect(compareContractSnapshots(legacy, buildContractSnapshot())).toMatchObject([
+      { classification: "additive", contract: "StaffSignupInputSchema" },
+    ]);
   });
 
   it("keeps the runtime export surface explicit", () => {
