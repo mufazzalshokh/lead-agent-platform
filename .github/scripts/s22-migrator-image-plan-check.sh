@@ -16,7 +16,7 @@ EXPECTED_API_MIGRATION_HEAD="${11:?expected preserved API migration head is requ
 EXPECTED_WEB_IMAGE="${12:?expected preserved Web image is required}"
 EXPECTED_WORKER_IMAGE="${13:?expected preserved Worker image is required}"
 EXPECTED_MIGRATION_HEAD="${14:-0031_s22_widget_inbound_route_management}"
-[[ "$EXPECTED_MIGRATION_HEAD" == "0031_s22_widget_inbound_route_management" || "$EXPECTED_MIGRATION_HEAD" == "0032_s22_widget_recovery" ]]
+[[ "$EXPECTED_MIGRATION_HEAD" == "0031_s22_widget_inbound_route_management" || "$EXPECTED_MIGRATION_HEAD" == "0032_s22_widget_recovery" || "$EXPECTED_MIGRATION_HEAD" == "0033_first_owner_signup" ]]
 PLAN_DIR="$(dirname "$PLAN_PATH")"
 PLAN_NAME="$(basename "$PLAN_PATH")"
 PLAN_JSON="$(mktemp)"

@@ -187,15 +187,15 @@ const denied = (plan) =>
     () => verifyFullRuntimeConfiguration(plan, schema),
     /S22_FULL_RUNTIME_CONFIGURATION_DENIED/u,
   );
-const recoveryFixture = () => {
+const recoveryFixture = (head = "0032_s22_widget_recovery") => {
   const plan = fixture();
-  plan.variables.migration_head.value = "0032_s22_widget_recovery";
+  plan.variables.migration_head.value = head;
   for (const workload of Object.keys(addresses)) {
     const value = findChange(plan, workload).after;
-    value.labels["migration-head"] = "0032-s22-widget-recovery";
+    value.labels["migration-head"] = head.replaceAll("_", "-");
     getContainer(value, workload).env.find(
       (entry) => entry.name === "DEPLOYMENT_MIGRATION_HEAD",
-    ).value = "0032_s22_widget_recovery";
+    ).value = head;
   }
   return plan;
 };
@@ -243,6 +243,20 @@ test("allows three application updates only when the recovery migrator is alread
   migrator.after_unknown = {};
   assert.equal(verifyFullRuntimeConfiguration(plan, schema).changedResources, 3);
   getContainer(migrator.after, "migrator").image = "wrong-image";
+  migrator.before = structuredClone(migrator.after);
+  denied(plan);
+});
+test("requires the exact preinstalled migrator before allowing 0033 application updates", () => {
+  const plan = recoveryFixture("0033_first_owner_signup");
+  denied(plan);
+  const migrator = findChange(plan, "migrator");
+  migrator.before = structuredClone(migrator.after);
+  migrator.actions = ["no-op"];
+  migrator.after_unknown = {};
+  assert.equal(verifyFullRuntimeConfiguration(plan, schema).changedResources, 3);
+  getContainer(migrator.after, "migrator").env.find(
+    (entry) => entry.name === "DEPLOYMENT_MIGRATION_HEAD",
+  ).value = "0032_s22_widget_recovery";
   migrator.before = structuredClone(migrator.after);
   denied(plan);
 });

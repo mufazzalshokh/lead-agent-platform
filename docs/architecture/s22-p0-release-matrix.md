@@ -31,6 +31,16 @@ and verify denial of foreign workspace or provider account access. Complete a
 supported account connection through the normal owner controls. Stage the
 migration and verify the Auth0 signup connection before collecting that evidence.
 
+For this candidate, use `migration_head=0033_first_owner_signup`. Prepare the
+`migrator-image-update` plan against the live API, Web, and Worker provenance.
+Apply the reviewed binary only after owner approval, then obtain separate
+approval for a single `migration-resume` execution. Retain the successful
+validator receipt for 34 applied migrations and `first_owner_signup_boundary`.
+Use the same candidate images for the subsequent `full` plan. Its migrator
+must be a no-op and the plan must preserve the AI journey mode and capacity.
+The application apply requires its own owner-approved saved plan. Verify Auth0
+signup is enabled for the synthetic cohort before attempting account creation.
+
 | Requirement and journey | Normal entry point and retained evidence | Remaining criterion |
 | --- | --- | --- |
 | FR-001 · A, L · trusted tenancy | [Widget embed/session](../../apps/api/src/widget/plugin.ts), [Telegram](../../apps/api/src/telegram/plugin.ts) and [Instagram](../../apps/api/src/instagram/plugin.ts) webhook routes. Widget origin-denial receipt and [authorization resolver suite](../../tests/database/authorization-resolution.test-suite.ts). | **Evidence gap · C1/C7.** Verify current route/account/tenant binding on every launch channel. Exercise absent or foreign binding and origin denial with the candidate runtime role. |

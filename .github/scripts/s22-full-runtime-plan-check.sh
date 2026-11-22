@@ -59,6 +59,10 @@ ACTUAL_ACTIONS="$(
   ' "$PLAN_JSON"
 )"
 
+if [[ "$TF_VAR_migration_head" == "0033_first_owner_signup" ]]; then
+  [[ "$ACTUAL_ACTIONS" == "$MIGRATION_FIRST_ACTIONS" ]]
+fi
+
 case "$ACTUAL_ACTIONS" in
   "$INITIAL_ACTIONS")
     CREATE_COUNT=1
@@ -71,7 +75,7 @@ case "$ACTUAL_ACTIONS" in
     PLAN_MODE=reconciliation
     ;;
   "$MIGRATION_FIRST_ACTIONS")
-    [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]
+    [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" || "$TF_VAR_migration_head" == "0033_first_owner_signup" ]]
     CREATE_COUNT=0
     UPDATE_COUNT=3
     PLAN_MODE=reconciliation

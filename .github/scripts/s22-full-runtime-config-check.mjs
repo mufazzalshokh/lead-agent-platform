@@ -14,6 +14,7 @@ const requireSafe = (condition) => {
 const approvedHeads = new Set([
   "0031_s22_widget_inbound_route_management",
   "0032_s22_widget_recovery",
+  "0033_first_owner_signup",
 ]);
 const canonical = (value) => {
   if (Array.isArray(value)) return value.map(canonical);
@@ -212,7 +213,8 @@ export function verifyFullRuntimeConfiguration(plan, providerSchema) {
       requireSafe(JSON.stringify(canonical(before)) === JSON.stringify(canonical(after)));
       if (
         workload === "migrator" &&
-        variables.migration_head?.value === "0032_s22_widget_recovery"
+        (variables.migration_head?.value === "0032_s22_widget_recovery" ||
+          variables.migration_head?.value === "0033_first_owner_signup")
       ) {
         permittedRuntime(after, workload, variables, true);
         readyMigrator = true;
@@ -221,7 +223,8 @@ export function verifyFullRuntimeConfiguration(plan, providerSchema) {
     managed++;
   }
   requireSafe(
-    (changed === 4 || (changed === 3 && readyMigrator)) &&
+    ((changed === 3 && readyMigrator) ||
+      (changed === 4 && variables.migration_head?.value !== "0033_first_owner_signup")) &&
       [...runtimeAddresses.keys()].every((address) => seen.has(address)),
   );
   return { managedResources: managed, changedResources: changed };

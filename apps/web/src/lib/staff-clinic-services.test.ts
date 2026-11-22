@@ -106,14 +106,12 @@ describe("staff clinic services", () => {
   });
 
   it("checks the active offering through the authorized location filter and all pages", async () => {
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce(
-        Response.json({
-          data: [],
-          meta: { request_id: "request-service", has_more: true, next_cursor: "cGFnZQ" },
-        }),
-      );
+    const request = vi.fn().mockResolvedValueOnce(
+      Response.json({
+        data: [],
+        meta: { request_id: "request-service", has_more: true, next_cursor: "cGFnZQ" },
+      }),
+    );
     request.mockResolvedValueOnce(
       Response.json({
         data: [activeService()],

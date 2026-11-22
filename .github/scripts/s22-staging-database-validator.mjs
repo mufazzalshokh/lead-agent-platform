@@ -129,6 +129,7 @@ const migrationProfile = (head) => {
   const count = new Map([
     ["0031_s22_widget_inbound_route_management", 32],
     ["0032_s22_widget_recovery", 33],
+    ["0033_first_owner_signup", 34],
   ]).get(head);
   if (count === undefined) {
     const error = new Error("Unreviewed migration head");
@@ -140,6 +141,10 @@ const migrationProfile = (head) => {
 
 const main = async () => {
   const profile = migrationProfile(required("DEPLOYMENT_MIGRATION_HEAD"));
+  const requiredDefinerRoles =
+    profile.head === "0033_first_owner_signup"
+      ? [...definerRoles, "lead_agent_signup_definer"].sort()
+      : definerRoles;
   const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
   const { Pool } = await import("pg");
   const { readStagingMigrationManifest, stagingRolePasswordFromUrl } =
@@ -257,7 +262,7 @@ const main = async () => {
       }),
   );
 
-  if (profile.head === "0032_s22_widget_recovery") {
+  if (profile.count >= 33) {
     await check(
       {
         assertion: "widget_recovery_columns",
@@ -335,6 +340,51 @@ const main = async () => {
     );
   }
 
+  if (profile.head === "0033_first_owner_signup") {
+    await check(
+      {
+        assertion: "first_owner_signup_boundary",
+        expected: "auth_only_signup_function_and_private_registration_table",
+        failureCode: "S22V036_FIRST_OWNER_SIGNUP_BOUNDARY",
+      },
+      () =>
+        withAdmin(async (client) => {
+          const boundary = await client.query(`
+            select procedure.prosecdef
+                     and owner.rolname = 'lead_agent_signup_definer'
+                     and 'search_path=pg_catalog' = any(procedure.proconfig) as hardened_function,
+                   pg_catalog.has_function_privilege('lead_agent_auth', procedure.oid, 'EXECUTE')
+                     and not pg_catalog.has_function_privilege('lead_agent_runtime', procedure.oid, 'EXECUTE')
+                     and not pg_catalog.has_function_privilege('lead_agent_ingress', procedure.oid, 'EXECUTE')
+                     and not exists (
+                       select 1 from pg_catalog.aclexplode(
+                         coalesce(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+                       ) as grant_entry where grant_entry.grantee = 0
+                     ) as auth_only_execute,
+                   pg_catalog.to_regclass('app.first_owner_registrations') is not null
+                     and not exists (
+                       select 1 from unnest(array['lead_agent_auth','lead_agent_runtime','lead_agent_ingress']) as caller
+                       where pg_catalog.has_any_column_privilege(
+                         caller, pg_catalog.to_regclass('app.first_owner_registrations'), 'SELECT,INSERT,UPDATE,REFERENCES'
+                       ) or pg_catalog.has_table_privilege(
+                         caller, pg_catalog.to_regclass('app.first_owner_registrations'), 'DELETE,TRUNCATE,TRIGGER'
+                       )
+                     ) as private_registration_table
+              from pg_catalog.pg_proc as procedure
+              join pg_catalog.pg_roles as owner on owner.oid = procedure.proowner
+             where procedure.oid = pg_catalog.to_regprocedure(
+               'app.register_first_owner(varchar,varchar,varchar,varchar,varchar,uuid,uuid,uuid,uuid,uuid,varchar,uuid)'
+             )
+          `);
+          const observed = boundary.rows[0] ?? null;
+          return {
+            observed,
+            pass: observed !== null && Object.values(observed).every((value) => value === true),
+          };
+        }),
+    );
+  }
+
   await check(
     {
       assertion: "production_table_count",
@@ -376,7 +426,7 @@ const main = async () => {
       expected: {
         bypassrls: false,
         login: false,
-        roles: definerRoles,
+        roles: requiredDefinerRoles,
         superuser: false,
       },
       failureCode: "S22V008_DEFINER_ROLE_MANIFEST",
@@ -385,7 +435,7 @@ const main = async () => {
       withAdmin(async (client) => {
         const roles = await client.query(
           "select rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_catalog.pg_roles where rolname = any($1::text[]) order by rolname",
-          [definerRoles],
+          [requiredDefinerRoles],
         );
         const observed = roles.rows.map((role) => ({
           bypassrls: role.rolbypassrls,
@@ -405,8 +455,8 @@ const main = async () => {
         return {
           observed,
           pass:
-            roles.rows.length === definerRoles.length &&
-            roles.rows.map(({ rolname }) => rolname).join(",") === definerRoles.join(",") &&
+            roles.rows.length === requiredDefinerRoles.length &&
+            roles.rows.map(({ rolname }) => rolname).join(",") === requiredDefinerRoles.join(",") &&
             secure,
         };
       }),

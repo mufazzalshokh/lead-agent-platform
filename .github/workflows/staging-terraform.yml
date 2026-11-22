@@ -65,13 +65,14 @@ on:
         required: false
         type: string
       migration_head:
-        description: Exact packaged migrator head; 0032 requires migration-first recovery rollout
+        description: Exact packaged migrator head; 0032 and 0033 use migration-first rollout
         required: false
         default: 0031_s22_widget_inbound_route_management
         type: choice
         options:
           - 0031_s22_widget_inbound_route_management
           - 0032_s22_widget_recovery
+          - 0033_first_owner_signup
       api_image:
         description: Immutable API image reference by digest
         required: false
@@ -455,9 +456,12 @@ jobs:
             *) echo "Staging Terraform may run only from main or the S22 verification branch." >&2; exit 1 ;;
           esac
           [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$TF_VAR_migration_head" == "0031_s22_widget_inbound_route_management" || "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]
+          [[ "$TF_VAR_migration_head" == "0031_s22_widget_inbound_route_management" || "$TF_VAR_migration_head" == "0032_s22_widget_recovery" || "$TF_VAR_migration_head" == "0033_first_owner_signup" ]]
           if [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]; then
             [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" || "$PHASE" == "api-image-verify" || "$PHASE" == "monitoring-policy" || "$PHASE" == "connection-fault-code" || "$PHASE" == "connection-fault-enable" || "$PHASE" == "connection-fault-remove" ]]
+          fi
+          if [[ "$TF_VAR_migration_head" == "0033_first_owner_signup" ]]; then
+            [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" ]]
           fi
           if [[ "$PHASE" == "full" && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
             [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -5628,17 +5632,17 @@ jobs:
           PARSED="$RUNNER_TEMP/s22-validator-parsed.jsonl"
           rm -f "$EVIDENCE" "$EXECUTION_JSON" "$LOGS" "$PARSED"
           trap 'if [[ ! -s "$EVIDENCE" ]]; then echo '\''{"assertion":"validator_workflow_harness","expected":"structured validator evidence","failure_code":"S22V096_VALIDATOR_HARNESS","observed":"workflow_failed_before_evidence","operation":"staging_database_validation","outcome":"FAIL","summary":true}'\'' > "$EVIDENCE"; fi' EXIT
-          VALIDATOR_B64="$(base64 -w0 "$VALIDATOR")"
+          VALIDATOR_GZIP_B64="$(gzip -n -c "$VALIDATOR" | base64 -w0)"
           set +e
           EXECUTION_ID="$(gcloud run jobs execute lead-agent-staging-migrator \
             --project="$PROJECT_ID" \
             --region=me-central1 \
-            --args='--input-type=module,-e,eval(atob(process.env.S22_VALIDATOR_B64))' \
-            --update-env-vars="S22_VALIDATOR_B64=$VALIDATOR_B64" \
+            --args='^|^--input-type=module|-e|eval((await import("node:zlib")).gunzipSync(Buffer.from(process.env.S22_VALIDATOR_GZIP_B64,"base64")).toString())' \
+            --update-env-vars="S22_VALIDATOR_GZIP_B64=$VALIDATOR_GZIP_B64" \
             --format='value(metadata.name)')"
           LAUNCH_EXIT_CODE=$?
           set -e
-          unset VALIDATOR_B64
+          unset VALIDATOR_GZIP_B64
           if [[ "$LAUNCH_EXIT_CODE" != "0" || ! "$EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]; then
             echo '{"assertion":"validator_execution_launch","expected":"validator execution created","failure_code":"S22V098_VALIDATOR_LAUNCH","observed":"launch_failed","operation":"staging_database_validation","outcome":"FAIL","summary":true}' | tee "$EVIDENCE"
             exit 1
@@ -5804,7 +5808,11 @@ jobs:
             echo "migration_state_count=$STATE_COUNT"
             echo "migration_convergence_exit_code=$PLAN_EXIT_CODE"
             echo "migration_head=$TF_VAR_migration_head"
-            if [[ "$TF_VAR_migration_head" == "0032_s22_widget_recovery" ]]; then echo "migration_count=33"; else echo "migration_count=32"; fi
+            case "$TF_VAR_migration_head" in
+              0031_s22_widget_inbound_route_management) echo "migration_count=32" ;;
+              0032_s22_widget_recovery) echo "migration_count=33" ;;
+              0033_first_owner_signup) echo "migration_count=34" ;;
+            esac
             echo "production_table_count=52"
             echo "force_rls_table_count=48"
             echo "application_role_connectivity=PASS"
