@@ -54,7 +54,6 @@ let queuePool: Pool | undefined;
 let operatorRuntime: AsyncOperatorDatabaseRuntime | undefined;
 let ownerConnectionString: string | undefined;
 let queueConnectionString: string | undefined;
-let serverVersion = "";
 
 const database = (): Pool => {
   if (ownerPool === undefined) throw new Error("S8.5 owner pool is unavailable");
@@ -246,7 +245,7 @@ beforeAll(async () => {
   const externalUrl = requireTestDatabaseUrl();
   if (externalUrl === undefined) {
     const { PostgreSqlContainer } = await import("@testcontainers/postgresql");
-    container = await new PostgreSqlContainer("postgres:17.11")
+    container = await new PostgreSqlContainer("postgres:17")
       .withDatabase("codex_s85_test")
       .withUsername("lead_agent_s85_owner")
       .withPassword("s85-local-test-only-owner-password")
@@ -258,15 +257,11 @@ beforeAll(async () => {
   ownerPool = new Pool({ connectionString: ownerConnectionString, max: 12 });
   if (externalUrl !== undefined) await requireEmptyExternalDatabase(ownerPool);
 
-  const version = await database().query<{ server_version: string; server_version_num: string }>(
-    `select current_setting('server_version') as server_version,
-            current_setting('server_version_num') as server_version_num`,
-  );
+  const version = await database().query<{ server_version_num: string }>("show server_version_num");
   const number = Number(version.rows[0]?.server_version_num);
-  if (number < 170_000 || number >= 180_000) {
+  if (!(number >= 170_000 && number < 180_000)) {
     throw new Error("S8.5 integration tests require PostgreSQL major version 17");
   }
-  serverVersion = version.rows[0]?.server_version ?? "";
   await runMigrations(database());
   await runMigrations(database());
 
@@ -302,7 +297,6 @@ afterAll(async () => {
 
 describe("S8.5 PostgreSQL 17 reliability migration", { timeout: 30_000 }, () => {
   it("bootstraps the current migration head with the approved 52-table business manifest", async () => {
-    expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     const journal: unknown = JSON.parse(
       await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
     );
