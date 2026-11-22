@@ -58,7 +58,7 @@ const response = (data: unknown) => Response.json({ data, meta: { request_id: "r
 describe("staff qualification policy", () => {
   it("creates a draft using the fixed V1 rules without publishing it", async () => {
     const command = draftCommand();
-    const body = JSON.parse(command.body);
+    const body: unknown = JSON.parse(command.body);
     expect(body).toMatchObject({
       policy_type: "qualification",
       schema_version: 1,

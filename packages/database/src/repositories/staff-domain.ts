@@ -368,14 +368,14 @@ const requireHandoffAssignee = async (
     `select role,location_scope from memberships where organization_id=$1 and id=$2 and status='active' for share`,
     [id],
   );
-  const role = member?.["role"];
+  const role: unknown = member?.["role"];
   if (
     !isMembershipRole(role) ||
     !hasPermission(role, "handoffs.manage") ||
     !hasPermission(role, "conversations.manage")
   )
     throw new StaffOperationError("permission_denied");
-  const scope = member?.["location_scope"];
+  const scope: unknown = member?.["location_scope"];
   if (scope === "all") return;
   if (scope !== "restricted" || handoff.locationId === null)
     throw new StaffOperationError("permission_denied");

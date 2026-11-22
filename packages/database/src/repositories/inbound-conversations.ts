@@ -644,7 +644,7 @@ export const persistWidgetPhoneChoice = async (
            and status='active'`,
         [contactId, Buffer.from(lookupHash)],
       );
-      const existingId = existing?.["id"];
+      const existingId: unknown = existing?.["id"];
       if (!isSchemaValue(ResourceIdSchema, existingId)) throw new RepositoryDataIntegrityError();
       identityId = existingId;
     }

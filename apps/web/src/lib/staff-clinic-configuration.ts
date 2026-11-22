@@ -1,4 +1,4 @@
-import { createCollectionEnvelopeSchema, isSchemaValue } from "@lead-agent/contracts";
+import { type createCollectionEnvelopeSchema, isSchemaValue } from "@lead-agent/contracts";
 import type { StaffRequest } from "./staff-request";
 
 export const clinicLanguages = [

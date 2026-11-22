@@ -8,6 +8,7 @@ import {
   serviceOfferingChange,
   writeClinicService,
 } from "./staff-clinic-services";
+import type { StaffRequest } from "./staff-request";
 
 const serviceId = "0193f1a8-7f65-7c28-a434-a10796c47701";
 const locationId = "0193f1a8-7f65-7c28-a434-a10796c47702";
@@ -85,7 +86,7 @@ describe("staff clinic services", () => {
     if (create === null || publish === null) throw new Error("Invalid command fixture");
     const active = activeService();
     const request = vi
-      .fn()
+      .fn<StaffRequest>()
       .mockResolvedValueOnce(response(target()))
       .mockResolvedValueOnce(response(active));
     const save = (command: Parameters<typeof prepareServiceChange>[0]) =>

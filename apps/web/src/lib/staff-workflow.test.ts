@@ -468,16 +468,20 @@ describe("S22 staff conversation workflow", () => {
     };
     let version = 1;
     let result = 503;
-    test.request.mockImplementation(async (path, init) => {
+    test.request.mockImplementation((path, init) => {
       if (init?.method === "POST") {
         version++;
-        return new Response(null, { status: result });
+        return Promise.resolve(new Response(null, { status: result }));
       }
-      if (path.startsWith("/v1/staff/inbox")) return page();
-      if (path.includes("/messages?")) return data([]);
+      if (path.startsWith("/v1/staff/inbox")) return Promise.resolve(page());
+      if (path.includes("/messages?")) return Promise.resolve(data([]));
       if (path.startsWith("/v2/staff/conversations/"))
-        return data({ id: "conversation-a", version: 7, status: "open", active_handoff_id: null });
-      return data({ id: "appointment-a", version, conversation_version: 7, status: "confirmed" });
+        return Promise.resolve(
+          data({ id: "conversation-a", version: 7, status: "open", active_handoff_id: null }),
+        );
+      return Promise.resolve(
+        data({ id: "appointment-a", version, conversation_version: 7, status: "confirmed" }),
+      );
     });
     const body = {
       entry_type: "charge",

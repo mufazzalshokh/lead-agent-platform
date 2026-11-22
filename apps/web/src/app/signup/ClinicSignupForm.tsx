@@ -7,6 +7,8 @@ import {
 } from "@lead-agent/contracts";
 import { useState, type SubmitEvent } from "react";
 
+import { readFormText } from "../../lib/staff-clinic-configuration";
+
 export function ClinicSignupForm({ apiOrigin }: Readonly<{ apiOrigin: string }>) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -16,9 +18,9 @@ export function ClinicSignupForm({ apiOrigin }: Readonly<{ apiOrigin: string }>)
     if (pending) return;
     const form = new FormData(event.currentTarget);
     const details = {
-      display_name: String(form.get("display_name") ?? "").trim(),
+      display_name: readFormText(form, "display_name"),
       default_locale: form.get("default_locale"),
-      default_time_zone: String(form.get("default_time_zone") ?? "").trim(),
+      default_time_zone: readFormText(form, "default_time_zone"),
     };
     if (!isSchemaValue(StaffSignupInputSchema, details)) {
       setMessage("Enter a clinic name and an IANA time zone such as Asia/Tashkent or UTC.");

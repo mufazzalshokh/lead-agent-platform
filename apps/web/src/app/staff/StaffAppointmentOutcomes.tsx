@@ -13,7 +13,11 @@ import {
 import type { StaffRequest } from "../../lib/staff-request";
 import type { RecordValue } from "../../lib/staff-workflow";
 
-type History = Readonly<{ attendance: StaffOutcome[]; revenue: StaffOutcome[] }>;
+type History = Readonly<{
+  attendance: StaffOutcome[];
+  revenue: StaffOutcome[];
+  refreshedAt: number;
+}>;
 
 const attendanceLabel = (outcome: string | null) => {
   if (outcome === "attended") return "Attended";
@@ -55,7 +59,7 @@ export function StaffAppointmentOutcomes({
       if (attendance.filter((row) => row.is_current).length > 1) {
         throw new Error("Multiple current attendance outcomes");
       }
-      setHistory({ attendance, revenue });
+      setHistory({ attendance, revenue, refreshedAt: Date.now() });
     } catch {
       setHistory(null);
       setLoadError(true);
@@ -90,7 +94,8 @@ export function StaffAppointmentOutcomes({
 
   const current = history?.attendance.find((row) => row.is_current);
   const reversible = history === null ? [] : reversibleRevenue(history.revenue);
-  const canRecordAttendance = startAt !== null && Date.parse(startAt) <= Date.now();
+  const canRecordAttendance =
+    history !== null && startAt !== null && Date.parse(startAt) <= history.refreshedAt;
   const busy = disabled || loading || saving;
 
   return (
