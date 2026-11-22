@@ -91,6 +91,22 @@ input:focus-visible {
 .staff-auth-card .brand-mark {
   margin-bottom: 2rem;
 }
+.clinic-signup-form,
+.clinic-signup-form label {
+  display: grid;
+  gap: 0.5rem;
+}
+.clinic-signup-form {
+  gap: 1rem;
+  text-align: left;
+}
+.clinic-signup-form input,
+.clinic-signup-form select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.65rem;
+  font: inherit;
+}
 .staff-auth-card h1 {
   margin: 0;
   font-size: clamp(2rem, 5vw, 3rem);

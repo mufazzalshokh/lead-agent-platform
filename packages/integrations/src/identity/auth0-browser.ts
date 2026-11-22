@@ -20,7 +20,8 @@ const PROVIDER_REQUEST_TIMEOUT_SECONDS = 10;
 const MULTI_FACTOR_AUTHENTICATION_CONTEXT =
   "http://schemas.openid.net/pape/policies/2007/06/multi-factor";
 
-export type BrowserAuthorizationPurpose = "invitation" | "login" | "reauthenticate" | "step_up";
+export type BrowserAuthorizationPurpose =
+  "invitation" | "login" | "reauthenticate" | "signup" | "step_up";
 
 export type BrowserOidcCallbackFailure =
   | "callback_authentication_methods_invalid"
@@ -221,7 +222,8 @@ const createClient = (
         code_challenge_method: "S256",
         max_age: String(maximumAgeSeconds),
         nonce,
-        ...(purpose === "step_up" || purpose === "reauthenticate" ? { prompt: "login" } : {}),
+        ...(purpose !== "login" && purpose !== "invitation" ? { prompt: "login" } : {}),
+        ...(purpose === "signup" ? { screen_hint: "signup" } : {}),
         redirect_uri: configuration.callbackUri,
         response_type: "code",
         scope: "openid profile email",

@@ -13,22 +13,23 @@ The [product requirements](01-product-and-journeys.md#8-functional-requirements)
 
 ## Functional requirements
 
-**Fresh-clinic onboarding · implementation and evidence gap · C1/C6.** The
-[public entry](../../apps/web/src/app/page.tsx) redirects to staff sign-in. The
-[staff callback](../../apps/api/src/auth/plugin.ts) resolves an existing linked
-identity or issues proof for a tenant invitation. The organization-selection
-command requires an existing membership. The inspected routes have no
-first-owner registration that creates an organization and owner membership for
-a newly verified account. Existing [integration settings](../../apps/web/src/app/staff/StaffWorkspace.tsx)
-are usable after owner/admin membership is established. The retained staged
-tests cover a prepared tenant and owner. Fresh-clinic onboarding on the
-release candidate is unverified.
+**Fresh-clinic onboarding · candidate evidence gap · C1/C6.** The staff entry
+links to [clinic registration](../../apps/web/src/app/signup/page.tsx). The
+[signup callback](../../apps/api/src/auth/plugin.ts) checks verified email and
+the configured MFA requirement before [creating an isolated workspace](../../packages/database/drizzle/0033_first_owner_signup.sql).
+The workspace starts with the owner's supplied name, language and time zone.
+Signup creates the owner membership and audit event in the same transaction.
+A retry by the same verified identity returns its own active workspace, and
+ordinary sign-in can reopen it. An identity already linked outside signup uses
+its existing access path. The [integration controls](../../apps/web/src/app/staff/StaffWorkspace.tsx)
+continue to require an active owner/admin membership.
 
-Close this gap by proving a fresh verified user can create an isolated clinic
-workspace, receive its first owner membership, repeat the request without
-creating a second workspace, and connect their own eligible account through
-the normal owner controls. Verify that a supplied foreign workspace or account
-cannot grant access or bind the wrong tenant.
+The retained staging journey used a prepared owner. On the release candidate,
+prove new Auth0 registration, email verification and MFA with two synthetic
+owners. Retry one registration, confirm a single workspace and owner membership,
+and verify denial of foreign workspace or provider account access. Complete a
+supported account connection through the normal owner controls. Stage the
+migration and verify the Auth0 signup connection before collecting that evidence.
 
 | Requirement and journey | Normal entry point and retained evidence | Remaining criterion |
 | --- | --- | --- |

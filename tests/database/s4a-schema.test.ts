@@ -2520,7 +2520,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await database().query(
-    `update organizations set current_retention_policy_id = null;
+    `delete from app.first_owner_registrations;
+     update organizations set current_retention_policy_id = null;
      update locations set current_version_id = null;
      update services set current_version_id = null;
      update conversations
@@ -2923,7 +2924,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
     const migrationCount = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrationCount.rows[0]?.count).toBe(33);
+    expect(migrationCount.rows[0]?.count).toBe(34);
   });
 
   it("installs the exact tenant-qualified S5.2 indexes and active-thread check", async () => {
@@ -9661,7 +9662,7 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         where schemaname = 'public'
         order by tablename, policyname`,
     );
-    expect(policies.rows).toHaveLength(S21_RLS_TABLES.length + 22);
+    expect(policies.rows).toHaveLength(S21_RLS_TABLES.length + 25);
     const tenantIsolationPolicies = policies.rows.filter(({ policyname }) =>
       policyname.endsWith("_tenant_isolation"),
     );
@@ -9771,6 +9772,15 @@ describe("S5.2 PostgreSQL 17 active uniqueness and tenant isolation", { timeout:
         policyname: "organizations_first_tenant_bootstrap_select",
         tablename: "organizations",
       },
+    ]);
+    expect(
+      policies.rows
+        .filter(({ roles }) => roles === "{lead_agent_signup_definer}")
+        .map(({ cmd, policyname, tablename }) => ({ cmd, policyname, tablename })),
+    ).toEqual([
+      { cmd: "INSERT", policyname: "audit_first_owner_signup", tablename: "audit_events" },
+      { cmd: "ALL", policyname: "memberships_first_owner_signup", tablename: "memberships" },
+      { cmd: "ALL", policyname: "organizations_first_owner_signup", tablename: "organizations" },
     ]);
     const globalTableSet = new Set<string>(S6_1_GLOBAL_TABLES);
     expect(policies.rows.some(({ tablename }) => globalTableSet.has(tablename))).toBe(false);

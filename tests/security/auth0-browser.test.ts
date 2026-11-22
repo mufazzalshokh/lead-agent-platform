@@ -56,6 +56,10 @@ describe("S6.6 Auth0 Authorization Code + PKCE client", () => {
 
     const recovery = new URL((await client.begin("reauthenticate")).authorizationUrl);
     expect(recovery.searchParams.get("prompt")).toBe("login");
+    const signup = new URL((await client.begin("signup")).authorizationUrl);
+    expect(signup.searchParams.get("screen_hint")).toBe("signup");
+    expect(signup.searchParams.get("prompt")).toBe("login");
+    expect(signup.searchParams.get("acr_values")).toBe(MULTI_FACTOR_AUTHENTICATION_CONTEXT);
   });
 
   it("validates the callback and returns only bounded authentication evidence", async () => {

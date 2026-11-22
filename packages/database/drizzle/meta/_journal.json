@@ -232,6 +232,13 @@
       "when": 1791676800000,
       "tag": "0032_s22_widget_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795305600000,
+      "tag": "0033_first_owner_signup",
+      "breakpoints": true
     }
   ]
 }

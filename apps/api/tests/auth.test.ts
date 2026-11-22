@@ -6,6 +6,7 @@ import {
   StaffStepUpNavigationSchema,
   type MembershipId,
   type OrganizationId,
+  type StaffSignupInput,
   type UserId,
 } from "@lead-agent/contracts";
 import { createStaffWebAuthConfig } from "@lead-agent/config";
@@ -54,6 +55,11 @@ const CSRF = "c".repeat(43);
 const ROTATED_CSRF = "d".repeat(43);
 const INVITATION_TOKEN = Buffer.alloc(32, 21).toString("base64url");
 const STAFF_ORIGIN = "https://staff.example.test";
+const SIGNUP_DETAILS = {
+  display_name: "Synthetic Clinic",
+  default_locale: "uz",
+  default_time_zone: "Asia/Tashkent",
+} as const;
 
 const session = (
   overrides: Partial<AuthenticatedApplicationSession> = {},
@@ -106,6 +112,8 @@ type FixtureControls = {
   revokedTokens: string[];
   rotationDue: boolean;
   rotationCount: number;
+  signupDetails: StaffSignupInput[];
+  verifiedEmail: string | null;
 };
 
 const createFixture = () => {
@@ -119,6 +127,8 @@ const createFixture = () => {
     revokedTokens: [],
     rotationDue: false,
     rotationCount: 0,
+    signupDetails: [],
+    verifiedEmail: "person@example.test",
   };
   let activeToken: string | null = null;
   let activeSession = session();
@@ -234,15 +244,137 @@ const createFixture = () => {
           authenticationLevel: controls.authenticationLevel,
           authenticationTime: NOW,
           idToken: "header.payload.signature",
-          verifiedEmailTarget: "person@example.test",
+          verifiedEmailTarget: controls.verifiedEmail,
         }),
     },
     oidcVerifier,
     sessions,
+    signup: {
+      registerFirstOwner: ({ details }) => {
+        controls.signupDetails.push(details);
+        controls.identityUser = USER_ID;
+        return Promise.resolve(ORGANIZATION_A);
+      },
+      resolveFirstOwnerWorkspace: () =>
+        Promise.resolve(controls.signupDetails.length === 0 ? null : ORGANIZATION_A),
+    },
   };
   const api = createApi({ staffAuth: dependencies });
   return { api, controls, dependencies };
 };
+
+const startSignup = (fixture: ReturnType<typeof createFixture>) =>
+  fixture.api.inject({
+    method: "POST",
+    url: "/v1/staff/auth/signup",
+    headers: { origin: STAFF_ORIGIN, "sec-fetch-site": "same-origin" },
+    payload: SIGNUP_DETAILS,
+  });
+
+const finishSignup = async (fixture: ReturnType<typeof createFixture>) => {
+  const start = await startSignup(fixture);
+  expect(start.statusCode).toBe(200);
+  const { authorization_url: authorizationUrl } = start.json<{ authorization_url: string }>();
+  const state = authorizationState({ location: authorizationUrl });
+  return fixture.api.inject({
+    method: "GET",
+    url: "/v1/staff/auth/callback?code=signup-code&state=" + state,
+    headers: {
+      cookie: cookieHeader([
+        "__Host-lead-auth-transaction",
+        cookieValue(start.headers, "__Host-lead-auth-transaction"),
+      ]),
+    },
+  });
+};
+
+describe("Clinic workspace signup", () => {
+  it("provisions from sealed details after verification and reopens the workspace on sign-in", async () => {
+    const fixture = createFixture();
+    fixture.controls.identityUser = null;
+    try {
+      const callback = await finishSignup(fixture);
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(`/staff?organization=${ORGANIZATION_A}`);
+      expect(fixture.controls.authorizationPurposes).toEqual(["signup"]);
+      expect(fixture.controls.signupDetails).toEqual([SIGNUP_DETAILS]);
+      const staff = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/me",
+        headers: {
+          "x-organization-context": ORGANIZATION_A,
+          cookie: cookieHeader([
+            "__Host-lead-session",
+            cookieValue(callback.headers, "__Host-lead-session"),
+          ]),
+        },
+      });
+      expect(staff.statusCode).toBe(200);
+      const login = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/login?return_to=/staff",
+      });
+      const signedIn = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/callback?code=login-code&state=" + authorizationState(login.headers),
+        headers: {
+          cookie: cookieHeader([
+            "__Host-lead-auth-transaction",
+            cookieValue(login.headers, "__Host-lead-auth-transaction"),
+          ]),
+        },
+      });
+      expect(signedIn.headers.location).toBe(`/staff?organization=${ORGANIZATION_A}`);
+      expect(fixture.controls.signupDetails).toHaveLength(1);
+    } finally {
+      await fixture.api.close();
+    }
+  });
+
+  it.each(["unverified email", "missing MFA"] as const)(
+    "writes nothing with %s",
+    async (failure) => {
+      const fixture = createFixture();
+      if (failure === "unverified email") fixture.controls.verifiedEmail = null;
+      else fixture.controls.authenticationLevel = "single_factor";
+      try {
+        const callback = await finishSignup(fixture);
+        expect(callback.statusCode).toBe(303);
+        expect(callback.headers.location).toBe(
+          failure === "unverified email" ? "/signup?result=verify-email" : "/signup?result=retry",
+        );
+        expect(fixture.controls.signupDetails).toEqual([]);
+        expect(
+          setCookieLines(callback.headers).some((line) => line.startsWith("__Host-lead-session=")),
+        ).toBe(false);
+      } finally {
+        await fixture.api.close();
+      }
+    },
+  );
+
+  it("rejects foreign origin and an explicitly supplied tenant before starting OIDC", async () => {
+    const fixture = createFixture();
+    try {
+      const request = { method: "POST" as const, url: "/v1/staff/auth/signup" };
+      const crossOrigin = await fixture.api.inject({
+        ...request,
+        headers: { origin: "https://other.example.test" },
+        payload: SIGNUP_DETAILS,
+      });
+      expect(crossOrigin.statusCode).toBe(403);
+      const suppliedTenant = await fixture.api.inject({
+        ...request,
+        headers: { origin: STAFF_ORIGIN },
+        payload: { ...SIGNUP_DETAILS, organization_id: ORGANIZATION_B },
+      });
+      expect(suppliedTenant.statusCode).toBe(400);
+      expect(fixture.controls.authorizationPurposes).toEqual([]);
+    } finally {
+      await fixture.api.close();
+    }
+  });
+});
 
 const establishSession = async (fixture: ReturnType<typeof createFixture>) => {
   const started = await fixture.api.inject({

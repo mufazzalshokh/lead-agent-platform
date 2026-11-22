@@ -23,8 +23,9 @@ below are historical constraints, not instructions to revive a rejected path.
    `0032_s22_widget_recovery`, all 33 migrations,
    52 production tables, FORCE RLS/policy/role drift, and pg-boss ownership.
    Cross-check the exact packaged migration journal against the reviewed release
-   and the backup/PITR point selected in step 1. An intentionally older recovery
-   point requires its own matching reviewed release manifest, not the current head.
+   and the backup/PITR point selected in step 1. The first-owner signup candidate
+   packages `0033_first_owner_signup`, all 34 migrations. Use the reviewed
+   manifest for the release that was running at the chosen recovery point.
    Stop on a head/count mismatch; do not migrate the restored target to make the
    validation pass.
 5. Validate representative synthetic Contacts, Leads, Conversations, Messages,

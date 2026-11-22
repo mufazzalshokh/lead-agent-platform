@@ -168,6 +168,7 @@ export const createApiFromEnvironment = (
       oidcClient: createAuth0BrowserOidcClient(web),
       oidcVerifier,
       sessions: createApplicationSessionLifecycle(sessionRuntime),
+      signup: identityRuntime,
       ...(sessionConnectionProbe === undefined ? {} : { sessionConnectionProbe }),
     },
     staffConfiguration: createStaffConfigurationDependencies(tenantRuntime, web.browserEnvelopeKey),

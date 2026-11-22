@@ -6,9 +6,11 @@ import {
   OrganizationIdSchema,
   RequestIdSchema,
   StaffMeResponseSchema,
+  StaffSignupInputSchema,
   StaffStepUpNavigationSchema,
   isSchemaValue,
   type OrganizationId,
+  type StaffSignupInput,
 } from "@lead-agent/contracts";
 import type { StaffWebAuthConfig } from "@lead-agent/config";
 import {
@@ -45,6 +47,7 @@ import {
   type ApplicationSessionLifecycle,
   type AuthenticatedApplicationSession,
   type BrowserAuthEnvelopeProtector,
+  type BrowserAuthTransaction,
   type CurrentMembershipAuthorizationResolver,
   type ExternalIdentityResolver,
   type InvitationAcceptanceResult,
@@ -116,6 +119,7 @@ type AuthCallbackStage =
   | "mfa_required"
   | "provider_authorization_error"
   | "session_issuance"
+  | "signup_provisioning"
   | "state_mismatch"
   | "state_replay"
   | "token_exchange_or_oidc_response_validation"
@@ -123,6 +127,8 @@ type AuthCallbackStage =
   | "transaction_envelope_invalid_or_expired";
 
 type AuthCallbackRecovery = "denied" | "reauthenticate";
+
+class StaffSignupValidationError extends Error {}
 
 export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.authorization",
@@ -163,6 +169,16 @@ export type StaffAuthDependencies = Readonly<{
   oidcClient: StaffBrowserOidcClient;
   oidcVerifier: OidcIdentityVerifier;
   sessions: ApplicationSessionLifecycle;
+  signup?: Readonly<{
+    registerFirstOwner(
+      input: Readonly<{
+        audit: MembershipLifecycleAuditContext;
+        details: StaffSignupInput;
+        identity: ValidatedOidcIdentity;
+      }>,
+    ): Promise<OrganizationId>;
+    resolveFirstOwnerWorkspace(identity: ValidatedOidcIdentity): Promise<OrganizationId | null>;
+  }>;
   sessionConnectionProbe?: S22SessionProbe;
   clock?: () => Date;
 }>;
@@ -504,6 +520,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
           : code === "idempotency_conflict"
             ? 409
             : 422;
+  } else if (error instanceof StaffSignupValidationError) {
+    code = "validation_failed";
+    status = 400;
   } else if (
     typeof error === "object" &&
     error !== null &&
@@ -674,7 +693,7 @@ const registerStaffAuth = async (
   });
 
   const begin = async (
-    purpose: "invitation" | "login" | "step_up",
+    purpose: BrowserAuthTransaction["purpose"],
     returnPath: string,
     reply: FastifyReply,
     binding: Readonly<{
@@ -682,6 +701,7 @@ const registerStaffAuth = async (
       expectedUserId?: AuthenticatedApplicationSession["userId"];
       invitationOrganizationId?: OrganizationId;
       invitationTokenHash?: string;
+      signup?: StaffSignupInput;
     }> = {},
     forceProviderAuthentication = false,
     respondWithNavigation = false,
@@ -708,7 +728,7 @@ const registerStaffAuth = async (
     if (respondWithNavigation) {
       const navigation = { authorization_url: authorization.authorizationUrl };
       if (!isSchemaValue(StaffStepUpNavigationSchema, navigation))
-        throw new TypeError("Invalid step-up navigation");
+        throw new TypeError("Invalid staff authorization navigation");
       await reply.header("cache-control", "no-store").send(navigation);
     } else await reply.redirect(authorization.authorizationUrl, 302);
   };
@@ -724,6 +744,18 @@ const registerStaffAuth = async (
       query["reauthenticate"] === "true",
     );
   });
+
+  const signup = dependencies.signup;
+  if (signup !== undefined) {
+    api.post(STAFF_AUTH_PREFIX + "/signup", { bodyLimit: 4096 }, async (request, reply) => {
+      rejectDuplicateSecurityCookies(request);
+      requireMutationBrowserProof(request, dependencies.config);
+      if (!isSchemaValue(StaffSignupInputSchema, request.body)) {
+        throw new StaffSignupValidationError();
+      }
+      await begin("signup", "/signup", reply, { signup: request.body }, false, true);
+    });
+  }
 
   api.post(STAFF_AUTH_PREFIX + "/invitation", async (request, reply) => {
     rejectDuplicateSecurityCookies(request);
@@ -759,6 +791,7 @@ const registerStaffAuth = async (
   api.get(STAFF_AUTH_PREFIX + "/callback", async (request, reply) => {
     let stage: AuthCallbackStage = "transaction_cookie_missing";
     let returnPath = "/staff";
+    let isSignup = false;
     try {
       rejectDuplicateSecurityCookies(request);
       const now = clock();
@@ -769,6 +802,7 @@ const registerStaffAuth = async (
       stage = "transaction_envelope_invalid_or_expired";
       const transaction = dependencies.envelopeProtector.openTransaction(sealed, now);
       returnPath = transaction.returnPath;
+      isSignup = transaction.purpose === "signup";
       const query = request.query as Readonly<Record<string, unknown>>;
       if (typeof query["error"] === "string") {
         stage = "provider_authorization_error";
@@ -833,11 +867,34 @@ const registerStaffAuth = async (
         return;
       }
 
+      if (transaction.purpose === "signup") {
+        stage = "signup_provisioning";
+        if (oidc.verifiedEmailTarget === null) {
+          await reply.redirect("/signup?result=verify-email", 303);
+          return;
+        }
+        if (signup === undefined || transaction.signup === undefined) {
+          throw new AuthorizationDeniedError();
+        }
+        const organizationId = await signup.registerFirstOwner({
+          audit: createAuditContext(request, now),
+          details: transaction.signup,
+          identity: verifiedIdentity,
+        });
+        returnPath = "/staff?organization=" + organizationId;
+      }
+
       stage = "external_identity_resolution";
       const authentication = await authenticateValidatedExternalIdentity(
         verifiedIdentity,
         dependencies.identityResolver,
       );
+      if (transaction.purpose === "login" && (returnPath === "/" || returnPath === "/staff")) {
+        const organizationId = await signup?.resolveFirstOwnerWorkspace(verifiedIdentity);
+        if (organizationId !== null && organizationId !== undefined) {
+          returnPath = "/staff?organization=" + organizationId;
+        }
+      }
       const evidence = createSessionAuthenticationEvidence(authentication, oidc);
 
       stage = "session_issuance";
@@ -869,7 +926,7 @@ const registerStaffAuth = async (
         const issued = await dependencies.sessions.createSession(evidence);
         setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
       }
-      await reply.redirect(transaction.returnPath, 303);
+      await reply.redirect(returnPath, 303);
     } catch (error) {
       request.log.warn(
         {
@@ -878,6 +935,15 @@ const registerStaffAuth = async (
         },
         "staff authentication callback rejected",
       );
+      if (isSignup) {
+        await reply.redirect(
+          error instanceof ExternalIdentityDeniedError
+            ? "/signup?result=account-unavailable"
+            : "/signup?result=retry",
+          303,
+        );
+        return;
+      }
       const recovery = authCallbackRecovery(error);
       if (recovery !== null) {
         clearSecurityCookies(reply);

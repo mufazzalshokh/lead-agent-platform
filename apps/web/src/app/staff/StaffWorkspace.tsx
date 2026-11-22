@@ -494,11 +494,30 @@ export function StaffWorkspace({
           >
             Sign in securely
           </a>
+          <p>
+            <a href="/signup">Create a clinic workspace</a>
+          </p>
         </section>
       </main>
     );
   }
   if (authState === "denied") {
+    if (organizationId === null && initialAuthRecovery === null) {
+      return (
+        <main className="staff-auth-shell">
+          <section className="staff-auth-card">
+            <h1>Lead Agent</h1>
+            <p>Clinic owners can create a workspace. Invited staff can use their workspace link.</p>
+            <a className="primary-button" href="/signup">
+              Create a clinic workspace
+            </a>
+            <p>
+              <a href={`${apiOrigin}${buildStaffSignInPath(null, null)}`}>Sign in securely</a>
+            </p>
+          </section>
+        </main>
+      );
+    }
     return (
       <main className="staff-auth-shell">
         <section className="staff-auth-card">

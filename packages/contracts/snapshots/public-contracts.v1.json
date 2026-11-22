@@ -61190,6 +61190,55 @@
     },
     {
       "category": "api",
+      "export_name": "StaffSignupInputSchema",
+      "schema": {
+        "$id": "StaffSignupInput.v1",
+        "additionalProperties": false,
+        "properties": {
+          "default_locale": {
+            "anyOf": [
+              {
+                "const": "uz",
+                "type": "string"
+              },
+              {
+                "const": "ru",
+                "type": "string"
+              },
+              {
+                "const": "en",
+                "type": "string"
+              }
+            ],
+            "description": "Supported V1 customer presentation locale."
+          },
+          "default_time_zone": {
+            "description": "Runtime-validated named IANA time zone; numeric UTC offsets are not accepted.",
+            "maxLength": 255,
+            "minLength": 3,
+            "pattern": "^(?:UTC|[A-Za-z_+-]+(?:/[A-Za-z0-9_+-]+)+)$",
+            "type": "string",
+            "x-iana-time-zone": true
+          },
+          "display_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "default_locale",
+          "default_time_zone"
+        ],
+        "type": "object"
+      },
+      "schema_id": "StaffSignupInput.v1",
+      "schema_version": "1"
+    },
+    {
+      "category": "api",
       "export_name": "StaffStepUpNavigationSchema",
       "schema": {
         "$id": "StaffStepUpNavigation.v1",

@@ -311,8 +311,8 @@ describe("S8.5 PostgreSQL 17 reliability migration", { timeout: 30_000 }, () => 
         ? (journal as Record<string, unknown>)["entries"]
         : undefined;
     expect(Array.isArray(entries) ? entries.at(-1) : undefined).toMatchObject({
-      idx: 32,
-      tag: "0032_s22_widget_recovery",
+      idx: 33,
+      tag: "0033_first_owner_signup",
     });
     const publicTables = await database().query<{ count: number }>(
       `select count(*)::integer as count from information_schema.tables
