@@ -33,6 +33,10 @@ migration and verify the Auth0 signup connection before collecting that evidence
 
 For this candidate, use `migration_head=0033_first_owner_signup`. Prepare the
 `migrator-image-update` plan against the live API, Web, and Worker provenance.
+The upgrade `runtime-preflight` inventories enabled channel credential versions
+by ID, creation time, and state. Existing connections can keep their credentials.
+Prove a fresh clinic's isolation in its own workspace. Version metadata alone
+does not establish which connection uses a credential or whether it can be retired.
 Apply the reviewed binary only after owner approval, then obtain separate
 approval for a single `migration-resume` execution. Retain the successful
 validator receipt for 34 applied migrations and `first_owner_signup_boundary`.

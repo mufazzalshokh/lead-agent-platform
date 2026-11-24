@@ -1384,14 +1384,14 @@ jobs:
             echo "$CHANNEL_SECRET: metadata=unavailable (application-managed)" | tee -a "$EVIDENCE"
             exit 1
           fi
-          CHANNEL_ENABLED_COUNT="$(
+          CHANNEL_ENABLED_VERSIONS="$(
             gcloud secrets versions list "$CHANNEL_SECRET" \
               --project="$PROJECT_ID" \
               --filter='state=ENABLED' \
-              --format='value(name)' | sed '/^$/d' | wc -l | tr -d '[:space:]'
+              --format='json(name,createTime,state)'
           )"
-          echo "$CHANNEL_SECRET: enabled_versions=$CHANNEL_ENABLED_COUNT (application-managed)" | tee -a "$EVIDENCE"
-          [[ "$CHANNEL_ENABLED_COUNT" == "0" ]]
+          node "$GITHUB_WORKSPACE/.github/scripts/s22-channel-credential-preflight.mjs" \
+            "$TF_VAR_migration_head" <<< "$CHANNEL_ENABLED_VERSIONS" | tee -a "$EVIDENCE"
 
           [[ "$API_ORIGIN" == "https://lead-agent-staging-api-uj7pjzpksq-ww.a.run.app" ]]
           [[ "$WEB_ORIGIN" == "https://lead-agent-staging-web-uj7pjzpksq-ww.a.run.app" ]]
@@ -1403,7 +1403,6 @@ jobs:
           {
             echo "required_runtime_secrets=${#REQUIRED_SECRETS[@]}"
             echo "required_runtime_secrets_ready=true"
-            echo "application_managed_channel_secret_empty=true"
             echo "runtime_nonsecret_configuration_ready=true"
             echo "secret_payloads_read=false"
           } | tee -a "$EVIDENCE"

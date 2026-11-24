@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
@@ -71,6 +71,30 @@ test("transports the validator within the Cloud Run environment value limit", ()
     },
   });
   assert.equal(receipt, "validator ✓");
+});
+test("upgrade preflight inventories existing versions and initial setup still requires zero", () => {
+  const readVersions = (head, versions) =>
+    spawnSync(process.execPath, [".github/scripts/s22-channel-credential-preflight.mjs", head], {
+      encoding: "utf8",
+      input: JSON.stringify(versions),
+    });
+  const initial = "0031_s22_widget_inbound_route_management";
+  const upgrade = "0033_first_owner_signup";
+  const version = {
+    name: "projects/123/secrets/lead-agent-staging-channel-credentials/versions/2",
+    state: "ENABLED",
+    createTime: "2026-10-02T00:00:00.123456789Z",
+    payload: "must-not-appear",
+  };
+  const preflight = readVersions(upgrade, [version]);
+  assert.equal(preflight.status, 0);
+  assert.match(preflight.stdout, /^channel_credential_version=2 .* state=ENABLED$/mu);
+  assert.doesNotMatch(preflight.stdout, /must-not-appear|secret_empty=true/u);
+  assert.equal(readVersions(upgrade, [version, version]).status, 1);
+  assert.equal(readVersions(upgrade, [{ ...version, state: "DISABLED" }]).status, 1);
+  assert.equal(readVersions(upgrade, [{ ...version, name: "foreign" }]).status, 1);
+  assert.equal(readVersions(initial, [version]).status, 1);
+  assert.match(readVersions(initial, []).stdout, /application_managed_channel_secret_empty=true/u);
 });
 test("migration head is explicit, defaults preserve 0031, and recovery cannot use the bootstrap migration phase", () => {
   assert.match(
