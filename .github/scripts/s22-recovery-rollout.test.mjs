@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { gzipSync } from "node:zlib";
+import { databaseValidatorReceipt } from "./s22-database-validator-execution.mjs";
 
 const workflow = readFileSync(".github/workflows/staging-terraform.yml", "utf8");
 const validator = readFileSync(".github/scripts/s22-staging-database-validator.mjs", "utf8");
@@ -38,6 +40,8 @@ test("database validator accepts only the exact approved packaged heads and thei
     assert.throws(() => profile(head), /Unreviewed migration head/u);
   assert.match(validator, /migrationProfile\(required\("DEPLOYMENT_MIGRATION_HEAD"\)\)/u);
   assert.match(validator, /observed === profile\.count/u);
+  assert.match(validator, /observed === packaged\.count/u);
+  assert.match(validator, /default_transaction_read_only=on/u);
   assert.match(validator, /head\?\.tag === profile\.head/u);
 });
 test("signup migration uses the isolated migrator and reviewed application rollout phases", () => {
@@ -52,6 +56,7 @@ test("signup migration uses the isolated migrator and reviewed application rollo
       "migrator-image-update",
       "migrator-image-verify",
       "migration-resume",
+      "migration-validate",
       "full",
     ],
   );
@@ -71,6 +76,89 @@ test("transports the validator within the Cloud Run environment value limit", ()
     },
   });
   assert.equal(receipt, "validator ✓");
+});
+test("validates pinned Cloud Run task status and emits only the approved database receipt", () => {
+  const packagedHead = "0033_first_owner_signup";
+  const expected = {
+    executionId: "lead-agent-staging-migrator-run12",
+    projectNumber: "123456",
+    image: `me-central1-docker.pkg.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:${"a".repeat(64)}`,
+    source: "b".repeat(40),
+    packagedHead,
+    schemaHead: packagedHead,
+    validatorSha: createHash("sha256").update(validator).digest("hex"),
+  };
+  const fixture = {
+    name: `projects/${expected.projectNumber}/locations/me-central1/jobs/lead-agent-staging-migrator/executions/${expected.executionId}`,
+    taskCount: 1,
+    succeededCount: 1,
+    completionTime: "2026-11-24T18:00:00Z",
+    conditions: [{ type: "Completed", state: "CONDITION_SUCCEEDED", message: "sensitive data" }],
+    template: {
+      maxRetries: 0,
+      serviceAccount: "lead-agent-staging-migrator@lead-agent-stg-739284.iam.gserviceaccount.com",
+      containers: [
+        {
+          image: expected.image,
+          command: ["node"],
+          args: workflow
+            .match(/--args='\^\|\^(--input-type=module\|-e\|[^'\r\n]+)'/u)[1]
+            .split("|"),
+          env: [
+            { name: "DEPLOYMENT_ENVIRONMENT", value: "staging" },
+            { name: "DEPLOYMENT_GIT_SHA", value: expected.source },
+            { name: "DEPLOYMENT_MIGRATION_HEAD", value: packagedHead },
+            { name: "S22_VALIDATOR_SCHEMA_HEAD", value: packagedHead },
+            { name: "S22_VALIDATOR_GZIP_B64", value: gzipSync(validator).toString("base64") },
+            { name: "DATABASE_URL", value: "sensitive data" },
+          ],
+        },
+      ],
+    },
+  };
+  const receipt = databaseValidatorReceipt(fixture, expected);
+  assert.equal(receipt.outcome, "PASS");
+  assert.equal(receipt.applied_migration_count, 34);
+  assert.equal(receipt.first_owner_signup_boundary, "PASS");
+  assert.doesNotMatch(JSON.stringify(receipt), /sensitive data|DATABASE_URL/u);
+
+  for (const [patch, code] of [
+    [{ name: fixture.name.replace("123456", "111111") }, /^S22V091/u],
+    [{ taskCount: 2 }, /^S22V092/u],
+    [{ succeededCount: 0 }, /^S22V095/u],
+    [{ failedCount: 1 }, /^S22V095/u],
+    [{ retriedCount: 1 }, /^S22V095/u],
+    [{ conditions: [{ type: "Completed", state: "CONDITION_PENDING" }] }, /^S22V095/u],
+  ]) {
+    assert.throws(() => databaseValidatorReceipt({ ...fixture, ...patch }, expected), {
+      message: code,
+    });
+  }
+  assert.throws(
+    () => databaseValidatorReceipt(fixture, { ...expected, validatorSha: "d".repeat(64) }),
+    {
+      message: /^S22V094/u,
+    },
+  );
+  const schemaHead = "0032_s22_widget_recovery";
+  const baseline = { ...expected, schemaHead };
+  assert.throws(() => databaseValidatorReceipt(fixture, baseline), { message: /^S22V093/u });
+  fixture.template.containers[0].env.find(
+    (entry) => entry.name === "S22_VALIDATOR_SCHEMA_HEAD",
+  ).value = schemaHead;
+  const baselineReceipt = databaseValidatorReceipt(fixture, baseline);
+  assert.equal(baselineReceipt.applied_migration_count, 33);
+  assert.equal(baselineReceipt.first_owner_signup_boundary, undefined);
+
+  const step = workflow.match(
+    /- name: Verify migrated staging database[\s\S]*?(?=\n {6}- name:)/u,
+  )[0];
+  assert.match(step, /run\.googleapis\.com\/v2\/projects/u);
+  assert.doesNotMatch(step, /gcloud logging|executions logs/u);
+  assert.ok(
+    workflow.indexOf("Reverify the installed migrator") <
+      workflow.indexOf("Execute one-shot migrator"),
+  );
 });
 test("upgrade preflight inventories existing versions and initial setup still requires zero", () => {
   const readVersions = (head, versions) =>

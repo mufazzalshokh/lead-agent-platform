@@ -140,7 +140,14 @@ const migrationProfile = (head) => {
 };
 
 const main = async () => {
-  const profile = migrationProfile(required("DEPLOYMENT_MIGRATION_HEAD"));
+  const packaged = migrationProfile(required("DEPLOYMENT_MIGRATION_HEAD"));
+  const profile = migrationProfile(process.env.S22_VALIDATOR_SCHEMA_HEAD ?? packaged.head);
+  if (
+    profile.head !== packaged.head &&
+    !(packaged.head === "0033_first_owner_signup" && profile.head === "0032_s22_widget_recovery")
+  ) {
+    throw new Error("Unapproved validator schema and package combination");
+  }
   const requiredDefinerRoles =
     profile.head === "0033_first_owner_signup"
       ? [...definerRoles, "lead_agent_signup_definer"].sort()
@@ -149,6 +156,11 @@ const main = async () => {
   const { Pool } = await import("pg");
   const { readStagingMigrationManifest, stagingRolePasswordFromUrl } =
     await import("./dist/migrate.js");
+  const readOnlyConnectionString = (value) => {
+    const url = new URL(withLibpqCompatibleRequireSsl(value));
+    url.searchParams.set("options", "-c default_transaction_read_only=on");
+    return url.toString();
+  };
 
   const pools = [];
   const rolePools = new Map();
@@ -158,26 +170,26 @@ const main = async () => {
   await check(
     {
       assertion: "migration_count",
-      expected: profile.count,
+      expected: packaged.count,
       failureCode: "S22V001_MIGRATION_COUNT",
     },
     async () => {
       manifest = await readStagingMigrationManifest();
       const observed = manifest.entries.length;
-      return { observed, pass: observed === profile.count };
+      return { observed, pass: observed === packaged.count };
     },
   );
 
   await check(
     {
       assertion: "migration_head",
-      expected: profile.head,
+      expected: packaged.head,
       failureCode: "S22V002_MIGRATION_HEAD",
     },
     async () => {
       manifest ??= await readStagingMigrationManifest();
       const observed = manifest.entries.at(-1)?.tag ?? "unavailable";
-      return { observed, pass: observed === profile.head };
+      return { observed, pass: observed === packaged.head };
     },
   );
 
@@ -190,7 +202,7 @@ const main = async () => {
     async () => {
       const pool = new Pool({
         application_name: "lead-agent-staging-validator",
-        connectionString: withLibpqCompatibleRequireSsl(required("MIGRATION_DATABASE_URL")),
+        connectionString: readOnlyConnectionString(required("MIGRATION_DATABASE_URL")),
         connectionTimeoutMillis: 15_000,
         max: 1,
         query_timeout: 15_000,
@@ -198,20 +210,22 @@ const main = async () => {
       pools.push(pool);
       admin = await pool.connect();
       const identity = await admin.query(
-        "select current_database() as database_name, current_setting('server_version_num')::integer as server_version_num",
+        "select current_database() as database_name, current_setting('server_version_num')::integer as server_version_num, current_setting('transaction_read_only') = 'on' as read_only",
       );
       const databaseName = identity.rows[0]?.database_name ?? "unavailable";
       const serverVersion = identity.rows[0]?.server_version_num ?? 0;
       const observed = {
         database: databaseName,
         postgresql_major: Math.trunc(serverVersion / 10_000),
+        read_only: identity.rows[0]?.read_only === true,
       };
       return {
         observed,
         pass:
           databaseName === "lead_agent_staging" &&
           serverVersion >= 170_000 &&
-          serverVersion < 180_000,
+          serverVersion < 180_000 &&
+          observed.read_only,
       };
     },
   );
@@ -246,14 +260,14 @@ const main = async () => {
     () =>
       withAdmin(async (client) => {
         manifest ??= await readStagingMigrationManifest();
-        const head = manifest.entries.at(-1);
+        const head = manifest.entries[profile.count - 1];
         const applied = await client.query(
           "select max(created_at)::text as latest_applied_when from drizzle.__drizzle_migrations",
         );
         const latestAppliedWhen = applied.rows[0]?.latest_applied_when ?? "unavailable";
         const observed = {
           latest_applied_when: latestAppliedWhen,
-          packaged_head: head?.tag ?? "unavailable",
+          expected_journal_head: head?.tag ?? "unavailable",
         };
         return {
           observed,
@@ -527,7 +541,7 @@ const main = async () => {
         stagingRolePasswordFromUrl(connectionString, role);
         const pool = new Pool({
           application_name: `lead-agent-staging-${role}-validator`,
-          connectionString: withLibpqCompatibleRequireSsl(connectionString),
+          connectionString: readOnlyConnectionString(connectionString),
           connectionTimeoutMillis: 15_000,
           max: 1,
           query_timeout: 15_000,
@@ -535,15 +549,19 @@ const main = async () => {
         pools.push(pool);
         rolePools.set(role, pool);
         const identity = await pool.query(
-          "select current_user as role_name, current_database() as database_name",
+          "select current_user as role_name, current_database() as database_name, current_setting('transaction_read_only') = 'on' as read_only",
         );
         const observed = {
           database: identity.rows[0]?.database_name ?? "unavailable",
           role: identity.rows[0]?.role_name ?? "unavailable",
+          read_only: identity.rows[0]?.read_only === true,
         };
         return {
           observed,
-          pass: observed.database === "lead_agent_staging" && observed.role === role,
+          pass:
+            observed.database === "lead_agent_staging" &&
+            observed.role === role &&
+            observed.read_only,
         };
       },
     );

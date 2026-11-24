@@ -751,7 +751,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain(".github/scripts/s22-staging-database-validator.mjs");
     expect(workflow).toContain("S22V099_VALIDATOR_TIMEOUT");
     expect(workflow).toContain('gcloud run jobs executions cancel "$EXECUTION_ID"');
-    expect(workflow).toContain('labels.\\"run.googleapis.com/execution_name\\"');
+    expect(workflow).toContain("s22-database-validator-execution.mjs");
     expect(workflow).toContain("Upload staging database validator evidence");
     expect(databaseValidator).toContain('const { Pool } = await import("pg");');
     expect(databaseValidator).toContain('await import("./dist/migrate.js")');
