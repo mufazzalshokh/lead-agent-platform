@@ -116,16 +116,26 @@ test("validates pinned Cloud Run task status and emits only the approved databas
       ],
     },
   };
-  const receipt = databaseValidatorReceipt(fixture, expected);
+  const task = {
+    name: `${fixture.name}/tasks/${expected.executionId}-0`,
+    serviceAccount: fixture.template.serviceAccount,
+    containers: structuredClone(fixture.template.containers),
+  };
+  const tasks = { tasks: [task] };
+  fixture.template.containers[0].image = expected.image.replace(/a{64}$/u, "c".repeat(64));
+  const receipt = databaseValidatorReceipt(fixture, tasks, expected);
   assert.equal(receipt.outcome, "PASS");
   assert.equal(receipt.applied_migration_count, 34);
   assert.equal(receipt.first_owner_signup_boundary, "PASS");
   assert.doesNotMatch(JSON.stringify(receipt), /sensitive data|DATABASE_URL/u);
   const omittedRetryLimit = structuredClone(fixture);
   delete omittedRetryLimit.template.maxRetries;
-  assert.equal(databaseValidatorReceipt(omittedRetryLimit, expected).retry_limit_reported, false);
+  assert.equal(
+    databaseValidatorReceipt(omittedRetryLimit, tasks, expected).retry_limit_reported,
+    false,
+  );
   assert.throws(
-    () => databaseValidatorReceipt({ ...omittedRetryLimit, retriedCount: 1 }, expected),
+    () => databaseValidatorReceipt({ ...omittedRetryLimit, retriedCount: 1 }, tasks, expected),
     {
       message: /^S22V095/u,
     },
@@ -139,30 +149,50 @@ test("validates pinned Cloud Run task status and emits only the approved databas
     [{ retriedCount: 1 }, /^S22V095/u],
     [{ conditions: [{ type: "Completed", state: "CONDITION_PENDING" }] }, /^S22V095/u],
   ]) {
-    assert.throws(() => databaseValidatorReceipt({ ...fixture, ...patch }, expected), {
+    assert.throws(() => databaseValidatorReceipt({ ...fixture, ...patch }, tasks, expected), {
       message: code,
     });
   }
   assert.throws(
-    () => databaseValidatorReceipt(fixture, { ...expected, validatorSha: "d".repeat(64) }),
+    () => databaseValidatorReceipt(fixture, tasks, { ...expected, validatorSha: "d".repeat(64) }),
     {
       message: /^S22V094/u,
     },
   );
   const schemaHead = "0032_s22_widget_recovery";
   const baseline = { ...expected, schemaHead };
-  assert.throws(() => databaseValidatorReceipt(fixture, baseline), { message: /^S22V093/u });
-  fixture.template.containers[0].env.find(
-    (entry) => entry.name === "S22_VALIDATOR_SCHEMA_HEAD",
-  ).value = schemaHead;
-  const baselineReceipt = databaseValidatorReceipt(fixture, baseline);
+  assert.throws(() => databaseValidatorReceipt(fixture, tasks, baseline), { message: /^S22V093/u });
+  task.containers[0].env.find((entry) => entry.name === "S22_VALIDATOR_SCHEMA_HEAD").value =
+    schemaHead;
+  const baselineReceipt = databaseValidatorReceipt(fixture, tasks, baseline);
   assert.equal(baselineReceipt.applied_migration_count, 33);
   assert.equal(baselineReceipt.first_owner_signup_boundary, undefined);
+
+  for (const invalidTasks of [
+    { tasks: [] },
+    { tasks: [task, task] },
+    { tasks: [task], nextPageToken: "another-page" },
+    { tasks: [{ ...task, name: task.name.replace(expected.executionId, "foreign-execution") }] },
+  ]) {
+    assert.throws(() => databaseValidatorReceipt(fixture, invalidTasks, baseline), {
+      message: /^S22V092_VALIDATOR_TASK_ID/u,
+    });
+  }
+  const wrongImage = structuredClone(tasks);
+  wrongImage.tasks[0].containers[0].image = fixture.template.containers[0].image;
+  assert.throws(() => databaseValidatorReceipt(fixture, wrongImage, baseline), {
+    message: /^S22V092_VALIDATOR_IMAGE/u,
+  });
+  const failedTask = { tasks: [{ ...task, lastAttemptResult: { exitCode: 1 } }] };
+  assert.throws(() => databaseValidatorReceipt(fixture, failedTask, baseline), {
+    message: /^S22V095/u,
+  });
 
   const step = workflow.match(
     /- name: Verify migrated staging database[\s\S]*?(?=\n {6}- name:)/u,
   )[0];
   assert.match(step, /run\.googleapis\.com\/v2\/projects/u);
+  assert.match(step, /\/executions\/\$EXECUTION_ID\/tasks\?pageSize=2/u);
   assert.doesNotMatch(step, /gcloud logging|executions logs/u);
   assert.ok(
     step.indexOf('EXECUTION_ID="$S22_MIGRATOR_EXECUTION_ID"') < step.indexOf("jobs execute"),

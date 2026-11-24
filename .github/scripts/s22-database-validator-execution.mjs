@@ -19,7 +19,7 @@ const requireMatch = (condition, code) => {
   if (!condition) throw new Error(code);
 };
 
-export function databaseValidatorReceipt(execution, expected) {
+export function databaseValidatorReceipt(execution, taskList, expected) {
   const { executionId, projectNumber, image, source, packagedHead, schemaHead, validatorSha } =
     expected;
   requireMatch(
@@ -35,21 +35,32 @@ export function databaseValidatorReceipt(execution, expected) {
         (packagedHead === "0033_first_owner_signup" && schemaHead === "0032_s22_widget_recovery")),
     "S22V090_VALIDATOR_EXPECTATION",
   );
+  const executionNames = [project, projectNumber].map(
+    (id) => `projects/${id}/locations/me-central1/jobs/${job}/executions/${executionId}`,
+  );
+  requireMatch(executionNames.includes(execution?.name), "S22V091_VALIDATOR_EXECUTION_ID");
+  const task = taskList?.tasks?.[0];
+  const taskName = typeof task?.name === "string" ? task.name.split("/tasks/") : [];
   requireMatch(
-    [project, projectNumber].some(
-      (id) =>
-        execution?.name ===
-        `projects/${id}/locations/me-central1/jobs/${job}/executions/${executionId}`,
-    ),
-    "S22V091_VALIDATOR_EXECUTION_ID",
+    Array.isArray(taskList?.tasks) &&
+      taskList.tasks.length === 1 &&
+      !taskList.nextPageToken &&
+      taskName.length === 2 &&
+      executionNames.includes(taskName[0]) &&
+      /^[a-z0-9-]+$/u.test(taskName[1]),
+    "S22V092_VALIDATOR_TASK_ID",
   );
   const template = execution.template;
-  const container = template?.containers?.[0];
+  // Cloud Run can resolve the execution image to a platform manifest. The
+  // scoped task holds the original approved image and effective overrides.
+  const container = task.containers?.[0];
+  const serviceAccount = `${job}@${project}.iam.gserviceaccount.com`;
   const templateChecks = {
     TASK_COUNT: execution.taskCount === 1,
     RETRY_LIMIT: template?.maxRetries === undefined || template.maxRetries === 0,
-    SERVICE_ACCOUNT: template?.serviceAccount === `${job}@${project}.iam.gserviceaccount.com`,
-    CONTAINER_COUNT: template?.containers?.length === 1,
+    SERVICE_ACCOUNT:
+      template?.serviceAccount === serviceAccount && task.serviceAccount === serviceAccount,
+    CONTAINER_COUNT: template?.containers?.length === 1 && task.containers?.length === 1,
     IMAGE: container?.image === image,
     COMMAND: JSON.stringify(container?.command) === '["node"]',
     ARGUMENTS: JSON.stringify(container?.args) === JSON.stringify(args),
@@ -84,6 +95,11 @@ export function databaseValidatorReceipt(execution, expected) {
       typeof execution.completionTime === "string" &&
       Number.isFinite(Date.parse(execution.completionTime)) &&
       execution.succeededCount === 1 &&
+      task.reconciling !== true &&
+      (task.retried ?? 0) === 0 &&
+      (task.lastAttemptResult?.exitCode ?? 0) === 0 &&
+      (task.lastAttemptResult?.termSignal ?? 0) === 0 &&
+      (task.lastAttemptResult?.status?.code ?? 0) === 0 &&
       ["runningCount", "failedCount", "cancelledCount", "retriedCount"].every(
         (key) => (execution[key] ?? 0) === 0,
       ),
@@ -93,7 +109,7 @@ export function databaseValidatorReceipt(execution, expected) {
   // The pinned validator exits nonzero if any database assertion fails.
   return {
     operation: "staging_database_validation",
-    evidence_source: "cloud_run_execution_status",
+    evidence_source: "cloud_run_execution_and_task",
     execution_id: executionId,
     retry_limit_reported: template.maxRetries !== undefined,
     image,
@@ -109,19 +125,23 @@ export function databaseValidatorReceipt(execution, expected) {
 }
 
 if (process.argv[2] === "--receipt") {
-  const [, , , executionPath, executionId, projectNumber, validatorPath] = process.argv;
+  const [, , , executionPath, tasksPath, executionId, projectNumber, validatorPath] = process.argv;
   try {
     console.log(
       JSON.stringify(
-        databaseValidatorReceipt(JSON.parse(readFileSync(executionPath, "utf8")), {
-          executionId,
-          projectNumber,
-          image: process.env.TF_VAR_migrator_image,
-          source: process.env.S22_VALIDATOR_IMAGE_SOURCE,
-          packagedHead: process.env.TF_VAR_migration_head,
-          schemaHead: process.env.S22_VALIDATOR_SCHEMA_HEAD,
-          validatorSha: sha256(readFileSync(validatorPath)),
-        }),
+        databaseValidatorReceipt(
+          JSON.parse(readFileSync(executionPath, "utf8")),
+          JSON.parse(readFileSync(tasksPath, "utf8")),
+          {
+            executionId,
+            projectNumber,
+            image: process.env.TF_VAR_migrator_image,
+            source: process.env.S22_VALIDATOR_IMAGE_SOURCE,
+            packagedHead: process.env.TF_VAR_migration_head,
+            schemaHead: process.env.S22_VALIDATOR_SCHEMA_HEAD,
+            validatorSha: sha256(readFileSync(validatorPath)),
+          },
+        ),
       ),
     );
   } catch (error) {

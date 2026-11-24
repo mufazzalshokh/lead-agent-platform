@@ -5644,12 +5644,13 @@ jobs:
           VALIDATOR=".github/scripts/s22-staging-database-validator.mjs"
           EVIDENCE="$GITHUB_WORKSPACE/s22-database-validator-evidence.jsonl"
           EXECUTION_JSON="$(mktemp "$RUNNER_TEMP/s22-validator-execution.XXXXXX")"
+          TASKS_JSON="$(mktemp "$RUNNER_TEMP/s22-validator-tasks.XXXXXX")"
           EXECUTION_ID=""
           failure_receipt() {
             jq -cn --arg id "$EXECUTION_ID" --arg assertion "$1" --arg code "$2" \
               '{operation:"staging_database_validation",assertion:$assertion,execution_id:$id,failure_code:$code,outcome:"FAIL",summary:true}' | tee "$EVIDENCE"
           }
-          trap 'rm -f "$EXECUTION_JSON"; [[ -s "$EVIDENCE" ]] || failure_receipt validator_workflow_harness S22V096_VALIDATOR_HARNESS' EXIT
+          trap 'rm -f "$EXECUTION_JSON" "$TASKS_JSON"; [[ -s "$EVIDENCE" ]] || failure_receipt validator_workflow_harness S22V096_VALIDATOR_HARNESS' EXIT
           [[ "$PROJECT_ID" == "lead-agent-stg-739284" ]]
           PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
           [[ "$PROJECT_NUMBER" =~ ^[1-9][0-9]+$ ]]
@@ -5665,8 +5666,12 @@ jobs:
               > "$EXECUTION_JSON"
           }
           write_receipt() {
+            curl --fail --silent --show-error --max-time 10 \
+              --header "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/me-central1/jobs/lead-agent-staging-migrator/executions/$EXECUTION_ID/tasks?pageSize=2" \
+              > "$TASKS_JSON"
             node .github/scripts/s22-database-validator-execution.mjs \
-              --receipt "$EXECUTION_JSON" "$EXECUTION_ID" "$PROJECT_NUMBER" "$VALIDATOR" | tee "$EVIDENCE"
+              --receipt "$EXECUTION_JSON" "$TASKS_JSON" "$EXECUTION_ID" "$PROJECT_NUMBER" "$VALIDATOR" | tee "$EVIDENCE"
           }
           if [[ "$S22_PHASE" == "migration-validate" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
             EXECUTION_ID="$S22_MIGRATOR_EXECUTION_ID"

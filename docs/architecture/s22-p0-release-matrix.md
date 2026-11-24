@@ -48,8 +48,9 @@ The `migration-validate` plan phase can first validate the existing `0032`
 database with the installed `0033` migrator image. The validator uses read-only
 database connections. Supply the installed image digest and source commit with
 `migration_head=0033_first_owner_signup` and `runtime_migration_head=0032_s22_widget_recovery`.
-Receipts bind Cloud Run's successful single-task execution
-to the image digest, source commit, schema target, and exact validator script.
+Receipts bind Cloud Run's successful execution to its single task. The task
+records the approved image digest, source commit, schema target, and exact validator
+script even when the execution reports the Linux platform digest instead.
 Cloud Logging and IAM changes are unnecessary for this verification.
 Use `migrator_execution_id` with `migration-validate` to recheck an existing
 execution when its receipt needs recovery.
