@@ -1380,15 +1380,18 @@ jobs:
             echo "$secret: enabled_versions=$ENABLED_COUNT" | tee -a "$EVIDENCE"
           done
           CHANNEL_SECRET=lead-agent-staging-channel-credentials
-          gcloud secrets describe "$CHANNEL_SECRET" --project="$PROJECT_ID" --format='value(name)' > /dev/null
+          if ! gcloud secrets describe "$CHANNEL_SECRET" --project="$PROJECT_ID" --format='value(name)' > /dev/null; then
+            echo "$CHANNEL_SECRET: metadata=unavailable (application-managed)" | tee -a "$EVIDENCE"
+            exit 1
+          fi
           CHANNEL_ENABLED_COUNT="$(
             gcloud secrets versions list "$CHANNEL_SECRET" \
               --project="$PROJECT_ID" \
               --filter='state=ENABLED' \
               --format='value(name)' | sed '/^$/d' | wc -l | tr -d '[:space:]'
           )"
+          echo "$CHANNEL_SECRET: enabled_versions=$CHANNEL_ENABLED_COUNT (application-managed)" | tee -a "$EVIDENCE"
           [[ "$CHANNEL_ENABLED_COUNT" == "0" ]]
-          echo "$CHANNEL_SECRET: enabled_versions=0 (application-managed)" | tee -a "$EVIDENCE"
 
           [[ "$API_ORIGIN" == "https://lead-agent-staging-api-uj7pjzpksq-ww.a.run.app" ]]
           [[ "$WEB_ORIGIN" == "https://lead-agent-staging-web-uj7pjzpksq-ww.a.run.app" ]]

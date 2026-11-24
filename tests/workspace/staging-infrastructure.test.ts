@@ -585,6 +585,7 @@ describe("S22 staging infrastructure boundary", () => {
     expect(workflow).toContain('[[ "$PHASE" == "runtime-preflight" ]]');
     expect(workflow).toContain("Verify full runtime configuration metadata");
     expect(workflow).toContain("required_runtime_secrets_ready=true");
+    expect(workflow).toContain("metadata=unavailable (application-managed)");
     expect(workflow).toContain("application_managed_channel_secret_empty=true");
     expect(workflow).toContain("runtime_nonsecret_configuration_ready=true");
     expect(workflow).toContain("secret_payloads_read=false");
