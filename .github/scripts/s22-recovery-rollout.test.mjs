@@ -47,7 +47,7 @@ test("signup migration uses the isolated migrator and reviewed application rollo
   assert.ok(signupBoundary);
   assert.deepEqual(
     [...signupBoundary.matchAll(/"\$PHASE" == "([a-z-]+)"/gu)].map(([, phase]) => phase),
-    ["migrator-image-update", "migrator-image-verify", "migration-resume", "full"],
+    ["runtime-preflight", "migrator-image-update", "migrator-image-verify", "migration-resume", "full"],
   );
   assert.match(validator, /if \(profile\.count >= 33\)/u);
   assert.match(validator, /assertion: "first_owner_signup_boundary"/u);

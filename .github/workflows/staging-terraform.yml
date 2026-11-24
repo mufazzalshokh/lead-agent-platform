@@ -461,7 +461,7 @@ jobs:
             [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" || "$PHASE" == "api-image-verify" || "$PHASE" == "monitoring-policy" || "$PHASE" == "connection-fault-code" || "$PHASE" == "connection-fault-enable" || "$PHASE" == "connection-fault-remove" ]]
           fi
           if [[ "$TF_VAR_migration_head" == "0033_first_owner_signup" ]]; then
-            [[ "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" ]]
+            [[ "$PHASE" == "runtime-preflight" || "$PHASE" == "migrator-image-update" || "$PHASE" == "migrator-image-verify" || "$PHASE" == "migration-resume" || "$PHASE" == "full" ]]
           fi
           if [[ "$PHASE" == "full" && -n "$S22_RUNTIME_GIT_COMMIT_SHA" ]]; then
             [[ "$S22_RUNTIME_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
