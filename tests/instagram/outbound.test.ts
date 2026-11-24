@@ -91,8 +91,10 @@ const fixture = (overrides: Partial<InstagramOutboundRecord> = {}) => {
     connections: {
       disconnect,
       activate: () => Promise.resolve(false),
-      beginOnboarding: () => Promise.resolve(IDS.channel),
+      beginOnboarding: () =>
+        Promise.resolve({ channelConnectionId: IDS.channel, retiredCredentialReference: null }),
       loadConnection: () => Promise.resolve(null),
+      loadManagementStatus: () => Promise.resolve({ status: "not_connected" }),
       replaceCredential: () => Promise.resolve(false),
     },
     credentials: {
@@ -119,6 +121,15 @@ const fixture = (overrides: Partial<InstagramOutboundRecord> = {}) => {
   };
 };
 describe("Instagram finite S8 outbound worker boundary", () => {
+  it("stops a confirmation prompt withdrawn during credential lookup", async () => {
+    const test = fixture();
+    test.load
+      .mockResolvedValueOnce(test.record)
+      .mockResolvedValueOnce({ kind: "withdrawn_confirmation_prompt" });
+    await test.handler(context);
+    expect(test.sendMessage).not.toHaveBeenCalled();
+    expect(test.markFailed).not.toHaveBeenCalled();
+  });
   it("decrypts only trusted tenant recipient/thread, reloads before sending and records sent state", async () => {
     const test = fixture();
     await test.handler(context);

@@ -6,11 +6,17 @@ import {
   OrganizationIdSchema,
   RequestIdSchema,
   StaffMeResponseSchema,
+  StaffSignupInputSchema,
+  StaffStepUpNavigationSchema,
   isSchemaValue,
   type OrganizationId,
+  type StaffSignupInput,
 } from "@lead-agent/contracts";
 import type { StaffWebAuthConfig } from "@lead-agent/config";
-import type { StaffBrowserOidcClient } from "@lead-agent/integrations";
+import {
+  BrowserOidcCallbackInvalidError,
+  type StaffBrowserOidcClient,
+} from "@lead-agent/integrations";
 import {
   AuthorizationDeniedError,
   BrowserAuthenticationTokenInvalidError,
@@ -41,6 +47,7 @@ import {
   type ApplicationSessionLifecycle,
   type AuthenticatedApplicationSession,
   type BrowserAuthEnvelopeProtector,
+  type BrowserAuthTransaction,
   type CurrentMembershipAuthorizationResolver,
   type ExternalIdentityResolver,
   type InvitationAcceptanceResult,
@@ -51,9 +58,11 @@ import {
   WidgetRateLimitError,
   WidgetTokenInvalidError,
 } from "@lead-agent/security";
-import { WidgetApplicationError } from "@lead-agent/application";
+import { WidgetApplicationError, WidgetManagementError } from "@lead-agent/application";
 import type { FastifyInstance, FastifyReply, FastifyRequest, FastifyServerOptions } from "fastify";
 import Fastify, { LogController } from "fastify";
+import type { S22SessionProbe } from "../diagnostics/s22-connection-fault.js";
+import { S22_CONNECTION_FAULT_HEADER } from "../diagnostics/s22-connection-fault-admission.js";
 
 import {
   registerStaffConfiguration,
@@ -66,11 +75,20 @@ import {
   type StaffConversationDependencies,
 } from "../conversations/plugin.js";
 import { registerWidgetRoutes, type WidgetDependencies } from "../widget/plugin.js";
+import {
+  registerStaffWidgetManagement,
+  type StaffWidgetManagementDependencies,
+} from "../widget/management-plugin.js";
 import { registerStaffOperations, type StaffOperationsDependencies } from "../staff/plugin.js";
+import {
+  registerStaffS22WidgetCohort,
+  type StaffS22WidgetCohortDependencies,
+} from "../staff/s22-widget-cohort-plugin.js";
 import {
   AnalyticsApplicationError,
   StaffOperationError,
   ThreadAutomationControlError,
+  S22WidgetCohortError,
 } from "@lead-agent/application";
 import { registerStaffAnalytics, type StaffAnalyticsDependencies } from "../analytics/plugin.js";
 import {
@@ -93,6 +111,25 @@ const CSRF_HEADER = "x-csrf-token";
 const COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const MAX_INVITATION_TOKEN_LENGTH = 512;
 
+type AuthCallbackStage =
+  | "authorization_code_missing"
+  | "external_identity_resolution"
+  | "id_token_validation"
+  | "invitation_proof_issuance"
+  | "mfa_required"
+  | "provider_authorization_error"
+  | "session_issuance"
+  | "signup_provisioning"
+  | "state_mismatch"
+  | "state_replay"
+  | "token_exchange_or_oidc_response_validation"
+  | "transaction_cookie_missing"
+  | "transaction_envelope_invalid_or_expired";
+
+type AuthCallbackRecovery = "denied" | "reauthenticate";
+
+class StaffSignupValidationError extends Error {}
+
 export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.authorization",
   "req.headers.cookie",
@@ -100,6 +137,8 @@ export const STAFF_AUTH_LOG_REDACTION_PATHS = Object.freeze([
   "req.headers.x-csrf-token",
   "req.headers.x-telegram-bot-api-secret-token",
   "req.headers.x-hub-signature-256",
+  "req.headers.x-s22-connection-fault",
+  "res.headers.x-s22-connection-fault",
   "res.headers.set-cookie",
   "body.authorization_code",
   "body.invitation_token",
@@ -130,6 +169,17 @@ export type StaffAuthDependencies = Readonly<{
   oidcClient: StaffBrowserOidcClient;
   oidcVerifier: OidcIdentityVerifier;
   sessions: ApplicationSessionLifecycle;
+  signup?: Readonly<{
+    registerFirstOwner(
+      input: Readonly<{
+        audit: MembershipLifecycleAuditContext;
+        details: StaffSignupInput;
+        identity: ValidatedOidcIdentity;
+      }>,
+    ): Promise<OrganizationId>;
+    resolveFirstOwnerWorkspace(identity: ValidatedOidcIdentity): Promise<OrganizationId | null>;
+  }>;
+  sessionConnectionProbe?: S22SessionProbe;
   clock?: () => Date;
 }>;
 
@@ -145,6 +195,8 @@ export type ApiOptions = Readonly<{
   staffInstagram?: StaffInstagramDependencies;
   instagramWebhook?: InstagramWebhookDependencies;
   widget?: WidgetDependencies;
+  staffWidgetManagement?: StaffWidgetManagementDependencies;
+  staffS22WidgetCohort?: StaffS22WidgetCohortDependencies;
 }>;
 
 type SessionResolution = Readonly<{
@@ -252,6 +304,49 @@ const equalDigest = (left: string, right: string): boolean => {
   return leftBytes.length === rightBytes.length && leftBytes.equals(rightBytes);
 };
 
+const authCallbackFailureCode = (stage: AuthCallbackStage, error: unknown): string => {
+  if (error instanceof BrowserOidcCallbackInvalidError) return error.failure;
+  if (error instanceof ExternalIdentityUnmappedError) return "external_identity_unmapped";
+  if (error instanceof ExternalIdentityDeniedError) return "external_identity_denied";
+  if (error instanceof OidcProviderUnavailableError) return "oidc_provider_unavailable";
+  if (error instanceof SessionAuthenticationRequiredError && stage === "session_issuance") {
+    return "session_issuance_rejected";
+  }
+  return stage;
+};
+
+const authCallbackRecovery = (error: unknown): AuthCallbackRecovery | null => {
+  if (
+    error instanceof BrowserAuthenticationTokenInvalidError ||
+    error instanceof OidcCredentialInvalidError ||
+    error instanceof SessionAuthenticationRequiredError
+  ) {
+    return "reauthenticate";
+  }
+  if (
+    error instanceof ExternalIdentityDeniedError ||
+    error instanceof ExternalIdentityUnmappedError
+  ) {
+    return "denied";
+  }
+  return null;
+};
+
+const isStaleBrowserSession = (error: unknown): boolean =>
+  error instanceof BrowserAuthenticationTokenInvalidError ||
+  error instanceof SessionAuthenticationRequiredError;
+
+const staffAuthRecoveryPath = (returnPath: string, recovery: AuthCallbackRecovery): string => {
+  const target = new URL(returnPath, "https://lead-agent.invalid");
+  if (target.pathname !== "/staff") {
+    target.pathname = "/staff";
+    target.search = "";
+    target.hash = "";
+  }
+  target.searchParams.set("auth", recovery);
+  return target.pathname + target.search + target.hash;
+};
+
 const createUuidV7 = (now: Date): string => {
   const bytes = randomBytes(16);
   const milliseconds = BigInt(now.getTime());
@@ -295,6 +390,7 @@ const createAuditContext = (
 const safeProblem = (request: FastifyRequest, error: unknown) => {
   let code = "internal_error";
   let status = 500;
+  const stepUpRequired = error instanceof StaffOperationError && error.code === "step_up_required";
   if (
     error instanceof SessionAuthenticationRequiredError ||
     error instanceof ExternalIdentityDeniedError ||
@@ -345,9 +441,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
                 ? 422
                 : 429;
   } else if (error instanceof StaffOperationError) {
-    code = error.code;
+    code = stepUpRequired ? "permission_denied" : error.code;
     status =
-      error.code === "permission_denied"
+      error.code === "permission_denied" || error.code === "step_up_required"
         ? 403
         : error.code === "resource_not_found"
           ? 404
@@ -365,6 +461,21 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
           ? 404
           : error.code === "validation_failed"
             ? 400
+            : 409;
+  } else if (error instanceof S22WidgetCohortError) {
+    code =
+      error.code === "selection_conflict" || error.code === "cohort_blocked"
+        ? "version_conflict"
+        : error.code === "unavailable"
+          ? "dependency_unavailable"
+          : error.code;
+    status =
+      error.code === "permission_denied"
+        ? 403
+        : error.code === "validation_failed"
+          ? 400
+          : error.code === "unavailable"
+            ? 503
             : 409;
   } else if (error instanceof AnalyticsApplicationError) {
     code = error.code;
@@ -396,6 +507,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
   } else if (error instanceof WidgetRateLimitError) {
     code = "rate_limited";
     status = 429;
+  } else if (error instanceof WidgetManagementError) {
+    code = error.code;
+    status = error.code === "permission_denied" ? 403 : 400;
   } else if (error instanceof WidgetApplicationError) {
     code = error.code === "channel_unavailable" ? "resource_not_found" : error.code;
     status =
@@ -406,6 +520,9 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
           : code === "idempotency_conflict"
             ? 409
             : 422;
+  } else if (error instanceof StaffSignupValidationError) {
+    code = "validation_failed";
+    status = 400;
   } else if (
     typeof error === "object" &&
     error !== null &&
@@ -427,12 +544,16 @@ const safeProblem = (request: FastifyRequest, error: unknown) => {
     body: {
       code,
       detail:
-        status >= 500 ? "Authentication service is temporarily unavailable" : "Request denied",
+        status >= 500
+          ? "Authentication service is temporarily unavailable"
+          : stepUpRequired
+            ? "Fresh MFA is required for offline customer confirmation"
+            : "Request denied",
       instance: request.url.split("?", 1)[0],
       request_id: requestId,
       status,
       title: status >= 500 ? "Service unavailable" : "Request denied",
-      type: "https://lead-agent.invalid/problems/" + code,
+      type: "https://lead-agent.invalid/problems/" + (stepUpRequired ? "step_up_required" : code),
     },
     status,
   };
@@ -452,6 +573,8 @@ const registerStaffAuth = async (
   staffInstagram?: StaffInstagramDependencies,
   staffOperations?: StaffOperationsDependencies,
   staffAnalytics?: StaffAnalyticsDependencies,
+  staffWidgetManagement?: StaffWidgetManagementDependencies,
+  staffS22WidgetCohort?: StaffS22WidgetCohortDependencies,
 ): Promise<void> => {
   await api.register(cookie);
   const clock = dependencies.clock ?? (() => new Date());
@@ -473,26 +596,35 @@ const registerStaffAuth = async (
     request: FastifyRequest,
     reply: FastifyReply,
     rotateWhenDue = true,
+    scopedResolver?: (token: string) => Promise<AuthenticatedApplicationSession>,
   ): Promise<SessionResolution> => {
-    rejectDuplicateSecurityCookies(request);
-    const now = clock();
-    const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
-    if (sealed === undefined) throw new SessionAuthenticationRequiredError();
-    const credential = dependencies.envelopeProtector.openSession(sealed, now);
-    const session = await dependencies.sessions.resolveSession(credential.sessionToken);
-    if (rotateWhenDue && session.rotationDue) {
-      const issued = await dependencies.sessions.rotateSession(credential.sessionToken);
-      setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
-      return Object.freeze({
-        credential: Object.freeze({
-          csrfSecret: issued.csrfSecret,
-          expiresAt: issued.session.absoluteExpiresAt,
-          sessionToken: issued.sessionToken,
-        }),
-        session: issued.session,
-      });
+    try {
+      rejectDuplicateSecurityCookies(request);
+      const now = clock();
+      const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
+      if (sealed === undefined) throw new SessionAuthenticationRequiredError();
+      const credential = dependencies.envelopeProtector.openSession(sealed, now);
+      const session =
+        scopedResolver === undefined
+          ? await dependencies.sessions.resolveSession(credential.sessionToken)
+          : await scopedResolver(credential.sessionToken);
+      if (rotateWhenDue && session.rotationDue) {
+        const issued = await dependencies.sessions.rotateSession(credential.sessionToken);
+        setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
+        return Object.freeze({
+          credential: Object.freeze({
+            csrfSecret: issued.csrfSecret,
+            expiresAt: issued.session.absoluteExpiresAt,
+            sessionToken: issued.sessionToken,
+          }),
+          session: issued.session,
+        });
+      }
+      return Object.freeze({ credential, session });
+    } catch (error) {
+      if (isStaleBrowserSession(error)) clearSecurityCookies(reply);
+      throw error;
     }
-    return Object.freeze({ credential, session });
   };
 
   const requireMutationSession = async (
@@ -561,7 +693,7 @@ const registerStaffAuth = async (
   });
 
   const begin = async (
-    purpose: "invitation" | "login" | "step_up",
+    purpose: BrowserAuthTransaction["purpose"],
     returnPath: string,
     reply: FastifyReply,
     binding: Readonly<{
@@ -569,10 +701,15 @@ const registerStaffAuth = async (
       expectedUserId?: AuthenticatedApplicationSession["userId"];
       invitationOrganizationId?: OrganizationId;
       invitationTokenHash?: string;
+      signup?: StaffSignupInput;
     }> = {},
+    forceProviderAuthentication = false,
+    respondWithNavigation = false,
   ): Promise<void> => {
     const now = clock();
-    const authorization = await dependencies.oidcClient.begin(purpose);
+    const authorization = await dependencies.oidcClient.begin(
+      purpose === "login" && forceProviderAuthentication ? "reauthenticate" : purpose,
+    );
     const transaction = dependencies.envelopeProtector.sealTransaction({
       ...binding,
       codeVerifier: authorization.codeVerifier,
@@ -588,14 +725,37 @@ const registerStaffAuth = async (
       state: authorization.state,
     });
     setTransactionCookie(reply, transaction);
-    await reply.redirect(authorization.authorizationUrl, 302);
+    if (respondWithNavigation) {
+      const navigation = { authorization_url: authorization.authorizationUrl };
+      if (!isSchemaValue(StaffStepUpNavigationSchema, navigation))
+        throw new TypeError("Invalid staff authorization navigation");
+      await reply.header("cache-control", "no-store").send(navigation);
+    } else await reply.redirect(authorization.authorizationUrl, 302);
   };
 
   api.get(STAFF_AUTH_PREFIX + "/login", async (request, reply) => {
     rejectDuplicateSecurityCookies(request);
     const query = request.query as Readonly<Record<string, unknown>>;
-    await begin("login", resolveSafeReturnPath(query["return_to"], "/"), reply);
+    await begin(
+      "login",
+      resolveSafeReturnPath(query["return_to"], "/"),
+      reply,
+      {},
+      query["reauthenticate"] === "true",
+    );
   });
+
+  const signup = dependencies.signup;
+  if (signup !== undefined) {
+    api.post(STAFF_AUTH_PREFIX + "/signup", { bodyLimit: 4096 }, async (request, reply) => {
+      rejectDuplicateSecurityCookies(request);
+      requireMutationBrowserProof(request, dependencies.config);
+      if (!isSchemaValue(StaffSignupInputSchema, request.body)) {
+        throw new StaffSignupValidationError();
+      }
+      await begin("signup", "/signup", reply, { signup: request.body }, false, true);
+    });
+  }
 
   api.post(STAFF_AUTH_PREFIX + "/invitation", async (request, reply) => {
     rejectDuplicateSecurityCookies(request);
@@ -615,105 +775,214 @@ const registerStaffAuth = async (
   api.post(STAFF_AUTH_PREFIX + "/step-up", async (request, reply) => {
     const resolved = await requireMutationSession(request, reply);
     const body = requireObjectBody(request.body);
-    await begin("step_up", resolveSafeReturnPath(body["return_to"], "/"), reply, {
-      expectedSessionId: resolved.session.sessionId,
-      expectedUserId: resolved.session.userId,
-    });
+    await begin(
+      "step_up",
+      resolveSafeReturnPath(body["return_to"], "/"),
+      reply,
+      {
+        expectedSessionId: resolved.session.sessionId,
+        expectedUserId: resolved.session.userId,
+      },
+      false,
+      request.headers.accept === "application/json",
+    );
   });
 
   api.get(STAFF_AUTH_PREFIX + "/callback", async (request, reply) => {
-    rejectDuplicateSecurityCookies(request);
-    const now = clock();
-    const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.loginTransaction];
-    reply.clearCookie(BROWSER_AUTH_COOKIE_NAMES.loginTransaction, baseCookie);
-    if (sealed === undefined) throw new BrowserAuthenticationTokenInvalidError();
-    const transaction = dependencies.envelopeProtector.openTransaction(sealed, now);
-    const query = request.query as Readonly<Record<string, unknown>>;
-    if (query["state"] !== transaction.state || typeof query["code"] !== "string") {
-      throw new BrowserAuthenticationTokenInvalidError();
-    }
-    consumeState(transaction.state, now);
-    const callback = new URL(dependencies.config.callbackUri);
-    callback.search = new URL(request.url, dependencies.config.callbackUri).search;
-    const oidc = await dependencies.oidcClient.complete({
-      callbackUrl: callback,
-      codeVerifier: transaction.codeVerifier,
-      expectedNonce: transaction.nonce,
-      expectedState: transaction.state,
-      maximumAgeSeconds: transaction.maximumAgeSeconds,
-    });
-    if (dependencies.config.requireMfa && oidc.authenticationLevel !== "mfa") {
-      throw new OidcCredentialInvalidError();
-    }
-    const verifiedIdentity = await dependencies.oidcVerifier.verify({
-      expectedNonce: transaction.nonce,
-      idToken: oidc.idToken,
-    });
+    let stage: AuthCallbackStage = "transaction_cookie_missing";
+    let returnPath = "/staff";
+    let isSignup = false;
+    try {
+      rejectDuplicateSecurityCookies(request);
+      const now = clock();
+      const sealed = request.cookies[BROWSER_AUTH_COOKIE_NAMES.loginTransaction];
+      reply.clearCookie(BROWSER_AUTH_COOKIE_NAMES.loginTransaction, baseCookie);
+      if (sealed === undefined) throw new BrowserAuthenticationTokenInvalidError();
 
-    if (transaction.purpose === "invitation") {
-      if (
-        oidc.verifiedEmailTarget === null ||
-        transaction.invitationOrganizationId === undefined ||
-        transaction.invitationTokenHash === undefined
-      ) {
-        throw new InvitationTokenInvalidError();
+      stage = "transaction_envelope_invalid_or_expired";
+      const transaction = dependencies.envelopeProtector.openTransaction(sealed, now);
+      returnPath = transaction.returnPath;
+      isSignup = transaction.purpose === "signup";
+      const query = request.query as Readonly<Record<string, unknown>>;
+      if (typeof query["error"] === "string") {
+        stage = "provider_authorization_error";
+        throw new OidcCredentialInvalidError();
       }
-      const proof = dependencies.envelopeProtector.sealInvitationProof({
-        authenticationLevel: oidc.authenticationLevel,
-        authenticationTime: oidc.authenticationTime,
-        expiresAt: new Date(
-          now.getTime() + BROWSER_AUTH_POLICY.invitationProofLifetimeMilliseconds,
-        ),
-        identity: verifiedIdentity,
-        invitationOrganizationId: transaction.invitationOrganizationId,
-        invitationTokenHash: transaction.invitationTokenHash,
-        issuedAt: now,
-        verifiedEmailTarget: canonicalizeInvitationEmailTarget(oidc.verifiedEmailTarget),
+      if (query["state"] !== transaction.state) {
+        stage = "state_mismatch";
+        throw new BrowserAuthenticationTokenInvalidError();
+      }
+      if (typeof query["code"] !== "string" || query["code"].length < 1) {
+        stage = "authorization_code_missing";
+        throw new BrowserAuthenticationTokenInvalidError();
+      }
+
+      stage = "state_replay";
+      consumeState(transaction.state, now);
+      const callback = new URL(dependencies.config.callbackUri);
+      callback.search = new URL(request.url, dependencies.config.callbackUri).search;
+
+      stage = "token_exchange_or_oidc_response_validation";
+      const oidc = await dependencies.oidcClient.complete({
+        callbackUrl: callback,
+        codeVerifier: transaction.codeVerifier,
+        expectedNonce: transaction.nonce,
+        expectedState: transaction.state,
+        maximumAgeSeconds: transaction.maximumAgeSeconds,
       });
-      setInvitationProofCookie(reply, proof);
-      await reply.redirect(transaction.returnPath, 303);
-      return;
-    }
-
-    const authentication = await authenticateValidatedExternalIdentity(
-      verifiedIdentity,
-      dependencies.identityResolver,
-    );
-    const evidence = createSessionAuthenticationEvidence(authentication, oidc);
-
-    if (transaction.purpose === "step_up") {
-      const current = await resolveSession(request, reply, false);
-      if (
-        current.session.sessionId !== transaction.expectedSessionId ||
-        current.session.userId !== transaction.expectedUserId ||
-        authentication.userId !== transaction.expectedUserId ||
-        !isFreshStepUp(evidence, now)
-      ) {
-        throw new AuthorizationDeniedError();
+      if (dependencies.config.requireMfa && oidc.authenticationLevel !== "mfa") {
+        stage = "mfa_required";
+        throw new OidcCredentialInvalidError();
       }
-      const rotated = await dependencies.sessions.rotateSession(
-        current.credential.sessionToken,
-        evidence,
+
+      stage = "id_token_validation";
+      const verifiedIdentity = await dependencies.oidcVerifier.verify({
+        expectedNonce: transaction.nonce,
+        idToken: oidc.idToken,
+      });
+
+      if (transaction.purpose === "invitation") {
+        stage = "invitation_proof_issuance";
+        if (
+          oidc.verifiedEmailTarget === null ||
+          transaction.invitationOrganizationId === undefined ||
+          transaction.invitationTokenHash === undefined
+        ) {
+          throw new InvitationTokenInvalidError();
+        }
+        const proof = dependencies.envelopeProtector.sealInvitationProof({
+          authenticationLevel: oidc.authenticationLevel,
+          authenticationTime: oidc.authenticationTime,
+          expiresAt: new Date(
+            now.getTime() + BROWSER_AUTH_POLICY.invitationProofLifetimeMilliseconds,
+          ),
+          identity: verifiedIdentity,
+          invitationOrganizationId: transaction.invitationOrganizationId,
+          invitationTokenHash: transaction.invitationTokenHash,
+          issuedAt: now,
+          verifiedEmailTarget: canonicalizeInvitationEmailTarget(oidc.verifiedEmailTarget),
+        });
+        setInvitationProofCookie(reply, proof);
+        await reply.redirect(transaction.returnPath, 303);
+        return;
+      }
+
+      if (transaction.purpose === "signup") {
+        stage = "signup_provisioning";
+        if (oidc.verifiedEmailTarget === null) {
+          await reply.redirect("/signup?result=verify-email", 303);
+          return;
+        }
+        if (signup === undefined || transaction.signup === undefined) {
+          throw new AuthorizationDeniedError();
+        }
+        const organizationId = await signup.registerFirstOwner({
+          audit: createAuditContext(request, now),
+          details: transaction.signup,
+          identity: verifiedIdentity,
+        });
+        returnPath = "/staff?organization=" + organizationId;
+      }
+
+      stage = "external_identity_resolution";
+      const authentication = await authenticateValidatedExternalIdentity(
+        verifiedIdentity,
+        dependencies.identityResolver,
       );
-      setApplicationCookies(reply, dependencies.envelopeProtector, rotated, now);
-    } else {
-      const previous = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
-      if (previous !== undefined) {
-        try {
-          const credential = dependencies.envelopeProtector.openSession(previous, now);
-          await dependencies.sessions.revokeSession(credential.sessionToken);
-        } catch {
-          // Invalid prior browser material is replaced, never trusted or revived.
+      if (transaction.purpose === "login" && (returnPath === "/" || returnPath === "/staff")) {
+        const organizationId = await signup?.resolveFirstOwnerWorkspace(verifiedIdentity);
+        if (organizationId !== null && organizationId !== undefined) {
+          returnPath = "/staff?organization=" + organizationId;
         }
       }
-      const issued = await dependencies.sessions.createSession(evidence);
-      setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
+      const evidence = createSessionAuthenticationEvidence(authentication, oidc);
+
+      stage = "session_issuance";
+      if (transaction.purpose === "step_up") {
+        const current = await resolveSession(request, reply, false);
+        if (
+          current.session.sessionId !== transaction.expectedSessionId ||
+          current.session.userId !== transaction.expectedUserId ||
+          authentication.userId !== transaction.expectedUserId ||
+          !isFreshStepUp(evidence, now)
+        ) {
+          throw new AuthorizationDeniedError();
+        }
+        const rotated = await dependencies.sessions.rotateSession(
+          current.credential.sessionToken,
+          evidence,
+        );
+        setApplicationCookies(reply, dependencies.envelopeProtector, rotated, now);
+      } else {
+        const previous = request.cookies[BROWSER_AUTH_COOKIE_NAMES.session];
+        if (previous !== undefined) {
+          try {
+            const credential = dependencies.envelopeProtector.openSession(previous, now);
+            await dependencies.sessions.revokeSession(credential.sessionToken);
+          } catch {
+            // Invalid prior browser material is replaced, never trusted or revived.
+          }
+        }
+        const issued = await dependencies.sessions.createSession(evidence);
+        setApplicationCookies(reply, dependencies.envelopeProtector, issued, now);
+      }
+      await reply.redirect(returnPath, 303);
+    } catch (error) {
+      request.log.warn(
+        {
+          authCallbackFailure: authCallbackFailureCode(stage, error),
+          requestId: request.id,
+        },
+        "staff authentication callback rejected",
+      );
+      if (isSignup) {
+        await reply.redirect(
+          error instanceof ExternalIdentityDeniedError
+            ? "/signup?result=account-unavailable"
+            : "/signup?result=retry",
+          303,
+        );
+        return;
+      }
+      const recovery = authCallbackRecovery(error);
+      if (recovery !== null) {
+        clearSecurityCookies(reply);
+        await reply.redirect(staffAuthRecoveryPath(returnPath, recovery), 303);
+        return;
+      }
+      throw error;
     }
-    await reply.redirect(transaction.returnPath, 303);
   });
 
   api.get(STAFF_AUTH_PREFIX + "/session", async (request, reply) => {
-    const { session } = await resolveSession(request, reply);
+    // Probe context never bypasses the normal envelope/origin validation above.
+    // Other protected routes never receive this request-local resolver.
+    const probe = dependencies.sessionConnectionProbe;
+    // Browsers normally omit Origin on same-origin GET. In that case require
+    // the complete fetch shape; never derive an origin from Host or Referer.
+    const browserGet =
+      request.headers.origin === undefined &&
+      ["cors", "same-origin"].includes(String(request.headers["sec-fetch-mode"])) &&
+      request.headers["sec-fetch-dest"] === "empty";
+    const sameOrigin =
+      request.headers["sec-fetch-site"] === "same-origin" &&
+      (request.headers.origin === dependencies.config.staffApplicationOrigin || browserGet);
+    const { session } = await resolveSession(
+      request,
+      reply,
+      true,
+      probe === undefined || !sameOrigin
+        ? undefined
+        : (token) =>
+            probe.resolveSession(
+              request.headers[S22_CONNECTION_FAULT_HEADER],
+              token,
+              (normalToken) => dependencies.sessions.resolveSession(normalToken),
+              (metadata) => {
+                reply.header(S22_CONNECTION_FAULT_HEADER, JSON.stringify(metadata));
+              },
+            ),
+    );
     return {
       absolute_expires_at: session.absoluteExpiresAt.toISOString(),
       assurance: session.authenticationLevel,
@@ -874,6 +1143,7 @@ const registerStaffAuth = async (
       authorizationResolver: dependencies.authorizationResolver,
       resolveMutationSession: async (request, reply) =>
         (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
   if (staffInstagram !== undefined) {
@@ -881,6 +1151,23 @@ const registerStaffAuth = async (
       authorizationResolver: dependencies.authorizationResolver,
       resolveMutationSession: async (request, reply) =>
         (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
+  if (staffWidgetManagement !== undefined) {
+    registerStaffWidgetManagement(api, staffWidgetManagement, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
+    });
+  }
+  if (staffS22WidgetCohort !== undefined) {
+    registerStaffS22WidgetCohort(api, staffS22WidgetCohort, {
+      authorizationResolver: dependencies.authorizationResolver,
+      resolveMutationSession: async (request, reply) =>
+        (await requireMutationSession(request, reply)).session,
+      resolveReadSession: async (request, reply) => (await resolveSession(request, reply)).session,
     });
   }
 };
@@ -901,6 +1188,10 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
   }
   if (options.staffInstagram !== undefined && options.staffAuth === undefined)
     throw new TypeError("Staff Instagram routes require the staff authentication boundary");
+  if (options.staffWidgetManagement !== undefined && options.staffAuth === undefined)
+    throw new TypeError("Staff Widget routes require the staff authentication boundary");
+  if (options.staffS22WidgetCohort !== undefined && options.staffAuth === undefined)
+    throw new TypeError("S22 Widget cohort routes require the staff authentication boundary");
   const api = Fastify({
     ajv: { customOptions: { removeAdditional: false, strict: false } },
     logController: new LogController({ disableRequestLogging: true }),
@@ -1028,6 +1319,8 @@ export const createApi = (options: ApiOptions = {}): FastifyInstance => {
         options.staffInstagram,
         options.staffOperations,
         options.staffAnalytics,
+        options.staffWidgetManagement,
+        options.staffS22WidgetCohort,
       ),
     );
   }

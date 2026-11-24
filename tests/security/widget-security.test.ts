@@ -10,6 +10,7 @@ import {
   WidgetRateLimitError,
   WidgetTokenInvalidError,
   createWidgetExchangeGrantService,
+  createWidgetRecoveryGrantService,
   createWidgetRateLimiter,
   createWidgetTokenService,
   normalizeWidgetOrigin,
@@ -249,6 +250,51 @@ describe("S19 one-time Widget exchange grants", () => {
         EXCHANGE_KEY,
       ]),
     ).toThrow("WIDGET_EXCHANGE_KEY_PURPOSE_SEPARATION");
+  });
+});
+
+describe("customer-owned Widget recovery grants", () => {
+  const config = createWidgetEmbedConfig(
+    EXCHANGE_KEY,
+    "https://widget.example",
+    "https://api.example",
+    [KEY],
+  );
+  it("separates cryptographic purposes, conceals identity, and enforces a fixed 24-hour deadline", () => {
+    const recovery = createWidgetRecoveryGrantService(config);
+    const exchange = createWidgetExchangeGrantService(config);
+    const claims = {
+      channelConnectionId: CHANNEL_ID,
+      organizationId: ORGANIZATION_ID,
+      sessionId: SESSION_ID,
+      embeddingOrigin: "https://clinic.example",
+      issuedAt: TOKEN_NOW,
+      expiresAt: new Date(TOKEN_NOW.getTime() + 86_400_000),
+      jti: recovery.createJti(),
+    };
+    const code = recovery.issue(claims);
+    expect(code).toMatch(/^wrc1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+    expect(code).not.toContain(SESSION_ID);
+    expect(code).not.toContain("clinic.example");
+    expect(recovery.open(code, TOKEN_NOW)).toEqual(claims);
+    expect(() => recovery.open(code, claims.expiresAt)).toThrow(WidgetTokenInvalidError);
+    expect(() => recovery.open(code, new Date(Number.NaN))).toThrow(WidgetTokenInvalidError);
+    expect(() => recovery.open(code, new Date(TOKEN_NOW.getTime() - 1))).toThrow(
+      WidgetTokenInvalidError,
+    );
+    expect(() => exchange.open(code.replace("wrc1.", "wex1."), TOKEN_NOW)).toThrow(
+      WidgetTokenInvalidError,
+    );
+    const short = exchange.issue({ ...claims, expiresAt: new Date(TOKEN_NOW.getTime() + 60_000) });
+    expect(() => recovery.open(short.replace("wex1.", "wrc1."), TOKEN_NOW)).toThrow(
+      WidgetTokenInvalidError,
+    );
+    expect(() =>
+      recovery.issue({ ...claims, expiresAt: new Date(claims.expiresAt.getTime() + 1) }),
+    ).toThrow(WidgetTokenInvalidError);
+    const parts = code.split(".");
+    parts[3] = flipBase64UrlByte(parts[3]!, 0);
+    expect(() => recovery.open(parts.join("."), TOKEN_NOW)).toThrow(WidgetTokenInvalidError);
   });
 });
 

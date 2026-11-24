@@ -166,6 +166,9 @@ export const createStaffWebAuthConfig = (input: StaffWebAuthConfigInput): StaffW
     "staffApplicationOrigin",
     environment,
   );
+  if (callback.origin !== staffApplicationOrigin) {
+    throw new ConfigurationValidationError("callbackUri");
+  }
   const staffAllowedOrigins = requireOrigins(input.staffAllowedOrigins, environment);
   if (!staffAllowedOrigins.includes(staffApplicationOrigin)) {
     throw new ConfigurationValidationError("staffAllowedOrigins");

@@ -6,6 +6,7 @@ import {
   loadInstagramPlatformConfig,
   COMMERCIAL_V1_AI_PROFILE,
   loadCommercialV1AIConfig,
+  loadAIJourneyCohortConfig,
 } from "@lead-agent/config";
 import {
   createOutboxDispatcherId,
@@ -31,6 +32,7 @@ import {
 import { createCustomerDataProtection, createAIProposalProtection } from "@lead-agent/security";
 import { createAppointmentSubmissionAIProvider } from "@lead-agent/ai";
 import { createAIMessageHandler } from "./ai-handler.js";
+import { createStructuredAITelemetry } from "./ai-telemetry.js";
 
 import {
   createOutboxDispatcher,
@@ -56,6 +58,7 @@ export const composeProductionWorkerRuntime = (
   options: Readonly<{ credentialSecretStore?: CredentialSecretStore }> = {},
 ): WorkerRuntime => {
   const aiConfig = loadCommercialV1AIConfig(environment);
+  const journeyCohort = loadAIJourneyCohortConfig(environment);
   const instagramConfig =
     environment["INSTAGRAM_APP_ID"] === undefined ? null : loadInstagramPlatformConfig(environment);
   const credentials = options.credentialSecretStore;
@@ -129,9 +132,17 @@ export const composeProductionWorkerRuntime = (
               appointmentSubmission: true,
               dataProtection: createCustomerDataProtection(protectionConfig),
               protectProposal: createAIProposalProtection(protectionConfig).protect,
+              ...(journeyCohort === null
+                ? {}
+                : {
+                    journeyCohort,
+                    // The reviewed SID now anchors an owner-selected staging
+                    // envelope; a deployment alone never selects a fresh chat.
+                    widgetOwnerSelection: journeyCohort.mode === "widget_booking",
+                  }),
             }),
             timeoutMs: aiConfig.requestTimeoutMs,
-            telemetry: { record: (metric) => console.info("AI orchestration outcome", metric) },
+            telemetry: createStructuredAITelemetry(),
           }),
         );
   const confirmation = createCustomerConfirmationStore(tenantRuntime, {

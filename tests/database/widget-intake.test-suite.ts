@@ -8,16 +8,27 @@ import {
   createWidgetEmbedConfig,
   createWidgetSecurityConfig,
 } from "../../packages/config/src/index.js";
-import type { ChannelConnectionId, OrganizationId } from "../../packages/contracts/src/index.js";
 import {
+  RequestIdSchema,
+  WIDGET_PHONE_NOTICE_VERSION,
+  isSchemaValue,
+  type ChannelConnectionId,
+  type OrganizationId,
+  type WidgetPhoneChoiceInput,
+} from "../../packages/contracts/src/index.js";
+import {
+  createWidgetManagementStore,
   createWidgetPersistenceStore,
+  createWidgetRecoveryStore,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import {
   createCustomerDataProtection,
   createWidgetRateLimiter,
   createWidgetExchangeGrantService,
+  createWidgetRecoveryGrantService,
   createWidgetTokenService,
+  type AuthorizationContext,
 } from "../../packages/security/src/index.js";
 
 type Options = Readonly<{
@@ -26,6 +37,7 @@ type Options = Readonly<{
   privilegedPool(): Pool;
   runtime(): TenantDatabaseRuntime;
   seed(): Promise<void>;
+  staffActor(): Promise<AuthorizationContext>;
 }>;
 
 const NOW = new Date("2026-09-15T10:00:00.000Z");
@@ -36,17 +48,19 @@ const OTHER_ORGANIZATION_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf1" as Organiza
 const OTHER_CHANNEL_ID = "0193f1a8-7f65-7c28-a434-a10796c41cf2" as ChannelConnectionId;
 
 export const registerWidgetIntakeTests = (options: Options): void => {
-  const createFixture = () => {
-    const customerData = createCustomerDataProtection({
+  const fixtureCustomerData = () =>
+    createCustomerDataProtection({
       currentEncryptionKey: Buffer.alloc(32, 21),
       currentKeyId: "s10-test-v1",
       lookupKey: Buffer.alloc(32, 22),
     });
+  const createFixture = (clock: () => Date = () => NOW) => {
+    const customerData = fixtureCustomerData();
     const tokens = createWidgetTokenService(
       createWidgetSecurityConfig(Buffer.alloc(32, 23).toString("base64url")),
     );
     return createWidgetUseCases({
-      clock: () => NOW,
+      clock,
       dataProtector: customerData,
       embed: {
         exchanges: createWidgetExchangeGrantService(
@@ -60,8 +74,18 @@ export const registerWidgetIntakeTests = (options: Options): void => {
         platformOrigin: PLATFORM_ORIGIN,
         publicApiOrigin: "https://api.example",
       },
-      persistence: createWidgetPersistenceStore(options.runtime(), { clock: () => NOW }),
-      rateLimiter: createWidgetRateLimiter({ clock: () => NOW, salt: Buffer.alloc(32, 24) }),
+      persistence: createWidgetPersistenceStore(options.runtime(), { clock }),
+      recovery: {
+        grants: createWidgetRecoveryGrantService(
+          createWidgetEmbedConfig(
+            Buffer.alloc(32, 25).toString("base64url"),
+            PLATFORM_ORIGIN,
+            "https://api.example",
+          ),
+        ),
+        store: createWidgetRecoveryStore(options.runtime()),
+      },
+      rateLimiter: createWidgetRateLimiter({ clock, salt: Buffer.alloc(32, 24) }),
       routeResolver: {
         resolveInboundRoute: (_routeType, routeHash) =>
           Promise.resolve(
@@ -75,6 +99,126 @@ export const registerWidgetIntakeTests = (options: Options): void => {
   };
 
   describe("S10.A secure Widget persistence", () => {
+    it("records optional Widget phone choice with protected contact and replay evidence", async () => {
+      await options.seed();
+      const useCases = createFixture();
+      const pool = options.privilegedPool();
+      const openChat = async (suffix: string) => {
+        const session = await useCases.bootstrap({
+          clientIp: "127.0.0.1",
+          origin: ORIGIN,
+          pageUrl: ORIGIN,
+          requestedLocale: "en",
+          widgetKey: WIDGET_KEY,
+        });
+        return useCases.createConversation({
+          bearerToken: session.bearerToken,
+          origin: ORIGIN,
+          idempotencyKey: `phone-open-${suffix}`,
+          body: {
+            client_message_id: `phone-message-${suffix}`,
+            kind: "text",
+            locale_hint: "en",
+            text: "Can I request a consultation?",
+          },
+        });
+      };
+      const chat = await openChat("one");
+      const requestId = "request:phone-choice-test";
+      if (!isSchemaValue(RequestIdSchema, requestId))
+        throw new Error("Invalid request identifier fixture");
+      const base = { locale: "en", notice_version: WIDGET_PHONE_NOTICE_VERSION } as const;
+      const record = (
+        body: WidgetPhoneChoiceInput,
+        idempotencyKey: string,
+        target = chat,
+        origin = ORIGIN,
+      ) =>
+        useCases.recordPhoneChoice({
+          bearerToken: chat.bearerToken,
+          conversationId: target.conversation.id,
+          origin,
+          requestId,
+          idempotencyKey,
+          body,
+        });
+      const grant = { ...base, decision: "granted" as const, phone: "+1 (202) 555-0134" };
+      expect(
+        (await pool.query("select id from contact_identities where identity_type='phone'"))
+          .rowCount,
+      ).toBe(0);
+      await expect(
+        record({ ...grant, phone: "202 555 0134" }, "phone-invalid"),
+      ).rejects.toMatchObject({ code: "validation_failed" });
+      await expect(
+        record(grant, "phone-wrong-origin", chat, "https://elsewhere.example"),
+      ).rejects.toMatchObject({ code: "origin_not_allowed" });
+      await record({ ...base, decision: "declined" }, "phone-decline");
+      expect(
+        (await pool.query("select id from contact_identities where identity_type='phone'"))
+          .rowCount,
+      ).toBe(0);
+      await Promise.all([record(grant, "phone-grant"), record(grant, "phone-grant")]);
+      await expect(
+        record({ ...grant, phone: "+12025550135" }, "phone-grant"),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+      const identities = await pool.query<{
+        id: string;
+        value_ciphertext: Buffer;
+        display_redacted: string;
+        lookup_hash: Buffer;
+      }>(
+        "select id,value_ciphertext,display_redacted,lookup_hash from contact_identities where identity_type='phone'",
+      );
+      expect(identities.rows).toHaveLength(1);
+      const identity = identities.rows[0];
+      if (identity === undefined) throw new Error("Missing phone evidence");
+      expect(identity.display_redacted).toBe("*** 0134");
+      expect(
+        fixtureCustomerData().revealContactIdentity({
+          organizationId: options.organizationId,
+          channelConnectionId: null,
+          identityType: "phone",
+          ciphertext: identity.value_ciphertext,
+        }),
+      ).toBe("+12025550134");
+      const evidence = await pool.query(
+        `select r.status,r.purpose,r.notice_key,r.notice_version,r.contact_identity_id,m.processing_status
+         from consent_records r join messages m on m.organization_id=r.organization_id and m.id=r.source_message_id
+         order by m.sequence_no`,
+      );
+      const common = {
+        purpose: "booking_follow_up",
+        notice_key: "widget_booking_follow_up",
+        notice_version: 1,
+        processing_status: "suppressed",
+      };
+      expect(evidence.rows).toEqual([
+        { ...common, status: "declined", contact_identity_id: null },
+        { ...common, status: "granted", contact_identity_id: identity.id },
+      ]);
+      expect(
+        (await pool.query("select id from outbox_events where event_type='message.received'"))
+          .rowCount,
+      ).toBe(1);
+      const second = await openChat("two");
+      await expect(record(grant, "phone-other-chat", second)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      await useCases.recordPhoneChoice({
+        bearerToken: second.bearerToken,
+        conversationId: second.conversation.id,
+        origin: ORIGIN,
+        requestId,
+        idempotencyKey: "phone-second-chat",
+        body: grant,
+      });
+      const separate = await pool.query<{ contact_id: string; lookup_hash: Buffer }>(
+        "select contact_id,lookup_hash from contact_identities where identity_type='phone'",
+      );
+      expect(new Set(separate.rows.map((row) => row.contact_id)).size).toBe(2);
+      expect(new Set(separate.rows.map((row) => row.lookup_hash.toString("hex"))).size).toBe(2);
+    });
     it("atomically redeems an embed grant once and keeps host Origin authorization", async () => {
       await options.seed();
       const pool = options.privilegedPool();
@@ -595,5 +739,375 @@ export const registerWidgetIntakeTests = (options: Options): void => {
         expect((await pool.query("select id from messages")).rowCount).toBe(1);
       },
     );
+  });
+
+  describe("customer-owned Widget recovery under FORCE RLS", () => {
+    const fixture = async () => {
+      await options.seed();
+      let now = NOW;
+      const useCases = createFixture(() => now);
+      const fresh = async () => {
+        const grant = await useCases.createEmbedGrant({
+          clientIp: "127.0.0.1",
+          origin: ORIGIN,
+          pageUrl: ORIGIN,
+          requestedLocale: "uz",
+          widgetKey: WIDGET_KEY,
+        });
+        return useCases.redeemEmbedSession({
+          exchangeGrant: grant.exchangeGrant,
+          origin: PLATFORM_ORIGIN,
+        });
+      };
+      const initial = await fresh();
+      const created = await useCases.createConversation({
+        bearerToken: initial.bearerToken,
+        origin: PLATFORM_ORIGIN,
+        body: {
+          client_message_id: "browser.recovery-1",
+          kind: "text",
+          locale_hint: "uz",
+          text: "Synthetic booking request",
+        },
+        idempotencyKey: "request-recovery-1",
+      });
+      const issue = () =>
+        useCases.issueRecoveryCode({
+          bearerToken: created.bearerToken,
+          origin: PLATFORM_ORIGIN,
+          requestId: "request-recovery-issue",
+        });
+      const code = await issue();
+      const tokens = createWidgetTokenService(
+        createWidgetSecurityConfig(Buffer.alloc(32, 23).toString("base64url")),
+      );
+      const claims = await tokens.verify(created.bearerToken, now);
+      const resume = (context: { bearerToken: string }, recoveryCode = code.recoveryCode) =>
+        useCases.resumeConversation({
+          bearerToken: context.bearerToken,
+          body: { recovery_code: recoveryCode },
+          origin: PLATFORM_ORIGIN,
+          clientIp: "127.0.0.1",
+          requestId: "request-recovery-resume",
+        });
+      return {
+        useCases,
+        fresh,
+        created,
+        code,
+        claims,
+        tokens,
+        issue,
+        resume,
+        advance: (milliseconds: number) => {
+          now = new Date(NOW.getTime() + milliseconds);
+        },
+      };
+    };
+
+    it("reauthenticates the same identity after original expiry without duplicating business state or resetting usage", async () => {
+      const test = await fixture();
+      const pool = options.privilegedPool();
+      const before = await pool.query<{ contact_id: string }>(
+        "select id,contact_id,conversation_id,issued_at,expires_at,participant_lookup_hash from widget_sessions where id=$1",
+        [test.claims.sessionId],
+      );
+      const snapshot = async () =>
+        (
+          await pool.query<{
+            contacts: number;
+            conversations: number;
+            messages: number;
+            leads: number;
+            requests: number;
+            runs: number;
+            budget_events: number;
+          }>(
+            `select (select count(*)::int from contacts) contacts, (select count(*)::int from conversations) conversations, (select count(*)::int from messages) messages, (select count(*)::int from leads) leads, (select count(*)::int from appointment_requests) requests, (select count(*)::int from ai_runs) runs, (select count(*)::int from audit_events where action like 'ai_run.%') budget_events`,
+          )
+        ).rows[0];
+      const business = await snapshot();
+      test.advance(7_201_000);
+      const context = await test.fresh();
+      const resumed = await test.resume(context);
+      const renewed = await test.tokens.verify(
+        resumed.bearerToken,
+        new Date(NOW.getTime() + 7_201_000),
+      );
+      expect(renewed).toMatchObject({
+        sessionId: test.claims.sessionId,
+        conversationId: test.created.conversation.id,
+      });
+      expect(renewed.jti).not.toBe(test.claims.jti);
+      expect(resumed.recoveryExpiresAt).toEqual(test.code.recoveryExpiresAt);
+      expect(resumed.recoveryCode).not.toBe(test.code.recoveryCode);
+      expect(
+        (
+          await pool.query(
+            "select id,contact_id,conversation_id,issued_at,expires_at,participant_lookup_hash from widget_sessions where id=$1",
+            [test.claims.sessionId],
+          )
+        ).rows,
+      ).toEqual(before.rows);
+      expect(await snapshot()).toEqual(business);
+      await expect(
+        test.useCases.getConversation({
+          bearerToken: resumed.bearerToken,
+          conversationId: test.created.conversation.id,
+          origin: PLATFORM_ORIGIN,
+        }),
+      ).resolves.toMatchObject({ id: test.created.conversation.id });
+      await expect(
+        test.useCases.getConversation({
+          bearerToken: test.created.bearerToken,
+          conversationId: test.created.conversation.id,
+          origin: PLATFORM_ORIGIN,
+        }),
+      ).rejects.toMatchObject({ code: "token_invalid" });
+      await expect(
+        test.useCases.createConversation({
+          bearerToken: context.bearerToken,
+          origin: PLATFORM_ORIGIN,
+          body: {
+            client_message_id: "browser.consumed-context",
+            kind: "text",
+            locale_hint: null,
+            text: "Must not create",
+          },
+          idempotencyKey: "request-consumed-context",
+        }),
+      ).rejects.toMatchObject({ code: "token_invalid" });
+      await expect(test.resume(await test.fresh())).rejects.toMatchObject({
+        code: "token_invalid",
+      });
+      expect(await snapshot()).toEqual(business);
+      const audits = await pool.query(
+        "select actor_type,actor_id,metadata_redacted_jsonb from audit_events where target_id=$1 and action='widget.conversation_reauthenticated'",
+        [test.claims.sessionId],
+      );
+      expect(audits.rows).toHaveLength(1);
+      expect(audits.rows[0]).toMatchObject({
+        actor_type: "customer",
+        actor_id: before.rows[0]?.contact_id,
+      });
+      expect(JSON.stringify(audits.rows)).not.toContain(test.code.recoveryCode);
+    });
+
+    it("rolls credential changes and context consumption back if audit persistence fails", async () => {
+      const test = await fixture();
+      const context = await test.fresh();
+      await expect(
+        test.useCases.resumeConversation({
+          bearerToken: context.bearerToken,
+          body: { recovery_code: test.code.recoveryCode },
+          origin: PLATFORM_ORIGIN,
+          clientIp: "127.0.0.1",
+          requestId: "invalid request id",
+        }),
+      ).rejects.toMatchObject({ code: "23514", constraint: "audit_events_request_trace_check" });
+      await expect(test.resume(context)).resolves.toMatchObject({
+        conversationId: test.created.conversation.id,
+      });
+      expect(
+        (
+          await options
+            .privilegedPool()
+            .query("select id from audit_events where action='widget.conversation_reauthenticated'")
+        ).rowCount,
+      ).toBe(1);
+    });
+
+    it("allows only one winner for concurrent code redemption", async () => {
+      const test = await fixture();
+      const contexts = await Promise.all([test.fresh(), test.fresh()]);
+      const results = await Promise.allSettled(contexts.map((context) => test.resume(context)));
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+      expect(
+        (
+          await options
+            .privilegedPool()
+            .query("select id from audit_events where action='widget.conversation_reauthenticated'")
+        ).rowCount,
+      ).toBe(1);
+    });
+
+    it("invalidates previous codes on reissue and caps every replacement at the original family deadline", async () => {
+      const test = await fixture();
+      const replacement = await test.issue();
+      expect(replacement.recoveryExpiresAt).toEqual(test.code.recoveryExpiresAt);
+      await expect(test.resume(await test.fresh())).rejects.toMatchObject({
+        code: "token_invalid",
+      });
+      test.advance(86_399_000);
+      const result = await test.resume(await test.fresh(), replacement.recoveryCode);
+      expect(result.expiresAt).toEqual(test.code.recoveryExpiresAt);
+      test.advance(86_400_000);
+      await expect(test.resume(await test.fresh(), result.recoveryCode)).rejects.toMatchObject({
+        code: "token_invalid",
+      });
+    });
+
+    it.each(["revoked", "disabled_channel", "disabled_origin", "closed", "anonymized", "blocked"])(
+      "denies %s recovery without reopening protected state",
+      async (reason) => {
+        const test = await fixture();
+        const context = await test.fresh();
+        const pool = options.privilegedPool();
+        if (reason === "revoked")
+          await pool.query(
+            "update widget_sessions set status='revoked',revoked_at=$2,revocation_reason='staff_revocation' where id=$1",
+            [test.claims.sessionId, NOW],
+          );
+        if (reason === "disabled_channel")
+          await pool.query("update channel_connections set status='disabled' where id=$1", [
+            options.channelId,
+          ]);
+        if (reason === "disabled_origin")
+          await pool.query(
+            "update widget_allowed_origins set status='disabled' where channel_connection_id=$1",
+            [options.channelId],
+          );
+        if (reason === "closed")
+          await pool.query(
+            "update conversations set status='closed',automation_mode='paused',resolved_at=$2,closed_at=$2 where id=$1",
+            [test.created.conversation.id, NOW],
+          );
+        if (reason === "anonymized")
+          await pool.query(
+            "update contacts set status='anonymized',anonymized_at=$2 where id=(select contact_id from widget_sessions where id=$1)",
+            [test.claims.sessionId, NOW],
+          );
+        if (reason === "blocked")
+          await pool.query(
+            "update contacts set status='blocked' where id=(select contact_id from widget_sessions where id=$1)",
+            [test.claims.sessionId],
+          );
+        await expect(test.resume(context)).rejects.toMatchObject({ code: "token_invalid" });
+        expect(
+          (
+            await pool.query(
+              "select id from audit_events where action='widget.conversation_reauthenticated'",
+            )
+          ).rowCount,
+        ).toBe(0);
+      },
+    );
+
+    it("denies cross-tenant, foreign channel/origin, bound contexts and missing proof", async () => {
+      const test = await fixture();
+      const fresh = await test.fresh();
+      const claims = await test.tokens.verify(fresh.bearerToken, NOW);
+      for (const overrides of [
+        { organizationId: OTHER_ORGANIZATION_ID },
+        { channelConnectionId: OTHER_CHANNEL_ID },
+        { embeddingOrigin: "https://evil.example" },
+        { conversationId: test.created.conversation.id },
+      ]) {
+        await expect(
+          test.resume({ bearerToken: await test.tokens.issue({ ...claims, ...overrides }) }),
+        ).rejects.toMatchObject({ code: "token_invalid" });
+      }
+      await expect(test.resume(fresh, "wrc1.invalid")).rejects.toMatchObject({
+        code: "validation_failed",
+      });
+      await expect(
+        test.useCases.issueRecoveryCode({
+          bearerToken: fresh.bearerToken,
+          origin: PLATFORM_ORIGIN,
+          requestId: "request-unbound-recovery",
+        }),
+      ).rejects.toMatchObject({ code: "token_invalid" });
+      expect(
+        (
+          await options
+            .privilegedPool()
+            .query("select id from audit_events where action='widget.conversation_reauthenticated'")
+        ).rowCount,
+      ).toBe(0);
+    });
+  });
+
+  describe("S22 owner-managed Widget configuration", () => {
+    it("atomically creates and rotates one tenant-bound public setup", async () => {
+      await options.seed();
+      const staffActor = await options.staffActor();
+      const management = createWidgetManagementStore(options.runtime());
+      const firstKey = "w".repeat(43);
+      const first = await management.configure({
+        actor: staffActor,
+        now: NOW,
+        publishableKey: firstKey,
+        publishableKeyHash: createHash("sha256").update(firstKey).digest(),
+        websiteOrigin: ORIGIN,
+      });
+      await expect(management.get(staffActor)).resolves.toEqual(first);
+
+      const secondKey = "x".repeat(43);
+      const second = await management.configure({
+        actor: staffActor,
+        now: new Date(NOW.getTime() + 1_000),
+        publishableKey: secondKey,
+        publishableKeyHash: createHash("sha256").update(secondKey).digest(),
+        websiteOrigin: "https://www.clinic.example",
+      });
+      expect(second.channelConnectionId).toBe(first.channelConnectionId);
+      await expect(management.get(staffActor)).resolves.toEqual(second);
+
+      const state = await options.privilegedPool().query<{
+        active_origins: number;
+        active_routes: number;
+        audits: number;
+      }>(
+        `select
+           (select count(*)::int from widget_allowed_origins
+             where organization_id=$1 and channel_connection_id=$2 and status='active') active_origins,
+           (select count(*)::int from inbound_routes
+             where organization_id=$1 and channel_connection_id=$2 and status='active') active_routes,
+           (select count(*)::int from audit_events
+             where organization_id=$1 and target_id=$2
+               and action='widget.configuration_updated') audits`,
+        [options.organizationId, first.channelConnectionId],
+      );
+      expect(state.rows[0]).toEqual({ active_origins: 1, active_routes: 1, audits: 2 });
+
+      await expect(
+        management.get({ ...staffActor, organizationId: OTHER_ORGANIZATION_ID }),
+      ).resolves.toBeNull();
+
+      const client = await options.privilegedPool().connect();
+      try {
+        await client.query("set role lead_agent_runtime");
+        await expect(
+          client.query("select id from public.inbound_routes limit 1"),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await client.query("reset role");
+        client.release();
+      }
+
+      const functions = await options.privilegedPool().query<{
+        ingress: boolean;
+        owner: string;
+        runtime: boolean;
+        search_path: string[];
+      }>(
+        `select has_function_privilege('lead_agent_runtime',p.oid,'EXECUTE') as runtime,
+                has_function_privilege('lead_agent_ingress',p.oid,'EXECUTE') as ingress,
+                pg_get_userbyid(p.proowner) as owner,p.proconfig as search_path
+           from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='app'
+            and p.proname in('replace_widget_inbound_route','has_active_widget_inbound_route')
+          order by p.proname`,
+      );
+      expect(functions.rows).toHaveLength(2);
+      for (const row of functions.rows)
+        expect(row).toMatchObject({
+          ingress: false,
+          owner: "lead_agent_inbound_route_definer",
+          runtime: true,
+          search_path: ["search_path=pg_catalog"],
+        });
+    });
   });
 };

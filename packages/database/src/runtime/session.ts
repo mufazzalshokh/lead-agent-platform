@@ -8,7 +8,7 @@ import type {
   SessionRotationPersistence,
   UserSessionRevocationReason,
 } from "@lead-agent/security";
-import { Pool, type PoolClient } from "pg";
+import { Pool, type PoolClient, type PoolConfig } from "pg";
 
 const REQUIRED_SESSION_ROLE = "lead_agent_auth";
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -121,17 +121,8 @@ class SessionDatabaseRuntimeImplementation implements SessionDatabaseRuntime {
   readonly #pool: Pool;
   #closed = false;
 
-  constructor(
-    configuration: IdentityDatabaseRuntimeConfig,
-    observability: SessionDatabaseRuntimeObservability,
-  ) {
-    this.#pool = new Pool({
-      connectionString: configuration.connectionString,
-      connectionTimeoutMillis: configuration.connectionTimeoutMilliseconds,
-      idleTimeoutMillis: configuration.idleTimeoutMilliseconds,
-      max: configuration.maxConnections,
-      statement_timeout: configuration.statementTimeoutMilliseconds,
-    });
+  constructor(configuration: PoolConfig, observability: SessionDatabaseRuntimeObservability) {
+    this.#pool = new Pool(configuration);
     this.#pool.on("error", observability.onUnexpectedPoolError);
     Object.freeze(this);
   }
@@ -262,5 +253,21 @@ class SessionDatabaseRuntimeImplementation implements SessionDatabaseRuntime {
 
 export const createSessionDatabaseRuntime = (
   configuration: IdentityDatabaseRuntimeConfig,
+  observability: SessionDatabaseRuntimeObservability,
+): SessionDatabaseRuntime =>
+  new SessionDatabaseRuntimeImplementation(
+    {
+      connectionString: configuration.connectionString,
+      connectionTimeoutMillis: configuration.connectionTimeoutMilliseconds,
+      idleTimeoutMillis: configuration.idleTimeoutMilliseconds,
+      max: configuration.maxConnections,
+      statement_timeout: configuration.statementTimeoutMilliseconds,
+    },
+    observability,
+  );
+
+/** Package-internal transport composition. Not exported from the package barrel. */
+export const createSessionRuntimeForOwnedTransport = (
+  configuration: PoolConfig,
   observability: SessionDatabaseRuntimeObservability,
 ): SessionDatabaseRuntime => new SessionDatabaseRuntimeImplementation(configuration, observability);

@@ -11,6 +11,7 @@ import {
   MembershipIdSchema,
   UserIdSchema,
   ResourceIdSchema,
+  StaffAttestCustomerConfirmationInputSchema,
   isSchemaValue,
 } from "../../packages/contracts/src/index.js";
 import { staffWorkFixture } from "./staff-operations-fixtures.js";
@@ -32,12 +33,16 @@ if (
 )
   throw new TypeError("Invalid S17 fixture");
 const now = new Date("2026-09-18T08:00:00.000Z");
-const authorize = async (role: MembershipRole = "staff") => {
+const authorize = async (
+  role: MembershipRole = "staff",
+  authenticationTime = now,
+  authenticationLevel: AuthenticatedApplicationSession["authenticationLevel"] = "mfa",
+) => {
   const session: AuthenticatedApplicationSession = {
     userId: user,
     sessionId: id,
-    authenticationLevel: "mfa",
-    authenticationTime: now,
+    authenticationLevel,
+    authenticationTime,
     createdAt: now,
     lastSeenAt: now,
     rotatedAt: now,
@@ -70,6 +75,12 @@ const fixture = () => {
   const store: StaffOperationsStore = {
     list,
     get: vi.fn(() => Promise.resolve(staffWorkFixture)),
+    confirmation: () =>
+      Promise.resolve({
+        appointment_version: staffWorkFixture.version,
+        offline_offer: null,
+        attestation: null,
+      }),
     outcomes: vi.fn(() => Promise.resolve({ items: [], next: null })),
     mutate,
   };
@@ -85,6 +96,43 @@ const fixture = () => {
   };
 };
 describe("S17 private staff application boundary", () => {
+  it("requires MFA younger than 15 minutes before attempting offline confirmation", async () => {
+    const f = fixture();
+    const input: unknown = {
+      offer_version: 1,
+      attestation_method: "phone",
+      customer_acted_at: now.toISOString(),
+      explicit_confirmation: true,
+    };
+    if (!isSchemaValue(StaffAttestCustomerConfirmationInputSchema, input))
+      throw new Error("Invalid attestation fixture");
+    const attest = (authorization: Awaited<ReturnType<typeof authorize>>) =>
+      f.ops.mutate(
+        authorization,
+        "appointment_request",
+        id,
+        3,
+        "offline-confirm",
+        { action: "attest-customer-confirmation", input },
+        "s17:test",
+        "unused",
+      );
+    const boundary = new Date(now.getTime() - 15 * 60_000);
+    await expect(attest(await authorize("staff", boundary))).rejects.toMatchObject({
+      code: "step_up_required",
+    });
+    await expect(attest(await authorize("staff", now, "primary"))).rejects.toMatchObject({
+      code: "step_up_required",
+    });
+    await expect(attest(await authorize("analyst"))).rejects.toMatchObject({
+      code: "permission_denied",
+    });
+    expect(f.mocks.mutate).not.toHaveBeenCalled();
+    await expect(
+      attest(await authorize("staff", new Date(boundary.getTime() + 1))),
+    ).resolves.toBeDefined();
+    expect(f.mocks.mutate).toHaveBeenCalledOnce();
+  });
   it.each(["conversation", "handoff", "appointment_request", "notification"] as const)(
     "authorizes the finite %s reader",
     async (kind) => {

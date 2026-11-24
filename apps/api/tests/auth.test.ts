@@ -3,8 +3,10 @@ import {
   OrganizationIdSchema,
   UserIdSchema,
   isSchemaValue,
+  StaffStepUpNavigationSchema,
   type MembershipId,
   type OrganizationId,
+  type StaffSignupInput,
   type UserId,
 } from "@lead-agent/contracts";
 import { createStaffWebAuthConfig } from "@lead-agent/config";
@@ -53,6 +55,11 @@ const CSRF = "c".repeat(43);
 const ROTATED_CSRF = "d".repeat(43);
 const INVITATION_TOKEN = Buffer.alloc(32, 21).toString("base64url");
 const STAFF_ORIGIN = "https://staff.example.test";
+const SIGNUP_DETAILS = {
+  display_name: "Synthetic Clinic",
+  default_locale: "uz",
+  default_time_zone: "Asia/Tashkent",
+} as const;
 
 const session = (
   overrides: Partial<AuthenticatedApplicationSession> = {},
@@ -97,6 +104,7 @@ const authorizationState = (headers: Readonly<Record<string, unknown>>): string 
 
 type FixtureControls = {
   acceptedOrganizations: OrganizationId[];
+  authorizationPurposes: string[];
   authenticationLevel: "mfa" | "single_factor";
   identityUser: UserId | null;
   membershipRole: "owner" | "admin" | "staff" | "analyst";
@@ -104,11 +112,14 @@ type FixtureControls = {
   revokedTokens: string[];
   rotationDue: boolean;
   rotationCount: number;
+  signupDetails: StaffSignupInput[];
+  verifiedEmail: string | null;
 };
 
 const createFixture = () => {
   const controls: FixtureControls = {
     acceptedOrganizations: [],
+    authorizationPurposes: [],
     authenticationLevel: "mfa",
     identityUser: USER_ID,
     membershipRole: "owner",
@@ -116,6 +127,8 @@ const createFixture = () => {
     revokedTokens: [],
     rotationDue: false,
     rotationCount: 0,
+    signupDetails: [],
+    verifiedEmail: "person@example.test",
   };
   let activeToken: string | null = null;
   let activeSession = session();
@@ -161,7 +174,7 @@ const createFixture = () => {
   };
   const configuration = createStaffWebAuthConfig({
     browserEnvelopeKey: Buffer.alloc(32, 1).toString("base64url"),
-    callbackUri: "https://api.example.test/v1/staff/auth/callback",
+    callbackUri: "https://staff.example.test/v1/staff/auth/callback",
     clientId: "staff-client",
     clientSecret: "server-only-test-value",
     environment: "production",
@@ -214,7 +227,8 @@ const createFixture = () => {
       },
     },
     oidcClient: {
-      begin: () => {
+      begin: (purpose) => {
+        controls.authorizationPurposes.push(purpose);
         authorizationCount += 1;
         const state = String(authorizationCount).padStart(43, "s");
         return Promise.resolve({
@@ -230,15 +244,137 @@ const createFixture = () => {
           authenticationLevel: controls.authenticationLevel,
           authenticationTime: NOW,
           idToken: "header.payload.signature",
-          verifiedEmailTarget: "person@example.test",
+          verifiedEmailTarget: controls.verifiedEmail,
         }),
     },
     oidcVerifier,
     sessions,
+    signup: {
+      registerFirstOwner: ({ details }) => {
+        controls.signupDetails.push(details);
+        controls.identityUser = USER_ID;
+        return Promise.resolve(ORGANIZATION_A);
+      },
+      resolveFirstOwnerWorkspace: () =>
+        Promise.resolve(controls.signupDetails.length === 0 ? null : ORGANIZATION_A),
+    },
   };
   const api = createApi({ staffAuth: dependencies });
   return { api, controls, dependencies };
 };
+
+const startSignup = (fixture: ReturnType<typeof createFixture>) =>
+  fixture.api.inject({
+    method: "POST",
+    url: "/v1/staff/auth/signup",
+    headers: { origin: STAFF_ORIGIN, "sec-fetch-site": "same-origin" },
+    payload: SIGNUP_DETAILS,
+  });
+
+const finishSignup = async (fixture: ReturnType<typeof createFixture>) => {
+  const start = await startSignup(fixture);
+  expect(start.statusCode).toBe(200);
+  const { authorization_url: authorizationUrl } = start.json<{ authorization_url: string }>();
+  const state = authorizationState({ location: authorizationUrl });
+  return fixture.api.inject({
+    method: "GET",
+    url: "/v1/staff/auth/callback?code=signup-code&state=" + state,
+    headers: {
+      cookie: cookieHeader([
+        "__Host-lead-auth-transaction",
+        cookieValue(start.headers, "__Host-lead-auth-transaction"),
+      ]),
+    },
+  });
+};
+
+describe("Clinic workspace signup", () => {
+  it("provisions from sealed details after verification and reopens the workspace on sign-in", async () => {
+    const fixture = createFixture();
+    fixture.controls.identityUser = null;
+    try {
+      const callback = await finishSignup(fixture);
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(`/staff?organization=${ORGANIZATION_A}`);
+      expect(fixture.controls.authorizationPurposes).toEqual(["signup"]);
+      expect(fixture.controls.signupDetails).toEqual([SIGNUP_DETAILS]);
+      const staff = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/me",
+        headers: {
+          "x-organization-context": ORGANIZATION_A,
+          cookie: cookieHeader([
+            "__Host-lead-session",
+            cookieValue(callback.headers, "__Host-lead-session"),
+          ]),
+        },
+      });
+      expect(staff.statusCode).toBe(200);
+      const login = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/login?return_to=/staff",
+      });
+      const signedIn = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/callback?code=login-code&state=" + authorizationState(login.headers),
+        headers: {
+          cookie: cookieHeader([
+            "__Host-lead-auth-transaction",
+            cookieValue(login.headers, "__Host-lead-auth-transaction"),
+          ]),
+        },
+      });
+      expect(signedIn.headers.location).toBe(`/staff?organization=${ORGANIZATION_A}`);
+      expect(fixture.controls.signupDetails).toHaveLength(1);
+    } finally {
+      await fixture.api.close();
+    }
+  });
+
+  it.each(["unverified email", "missing MFA"] as const)(
+    "writes nothing with %s",
+    async (failure) => {
+      const fixture = createFixture();
+      if (failure === "unverified email") fixture.controls.verifiedEmail = null;
+      else fixture.controls.authenticationLevel = "single_factor";
+      try {
+        const callback = await finishSignup(fixture);
+        expect(callback.statusCode).toBe(303);
+        expect(callback.headers.location).toBe(
+          failure === "unverified email" ? "/signup?result=verify-email" : "/signup?result=retry",
+        );
+        expect(fixture.controls.signupDetails).toEqual([]);
+        expect(
+          setCookieLines(callback.headers).some((line) => line.startsWith("__Host-lead-session=")),
+        ).toBe(false);
+      } finally {
+        await fixture.api.close();
+      }
+    },
+  );
+
+  it("rejects foreign origin and an explicitly supplied tenant before starting OIDC", async () => {
+    const fixture = createFixture();
+    try {
+      const request = { method: "POST" as const, url: "/v1/staff/auth/signup" };
+      const crossOrigin = await fixture.api.inject({
+        ...request,
+        headers: { origin: "https://other.example.test" },
+        payload: SIGNUP_DETAILS,
+      });
+      expect(crossOrigin.statusCode).toBe(403);
+      const suppliedTenant = await fixture.api.inject({
+        ...request,
+        headers: { origin: STAFF_ORIGIN },
+        payload: { ...SIGNUP_DETAILS, organization_id: ORGANIZATION_B },
+      });
+      expect(suppliedTenant.statusCode).toBe(400);
+      expect(fixture.controls.authorizationPurposes).toEqual([]);
+    } finally {
+      await fixture.api.close();
+    }
+  });
+});
 
 const establishSession = async (fixture: ReturnType<typeof createFixture>) => {
   const started = await fixture.api.inject({
@@ -341,8 +477,39 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
       expect(cookie).toContain("Secure");
       expect(cookie).toContain("SameSite=Lax");
       expect(cookie).toContain("Path=/");
-      expect(cookie).toContain("Max-Age=600");
+      expect(cookie).toContain("Max-Age=1800");
       expect(cookie).not.toContain("Domain=");
+    } finally {
+      await fixture.api.close();
+    }
+  });
+
+  it("forces fresh provider authentication only for an explicit recovery login", async () => {
+    const fixture = createFixture();
+    const returnPath = `/staff?organization=${ORGANIZATION_A}`;
+    try {
+      const recovery = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/login?reauthenticate=true&return_to=" + encodeURIComponent(returnPath),
+      });
+      expect(recovery.statusCode).toBe(302);
+      expect(fixture.controls.authorizationPurposes).toEqual(["reauthenticate"]);
+
+      const callback = await fixture.api.inject({
+        headers: {
+          cookie: cookieHeader([
+            "__Host-lead-auth-transaction",
+            cookieValue(recovery.headers, "__Host-lead-auth-transaction"),
+          ]),
+        },
+        method: "GET",
+        url: "/v1/staff/auth/callback?code=x&state=" + authorizationState(recovery.headers),
+      });
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(returnPath);
+
+      await fixture.api.inject({ method: "GET", url: "/v1/staff/auth/login" });
+      expect(fixture.controls.authorizationPurposes).toEqual(["reauthenticate", "login"]);
     } finally {
       await fixture.api.close();
     }
@@ -364,6 +531,32 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
       expect(csrfCookie).not.toContain("HttpOnly");
       expect(lines.join("\n")).not.toContain("header.payload.signature");
       expect(lines.join("\n")).not.toContain(VERIFIER);
+    } finally {
+      await fixture.api.close();
+    }
+  });
+
+  it("returns an authenticated owner to the exact organization-bound workspace", async () => {
+    const fixture = createFixture();
+    const returnPath = `/staff?organization=${ORGANIZATION_A}`;
+    try {
+      const started = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/login?return_to=" + encodeURIComponent(returnPath),
+      });
+      const callback = await fixture.api.inject({
+        headers: {
+          cookie: cookieHeader([
+            "__Host-lead-auth-transaction",
+            cookieValue(started.headers, "__Host-lead-auth-transaction"),
+          ]),
+        },
+        method: "GET",
+        url: "/v1/staff/auth/callback?code=x&state=" + authorizationState(started.headers),
+      });
+      expect(callback.statusCode).toBe(303);
+      expect(callback.headers.location).toBe(returnPath);
+      expect(cookieValue(callback.headers, "__Host-lead-session")).toBeTruthy();
     } finally {
       await fixture.api.close();
     }
@@ -397,9 +590,26 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
     }
   });
 
-  it("rejects callback state mismatch, replay, duplicate cookies, and insufficient MFA", async () => {
+  it("clears stale callback state into a local re-authentication path", async () => {
     const fixture = createFixture();
     try {
+      const missingTransaction = await fixture.api.inject({
+        method: "GET",
+        url: "/v1/staff/auth/callback?code=x&state=" + "x".repeat(43),
+      });
+      expect(missingTransaction.statusCode).toBe(303);
+      expect(missingTransaction.headers.location).toBe("/staff?auth=reauthenticate");
+      expect(missingTransaction.body).not.toContain("transaction_cookie_missing");
+      const cleared = setCookieLines(missingTransaction.headers);
+      for (const name of [
+        "__Host-lead-auth-transaction",
+        "__Host-lead-csrf",
+        "__Host-lead-invitation-proof",
+        "__Host-lead-session",
+      ]) {
+        expect(cleared.some((line) => line.startsWith(name + "="))).toBe(true);
+      }
+
       const started = await fixture.api.inject({ method: "GET", url: "/v1/staff/auth/login" });
       const transaction = cookieValue(started.headers, "__Host-lead-auth-transaction");
       const state = authorizationState(started.headers);
@@ -408,7 +618,8 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
         method: "GET",
         url: "/v1/staff/auth/callback?code=x&state=" + "x".repeat(43),
       });
-      expect(mismatch.statusCode).toBe(401);
+      expect(mismatch.statusCode).toBe(303);
+      expect(mismatch.headers.location).toBe("/staff?auth=reauthenticate");
       const duplicate = await fixture.api.inject({
         headers: {
           cookie:
@@ -420,7 +631,8 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
         method: "GET",
         url: "/v1/staff/auth/callback?code=x&state=" + state,
       });
-      expect(duplicate.statusCode).toBe(401);
+      expect(duplicate.statusCode).toBe(303);
+      expect(duplicate.headers.location).toBe("/staff?auth=reauthenticate");
     } finally {
       await fixture.api.close();
     }
@@ -435,10 +647,9 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
         method: "GET",
         url: "/v1/staff/auth/callback?code=x&state=" + state,
       });
-      expect(response.statusCode).toBe(401);
-      expect(
-        setCookieLines(response.headers).some((line) => line.startsWith("__Host-lead-session=")),
-      ).toBe(false);
+      expect(response.statusCode).toBe(303);
+      expect(response.headers.location).toBe("/staff?auth=reauthenticate");
+      expect(cookieValue(response.headers, "__Host-lead-session")).toBe("");
     } finally {
       await noMfa.api.close();
     }
@@ -453,7 +664,9 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
         url: "/v1/staff/auth/callback?code=x&state=" + state,
       };
       expect((await replayed.api.inject(request)).statusCode).toBe(303);
-      expect((await replayed.api.inject(request)).statusCode).toBe(401);
+      const replay = await replayed.api.inject(request);
+      expect(replay.statusCode).toBe(303);
+      expect(replay.headers.location).toBe("/staff?auth=reauthenticate");
     } finally {
       await replayed.api.close();
     }
@@ -470,10 +683,9 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
         method: "GET",
         url: "/v1/staff/auth/callback?code=x&state=" + authorizationState(started.headers),
       });
-      expect(response.statusCode).toBe(401);
-      expect(
-        setCookieLines(response.headers).some((line) => line.startsWith("__Host-lead-session=")),
-      ).toBe(false);
+      expect(response.statusCode).toBe(303);
+      expect(response.headers.location).toBe("/staff?auth=denied");
+      expect(cookieValue(response.headers, "__Host-lead-session")).toBe("");
     } finally {
       await fixture.api.close();
     }
@@ -601,6 +813,8 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
         url: "/v1/staff/auth/session",
       });
       expect(stale.statusCode).toBe(401);
+      expect(cookieValue(stale.headers, "__Host-lead-session")).toBe("");
+      expect(cookieValue(stale.headers, "__Host-lead-csrf")).toBe("");
     } finally {
       await fixture.api.close();
     }
@@ -670,45 +884,53 @@ describe("S6.6 Fastify staff browser authentication", { timeout: 30_000 }, () =>
     }
   });
 
-  it("binds fresh step-up to the same session and User and rotates both credentials", async () => {
-    const fixture = createFixture();
-    try {
-      const established = await establishSession(fixture);
-      const initiated = await fixture.api.inject({
-        body: { return_to: "/settings/security" },
-        headers: {
-          cookie: cookieHeader(
-            ["__Host-lead-session", established.session],
-            ["__Host-lead-csrf", established.csrf],
-          ),
-          origin: STAFF_ORIGIN,
-          "sec-fetch-site": "same-origin",
-          "x-csrf-token": established.csrf,
-        },
-        method: "POST",
-        url: "/v1/staff/auth/step-up",
-      });
-      expect(initiated.statusCode).toBe(302);
-      const transaction = cookieValue(initiated.headers, "__Host-lead-auth-transaction");
-      const state = authorizationState(initiated.headers);
-      const callback = await fixture.api.inject({
-        headers: {
-          cookie: cookieHeader(
-            ["__Host-lead-auth-transaction", transaction],
-            ["__Host-lead-session", established.session],
-          ),
-        },
-        method: "GET",
-        url: "/v1/staff/auth/callback?code=x&state=" + state,
-      });
-      expect(callback.statusCode).toBe(303);
-      expect(callback.headers.location).toBe("/settings/security");
-      expect(fixture.controls.rotationCount).toBe(1);
-      expect(cookieValue(callback.headers, "__Host-lead-csrf")).toBe(ROTATED_CSRF);
-    } finally {
-      await fixture.api.close();
-    }
-  });
+  it.each([false, true])(
+    "binds fresh step-up and rotates both credentials (JSON navigation: %s)",
+    async (jsonNavigation) => {
+      const fixture = createFixture();
+      try {
+        const established = await establishSession(fixture);
+        const initiated = await fixture.api.inject({
+          body: { return_to: "/settings/security" },
+          headers: {
+            ...(jsonNavigation ? { accept: "application/json" } : {}),
+            cookie: cookieHeader(
+              ["__Host-lead-session", established.session],
+              ["__Host-lead-csrf", established.csrf],
+            ),
+            origin: STAFF_ORIGIN,
+            "sec-fetch-site": "same-origin",
+            "x-csrf-token": established.csrf,
+          },
+          method: "POST",
+          url: "/v1/staff/auth/step-up",
+        });
+        expect(initiated.statusCode).toBe(jsonNavigation ? 200 : 302);
+        const transaction = cookieValue(initiated.headers, "__Host-lead-auth-transaction");
+        const navigation: unknown = jsonNavigation ? initiated.json() : null;
+        if (jsonNavigation) expect(initiated.headers["cache-control"]).toBe("no-store");
+        const state = isSchemaValue(StaffStepUpNavigationSchema, navigation)
+          ? authorizationState({ location: navigation.authorization_url })
+          : authorizationState(initiated.headers);
+        const callback = await fixture.api.inject({
+          headers: {
+            cookie: cookieHeader(
+              ["__Host-lead-auth-transaction", transaction],
+              ["__Host-lead-session", established.session],
+            ),
+          },
+          method: "GET",
+          url: "/v1/staff/auth/callback?code=x&state=" + state,
+        });
+        expect(callback.statusCode).toBe(303);
+        expect(callback.headers.location).toBe("/settings/security");
+        expect(fixture.controls.rotationCount).toBe(1);
+        expect(cookieValue(callback.headers, "__Host-lead-csrf")).toBe(ROTATED_CSRF);
+      } finally {
+        await fixture.api.close();
+      }
+    },
+  );
 
   it("denies a step-up User swap", async () => {
     const fixture = createFixture();

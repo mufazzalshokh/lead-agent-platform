@@ -567,14 +567,20 @@ export const finalizeRepositoryIdempotency = async (
   session: TenantDbSession,
   input: Pick<PreparedLocationOperation, "idempotency" | "occurredAt">,
   resourceType:
-    "location" | "location_closure" | "appointment_request" | "handoff" | "notification",
+    | "location"
+    | "location_closure"
+    | "appointment_request"
+    | "handoff"
+    | "notification"
+    | "conversation",
   resourceId: ResourceId | LocationId,
   responseCiphertext: Uint8Array,
+  responseStatus: 200 | 202 = 200,
 ): Promise<void> => {
   const result = await executeTenantWrite(
     session,
     `update idempotency_keys
-        set status = 'succeeded', response_status = 200,
+        set status = 'succeeded', response_status = $7,
             response_ciphertext = $3, resource_type = $4, resource_id = $5,
             locked_until = null, completed_at = $6
       where organization_id = $1 and id = $2 and status = 'in_progress'`,
@@ -584,6 +590,7 @@ export const finalizeRepositoryIdempotency = async (
       resourceType,
       resourceId,
       input.occurredAt,
+      responseStatus,
     ],
   );
   if (result.rowCount !== 1) throw new LocationConfigurationReplayError();

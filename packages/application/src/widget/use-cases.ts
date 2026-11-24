@@ -5,18 +5,25 @@ import {
   WidgetConversationCreateInputSchema,
   WidgetMessageCreateInputSchema,
   WidgetTelemetryInputSchema,
+  WidgetRecoveryResumeInputSchema,
+  WidgetPhoneChoiceInputSchema,
+  WIDGET_PHONE_NOTICE,
+  WIDGET_PHONE_NOTICE_VERSION,
   isSchemaValue,
   type CanonicalInboundEvent,
   type ChannelConnectionId,
   type ConversationId,
   type MessageId,
   type OrganizationId,
+  type RequestId,
   type ResourceId,
   type WidgetConversation,
   type WidgetConversationCreateInput,
   type WidgetMessage,
   type WidgetMessageCreateInput,
   type WidgetTelemetryInput,
+  type WidgetRecoveryResumeInput,
+  type WidgetPhoneChoiceInput,
 } from "@lead-agent/contracts";
 import {
   WidgetOriginInvalidError,
@@ -24,6 +31,7 @@ import {
   createSecurityIdentifierFactory,
   normalizeWidgetOrigin,
   type SecurityIdentifierFactory,
+  type CustomerDataProtection,
   type WidgetExchangeGrantClaims,
   type WidgetExchangeGrantService,
   type WidgetRateLimiter,
@@ -32,11 +40,15 @@ import {
 } from "@lead-agent/security";
 
 import type { InboundRouteResolver, TrustedInboundRoute } from "../channels/index.js";
+import type { WidgetRecoveryStore } from "./recovery.js";
+import type { WidgetSessionAuthority } from "./authority.js";
+export type { WidgetSessionAuthority } from "./authority.js";
 
 import {
   createCanonicalInboundUseCases,
   type CanonicalInboundDataProtector,
   type CanonicalInboundResult,
+  type InboundConsentEvidence,
   type PreparedCanonicalInbound,
 } from "../conversations/inbound-use-cases.js";
 
@@ -46,18 +58,6 @@ const EXCHANGE_LIFETIME_MS = 60 * 1_000;
 
 export type WidgetRoute = TrustedInboundRoute;
 export type WidgetRouteResolver = InboundRouteResolver;
-
-export type WidgetSessionAuthority = Readonly<{
-  channelConnectionId: ChannelConnectionId;
-  contactId: string | null;
-  conversationId: ConversationId | null;
-  expiresAt: Date;
-  issuedAt: Date;
-  lastSeenAt: Date;
-  organizationId: OrganizationId;
-  requestedLocale: "en" | "ru" | "uz";
-  sessionId: ResourceId;
-}>;
 
 export type WidgetProtectedMessageRecord = Readonly<{
   bodyCiphertext: Uint8Array | null;
@@ -82,6 +82,17 @@ export interface WidgetCustomerDataRevealer {
     }>,
   ): string | null;
 }
+
+export type PreparedWidgetPhoneChoice = Readonly<{
+  consent: InboundConsentEvidence;
+  message: Readonly<{ bodyCiphertext: Uint8Array; bodyHash: Uint8Array }>;
+  phone: Readonly<{
+    ciphertext: Uint8Array;
+    displayRedacted: string;
+    lookupHash: Uint8Array;
+  }> | null;
+  requestId: RequestId;
+}>;
 
 export interface WidgetPersistenceStore {
   createSession(
@@ -118,6 +129,17 @@ export interface WidgetPersistenceStore {
       requestHash: Uint8Array;
     }>,
   ): Promise<CanonicalInboundResult>;
+  recordPhoneChoice(
+    input: Readonly<{
+      claims: WidgetTokenClaims;
+      conversationId: ConversationId;
+      idempotencyKeyHash: Uint8Array;
+      now: Date;
+      origin: string;
+      prepared: PreparedWidgetPhoneChoice;
+      requestHash: Uint8Array;
+    }>,
+  ): Promise<void>;
   authorize(
     input: Readonly<{
       claims: WidgetTokenClaims;
@@ -169,6 +191,26 @@ export class WidgetApplicationError extends Error {
 }
 
 export type WidgetUseCases = Readonly<{
+  issueRecoveryCode(
+    input: Readonly<{ bearerToken: string; origin: unknown; requestId: string }>,
+  ): Promise<Readonly<{ recoveryCode: string; recoveryExpiresAt: Date }>>;
+  resumeConversation(
+    input: Readonly<{
+      bearerToken: string;
+      body: WidgetRecoveryResumeInput;
+      origin: unknown;
+      clientIp: string;
+      requestId: string;
+    }>,
+  ): Promise<
+    Readonly<{
+      bearerToken: string;
+      conversationId: ConversationId;
+      expiresAt: Date;
+      recoveryCode: string;
+      recoveryExpiresAt: Date;
+    }>
+  >;
   bootstrap(
     input: Readonly<{
       clientIp: string;
@@ -214,6 +256,16 @@ export type WidgetUseCases = Readonly<{
   getConversation(
     input: Readonly<{ bearerToken: string; conversationId: ConversationId; origin: unknown }>,
   ): Promise<WidgetConversation>;
+  recordPhoneChoice(
+    input: Readonly<{
+      bearerToken: string;
+      body: WidgetPhoneChoiceInput;
+      conversationId: ConversationId;
+      idempotencyKey: string;
+      origin: unknown;
+      requestId: RequestId;
+    }>,
+  ): Promise<void>;
   listMessages(
     input: Readonly<{
       after?: number;
@@ -299,7 +351,9 @@ const canonicalEvent = (
 export const createWidgetUseCases = (
   dependencies: Readonly<{
     clock?: () => Date;
-    dataProtector: CanonicalInboundDataProtector & WidgetCustomerDataRevealer;
+    dataProtector: CanonicalInboundDataProtector &
+      WidgetCustomerDataRevealer &
+      Pick<CustomerDataProtection, "deriveContactIdentityLookupHash" | "protectContactIdentity">;
     embed?: Readonly<{
       exchanges: WidgetExchangeGrantService;
       platformOrigin: string;
@@ -310,6 +364,7 @@ export const createWidgetUseCases = (
     rateLimiter: WidgetRateLimiter;
     routeResolver: WidgetRouteResolver;
     tokens: WidgetTokenService;
+    recovery?: Readonly<{ grants: WidgetExchangeGrantService; store: WidgetRecoveryStore }>;
     telemetry?: Readonly<{
       observe(
         input: Readonly<{
@@ -412,6 +467,91 @@ export const createWidgetUseCases = (
     return { ...authenticated, newJti, receipt: result.value } as const;
   };
   return Object.freeze({
+    issueRecoveryCode: async ({ bearerToken, origin: rawOrigin, requestId }) => {
+      if (!dependencies.recovery) throw new WidgetApplicationError("channel_unavailable");
+      const { claims, now, origin } = await verifyRequest(bearerToken, rawOrigin, "mutation");
+      const jti = dependencies.recovery.grants.createJti();
+      const result = await dependencies.recovery.store.issue({
+        claims,
+        now,
+        origin,
+        codeHash: dependencies.tokens.hashJti(jti),
+        requestId,
+      });
+      if (result === null || result.authority.conversationId === null)
+        throw new WidgetTokenInvalidError();
+      return {
+        recoveryCode: dependencies.recovery.grants.issue({
+          channelConnectionId: claims.channelConnectionId,
+          organizationId: claims.organizationId,
+          sessionId: claims.sessionId,
+          embeddingOrigin: claims.embeddingOrigin ?? origin,
+          jti,
+          issuedAt: result.recoveryIssuedAt,
+          expiresAt: result.recoveryExpiresAt,
+        }),
+        recoveryExpiresAt: result.recoveryExpiresAt,
+      };
+    },
+    resumeConversation: async ({ bearerToken, body, origin: rawOrigin, clientIp, requestId }) => {
+      if (!dependencies.recovery) throw new WidgetApplicationError("channel_unavailable");
+      if (!isSchemaValue(WidgetRecoveryResumeInputSchema, body))
+        throw new WidgetApplicationError("validation_failed");
+      const now = clock(),
+        origin = normalizeWidgetOrigin(rawOrigin);
+      // Consume before decrypt/lookup; attacker-controlled code cannot create limiter buckets.
+      dependencies.rateLimiter.consume(["recovery-ip", clientIp], 5);
+      const context = await dependencies.tokens.verify(bearerToken, now);
+      if (context.origin !== origin || context.conversationId !== null)
+        throw new WidgetTokenInvalidError();
+      const grant = dependencies.recovery.grants.open(body.recovery_code, now);
+      if (
+        context.organizationId !== grant.organizationId ||
+        context.channelConnectionId !== grant.channelConnectionId ||
+        (context.embeddingOrigin ?? origin) !== grant.embeddingOrigin
+      )
+        throw new WidgetTokenInvalidError();
+      dependencies.rateLimiter.consume(["recovery-session", grant.sessionId], 5);
+      dependencies.rateLimiter.consume(["tenant-authenticated", grant.organizationId], 300);
+      const jti = dependencies.tokens.createJti(),
+        nextCodeJti = dependencies.recovery.grants.createJti();
+      const result = await dependencies.recovery.store.resume({
+        grant,
+        context,
+        origin,
+        now,
+        codeHash: dependencies.tokens.hashJti(grant.jti),
+        nextCodeHash: dependencies.tokens.hashJti(nextCodeJti),
+        accessJtiHash: dependencies.tokens.hashJti(jti),
+        requestId,
+      });
+      if (result === null || result.authority.conversationId === null)
+        throw new WidgetTokenInvalidError();
+      const authority = result.authority;
+      if (authority.conversationId === null) throw new WidgetTokenInvalidError();
+      return {
+        bearerToken: await dependencies.tokens.issue({
+          channelConnectionId: authority.channelConnectionId,
+          conversationId: authority.conversationId,
+          organizationId: authority.organizationId,
+          sessionId: authority.sessionId,
+          embeddingOrigin: grant.embeddingOrigin,
+          origin,
+          jti,
+          issuedAt: now,
+          expiresAt: authority.expiresAt,
+        }),
+        conversationId: authority.conversationId,
+        expiresAt: authority.expiresAt,
+        recoveryCode: dependencies.recovery.grants.issue({
+          ...grant,
+          jti: nextCodeJti,
+          issuedAt: result.recoveryIssuedAt,
+          expiresAt: result.recoveryExpiresAt,
+        }),
+        recoveryExpiresAt: result.recoveryExpiresAt,
+      };
+    },
     bootstrap: async (input) => {
       const now = clock();
       const origin = normalizeWidgetOrigin(input.origin);
@@ -619,6 +759,88 @@ export const createWidgetUseCases = (
             ? ("suppressed" as const)
             : ("accepted" as const),
         sequenceNo: accepted.receipt.messageSequenceNo,
+      });
+    },
+    recordPhoneChoice: async ({
+      bearerToken,
+      body,
+      conversationId,
+      idempotencyKey,
+      origin,
+      requestId,
+    }) => {
+      if (!isSchemaValue(WidgetPhoneChoiceInputSchema, body))
+        throw new WidgetApplicationError("validation_failed");
+      const authenticated = await verifyRequest(bearerToken, origin, "mutation");
+      const { claims } = authenticated;
+      if (claims.conversationId !== conversationId)
+        throw new WidgetApplicationError("resource_not_found");
+      const idempotencyKeyHash = requireIdempotencyKey(idempotencyKey);
+      let phone: PreparedWidgetPhoneChoice["phone"] = null;
+      if (body.decision === "granted") {
+        const normalized = body.phone.trim().replace(/[ ().-]/gu, "");
+        if (!/^\+[1-9][0-9]{7,14}$/u.test(normalized))
+          throw new WidgetApplicationError("validation_failed");
+        const identity = {
+          channelConnectionId: null,
+          identityType: "phone" as const,
+          organizationId: claims.organizationId,
+          value: normalized,
+        };
+        phone = {
+          ciphertext: dependencies.dataProtector.protectContactIdentity(identity),
+          displayRedacted: `*** ${normalized.slice(-4)}`,
+          // A submitted number is a callback route, not proof of identity.
+          // Scope its blind index to the verified Widget session.
+          lookupHash: dependencies.dataProtector.deriveContactIdentityLookupHash({
+            ...identity,
+            value: `widget-phone:${claims.sessionId}:${normalized}`,
+          }),
+        };
+      }
+      const notice = WIDGET_PHONE_NOTICE[body.locale];
+      const action = body.decision === "granted" ? notice.grant : notice.decline;
+      const requestHash = hash(
+        JSON.stringify([
+          claims.sessionId,
+          conversationId,
+          body.decision,
+          body.locale,
+          WIDGET_PHONE_NOTICE_VERSION,
+          notice.purpose,
+          action,
+          phone === null ? null : Buffer.from(phone.lookupHash).toString("hex"),
+        ]),
+      );
+      const message = await dependencies.dataProtector.protectContent({
+        channelConnectionId: claims.channelConnectionId,
+        organizationId: claims.organizationId,
+        content: { type: "text", text: action, locale_hint: body.locale },
+      });
+      await dependencies.persistence.recordPhoneChoice({
+        ...authenticated,
+        conversationId,
+        idempotencyKeyHash,
+        prepared: {
+          consent: {
+            evidenceCiphertext: null,
+            evidenceHash: hash(
+              Buffer.concat([requestHash, Buffer.from(idempotencyKeyHash)]).toString("hex"),
+            ),
+            lawfulBasisCode: "consent",
+            locale: body.locale,
+            noticeKey: "widget_booking_follow_up",
+            noticeVersion: WIDGET_PHONE_NOTICE_VERSION,
+            policyUrl: null,
+            purpose: "booking_follow_up",
+            status: body.decision,
+            supersedesConsentId: null,
+          },
+          message,
+          phone,
+          requestId,
+        },
+        requestHash,
       });
     },
     recordTelemetry: async ({ bearerToken, body, origin }) => {

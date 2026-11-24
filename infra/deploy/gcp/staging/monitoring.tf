@@ -7,14 +7,26 @@ resource "google_monitoring_alert_policy" "api_errors" {
   conditions {
     display_name = "API 5xx rate exceeds 1%"
     condition_threshold {
-      filter          = "resource.type = \"cloud_run_revision\" AND resource.label.service_name = \"${local.name_prefix}-api\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.label.response_code_class = \"5xx\""
-      comparison      = "COMPARISON_GT"
-      threshold_value = 0.01
-      duration        = "300s"
+      filter             = "resource.type = \"cloud_run_revision\" AND resource.label.project_id = \"${var.project_id}\" AND resource.label.location = \"${var.region}\" AND resource.label.service_name = \"${local.name_prefix}-api\" AND metric.type = \"run.googleapis.com/request_count\" AND metric.label.response_code_class = \"5xx\""
+      denominator_filter = "resource.type = \"cloud_run_revision\" AND resource.label.project_id = \"${var.project_id}\" AND resource.label.location = \"${var.region}\" AND resource.label.service_name = \"${local.name_prefix}-api\" AND metric.type = \"run.googleapis.com/request_count\""
+      comparison         = "COMPARISON_GT"
+      threshold_value    = 0.01
+      duration           = "300s"
 
+      # Matching labels and sums make this a service-wide ratio, not an average
+      # of per-revision percentages or an absolute count of errors per second.
       aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_RATE"
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name", "resource.label.location"]
+      }
+
+      denominator_aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name", "resource.label.location"]
       }
     }
   }

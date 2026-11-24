@@ -116,6 +116,13 @@ export const widgetSessions = pgTable(
     issuedAt: timestamp("issued_at", { mode: "date", withTimezone: true }).notNull(),
     lastSeenAt: timestamp("last_seen_at", { mode: "date", withTimezone: true }).notNull(),
     expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true }).notNull(),
+    recoveryTokenHash: binary("recovery_token_hash"),
+    recoveryIssuedAt: timestamp("recovery_issued_at", { mode: "date", withTimezone: true }),
+    recoveryExpiresAt: timestamp("recovery_expires_at", { mode: "date", withTimezone: true }),
+    recoveryRequestOrigin: varchar("recovery_request_origin", { length: 2048 }),
+    recoveryEmbeddingOrigin: varchar("recovery_embedding_origin", { length: 2048 }),
+    accessIssuedAt: timestamp("access_issued_at", { mode: "date", withTimezone: true }),
+    accessExpiresAt: timestamp("access_expires_at", { mode: "date", withTimezone: true }),
     revokedAt: timestamp("revoked_at", { mode: "date", withTimezone: true }),
     revocationReason: varchar("revocation_reason", { length: 500 }),
     ...mutableColumns(),
@@ -150,14 +157,14 @@ export const widgetSessions = pgTable(
       "widget_sessions_lifetime_check",
       sql`${table.expiresAt} > ${table.issuedAt}
         and ${table.lastSeenAt} >= ${table.issuedAt}
-        and ${table.lastSeenAt} < ${table.expiresAt}`,
+        and ${table.lastSeenAt} < coalesce(${table.accessExpiresAt}, ${table.expiresAt})`,
     ),
     check(
       "widget_sessions_revocation_check",
       sql`(${table.status} = 'revoked'
           and ${table.revokedAt} is not null
           and ${table.revokedAt} >= ${table.issuedAt}
-          and ${table.revokedAt} < ${table.expiresAt})
+          and ${table.revokedAt} < coalesce(${table.recoveryExpiresAt}, ${table.accessExpiresAt}, ${table.expiresAt}))
         or (${table.status} <> 'revoked' and ${table.revokedAt} is null)`,
     ),
     check(
@@ -168,6 +175,31 @@ export const widgetSessions = pgTable(
           and length(${table.revocationReason}) between 1 and 500)`,
     ),
     check("widget_sessions_version_check", sql`${table.version} > 0`),
+    check(
+      "widget_sessions_recovery_shape_check",
+      sql`
+      (${table.recoveryTokenHash} is null and ${table.recoveryIssuedAt} is null and ${table.recoveryExpiresAt} is null and ${table.recoveryRequestOrigin} is null and ${table.recoveryEmbeddingOrigin} is null)
+      or (${table.recoveryTokenHash} is not null and octet_length(${table.recoveryTokenHash}) = 32
+        and ${table.recoveryIssuedAt} is not null and ${table.recoveryExpiresAt} is not null
+        and ${table.recoveryIssuedAt} >= ${table.issuedAt}
+        and ${table.recoveryExpiresAt} > ${table.recoveryIssuedAt}
+        and ${table.recoveryExpiresAt} <= ${table.recoveryIssuedAt} + interval '24 hours'
+        and ${table.recoveryRequestOrigin} is not null and length(${table.recoveryRequestOrigin}) > 0
+        and ${table.recoveryEmbeddingOrigin} is not null and length(${table.recoveryEmbeddingOrigin}) > 0
+        and ${table.contactId} is not null and ${table.conversationId} is not null)`,
+    ),
+    check(
+      "widget_sessions_access_shape_check",
+      sql`
+      (${table.accessIssuedAt} is null and ${table.accessExpiresAt} is null)
+      or (${table.accessIssuedAt} is not null and ${table.accessExpiresAt} is not null
+        and ${table.recoveryIssuedAt} is not null and ${table.recoveryExpiresAt} is not null
+        and ${table.accessIssuedAt} >= ${table.recoveryIssuedAt}
+        and ${table.lastSeenAt} >= ${table.accessIssuedAt}
+        and ${table.accessExpiresAt} > ${table.accessIssuedAt}
+        and ${table.accessExpiresAt} <= ${table.accessIssuedAt} + interval '2 hours'
+        and ${table.accessExpiresAt} <= ${table.recoveryExpiresAt})`,
+    ),
     check("widget_sessions_timestamps_check", sql`${table.updatedAt} >= ${table.createdAt}`),
     foreignKey({
       columns: [table.organizationId],

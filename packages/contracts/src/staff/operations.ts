@@ -104,10 +104,75 @@ export const StaffRejectAppointmentInputSchema = Type.Object(
   { reason_code: code() },
   { $id: "StaffRejectAppointmentInput.v1", additionalProperties: false },
 );
+export const STAFF_APPOINTMENT_WITHDRAWAL_REASON = "customer_withdrew";
+export const StaffCancelAppointmentInputSchema = Type.Object(
+  { reason_code: code() },
+  { $id: "StaffCancelAppointmentInput.v1", additionalProperties: false },
+);
+const attestationMethod = () => Type.Union([Type.Literal("phone"), Type.Literal("in_person")]);
+export const StaffAttestCustomerConfirmationInputSchema = Type.Object(
+  {
+    offer_version: embed(ResourceVersionSchema),
+    attestation_method: attestationMethod(),
+    customer_acted_at: embed(UtcTimestampSchema),
+    explicit_confirmation: Type.Literal(true),
+  },
+  { $id: "StaffAttestCustomerConfirmationInput.v1", additionalProperties: false },
+);
+export const StaffAppointmentConfirmationSchema = Type.Object(
+  {
+    appointment_version: embed(ResourceVersionSchema),
+    offline_offer: Type.Union([
+      Type.Object(
+        {
+          offer_version: embed(ResourceVersionSchema),
+          start_at: embed(UtcTimestampSchema),
+          issued_at: embed(UtcTimestampSchema),
+          expires_at: embed(UtcTimestampSchema),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Null(),
+    ]),
+    attestation: Type.Union([
+      Type.Object(
+        {
+          attestation_method: attestationMethod(),
+          customer_acted_at: embed(UtcTimestampSchema),
+          recorded_at: embed(UtcTimestampSchema),
+          recorded_by_membership_id: embed(MembershipIdSchema),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Null(),
+    ]),
+  },
+  { $id: "StaffAppointmentConfirmation.v1", additionalProperties: false },
+);
+export const StaffAppointmentConfirmationResponseSchema = createSuccessEnvelopeSchema(
+  StaffAppointmentConfirmationSchema,
+  "StaffAppointmentConfirmationResponse.v1",
+);
+export const StaffStepUpNavigationSchema = Type.Object(
+  { authorization_url: Type.String({ maxLength: 8192, pattern: "^https://" }) },
+  { $id: "StaffStepUpNavigation.v1", additionalProperties: false },
+);
+export type StaffAppointmentConfirmation = Type.Static<typeof StaffAppointmentConfirmationSchema>;
+export type StaffAttestCustomerConfirmationInput = Type.Static<
+  typeof StaffAttestCustomerConfirmationInputSchema
+>;
 export const StaffClaimHandoffInputSchema = Type.Object(
   { conversation_version: embed(ResourceVersionSchema) },
   { $id: "StaffClaimHandoffInput.v1", additionalProperties: false },
 );
+export const StaffAssignHandoffInputSchema = Type.Object(
+  {
+    conversation_version: embed(ResourceVersionSchema),
+    assignee_membership_id: embed(MembershipIdSchema),
+  },
+  { $id: "StaffAssignHandoffInput.v1", additionalProperties: false },
+);
+export type StaffAssignHandoffInput = Type.Static<typeof StaffAssignHandoffInputSchema>;
 export const StaffResolveHandoffInputSchema = Type.Object(
   {
     conversation_version: embed(ResourceVersionSchema),
@@ -119,6 +184,11 @@ export const StaffResolveHandoffInputSchema = Type.Object(
 export const StaffAcknowledgeInputSchema = Type.Object(
   {},
   { $id: "StaffAcknowledgeInput.v1", additionalProperties: false },
+);
+export const STAFF_REPLY_MAX_BYTES = 1_000;
+export const StaffReplyInputSchema = Type.Object(
+  { text: Type.String({ minLength: 1, maxLength: STAFF_REPLY_MAX_BYTES, pattern: "\\S" }) },
+  { $id: "StaffReplyInput.v1", additionalProperties: false },
 );
 
 export const StaffAttendanceInputSchema = Type.Object(
@@ -196,7 +266,9 @@ export type StaffMutationResult = Type.Static<typeof StaffMutationResultSchema>;
 export type StaffOutcome = Type.Static<typeof StaffOutcomeSchema>;
 export type StaffAcceptAppointmentInput = Type.Static<typeof StaffAcceptAppointmentInputSchema>;
 export type StaffRejectAppointmentInput = Type.Static<typeof StaffRejectAppointmentInputSchema>;
+export type StaffCancelAppointmentInput = Type.Static<typeof StaffCancelAppointmentInputSchema>;
 export type StaffClaimHandoffInput = Type.Static<typeof StaffClaimHandoffInputSchema>;
 export type StaffResolveHandoffInput = Type.Static<typeof StaffResolveHandoffInputSchema>;
+export type StaffReplyInput = Type.Static<typeof StaffReplyInputSchema>;
 export type StaffAttendanceInput = Type.Static<typeof StaffAttendanceInputSchema>;
 export type StaffRevenueInput = Type.Static<typeof StaffRevenueInputSchema>;

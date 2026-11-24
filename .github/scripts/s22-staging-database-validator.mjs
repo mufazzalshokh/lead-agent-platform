@@ -60,6 +60,7 @@ const applicationRoleUrls = Object.freeze({
 
 const definerRoles = [
   "lead_agent_async_maintenance_definer",
+  "lead_agent_first_tenant_bootstrap_definer",
   "lead_agent_identity_definer",
   "lead_agent_inbound_route_definer",
   "lead_agent_membership_definer",
@@ -124,12 +125,42 @@ const dependencyUnavailable = () => {
   error.code = "DEPENDENCY_UNAVAILABLE";
   return error;
 };
+const migrationProfile = (head) => {
+  const count = new Map([
+    ["0031_s22_widget_inbound_route_management", 32],
+    ["0032_s22_widget_recovery", 33],
+    ["0033_first_owner_signup", 34],
+  ]).get(head);
+  if (count === undefined) {
+    const error = new Error("Unreviewed migration head");
+    error.code = "MIGRATION_HEAD_UNREVIEWED";
+    throw error;
+  }
+  return { head, count };
+};
 
 const main = async () => {
+  const packaged = migrationProfile(required("DEPLOYMENT_MIGRATION_HEAD"));
+  const profile = migrationProfile(process.env.S22_VALIDATOR_SCHEMA_HEAD ?? packaged.head);
+  if (
+    profile.head !== packaged.head &&
+    !(packaged.head === "0033_first_owner_signup" && profile.head === "0032_s22_widget_recovery")
+  ) {
+    throw new Error("Unapproved validator schema and package combination");
+  }
+  const requiredDefinerRoles =
+    profile.head === "0033_first_owner_signup"
+      ? [...definerRoles, "lead_agent_signup_definer"].sort()
+      : definerRoles;
   const { withLibpqCompatibleRequireSsl } = await import("@lead-agent/config");
   const { Pool } = await import("pg");
   const { readStagingMigrationManifest, stagingRolePasswordFromUrl } =
     await import("./dist/migrate.js");
+  const readOnlyConnectionString = (value) => {
+    const url = new URL(withLibpqCompatibleRequireSsl(value));
+    url.searchParams.set("options", "-c default_transaction_read_only=on");
+    return url.toString();
+  };
 
   const pools = [];
   const rolePools = new Map();
@@ -139,25 +170,26 @@ const main = async () => {
   await check(
     {
       assertion: "migration_count",
-      expected: 30,
+      expected: packaged.count,
       failureCode: "S22V001_MIGRATION_COUNT",
     },
     async () => {
       manifest = await readStagingMigrationManifest();
-      return { observed: manifest.entries.length, pass: manifest.entries.length === 30 };
+      const observed = manifest.entries.length;
+      return { observed, pass: observed === packaged.count };
     },
   );
 
   await check(
     {
       assertion: "migration_head",
-      expected: "0029_s21_thread_automation_controls",
+      expected: packaged.head,
       failureCode: "S22V002_MIGRATION_HEAD",
     },
     async () => {
       manifest ??= await readStagingMigrationManifest();
       const observed = manifest.entries.at(-1)?.tag ?? "unavailable";
-      return { observed, pass: observed === "0029_s21_thread_automation_controls" };
+      return { observed, pass: observed === packaged.head };
     },
   );
 
@@ -170,7 +202,7 @@ const main = async () => {
     async () => {
       const pool = new Pool({
         application_name: "lead-agent-staging-validator",
-        connectionString: withLibpqCompatibleRequireSsl(required("MIGRATION_DATABASE_URL")),
+        connectionString: readOnlyConnectionString(required("MIGRATION_DATABASE_URL")),
         connectionTimeoutMillis: 15_000,
         max: 1,
         query_timeout: 15_000,
@@ -178,20 +210,22 @@ const main = async () => {
       pools.push(pool);
       admin = await pool.connect();
       const identity = await admin.query(
-        "select current_database() as database_name, current_setting('server_version_num')::integer as server_version_num",
+        "select current_database() as database_name, current_setting('server_version_num')::integer as server_version_num, current_setting('transaction_read_only') = 'on' as read_only",
       );
       const databaseName = identity.rows[0]?.database_name ?? "unavailable";
       const serverVersion = identity.rows[0]?.server_version_num ?? 0;
       const observed = {
         database: databaseName,
         postgresql_major: Math.trunc(serverVersion / 10_000),
+        read_only: identity.rows[0]?.read_only === true,
       };
       return {
         observed,
         pass:
           databaseName === "lead_agent_staging" &&
           serverVersion >= 170_000 &&
-          serverVersion < 180_000,
+          serverVersion < 180_000 &&
+          observed.read_only,
       };
     },
   );
@@ -204,7 +238,7 @@ const main = async () => {
   await check(
     {
       assertion: "applied_migration_count",
-      expected: 30,
+      expected: profile.count,
       failureCode: "S22V004_APPLIED_MIGRATION_COUNT",
     },
     () =>
@@ -213,36 +247,157 @@ const main = async () => {
           "select count(*)::integer as count from drizzle.__drizzle_migrations",
         );
         const observed = applied.rows[0]?.count ?? 0;
-        return { observed, pass: observed === 30 };
+        return { observed, pass: observed === profile.count };
       }),
   );
 
   await check(
     {
       assertion: "applied_migration_head",
-      expected: "0029_s21_thread_automation_controls",
+      expected: profile.head,
       failureCode: "S22V005_APPLIED_MIGRATION_HEAD",
     },
     () =>
       withAdmin(async (client) => {
         manifest ??= await readStagingMigrationManifest();
-        const head = manifest.entries.at(-1);
+        const head = manifest.entries[profile.count - 1];
         const applied = await client.query(
           "select max(created_at)::text as latest_applied_when from drizzle.__drizzle_migrations",
         );
         const latestAppliedWhen = applied.rows[0]?.latest_applied_when ?? "unavailable";
         const observed = {
           latest_applied_when: latestAppliedWhen,
-          packaged_head: head?.tag ?? "unavailable",
+          expected_journal_head: head?.tag ?? "unavailable",
         };
         return {
           observed,
-          pass:
-            head?.tag === "0029_s21_thread_automation_controls" &&
-            latestAppliedWhen === String(head.when),
+          pass: head?.tag === profile.head && latestAppliedWhen === String(head.when),
         };
       }),
   );
+
+  if (profile.count >= 33) {
+    await check(
+      {
+        assertion: "widget_recovery_columns",
+        expected: 7,
+        failureCode: "S22V034_WIDGET_RECOVERY_COLUMNS",
+      },
+      () =>
+        withAdmin(async (client) => {
+          const columns = await client.query(
+            "select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'widget_sessions' and column_name = any($1::text[]) order by column_name",
+            [
+              [
+                "recovery_token_hash",
+                "recovery_issued_at",
+                "recovery_expires_at",
+                "recovery_request_origin",
+                "recovery_embedding_origin",
+                "access_issued_at",
+                "access_expires_at",
+              ],
+            ],
+          );
+          return {
+            observed: columns.rows.length,
+            pass:
+              columns.rows.length === 7 &&
+              columns.rows.every(
+                (row) =>
+                  row.is_nullable === "YES" &&
+                  row.data_type ===
+                    (row.column_name === "recovery_token_hash"
+                      ? "bytea"
+                      : row.column_name.endsWith("_origin")
+                        ? "character varying"
+                        : "timestamp with time zone"),
+              ),
+          };
+        }),
+    );
+    await check(
+      {
+        assertion: "widget_recovery_constraints",
+        expected: 4,
+        failureCode: "S22V035_WIDGET_RECOVERY_CONSTRAINTS",
+      },
+      () =>
+        withAdmin(async (client) => {
+          const constraints = await client.query(
+            "select conname, convalidated, pg_get_constraintdef(oid) as definition from pg_constraint where conrelid = 'public.widget_sessions'::regclass and contype = 'c' and conname = any($1::text[]) order by conname",
+            [
+              [
+                "widget_sessions_access_shape_check",
+                "widget_sessions_recovery_shape_check",
+                "widget_sessions_lifetime_check",
+                "widget_sessions_revocation_check",
+              ],
+            ],
+          );
+          return {
+            observed: constraints.rows.length,
+            pass:
+              constraints.rows.length === 4 &&
+              constraints.rows.every(
+                (row) =>
+                  row.convalidated === true &&
+                  row.definition.includes(
+                    row.conname === "widget_sessions_recovery_shape_check" ||
+                      row.conname === "widget_sessions_revocation_check"
+                      ? "recovery_expires_at"
+                      : "access_expires_at",
+                  ),
+              ),
+          };
+        }),
+    );
+  }
+
+  if (profile.head === "0033_first_owner_signup") {
+    await check(
+      {
+        assertion: "first_owner_signup_boundary",
+        expected: "auth_only_signup_function_and_private_registration_table",
+        failureCode: "S22V036_FIRST_OWNER_SIGNUP_BOUNDARY",
+      },
+      () =>
+        withAdmin(async (client) => {
+          const boundary = await client.query(`
+            select procedure.prosecdef
+                     and owner.rolname = 'lead_agent_signup_definer'
+                     and 'search_path=pg_catalog' = any(procedure.proconfig) as hardened_function,
+                   pg_catalog.has_function_privilege('lead_agent_auth', procedure.oid, 'EXECUTE')
+                     and not pg_catalog.has_function_privilege('lead_agent_runtime', procedure.oid, 'EXECUTE')
+                     and not pg_catalog.has_function_privilege('lead_agent_ingress', procedure.oid, 'EXECUTE')
+                     and not exists (
+                       select 1 from pg_catalog.aclexplode(
+                         coalesce(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+                       ) as grant_entry where grant_entry.grantee = 0
+                     ) as auth_only_execute,
+                   pg_catalog.to_regclass('app.first_owner_registrations') is not null
+                     and not exists (
+                       select 1 from unnest(array['lead_agent_auth','lead_agent_runtime','lead_agent_ingress']) as caller
+                       where pg_catalog.has_any_column_privilege(
+                         caller, pg_catalog.to_regclass('app.first_owner_registrations'), 'SELECT,INSERT,UPDATE,REFERENCES'
+                       ) or pg_catalog.has_table_privilege(
+                         caller, pg_catalog.to_regclass('app.first_owner_registrations'), 'DELETE,TRUNCATE,TRIGGER'
+                       )
+                     ) as private_registration_table
+              from pg_catalog.pg_proc as procedure
+              join pg_catalog.pg_roles as owner on owner.oid = procedure.proowner
+             where procedure.oid = pg_catalog.to_regprocedure(
+               'app.register_first_owner(varchar,varchar,varchar,varchar,varchar,uuid,uuid,uuid,uuid,uuid,varchar,uuid)'
+             )
+          `);
+          const observed = boundary.rows[0] ?? null;
+          return {
+            observed,
+            pass: observed !== null && Object.values(observed).every((value) => value === true),
+          };
+        }),
+    );
+  }
 
   await check(
     {
@@ -285,7 +440,7 @@ const main = async () => {
       expected: {
         bypassrls: false,
         login: false,
-        roles: definerRoles,
+        roles: requiredDefinerRoles,
         superuser: false,
       },
       failureCode: "S22V008_DEFINER_ROLE_MANIFEST",
@@ -294,7 +449,7 @@ const main = async () => {
       withAdmin(async (client) => {
         const roles = await client.query(
           "select rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_catalog.pg_roles where rolname = any($1::text[]) order by rolname",
-          [definerRoles],
+          [requiredDefinerRoles],
         );
         const observed = roles.rows.map((role) => ({
           bypassrls: role.rolbypassrls,
@@ -314,8 +469,8 @@ const main = async () => {
         return {
           observed,
           pass:
-            roles.rows.length === definerRoles.length &&
-            roles.rows.map(({ rolname }) => rolname).join(",") === definerRoles.join(",") &&
+            roles.rows.length === requiredDefinerRoles.length &&
+            roles.rows.map(({ rolname }) => rolname).join(",") === requiredDefinerRoles.join(",") &&
             secure,
         };
       }),
@@ -386,7 +541,7 @@ const main = async () => {
         stagingRolePasswordFromUrl(connectionString, role);
         const pool = new Pool({
           application_name: `lead-agent-staging-${role}-validator`,
-          connectionString: withLibpqCompatibleRequireSsl(connectionString),
+          connectionString: readOnlyConnectionString(connectionString),
           connectionTimeoutMillis: 15_000,
           max: 1,
           query_timeout: 15_000,
@@ -394,15 +549,19 @@ const main = async () => {
         pools.push(pool);
         rolePools.set(role, pool);
         const identity = await pool.query(
-          "select current_user as role_name, current_database() as database_name",
+          "select current_user as role_name, current_database() as database_name, current_setting('transaction_read_only') = 'on' as read_only",
         );
         const observed = {
           database: identity.rows[0]?.database_name ?? "unavailable",
           role: identity.rows[0]?.role_name ?? "unavailable",
+          read_only: identity.rows[0]?.read_only === true,
         };
         return {
           observed,
-          pass: observed.database === "lead_agent_staging" && observed.role === role,
+          pass:
+            observed.database === "lead_agent_staging" &&
+            observed.role === role &&
+            observed.read_only,
         };
       },
     );

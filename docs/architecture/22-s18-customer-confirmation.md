@@ -63,6 +63,15 @@ processing pointer. Duplicate or racing workers cannot create a second fact set.
 Decline uses the already-approved `cancelled` transition. Changed time preferences
 do not confirm or automatically reschedule.
 
+Staff cancellation uses the same domain transition under the staff permission,
+version, idempotency, and audit controls. It revokes a pending confirmation
+capability and preserves existing confirmation evidence. An active, bound channel
+receives a queued notice. The workspace asks staff to check customer notification,
+including when the channel is unavailable. Customer reads and provider dispatch
+skip a confirmation prompt for an offer that staff withdrew. A provider request
+already in flight can still complete. A subsequent customer response cannot
+confirm the cancelled request.
+
 ## Instagram additive compatibility
 
 V1 remains unchanged: `customer_session | telegram | staff_attested_external`.
@@ -76,10 +85,19 @@ no tables, indexes, role/RLS broadening, data rewrite, or historical backfill.
 All 345 accepted pre-S18 schemas and all historical V1 evidence retain their
 original meaning. Production tables remain 51.
 
-Existing audited `staff_attested_external` domain/persistence support remains
-unchanged, including its existing method and fresh-MFA requirements. S18 does
-not introduce a new staff attestation endpoint or claim that staff acceptance
-is independent customer evidence.
+## Offline Widget confirmation
+
+The preparation worker can prepare a Widget offer after the customer's bound
+session expires or is revoked. It saves the prompt so the customer can see the
+offer if they regain access before the original deadline. The staff workspace
+surfaces an active offline offer for follow-up.
+
+The staff confirmation command requires the appointment version, offer version,
+explicit customer acceptance by phone or in person, its actual timestamp, and
+fresh MFA. It checks the current Widget session binding and offer deadline again
+in the write transaction. The appointment, confirmation evidence, Lead
+conversion, history, audit, and outbox commit together. The staff workspace
+shows the recorded method, time, and member in appointment history.
 
 ## Explicit deferrals
 

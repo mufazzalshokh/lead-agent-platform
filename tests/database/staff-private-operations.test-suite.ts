@@ -13,9 +13,11 @@ import {
 import {
   OrganizationIdSchema,
   MembershipIdSchema,
+  type MembershipId,
   UserIdSchema,
   ResourceIdSchema,
   StaffAcceptAppointmentInputSchema,
+  STAFF_APPOINTMENT_WITHDRAWAL_REASON,
   StaffAttendanceInputSchema,
   StaffRevenueInputSchema,
   isSchemaValue,
@@ -23,6 +25,7 @@ import {
 import {
   resolveAuthorizationContext,
   type AuthenticatedApplicationSession,
+  type CustomerDataProtection,
   type MembershipRole,
 } from "../../packages/security/src/index.js";
 import { fixtureId } from "../ai/fixtures.js";
@@ -30,24 +33,28 @@ import { fixtureId } from "../ai/fixtures.js";
 type Harness = Readonly<{
   privilegedPool: () => Pool;
   runtime: () => TenantDatabaseRuntime;
+  dataProtection: CustomerDataProtection;
   seedRequest: (tenant: "a" | "b") => Promise<CanonicalInboundReceipt>;
+  inbound: (text: string, sequence: number, receivedAt: string) => Promise<CanonicalInboundReceipt>;
 }>;
 export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
   const now = new Date("2026-09-18T09:00:00.000Z"),
     rootKey = new Uint8Array(32).fill(17);
   const operations = () =>
-    createStaffOperationsDependencies(harness.runtime(), rootKey, () => now).operations;
+    createStaffOperationsDependencies(harness.runtime(), rootKey, harness.dataProtection, () => now)
+      .operations;
   const authorization = async (
     receipt: CanonicalInboundReceipt,
     role: MembershipRole = "staff",
     locationScope: "all" | "restricted" = "all",
+    membershipId?: string,
   ) => {
     const row = (
       await harness
         .privilegedPool()
         .query(
-          `select organization_id,user_id,id from memberships where organization_id=(select organization_id from conversations where id=$1) order by id limit 1`,
-          [receipt.conversationId],
+          `select organization_id,user_id,id from memberships where organization_id=(select organization_id from conversations where id=$1) and ($2::uuid is null or id=$2::uuid) order by id limit 1`,
+          [receipt.conversationId, membershipId ?? null],
         )
     ).rows[0] as Record<string, unknown> | undefined;
     if (
@@ -100,6 +107,27 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
     if (item === undefined) throw new Error("S17 requires an S16 requested fixture");
     return { receipt, auth, ops, item };
   };
+  const withHandoff = async () => {
+    const f = await requested();
+    const id = requireResource(fixtureId(27004));
+    const pool = harness.privilegedPool();
+    await pool.query(
+      `insert into handoffs(id,organization_id,conversation_id,lead_id,location_id,status,trigger_reason,queue_key,requested_at,sla_due_at,created_at,updated_at) values ($1,$2,$3,$4,$5,'requested','customer_requested','staff',$6,$6::timestamptz+interval '1 hour',$6,$6)`,
+      [
+        id,
+        f.auth.organizationId,
+        f.receipt.conversationId,
+        f.receipt.leadId,
+        f.item.location_id,
+        now,
+      ],
+    );
+    await pool.query(
+      `update conversations set status='awaiting_staff',automation_mode='paused',active_handoff_id=$1 where id=$2`,
+      [id, f.receipt.conversationId],
+    );
+    return { ...f, handoff: await f.ops.get(f.auth, "handoff", id) };
+  };
   const acceptSlot = { start_at: "2026-09-19T12:00:00.000Z", end_at: "2026-09-19T12:30:00.000Z" };
   const mutation = (f: Awaited<ReturnType<typeof requested>>, key = "s17-accept") =>
     f.ops.mutate(
@@ -136,6 +164,36 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
     return row;
   };
   describe("S17 real PostgreSQL private operations", () => {
+    it("records a customer withdrawal from a requested appointment without allowing staff to relabel rejection", async () => {
+      const f = await requested();
+      const cancel = (reason: string, version = f.item.version) =>
+        f.ops.mutate(
+          f.auth,
+          "appointment_request",
+          f.item.id,
+          version,
+          "staff-withdrawal",
+          {
+            action: "cancel",
+            input: { reason_code: reason },
+          },
+          "request:withdrawal",
+          "unused",
+        );
+      await expect(cancel("clinic_cancelled")).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      const result = await cancel(STAFF_APPOINTMENT_WITHDRAWAL_REASON);
+      expect(result.resource).toMatchObject({ status: "cancelled", version: f.item.version + 1 });
+      expect(await cancel(STAFF_APPOINTMENT_WITHDRAWAL_REASON)).toEqual(result);
+      const events = await harness
+        .privilegedPool()
+        .query<{ count: number }>(
+          `select count(*)::int as count from outbox_events where organization_id=$1 and aggregate_id=$2 and event_type='appointment_request.cancelled'`,
+          [f.auth.organizationId, f.item.id],
+        );
+      expect(events.rows[0]?.count).toBe(1);
+    });
     it("opens S16 no-phone requested work with preferences and existing conversation/contact context", async () => {
       const f = await requested(),
         page = await f.ops.list(f.auth, "conversation", {});
@@ -363,29 +421,9 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       });
     });
     it("claims/starts and resolves Handoff with coupled Conversation CAS and explicit disposition", async () => {
-      const f = await requested(),
-        handoff = fixtureId(27004);
-      await harness
-        .privilegedPool()
-        .query(
-          `insert into handoffs(id,organization_id,conversation_id,lead_id,location_id,status,trigger_reason,queue_key,requested_at,sla_due_at,created_at,updated_at) values ($1,$2,$3,$4,$5,'requested','customer_requested','staff',$6,$6::timestamptz+interval '1 hour',$6,$6)`,
-          [
-            handoff,
-            f.auth.organizationId,
-            f.receipt.conversationId,
-            f.receipt.leadId,
-            f.item.location_id,
-            now,
-          ],
-        );
-      await harness
-        .privilegedPool()
-        .query(
-          `update conversations set status='awaiting_staff',automation_mode='paused',active_handoff_id=$1 where id=$2`,
-          [handoff, f.receipt.conversationId],
-        );
-      const id = requireResource(handoff),
-        item = await f.ops.get(f.auth, "handoff", id);
+      const f = await withHandoff(),
+        item = f.handoff,
+        id = item.id;
       if (item.conversation_version === null) throw new Error("Missing version");
       const command = {
         action: "claim" as const,
@@ -448,6 +486,240 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
             ])
         ).rows[0],
       ).toEqual({ status: "resolved", active_handoff_id: null });
+    });
+    it("assigns and reassigns a handoff under membership and ownership guards", async () => {
+      const f = await withHandoff();
+      const other = await requested("b");
+      const member = fixtureId(27021);
+      if (!isSchemaValue(MembershipIdSchema, member)) throw new Error("Invalid assignee fixture");
+      const user = fixtureId(27020);
+      const pool = harness.privilegedPool();
+      await pool.query("insert into users(id,status) values ($1,'active')", [user]);
+      await pool.query(
+        "insert into memberships(id,organization_id,user_id,role,status,location_scope,activated_at) values ($1,$2,$3,'analyst','active','all',$4)",
+        [member, f.auth.organizationId, user, now],
+      );
+      const assign = (
+        item: typeof f.handoff,
+        assignee: MembershipId,
+        key: string,
+        auth = f.auth,
+      ) => {
+        if (item.conversation_version === null) throw new Error("Missing conversation version");
+        return f.ops.mutate(
+          auth,
+          "handoff",
+          item.id,
+          item.version,
+          key,
+          {
+            action: "assign",
+            input: {
+              conversation_version: item.conversation_version,
+              assignee_membership_id: assignee,
+            },
+          },
+          "s17:assignment",
+          "unused",
+        );
+      };
+      await expect(assign(f.handoff, member, "foreign-actor", other.auth)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      await expect(
+        assign(f.handoff, other.auth.membershipId, "foreign-target"),
+      ).rejects.toMatchObject({ code: "permission_denied" });
+      await expect(assign(f.handoff, member, "analyst-target")).rejects.toMatchObject({
+        code: "permission_denied",
+      });
+      await authorization(f.receipt, "staff", "restricted", member);
+      await expect(assign(f.handoff, member, "unscoped-target")).rejects.toMatchObject({
+        code: "permission_denied",
+      });
+      const newAssignee = await authorization(f.receipt, "staff", "all", member);
+      const { resource: assigned } = await assign(
+        f.handoff,
+        f.auth.membershipId,
+        "initial-assignment",
+      );
+      const [moved, replay] = await Promise.all([
+        assign(assigned, member, "transfer"),
+        assign(assigned, member, "transfer"),
+      ]);
+      expect(moved).toEqual(replay);
+      expect(moved.resource).toMatchObject({
+        version: assigned.version + 1,
+        status: "assigned",
+        conversation_version: assigned.conversation_version,
+        assigned_membership_id: member,
+      });
+      await expect(assign(assigned, f.auth.membershipId, "stale-transfer")).rejects.toMatchObject({
+        code: "version_conflict",
+      });
+      const version = moved.resource.conversation_version;
+      if (version === null) throw new Error("Missing assigned conversation version");
+      const start = (auth: typeof f.auth, key: string) =>
+        f.ops.mutate(
+          auth,
+          "handoff",
+          moved.resource.id,
+          moved.resource.version,
+          key,
+          { action: "claim", input: { conversation_version: version } },
+          "s17:start",
+          "unused",
+        );
+      const reply = (auth: typeof f.auth, key: string) =>
+        f.ops.mutate(
+          auth,
+          "conversation",
+          requireResource(f.receipt.conversationId),
+          version,
+          key,
+          { action: "reply", input: { text: "Hello from the handoff desk." } },
+          "s17:reply",
+          "unused",
+        );
+      await expect(start(f.auth, "previous-member-start")).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      await expect(reply(f.auth, "previous-member-reply")).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      const { resource: started } = await start(newAssignee, "assignee-start");
+      expect(started.status).toBe("in_progress");
+      await expect(
+        assign(started, f.auth.membershipId, "in-progress-transfer"),
+      ).rejects.toMatchObject({ code: "business_rule_failed" });
+      expect((await reply(newAssignee, "assignee-reply")).resource.status).toBe("awaiting_lead");
+      expect(
+        (
+          await pool.query(
+            "select from_assignee_id,to_assignee_id from handoff_transitions where handoff_id=$1 and from_status='assigned' and to_status='assigned'",
+            [assigned.id],
+          )
+        ).rows,
+      ).toEqual([{ from_assignee_id: f.auth.membershipId, to_assignee_id: member }]);
+      expect(
+        (
+          await pool.query(
+            "select actor_id from audit_events where target_id=$1 and metadata_redacted_jsonb->>'staff_operation'='assign'",
+            [assigned.id],
+          )
+        ).rows,
+      ).toEqual([{ actor_id: f.auth.membershipId }, { actor_id: f.auth.membershipId }]);
+      expect(
+        (
+          await pool.query(
+            "select payload_jsonb->'payload'->>'assignee_membership_id' as assignee from outbox_events where aggregate_id=$1 and event_type='handoff.assigned' order by aggregate_version",
+            [assigned.id],
+          )
+        ).rows,
+      ).toEqual([{ assignee: f.auth.membershipId }, { assignee: member }]);
+    });
+    it("queues one encrypted staff reply and keeps handoff ownership on the next customer message", async () => {
+      const f = await withHandoff();
+      const id = requireResource(f.receipt.conversationId);
+      const claimVersion = f.handoff.conversation_version;
+      if (claimVersion === null) throw new Error("Missing conversation version");
+      const text = "We can help you with your visit.";
+      const send = (version: number, key = "staff-reply", auth = f.auth) =>
+        f.ops.mutate(
+          auth,
+          "conversation",
+          id,
+          version,
+          key,
+          { action: "reply", input: { text } },
+          "request:staff-reply",
+          "unused",
+        );
+      await expect(send(claimVersion)).rejects.toMatchObject({ code: "business_rule_failed" });
+      const { resource: claimed } = await f.ops.mutate(
+        f.auth,
+        "handoff",
+        f.handoff.id,
+        f.handoff.version,
+        "staff-reply-claim",
+        { action: "claim", input: { conversation_version: claimVersion } },
+        "request:staff-reply",
+        "unused",
+      );
+      const version = claimed.conversation_version;
+      if (version === null) throw new Error("Missing claimed version");
+      const other = await requested("b");
+      await expect(send(version, "foreign-staff-reply", other.auth)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      const restricted = await authorization(f.receipt, "staff", "restricted");
+      await expect(send(version, "restricted", restricted)).rejects.toMatchObject({
+        code: "resource_not_found",
+      });
+      await authorization(f.receipt);
+
+      const pool = harness.privilegedPool();
+      await pool.query(
+        `alter table outbox_events add constraint staff_reply_test_rollback check (event_type <> 'message.response_queued') not valid`,
+      );
+      try {
+        await expect(send(version)).rejects.toThrow();
+        expect(await f.ops.get(f.auth, "conversation", id)).toMatchObject({
+          status: "awaiting_staff",
+          version,
+        });
+      } finally {
+        await pool.query(`alter table outbox_events drop constraint staff_reply_test_rollback`);
+      }
+
+      const [result, replay] = await Promise.all([send(version), send(version)]);
+      expect(replay).toEqual(result);
+      expect(result.resource).toMatchObject({ status: "awaiting_lead", version: version + 1 });
+      await expect(send(version, "stale-staff-reply")).rejects.toMatchObject({
+        code: "version_conflict",
+      });
+      const { rows } = await pool.query<{
+        delivery_status: string;
+        body_ciphertext: Buffer;
+        queued_count: number;
+        actor_membership_id: string;
+        audit_count: number;
+      }>(
+        `select m.delivery_status,m.body_ciphertext,m.sender_membership_id as actor_membership_id,
+        (select count(*)::int from outbox_events where organization_id=m.organization_id and aggregate_id=m.conversation_id
+          and event_type='message.response_queued' and payload_jsonb->'payload'->>'message_id'=m.id::text
+          and payload_jsonb->'actor'->>'actor_id'=m.sender_membership_id::text) as queued_count,
+        (select count(*)::int from audit_events where organization_id=m.organization_id and target_id=m.conversation_id
+          and actor_membership_id=m.sender_membership_id and metadata_redacted_jsonb->>'staff_operation'='reply') as audit_count
+        from messages m where m.conversation_id=$1 and m.direction='outbound' and m.sender_type='member'`,
+        [id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        delivery_status: "queued",
+        actor_membership_id: f.auth.membershipId,
+        queued_count: 1,
+        audit_count: 1,
+      });
+      expect(rows[0]?.body_ciphertext.includes(Buffer.from(text))).toBe(false);
+
+      const inbound = await harness.inbound(
+        "Thank you",
+        4,
+        new Date(now.getTime() + 60_000).toISOString(),
+      );
+      expect(inbound.conversationId).toBe(id);
+      expect(
+        (
+          await pool.query(
+            `select status,automation_mode,active_handoff_id from conversations where id=$1`,
+            [id],
+          )
+        ).rows[0],
+      ).toEqual({
+        status: "awaiting_staff",
+        automation_mode: "staff",
+        active_handoff_id: claimed.id,
+      });
     });
     it("paginates equal-time queue items without duplication and binds cursors to actor/tenant", async () => {
       const f = await requested(),
@@ -571,6 +843,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
       const ops = createStaffOperationsDependencies(
         harness.runtime(),
         rootKey,
+        harness.dataProtection,
         () => new Date("2026-09-20T09:00:00Z"),
       ).operations;
       const recorded = await ops.mutate(
@@ -753,6 +1026,7 @@ export const registerStaffPrivateOperationsTests = (harness: Harness): void => {
         createStaffOperationsStore(
           harness.runtime(),
           { protect: (_scope, bytes) => bytes, reveal: (_scope, bytes) => bytes },
+          harness.dataProtection,
           () => occupied,
         ),
         createStaffQueryCursorCodec(rootKey),

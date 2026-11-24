@@ -1,14 +1,24 @@
 import type { IdentityDatabaseRuntimeConfig } from "@lead-agent/config";
-import { UserIdSchema, isSchemaValue, type UserId } from "@lead-agent/contracts";
+import {
+  OrganizationIdSchema,
+  UserIdSchema,
+  isSchemaValue,
+  type OrganizationId,
+  type StaffSignupInput,
+  type UserId,
+} from "@lead-agent/contracts";
 import {
   ExternalIdentityDeniedError,
   ExternalIdentityUnmappedError,
+  createSecurityIdentifierFactory,
   type ExternalIdentityResolver,
+  type MembershipLifecycleAuditContext,
   type ValidatedOidcIdentity,
 } from "@lead-agent/security";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 const REQUIRED_IDENTITY_ROLE = "lead_agent_auth";
+const identifiers = createSecurityIdentifierFactory();
 
 export class IdentityResolutionRuntimeClosedError extends Error {
   readonly code = "identity_resolution_runtime_closed" as const;
@@ -50,6 +60,14 @@ export type IdentityDatabaseRuntimeObservability = Readonly<{
 export type IdentityDatabaseRuntime = ExternalIdentityResolver &
   Readonly<{
     close: () => Promise<void>;
+    registerFirstOwner(
+      input: Readonly<{
+        audit: MembershipLifecycleAuditContext;
+        details: StaffSignupInput;
+        identity: ValidatedOidcIdentity;
+      }>,
+    ): Promise<OrganizationId>;
+    resolveFirstOwnerWorkspace(identity: ValidatedOidcIdentity): Promise<OrganizationId | null>;
   }>;
 
 type DatabaseRoleRow = {
@@ -112,11 +130,84 @@ class IdentityDatabaseRuntimeImplementation implements IdentityDatabaseRuntime {
   }
 
   async resolve(identity: ValidatedOidcIdentity): Promise<UserId> {
+    requireBoundedIdentity(identity);
+    return this.#asAuthRole(async (client) => {
+      const result = await client.query<IdentityResolutionRow>(
+        "select resolution_state, user_id::text as user_id from app.resolve_external_identity($1::varchar, $2::varchar)",
+        [identity.issuer, identity.subject],
+      );
+      const resolution = result.rows[0];
+      if (resolution === undefined) throw new ExternalIdentityUnmappedError();
+      if (resolution.resolution_state === "denied" && resolution.user_id === null) {
+        throw new ExternalIdentityDeniedError();
+      }
+      if (
+        resolution.resolution_state !== "authenticated" ||
+        !isSchemaValue(UserIdSchema, resolution.user_id)
+      ) {
+        throw new IdentityResolutionDatabaseError();
+      }
+      return resolution.user_id;
+    });
+  }
+
+  async registerFirstOwner({
+    audit,
+    details,
+    identity,
+  }: Parameters<IdentityDatabaseRuntime["registerFirstOwner"]>[0]): Promise<OrganizationId> {
+    requireBoundedIdentity(identity);
+    const now = new Date();
+    return this.#asAuthRole(async (client) => {
+      const result = await client.query<{ organization_id: string | null }>(
+        `select app.register_first_owner($1::varchar, $2::varchar, $3::varchar, $4::varchar, $5::varchar,
+          $6::uuid, $7::uuid, $8::uuid, $9::uuid, $10::uuid, $11::varchar, $12::uuid) as organization_id`,
+        [
+          identity.issuer,
+          identity.subject,
+          details.display_name,
+          details.default_locale,
+          details.default_time_zone,
+          identifiers.issueResourceId(now),
+          identifiers.issueUserId(now),
+          identifiers.issueResourceId(now),
+          identifiers.issueMembershipId(now),
+          identifiers.issueResourceId(now),
+          audit.requestId,
+          audit.correlationId,
+        ],
+      );
+      const organizationId = result.rows[0]?.organization_id;
+      if (organizationId === null) throw new ExternalIdentityDeniedError();
+      if (!isSchemaValue(OrganizationIdSchema, organizationId)) {
+        throw new IdentityResolutionDatabaseError();
+      }
+      return organizationId;
+    });
+  }
+
+  async resolveFirstOwnerWorkspace(
+    identity: ValidatedOidcIdentity,
+  ): Promise<OrganizationId | null> {
+    requireBoundedIdentity(identity);
+    return this.#asAuthRole(async (client) => {
+      const result = await client.query<{ organization_id: string | null }>(
+        `select app.register_first_owner($1::varchar, $2::varchar, null, null, null,
+          null, null, null, null, null, null, null) as organization_id`,
+        [identity.issuer, identity.subject],
+      );
+      const organizationId = result.rows[0]?.organization_id;
+      if (organizationId === null || isSchemaValue(OrganizationIdSchema, organizationId)) {
+        return organizationId;
+      }
+      throw new IdentityResolutionDatabaseError();
+    });
+  }
+
+  async #asAuthRole<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
     if (this.#closed) {
       throw new IdentityResolutionRuntimeClosedError();
     }
-    requireBoundedIdentity(identity);
-
     const client = await this.#pool.connect().catch((error: unknown) => {
       const mapped = new IdentityResolutionDatabaseError();
       identityResolutionDatabaseCauses.set(mapped, error);
@@ -128,24 +219,7 @@ class IdentityDatabaseRuntimeImplementation implements IdentityDatabaseRuntime {
         throw new IdentityResolutionRoleError();
       }
 
-      const result = await client.query<IdentityResolutionRow>(
-        "select resolution_state, user_id::text as user_id from app.resolve_external_identity($1::varchar, $2::varchar)",
-        [identity.issuer, identity.subject],
-      );
-      const resolution = result.rows[0];
-      if (resolution === undefined) {
-        throw new ExternalIdentityUnmappedError();
-      }
-      if (resolution.resolution_state === "denied" && resolution.user_id === null) {
-        throw new ExternalIdentityDeniedError();
-      }
-      if (
-        resolution.resolution_state !== "authenticated" ||
-        !isSchemaValue(UserIdSchema, resolution.user_id)
-      ) {
-        throw new IdentityResolutionDatabaseError();
-      }
-      return resolution.user_id;
+      return await operation(client);
     } catch (error) {
       if (isExpectedResolutionError(error) || error instanceof IdentityResolutionDatabaseError) {
         throw error;

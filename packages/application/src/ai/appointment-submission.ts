@@ -11,6 +11,7 @@ import {
 } from "./sales-flow.js";
 import type { AIContextSnapshot, AIFallbackReason, AIOutcome, SalesResult } from "./ports.js";
 import {
+  appointmentDateMentioned,
   appointmentTimeMentioned,
   parseAppointmentDate,
   resolveAppointmentTime,
@@ -18,7 +19,7 @@ import {
 } from "./appointment-time.js";
 
 export const APPOINTMENT_SUBMISSION_PROFILE = "s16_appointment_submission.v1";
-export const APPOINTMENT_SUBMISSION_PROMPT = "s16-appointment-submission.v1";
+export const APPOINTMENT_SUBMISSION_PROMPT = "s16-appointment-submission.v2";
 export const appointmentSubmissionPreflight = (
   snapshot: AIContextSnapshot,
 ): AIFallbackReason | null => {
@@ -187,7 +188,7 @@ export const planAppointmentSubmission = (
     missing: readonly string[] = [],
     reason: string | null = null,
   ): SalesPlan => {
-    const combined = [answer, text].filter(Boolean).join("\n");
+    const combined = [answer, text].filter(Boolean).join("\n\n");
     return new TextEncoder().encode(combined).length <= 1_000
       ? { ...base, text: combined, result: { kind, reason, missing } }
       : {
@@ -248,12 +249,7 @@ export const planAppointmentSubmission = (
     if (parsed !== null) {
       date = parsed;
       dateMessageId = entry.messageId;
-    } else if (
-      /\b(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})\b/u.test(entry.text) ||
-      /\b(ertaga|bugun|indin|zavtra|poslezavtra|tomorrow|today|segodnya)\b/u.test(
-        normalizeGroundingQuery(entry.text),
-      )
-    ) {
+    } else if (appointmentDateMentioned(entry.text)) {
       date = null;
       dateMessageId = null;
     }
@@ -309,9 +305,9 @@ export const planAppointmentSubmission = (
   return wrap(
     reply(
       {
-        uz: `${displayDate} soat ${time} uchun so'rov qoldirildi. Xodim ko'rib chiqqach shu yerda xabar beramiz.`,
-        ru: `Запрос на ${displayDate} в ${time} отправлен. После рассмотрения сотрудником сообщим здесь.`,
-        en: `Your request for ${displayDate} at ${time} has been submitted. We'll update you here after staff review.`,
+        uz: `${displayDate} soat ${time} uchun so'rovingizni yubordik. Xodim ko'rib chiqqach shu yerda xabar beramiz.`,
+        ru: `Мы отправили вашу заявку на ${displayDate} в ${time}. Сообщим здесь, когда сотрудник её рассмотрит.`,
+        en: `We've sent your request for ${displayDate} at ${time}. We'll update you here after staff review.`,
       }[locale],
       "appointment_requested",
     ),

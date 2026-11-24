@@ -73,6 +73,16 @@ const fixture = (
             }
           : null,
       ),
+    loadManagementStatus: () =>
+      Promise.resolve(
+        phase === "active"
+          ? { nextStep: null, status: "connected" }
+          : phase === "awaiting_connection"
+            ? { nextStep: "connect_business", status: "connection_pending" }
+            : phase === "awaiting_owner"
+              ? { nextStep: "open_bot", status: "connection_pending" }
+              : { nextStep: null, status: "needs_attention" },
+      ),
   };
   const canonicalStore: CanonicalInboundPersistenceStore = {
     acceptInbound: (input) => {
@@ -143,6 +153,22 @@ const fixture = (
 };
 
 describe("Telegram Business application trust chain", () => {
+  it("reports the finite tenant-scoped onboarding step", async () => {
+    const test = fixture();
+    await expect(
+      test.useCases.getStatus({ authorization: await authorization() }),
+    ).resolves.toEqual({
+      nextStep: "open_bot",
+      status: "connection_pending",
+    });
+    await test.bind();
+    await expect(
+      test.useCases.getStatus({ authorization: await authorization() }),
+    ).resolves.toEqual({
+      nextStep: null,
+      status: "connected",
+    });
+  });
   it("keeps long opaque business connection IDs within canonical thread bounds", () => {
     const connectionId = "a".repeat(255);
     const thread = telegramConversationIdentity(connectionId, "123");

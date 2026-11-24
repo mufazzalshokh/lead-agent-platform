@@ -10,6 +10,8 @@ import { canonicalStringify, type JsonValue } from "../../scripts/contracts/cano
 import {
   getPublicContractCatalog,
   PUBLIC_STATIC_SCHEMA_NAMES,
+  WIDGET_RECOVERY_SCHEMA_NAMES,
+  S22_WIDGET_COHORT_SCHEMA_NAMES,
   S17_STAFF_SCHEMA_NAMES,
   S19_STAFF_SCHEMA_NAMES,
   S19_WIDGET_SCHEMA_NAMES,
@@ -144,6 +146,84 @@ const sameVersionDrift = (mutate: (schema: Record<string, unknown>) => void) => 
   );
 };
 
+const offlineConfirmationSchemaNames = new Set([
+  "StaffAttestCustomerConfirmationInputSchema",
+  "StaffAppointmentConfirmationSchema",
+  "StaffAppointmentConfirmationResponseSchema",
+  "StaffStepUpNavigationSchema",
+]);
+
+const buildPreStaffSignupSnapshot = () => {
+  const snapshot = buildContractSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffSignupInputSchema",
+    ),
+  };
+};
+
+const buildPreWidgetPhoneChoiceSnapshot = () => {
+  const snapshot = buildPreStaffSignupSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "WidgetPhoneChoiceInputSchema",
+    ),
+  };
+};
+
+const buildPreHandoffAssignmentSnapshot = () => {
+  const snapshot = buildPreWidgetPhoneChoiceSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffAssignHandoffInputSchema",
+    ),
+  };
+};
+
+const buildPreOfflineConfirmationSnapshot = () => {
+  const snapshot = buildPreHandoffAssignmentSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => !offlineConfirmationSchemaNames.has(contract.export_name),
+    ),
+  };
+};
+
+const buildPreStaffCancellationSnapshot = () => {
+  const snapshot = buildPreOfflineConfirmationSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffCancelAppointmentInputSchema",
+    ),
+  };
+};
+
+const buildPreStaffReplySnapshot = () => {
+  const snapshot = buildPreStaffCancellationSnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => contract.export_name !== "StaffReplyInputSchema",
+    ),
+  };
+};
+
+// Freeze historical stage comparisons independently of later additive contracts.
+const buildPreRecoverySnapshot = () => {
+  const snapshot = buildPreStaffReplySnapshot();
+  return {
+    ...snapshot,
+    contracts: snapshot.contracts.filter(
+      (contract) => !WIDGET_RECOVERY_SCHEMA_NAMES.some((name) => name === contract.export_name),
+    ),
+  };
+};
+
 describe("public contract inventory and snapshot", () => {
   it("catalogs every intentional public schema exactly once", () => {
     const snapshot = buildContractSnapshot();
@@ -156,16 +236,16 @@ describe("public contract inventory and snapshot", () => {
       ),
     );
 
-    expect(snapshot.contracts).toHaveLength(372);
+    expect(snapshot.contracts).toHaveLength(391);
     expect(counts).toEqual({
       ai: 16,
-      api: 38,
+      api: 52,
       channel: 24,
       configuration: 65,
       conversation: 37,
       event: 135,
       shared: 28,
-      widget: 29,
+      widget: 34,
     });
     expect(new Set(snapshot.contracts.map((contract) => contract.schema_id)).size).toBe(
       snapshot.contracts.length,
@@ -173,13 +253,14 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S17 schemas without changing any of the 329 accepted entries", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s19 = new Set<string>([
       ...S19_STAFF_SCHEMA_NAMES,
       ...S19_WIDGET_SCHEMA_NAMES,
       ...S20_ANALYTICS_SCHEMA_NAMES,
       ...S20_WIDGET_SCHEMA_NAMES,
       ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
+      ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     ]);
     const candidate = {
       ...full,
@@ -203,13 +284,14 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds only S18 confirmed V2 while preserving all 345 accepted contracts", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s19 = new Set<string>([
       ...S19_STAFF_SCHEMA_NAMES,
       ...S19_WIDGET_SCHEMA_NAMES,
       ...S20_ANALYTICS_SCHEMA_NAMES,
       ...S20_WIDGET_SCHEMA_NAMES,
       ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
+      ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     ]);
     const candidate = {
       ...full,
@@ -264,7 +346,7 @@ describe("public contract inventory and snapshot", () => {
   );
 
   it("classifies the S10 Widget contracts as additive only", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s19Widget = new Set<string>([...S19_WIDGET_SCHEMA_NAMES, ...S20_WIDGET_SCHEMA_NAMES]);
     const candidate = {
       ...full,
@@ -285,11 +367,12 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S19 private staff and Widget embed contracts", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const s20 = new Set<string>([
       ...S20_ANALYTICS_SCHEMA_NAMES,
       ...S20_WIDGET_SCHEMA_NAMES,
       ...S21_THREAD_AUTOMATION_SCHEMA_NAMES,
+      ...S22_WIDGET_COHORT_SCHEMA_NAMES,
     ]);
     const candidate = {
       ...full,
@@ -307,11 +390,12 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S20 private analytics and bounded Widget telemetry contracts", () => {
-    const full = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
     const candidate = {
       ...full,
       contracts: full.contracts.filter(
         (contract) =>
+          !S22_WIDGET_COHORT_SCHEMA_NAMES.some((name) => name === contract.export_name) &&
           !S21_THREAD_AUTOMATION_SCHEMA_NAMES.includes(
             contract.export_name as (typeof S21_THREAD_AUTOMATION_SCHEMA_NAMES)[number],
           ),
@@ -326,7 +410,13 @@ describe("public contract inventory and snapshot", () => {
   });
 
   it("adds exactly the S21 private thread-automation contracts", () => {
-    const candidate = buildContractSnapshot();
+    const full = buildPreRecoverySnapshot();
+    const candidate = {
+      ...full,
+      contracts: full.contracts.filter(
+        (contract) => !S22_WIDGET_COHORT_SCHEMA_NAMES.some((name) => name === contract.export_name),
+      ),
+    };
     const additions = new Set<string>(S21_THREAD_AUTOMATION_SCHEMA_NAMES);
     const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
     expect(legacy).toHaveLength(366);
@@ -335,10 +425,86 @@ describe("public contract inventory and snapshot", () => {
     expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
   });
 
+  it("adds only six S22 staging cohort contracts, preserving all 372 accepted contracts", () => {
+    const candidate = buildPreRecoverySnapshot();
+    const additions = new Set<string>(S22_WIDGET_COHORT_SCHEMA_NAMES);
+    const legacy = candidate.contracts.filter((contract) => !additions.has(contract.export_name));
+    expect(legacy).toHaveLength(372);
+    const findings = compareContractSnapshots({ ...candidate, contracts: legacy }, candidate);
+    expect(findings).toHaveLength(6);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("adds only four recovery contracts while preserving every accepted pre-recovery schema", () => {
+    const candidate = buildPreStaffReplySnapshot();
+    const legacy = buildPreRecoverySnapshot();
+    expect(legacy.contracts).toHaveLength(378);
+    const findings = compareContractSnapshots(legacy, candidate);
+    expect(findings).toHaveLength(4);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("adds the staff reply input while preserving every accepted contract", () => {
+    const legacy = buildPreStaffReplySnapshot();
+    expect(legacy.contracts).toHaveLength(382);
+    const findings = compareContractSnapshots(legacy, buildPreStaffCancellationSnapshot());
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.classification).toBe("additive");
+  });
+
+  it("adds the staff cancellation input while preserving every accepted contract", () => {
+    const legacy = buildPreStaffCancellationSnapshot();
+    expect(legacy.contracts).toHaveLength(383);
+    const findings = compareContractSnapshots(legacy, buildPreOfflineConfirmationSnapshot());
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.classification).toBe("additive");
+  });
+
+  it("adds offline confirmation contracts while preserving every accepted contract", () => {
+    const legacy = buildPreOfflineConfirmationSnapshot();
+    expect(legacy.contracts).toHaveLength(384);
+    const findings = compareContractSnapshots(legacy, buildPreHandoffAssignmentSnapshot());
+    expect(findings).toHaveLength(4);
+    expect(findings.every((finding) => finding.classification === "additive")).toBe(true);
+  });
+
+  it("adds the handoff assignment input while preserving every accepted contract", () => {
+    const legacy = buildPreHandoffAssignmentSnapshot();
+    expect(legacy.contracts).toHaveLength(388);
+    const findings = compareContractSnapshots(legacy, buildPreWidgetPhoneChoiceSnapshot());
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.classification).toBe("additive");
+  });
+
+  it("adds the Widget phone choice without changing an accepted contract", () => {
+    const legacy = buildPreWidgetPhoneChoiceSnapshot();
+    expect(legacy.contracts).toHaveLength(389);
+    expect(
+      compareContractSnapshots(legacy, buildPreStaffSignupSnapshot()).map(
+        (finding) => finding.classification,
+      ),
+    ).toEqual(["additive"]);
+  });
+
+  it("adds only the staff signup input and preserves all 390 prior contracts", () => {
+    const legacy = buildPreStaffSignupSnapshot();
+    expect(legacy.contracts).toHaveLength(390);
+    expect(createHash("sha256").update(JSON.stringify(legacy.contracts)).digest("hex")).toBe(
+      "0bdecab1ca9f7bbee848d41096cfd162707d52e5f32930a1b6aa89336e159340",
+    );
+    expect(compareContractSnapshots(legacy, buildContractSnapshot())).toMatchObject([
+      { classification: "additive", contract: "StaffSignupInputSchema" },
+    ]);
+  });
+
   it("keeps the runtime export surface explicit", () => {
     const staticSchemaExports = Object.values(PUBLIC_STATIC_SCHEMA_NAMES).flat();
     const nonSchemaExports = [
       "DOMAIN_EVENT_NAMES",
+      "STAFF_REPLY_MAX_BYTES",
+      "STAFF_APPOINTMENT_WITHDRAWAL_REASON",
+      "WIDGET_PHONE_NOTICE",
+      "WIDGET_PHONE_NOTICE_VERSION",
       "DomainEventPayloadSchemas",
       "DomainEventPayloadSchemasByVersion",
       "DomainEventSchemas",

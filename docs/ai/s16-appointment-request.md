@@ -38,6 +38,18 @@ never availability. Pure fuzzy `kechroq`, `kechqurun`, `ertalab`, `вечеро�
 `in the evening`, competing dates/times, invalid dates and DST gaps/overlaps require
 clarification. No invented exact time or unsupported fuzzy-range schema.
 
+Named-month customer dates now use that same shared validator: Uzbek
+Latin/Cyrillic and Russian full month names (including Russian genitives), plus
+English full month names. Supported forms include `12-oktabr`, `12 oktabr 2026`,
+`12 октября 2026`, `12 October 2026` and `October 12, 2026`. An omitted year is
+the year of the original server receipt in the authoritative Location timezone;
+it never silently advances a past date into next year. Explicit years must have
+four digits after the month/day. Unsupported adjacent year forms, invalid days,
+non-leap February 29, competing named/numeric/relative dates and shared-month day
+ranges require clarification. A recognized but invalid/ambiguous date clears any
+earlier customer date evidence; it cannot reuse a stale date to submit a request.
+This is input normalization only, not availability or booking authorization.
+
 The published duration defines the preferred end; the full interval must fit
 effective offering dates and the day's hours/closure override and remain future.
 Missing authoritative duration/context follows the existing deterministic

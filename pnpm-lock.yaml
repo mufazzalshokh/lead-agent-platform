@@ -105,6 +105,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@lead-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       next:
         specifier: 16.3.3
         version: 16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -197,6 +200,9 @@ importers:
       pg:
         specifier: 8.23.0
         version: 8.23.0
+      pg-connection-string:
+        specifier: 2.14.0
+        version: 2.14.0
     devDependencies:
       '@types/pg':
         specifier: 8.23.1

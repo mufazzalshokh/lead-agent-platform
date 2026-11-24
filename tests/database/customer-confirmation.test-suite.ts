@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { createStaffOperationsDependencies } from "../../apps/api/src/staff/composition.js";
 import {
   createCustomerConfirmationStore,
+  createInstagramOutboundPersistenceStore,
+  createTelegramOutboundPersistenceStore,
   migrationsFolder,
   type TenantDatabaseRuntime,
 } from "../../packages/database/src/index.js";
@@ -21,6 +23,7 @@ import {
   MembershipIdSchema,
   UserIdSchema,
   StaffAcceptAppointmentInputSchema,
+  StaffAttestCustomerConfirmationInputSchema,
   isSchemaValue,
 } from "../../packages/contracts/src/index.js";
 import {
@@ -118,21 +121,24 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         idleExpiresAt: new Date(now.getTime() + 3600000),
         absoluteExpiresAt: new Date(now.getTime() + 86400000),
       };
-      const auth = await resolveAuthorizationContext(session, organizationId, {
-        resolveCurrentMembership: () =>
-          Promise.resolve({
-            organizationId,
-            membershipId,
-            userId,
-            role: "owner",
-            status: "active",
-            locationScope: "all",
-            allowedLocationIds: [],
-          }),
-      });
+      const authorizeAt = (authenticationTime: Date) =>
+        resolveAuthorizationContext({ ...session, authenticationTime }, organizationId, {
+          resolveCurrentMembership: () =>
+            Promise.resolve({
+              organizationId,
+              membershipId,
+              userId,
+              role: "owner",
+              status: "active",
+              locationScope: "all",
+              allowedLocationIds: [],
+            }),
+        });
+      const auth = await authorizeAt(now);
       const ops = createStaffOperationsDependencies(
         harness.runtime(),
         new Uint8Array(32).fill(17),
+        harness.dataProtection,
         () => now,
       ).operations;
       const item = (await ops.list(auth, "appointment_request", {})).items[0];
@@ -173,6 +179,7 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         tenant,
         ops,
         auth,
+        authorizeAt,
         item,
         channelConnectionId: channel,
         channelType,
@@ -237,6 +244,225 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
       if (!row) throw new Error("Missing S18 fixture counts");
       return row;
     };
+    const cancel = async (f: Awaited<ReturnType<typeof accepted>>) => {
+      const current = await f.ops.get(f.auth, "appointment_request", f.item.id);
+      return await f.ops.mutate(
+        f.auth,
+        "appointment_request",
+        f.item.id,
+        current.version,
+        "s18-staff-cancel",
+        {
+          action: "cancel",
+          input: { reason_code: "clinic_cancelled" },
+        },
+        "s18:staff-cancel",
+        "unused",
+      );
+    };
+    const revokeWidget = async (f: Awaited<ReturnType<typeof accepted>>) => {
+      await harness.privilegedPool().query(
+        `update widget_sessions set status='revoked',revoked_at=$3
+          where organization_id=$1 and conversation_id=$2 and status='active'`,
+        [f.organizationId, f.receipt.conversationId, now],
+      );
+    };
+    const attest = (
+      f: Awaited<ReturnType<typeof accepted>>,
+      version: number,
+      offerVersion: number,
+      actedAt: Date,
+      method: "phone" | "in_person" = "phone",
+    ) => {
+      const input: unknown = {
+        offer_version: offerVersion,
+        attestation_method: method,
+        customer_acted_at: actedAt.toISOString(),
+        explicit_confirmation: true,
+      };
+      if (!isSchemaValue(StaffAttestCustomerConfirmationInputSchema, input))
+        throw new Error("Invalid attestation fixture");
+      return f.ops.mutate(
+        f.auth,
+        "appointment_request",
+        f.item.id,
+        version,
+        "offline-attestation",
+        { action: "attest-customer-confirmation", input },
+        "s18:offline-confirmation",
+        "unused",
+      );
+    };
+    it.each(["phone", "in_person"] as const)(
+      "prepares an offline Widget offer and records one attributed %s confirmation",
+      async (method) => {
+        const f = await accepted();
+        await revokeWidget(f);
+        expect(await store().prepare(f.event)).toBe("prepared");
+        const context = await f.ops.confirmation(f.auth, f.item.id);
+        const offer = context.offline_offer;
+        if (offer === null) throw new Error("Expected an offline offer");
+        const actedAt = new Date(now.getTime() + 60_000);
+        now = new Date(now.getTime() + 120_000);
+        const pool = harness.privilegedPool();
+        await pool.query(`update appointment_requests set confirmation_token_hash=$2 where id=$1`, [
+          f.item.id,
+          Buffer.alloc(32, 12),
+        ]);
+        const replay = () =>
+          attest(f, context.appointment_version, offer.offer_version, actedAt, method);
+        const [first, second] = await Promise.all([replay(), replay()]);
+        expect(first.resource.status).toBe("confirmed");
+        expect(second).toEqual(first);
+        expect(await counts()).toMatchObject({ evidence: 1, confirmed: 1, transitions: 1 });
+        expect(await f.ops.confirmation(f.auth, f.item.id)).toMatchObject({
+          offline_offer: null,
+          attestation: {
+            attestation_method: method,
+            customer_acted_at: actedAt.toISOString(),
+            recorded_at: now.toISOString(),
+            recorded_by_membership_id: f.auth.membershipId,
+          },
+        });
+        expect(
+          (
+            await pool.query(
+              `select a.confirmation_source,l.status,a.confirmation_token_hash
+           from appointment_requests a join leads l on l.organization_id=a.organization_id and l.id=a.lead_id where a.id=$1`,
+              [f.item.id],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            confirmation_source: "staff_attested_external",
+            status: "converted",
+            confirmation_token_hash: null,
+          },
+        ]);
+        expect(
+          (
+            await pool.query(
+              `select actor_id, metadata_redacted_jsonb->>'attestation_method' as method
+           from audit_events where target_id=$1 and metadata_redacted_jsonb->>'confirmation_source'='staff_attested_external'`,
+              [f.item.id],
+            )
+          ).rows,
+        ).toEqual([{ actor_id: f.auth.membershipId, method }]);
+        expect((await cancel(f)).resource.status).toBe("cancelled");
+        expect((await f.ops.confirmation(f.auth, f.item.id)).attestation?.attestation_method).toBe(
+          method,
+        );
+      },
+    );
+    it("rejects online, wrong-offer, pre-issuance, and equal-expiry attestations", async () => {
+      const f = await prepared();
+      const context = await f.ops.confirmation(f.auth, f.item.id);
+      expect(context.offline_offer).toBeNull();
+      const version = context.appointment_version;
+      const offerVersion = f.event.payload.offer_version;
+      await expect(attest(f, version, offerVersion, now)).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      await revokeWidget(f);
+      await expect(attest(f, version, offerVersion + 1, now)).rejects.toMatchObject({
+        code: "version_conflict",
+      });
+      await expect(
+        attest(f, version, offerVersion, new Date(now.getTime() - 1)),
+      ).rejects.toMatchObject({ code: "business_rule_failed" });
+      const expiry = requireDate((await state())[0]?.offer_expires_at);
+      now = expiry;
+      expect((await f.ops.confirmation(f.auth, f.item.id)).offline_offer).toBeNull();
+      const renewed = { ...f, auth: await f.authorizeAt(now) };
+      await expect(attest(renewed, version, offerVersion, now)).rejects.toMatchObject({
+        code: "business_rule_failed",
+      });
+      expect(await counts()).toMatchObject({ evidence: 0, confirmed: 0, transitions: 0 });
+    });
+    it("cancels staff acceptance before a confirmation job prepares any prompt", async () => {
+      const f = await accepted();
+      expect((await cancel(f)).resource.status).toBe("cancelled");
+      expect(await store().prepare(f.event)).toBe("unavailable");
+      const { rows } = await harness
+        .privilegedPool()
+        .query<{ kind: string }>(
+          `select knowledge_manifest_jsonb->>'confirmation_kind' as kind from messages where organization_id=$1 and knowledge_manifest_jsonb ? 'confirmation_kind'`,
+          [f.organizationId],
+        );
+      expect(rows).toEqual([{ kind: "offer_withdrawn" }]);
+    });
+    it.each(["telegram", "instagram"] as const)(
+      "suppresses the queued %s confirmation prompt after staff cancels",
+      async (channel) => {
+        const f = await accepted("a", undefined, channel);
+        expect(await store().prepare(f.event)).toBe("prepared");
+        const pool = harness.privilegedPool();
+        const promptId = (
+          await pool.query<{ id: unknown }>(
+            `select id from messages where organization_id=$1 and knowledge_manifest_jsonb->>'confirmation_kind'='prompt'`,
+            [f.organizationId],
+          )
+        ).rows[0]?.id;
+        if (!isSchemaValue(MessageIdSchema, promptId))
+          throw new Error("Missing confirmation prompt");
+        await pool.query(`update appointment_requests set confirmation_token_hash=$2 where id=$1`, [
+          f.item.id,
+          Buffer.alloc(32, 10),
+        ]);
+        expect((await cancel(f)).resource.status).toBe("cancelled");
+        const dispatch =
+          channel === "telegram"
+            ? createTelegramOutboundPersistenceStore(harness.runtime())
+            : createInstagramOutboundPersistenceStore(harness.runtime());
+        expect(await dispatch.load(f.organizationId, promptId)).toEqual({
+          kind: "withdrawn_confirmation_prompt",
+        });
+        expect(
+          (
+            await pool.query(
+              `select confirmation_token_hash, cancelled_by_type from appointment_requests where id=$1`,
+              [f.item.id],
+            )
+          ).rows[0],
+        ).toEqual({
+          confirmation_token_hash: null,
+          cancelled_by_type: "member",
+        });
+        expect(await store().respond(await inbound(f, "yes"))).not.toMatchObject({
+          kind: "confirmed",
+        });
+        expect((await state())[0]?.status).toBe("cancelled");
+      },
+    );
+    it("preserves the confirmation and audit history of a cancelled confirmed appointment", async () => {
+      const f = await prepared();
+      expect(await store().respond(await inbound(f, "yes"))).toMatchObject({ kind: "confirmed" });
+      const pool = harness.privilegedPool();
+      const before = (
+        await pool.query<{ confirmed_at: Date; confirmation_source: string }>(
+          `select confirmed_at, confirmation_source from appointment_requests where id=$1`,
+          [f.item.id],
+        )
+      ).rows[0];
+      expect((await cancel(f)).resource.status).toBe("cancelled");
+      expect(
+        (
+          await pool.query<{ confirmed_at: Date; confirmation_source: string }>(
+            `select confirmed_at, confirmation_source from appointment_requests where id=$1`,
+            [f.item.id],
+          )
+        ).rows[0],
+      ).toEqual(before);
+      expect(await counts()).toMatchObject({ confirmed: 1, evidence: 1, transitions: 1 });
+      expect(
+        (
+          await pool.query(
+            `select actor_membership_id,reason_code from appointment_request_transitions where appointment_request_id=$1 and to_status='cancelled'`,
+            [f.item.id],
+          )
+        ).rows,
+      ).toEqual([{ actor_membership_id: f.auth.membershipId, reason_code: "clinic_cancelled" }]);
+    });
     it("proves grounded price → qualification → requested → real staff acceptance → one prompt without confirmation", async () => {
       const f = await accepted();
       expect((await state())[0]).toMatchObject({ status: "staff_accepted" });
@@ -295,6 +521,36 @@ export const registerCustomerConfirmationTests = (harness: Harness): void => {
         from lead_qualification_evaluations e where result='qualified' limit 1`);
       expect(await store().respond(await inbound(f, "yes"))).toMatchObject({ kind: "confirmed" });
       expect(await counts()).toMatchObject({ confirmed: 1, evidence: 1, transitions: 1 });
+    });
+    it("confirms the existing staff offer through a recovered lease after original access expires", async () => {
+      const f = await prepared();
+      const pool = harness.privilegedPool();
+      const before = await pool.query(
+        "select id,contact_id,conversation_id,issued_at,expires_at from widget_sessions where conversation_id=$1",
+        [f.receipt.conversationId],
+      );
+      now = new Date(now.getTime() + 4_200_000);
+      // Model a previously authenticated recovery lease; never create a second identity.
+      await pool.query(
+        `update widget_sessions set recovery_token_hash=$3,recovery_issued_at=issued_at,
+          recovery_expires_at=issued_at+interval '24 hours',
+          recovery_request_origin='https://widget.example',recovery_embedding_origin='https://s12.example.com',
+          access_issued_at=$2,access_expires_at=$2::timestamptz+interval '1 hour',last_seen_at=$2
+          where conversation_id=$1`,
+        [f.receipt.conversationId, now, Buffer.alloc(32, 93)],
+      );
+      expect(await store().respond(await inbound(f, "yes, I'll be there"))).toMatchObject({
+        kind: "confirmed",
+      });
+      expect(await counts()).toMatchObject({ confirmed: 1, evidence: 1, transitions: 1 });
+      expect(
+        (
+          await pool.query(
+            "select id,contact_id,conversation_id,issued_at,expires_at from widget_sessions where conversation_id=$1",
+            [f.receipt.conversationId],
+          )
+        ).rows,
+      ).toEqual(before.rows);
     });
     it("uses the approved decline→cancelled transition, not confirmation", async () => {
       const f = await prepared();

@@ -70,6 +70,7 @@ const fixture = (
   const tokens = createWidgetTokenService(createWidgetSecurityConfig(KEY));
   let authorityClaims: WidgetTokenClaims | null = null;
   const persistence: WidgetPersistenceStore = {
+    recordPhoneChoice: () => Promise.resolve(),
     createSession: () => {
       createdSessions += 1;
       return Promise.resolve(true);
@@ -188,6 +189,8 @@ const fixture = (
   const useCases = createWidgetUseCases({
     clock: () => NOW,
     dataProtector: {
+      deriveContactIdentityLookupHash: ({ value }) => digest(value),
+      protectContactIdentity: () => Buffer.from("protected-phone"),
       protectContent: ({ content }) => ({
         bodyCiphertext: Buffer.from("cipher"),
         bodyHash: digest(JSON.stringify(content)),

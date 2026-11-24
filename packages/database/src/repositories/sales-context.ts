@@ -131,7 +131,7 @@ export const readSalesContext = async (
     join widget_allowed_origins origin on origin.organization_id=session.organization_id and origin.id=session.widget_allowed_origin_id and origin.channel_connection_id=session.channel_connection_id and origin.status='active'
     join channel_connections connection on connection.organization_id=session.organization_id and connection.id=session.channel_connection_id and connection.channel_type='widget' and connection.status='active'
     join contact_identities identity on identity.organization_id=session.organization_id and identity.contact_id=session.contact_id and identity.channel_connection_id=session.channel_connection_id and identity.lookup_hash=session.participant_lookup_hash and identity.identity_type='widget_participant' and identity.status='active' and identity.validation_status in ('valid','verified')
-    where session.organization_id=$1 and session.contact_id=$2 and session.conversation_id=$3 and session.channel_connection_id=$4 and session.status='active' and session.revoked_at is null and session.issued_at<=$5 and session.expires_at>$5${input.lock ? " for share of session,identity,origin,connection" : ""}`,
+    where session.organization_id=$1 and session.contact_id=$2 and session.conversation_id=$3 and session.channel_connection_id=$4 and session.status='active' and session.revoked_at is null and coalesce(session.access_issued_at,session.issued_at)<=$5 and coalesce(session.access_expires_at,session.expires_at)>$5${input.lock ? " for share of session,identity,origin,connection" : ""}`,
     [conversation.contactId, input.conversationId, conversation.channelConnectionId, input.now],
   );
   const effectiveAt = mapUtcTimestamp(input.now),

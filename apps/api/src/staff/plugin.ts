@@ -13,8 +13,13 @@ import {
   StaffWorkCollectionResponseSchema,
   StaffAcceptAppointmentInputSchema,
   StaffRejectAppointmentInputSchema,
+  StaffCancelAppointmentInputSchema,
+  StaffAttestCustomerConfirmationInputSchema,
+  StaffAppointmentConfirmationResponseSchema,
   StaffClaimHandoffInputSchema,
+  StaffAssignHandoffInputSchema,
   StaffResolveHandoffInputSchema,
+  StaffReplyInputSchema,
   StaffAcknowledgeInputSchema,
   StaffAttendanceInputSchema,
   StaffRevenueInputSchema,
@@ -110,9 +115,18 @@ export const registerStaffOperations = (
     );
   }
   const mutations = [
+    ["conversations", "conversation", "messages", StaffReplyInputSchema],
     ["appointment-requests", "appointment_request", "accept", StaffAcceptAppointmentInputSchema],
     ["appointment-requests", "appointment_request", "reject", StaffRejectAppointmentInputSchema],
+    ["appointment-requests", "appointment_request", "cancel", StaffCancelAppointmentInputSchema],
+    [
+      "appointment-requests",
+      "appointment_request",
+      "attest-customer-confirmation",
+      StaffAttestCustomerConfirmationInputSchema,
+    ],
     ["handoffs", "handoff", "claim", StaffClaimHandoffInputSchema],
+    ["handoffs", "handoff", "assign", StaffAssignHandoffInputSchema],
     ["handoffs", "handoff", "resolve", StaffResolveHandoffInputSchema],
     ["notifications", "notification", "acknowledge", StaffAcknowledgeInputSchema],
     ["appointment-requests", "appointment_request", "attendance", StaffAttendanceInputSchema],
@@ -139,7 +153,8 @@ export const registerStaffOperations = (
         const key = request.headers["idempotency-key"];
         if (typeof key !== "string") throw new StaffOperationError("validation_failed");
         const expected = parseConfigurationIfMatch(request.headers["if-match"], id);
-        const action = route === "revenue-attributions" ? "revenue" : route;
+        const action =
+          route === "revenue-attributions" ? "revenue" : route === "messages" ? "reply" : route;
         let operation: StaffOperation;
         // Narrow each validated input rather than casting untrusted JSON into a protected command.
         if (action === "accept" && isSchemaValue(StaffAcceptAppointmentInputSchema, request.body))
@@ -149,12 +164,26 @@ export const registerStaffOperations = (
           isSchemaValue(StaffRejectAppointmentInputSchema, request.body)
         )
           operation = { action, input: request.body };
+        else if (
+          action === "cancel" &&
+          isSchemaValue(StaffCancelAppointmentInputSchema, request.body)
+        )
+          operation = { action, input: request.body };
+        else if (
+          action === "attest-customer-confirmation" &&
+          isSchemaValue(StaffAttestCustomerConfirmationInputSchema, request.body)
+        )
+          operation = { action, input: request.body };
         else if (action === "claim" && isSchemaValue(StaffClaimHandoffInputSchema, request.body))
+          operation = { action, input: request.body };
+        else if (action === "assign" && isSchemaValue(StaffAssignHandoffInputSchema, request.body))
           operation = { action, input: request.body };
         else if (
           action === "resolve" &&
           isSchemaValue(StaffResolveHandoffInputSchema, request.body)
         )
+          operation = { action, input: request.body };
+        else if (action === "reply" && isSchemaValue(StaffReplyInputSchema, request.body))
           operation = { action, input: request.body };
         else if (
           action === "acknowledge" &&
@@ -177,11 +206,27 @@ export const registerStaffOperations = (
           requestId(request),
         );
         reply.header("etag", formatConfigurationEtag(result.resource.id, result.resource.version));
-        reply.code(action === "accept" ? 202 : 200);
+        reply.code(action === "accept" || action === "reply" ? 202 : 200);
         return { data: result, meta: { request_id: requestId(request) } };
       },
     );
   }
+  api.get<{ Params: { id: ResourceId } }>(
+    "/v1/staff/appointment-requests/:id/confirmation",
+    {
+      schema: {
+        params: StaffWorkParamsSchema,
+        response: { 200: StaffAppointmentConfirmationResponseSchema },
+      },
+    },
+    async (request, reply) => ({
+      data: await dependencies.operations.confirmation(
+        await authorize(request, reply),
+        request.params.id,
+      ),
+      meta: { request_id: requestId(request) },
+    }),
+  );
   for (const [path, kind] of [
     ["attendance", "attendance"],
     ["revenue-attributions", "revenue"],

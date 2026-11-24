@@ -9,7 +9,11 @@ import {
   type StaffMutationResult,
   type ResourceId,
 } from "@lead-agent/contracts";
-import { createSecurityIdentifierFactory } from "@lead-agent/security";
+import {
+  createSecurityIdentifierFactory,
+  hasFreshAuthorizationMfa,
+  type CustomerDataProtection,
+} from "@lead-agent/security";
 import type { TenantDatabaseRuntime } from "../runtime/tenant.js";
 import {
   finalizeRepositoryIdempotency,
@@ -17,9 +21,20 @@ import {
   LocationConfigurationIdempotencyError,
   type LocationConfigurationReplayProtector,
 } from "./location-configuration.js";
-import { persistStaffAppointmentDecision, persistStaffHandoff } from "./staff-domain.js";
+import {
+  persistStaffAppointmentDecision,
+  persistStaffCustomerAttestation,
+  persistStaffHandoff,
+  persistStaffReply,
+} from "./staff-domain.js";
 import { persistStaffOutcome, appendStaffAudit } from "./staff-outcomes.js";
-import { getStaffWork, readStaffWork, readStaffOutcomes, requireStaffActor } from "./staff-work.js";
+import {
+  getStaffWork,
+  readStaffWork,
+  readStaffOutcomes,
+  readStaffConfirmation,
+  requireStaffActor,
+} from "./staff-work.js";
 import {
   executeTenantWrite,
   RepositoryVersionConflictError,
@@ -31,6 +46,7 @@ import {
 export const createStaffOperationsStore = (
   runtime: TenantDatabaseRuntime,
   protector: LocationConfigurationReplayProtector,
+  customerData: CustomerDataProtection,
   nextId: () => string = () => createSecurityIdentifierFactory().issueResourceId(new Date()),
 ): StaffOperationsStore =>
   Object.freeze<StaffOperationsStore>({
@@ -42,11 +58,17 @@ export const createStaffOperationsStore = (
       runtime.withTenantTransaction(input.authorization.organizationId, (session) =>
         getStaffWork(session, input.authorization, input.kind, input.id),
       ),
+    confirmation: (authorization, id, now) =>
+      runtime.withTenantTransaction(authorization.organizationId, (session) =>
+        readStaffConfirmation(session, authorization, id, now),
+      ),
     outcomes: (input) =>
       runtime.withTenantTransaction(input.authorization.organizationId, (session) =>
         readStaffOutcomes(session, input),
       ),
     mutate: async (input) => {
+      if ((input.kind === "conversation") !== (input.operation.action === "reply"))
+        throw new StaffOperationError("validation_failed");
       try {
         return await runtime.withTenantTransaction(
           input.authorization.organizationId,
@@ -56,6 +78,11 @@ export const createStaffOperationsStore = (
               input.authorization,
               staffMutationPermission(input.operation),
             );
+            if (
+              input.operation.action === "attest-customer-confirmation" &&
+              !hasFreshAuthorizationMfa(input.authorization, new Date(input.occurredAt))
+            )
+              throw new StaffOperationError("step_up_required");
             // Replay must still pass current membership/location/resource authorization.
             const before = await getStaffWork(session, input.authorization, input.kind, input.id);
             if (input.operation.action === "acknowledge" && !before.acknowledgment_supported)
@@ -79,10 +106,22 @@ export const createStaffOperationsStore = (
             if (before.version !== input.expectedVersion)
               throw new StaffOperationError("version_conflict");
             let outcomeId: ResourceId | null = null;
-            if (input.operation.action === "accept" || input.operation.action === "reject")
-              await persistStaffAppointmentDecision(session, input, nextId);
-            else if (input.operation.action === "claim" || input.operation.action === "resolve")
+            if (
+              input.operation.action === "accept" ||
+              input.operation.action === "reject" ||
+              input.operation.action === "cancel"
+            )
+              await persistStaffAppointmentDecision(session, input, nextId, customerData);
+            else if (input.operation.action === "attest-customer-confirmation")
+              await persistStaffCustomerAttestation(session, input, nextId);
+            else if (
+              input.operation.action === "claim" ||
+              input.operation.action === "assign" ||
+              input.operation.action === "resolve"
+            )
               await persistStaffHandoff(session, input, nextId);
+            else if (input.operation.action === "reply")
+              await persistStaffReply(session, input, customerData, nextId);
             else if (input.operation.action === "acknowledge") {
               const updated = await executeTenantWrite(
                 session,
@@ -107,8 +146,14 @@ export const createStaffOperationsStore = (
             );
             if (ciphertext.byteLength < 1 || ciphertext.byteLength > 65_536)
               throw new TypeError("Invalid protected staff replay size");
-            if (input.kind === "conversation") throw new StaffOperationError("validation_failed");
-            await finalizeRepositoryIdempotency(session, input, input.kind, input.id, ciphertext);
+            await finalizeRepositoryIdempotency(
+              session,
+              input,
+              input.kind,
+              input.id,
+              ciphertext,
+              input.operation.action === "reply" ? 202 : 200,
+            );
             return result;
           },
         );

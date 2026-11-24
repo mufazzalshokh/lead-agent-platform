@@ -4,7 +4,9 @@ import type {
   CanonicalInboundReceipt,
   CanonicalInboundResult,
   PreparedCanonicalInbound,
+  PreparedWidgetPhoneChoice,
 } from "@lead-agent/application";
+import { WidgetApplicationError } from "@lead-agent/application";
 import {
   ActorRefSchema,
   ContactIdSchema,
@@ -21,6 +23,7 @@ import {
   UtcTimestampSchema,
   isSchemaValue,
   type ActorRef,
+  type ChannelConnectionId,
   type ContactId,
   type ConversationId,
   type CorrelationId,
@@ -87,6 +90,7 @@ import {
   mapLeadId,
   mapMessageId,
   mapSafeBigInt,
+  mapUtcTimestamp,
 } from "./shared.js";
 
 const MESSAGE_PROCESSING_STATUSES = [
@@ -435,7 +439,17 @@ const reserveMessageSequence = async (
 
 const persistMessage = async (
   session: TenantDbSession,
-  input: PreparedCanonicalInbound,
+  input: Readonly<{
+    event: Pick<
+      PreparedCanonicalInbound["event"],
+      "channel_connection_id" | "external_message_id" | "occurred_at" | "kind" | "received_at"
+    > &
+      Readonly<{ event_id: string }>;
+    message: Pick<
+      PreparedCanonicalInbound["message"],
+      "bodyCiphertext" | "bodyHash" | "localeHint" | "processingStatus"
+    >;
+  }>,
   contactId: ContactId,
   conversationId: ConversationId,
   messageId: MessageId,
@@ -473,9 +487,15 @@ const persistMessage = async (
 
 const persistConsent = async (
   session: TenantDbSession,
-  input: PreparedCanonicalInbound,
+  input: Pick<PreparedCanonicalInbound, "consentEvidence" | "organizationId"> &
+    Readonly<{
+      event: Pick<
+        PreparedCanonicalInbound["event"],
+        "channel" | "channel_connection_id" | "received_at"
+      >;
+    }>,
   contactId: ContactId,
-  identityId: ResourceId,
+  identityId: ResourceId | null,
   conversationId: ConversationId,
   messageId: MessageId,
   contactVersion: number,
@@ -553,6 +573,140 @@ const persistConsent = async (
     contactId,
     eventType,
     "consent.record",
+    context,
+    identifiers,
+    now,
+  );
+};
+
+/** Persists an explicit Widget action for an already-authorized participant. */
+export const persistWidgetPhoneChoice = async (
+  session: TenantDbSession,
+  subject: Readonly<{
+    channelConnectionId: ChannelConnectionId;
+    contactId: ContactId;
+    conversationId: ConversationId;
+  }>,
+  choice: PreparedWidgetPhoneChoice,
+  identifiers: SecurityIdentifierFactory,
+  now: Date,
+): Promise<void> => {
+  const { channelConnectionId, contactId, conversationId } = subject;
+  const eligible = await executeTenantRead(
+    session,
+    `select c.id from conversations c join contacts ct
+       on ct.organization_id=c.organization_id and ct.id=c.contact_id
+      where c.organization_id=$1 and c.id=$2 and c.contact_id=$3 and c.channel_connection_id=$4
+        and c.status in ('open','awaiting_lead','awaiting_staff') and ct.status='active'
+      for update of c,ct`,
+    [conversationId, contactId, channelConnectionId],
+  );
+  if (eligible.length !== 1) throw new WidgetApplicationError("business_rule_failed");
+  const occurredAt = mapUtcTimestamp(now);
+  const actor: unknown = { actor_type: "customer", actor_id: contactId };
+  if (!isSchemaValue(ActorRefSchema, actor) || actor.actor_type !== "customer")
+    throw new RepositoryDataIntegrityError();
+  const context: EventContext = {
+    actor,
+    correlationId: issueIdentifier<CorrelationId>(CorrelationIdSchema, identifiers, now),
+    occurredAt,
+    requestId: choice.requestId,
+  };
+  let identityId: ResourceId | null = null;
+  let identityAdded = false;
+  if (choice.phone !== null) {
+    const candidate = issueIdentifier<ResourceId>(ResourceIdSchema, identifiers, now);
+    const { ciphertext, lookupHash, displayRedacted } = choice.phone;
+    const inserted = await executeTenantWrite(
+      session,
+      `insert into contact_identities
+        (organization_id,id,contact_id,identity_type,value_ciphertext,lookup_hash,
+         display_redacted,validation_status,status,created_at,updated_at)
+        values ($1,$2,$3,'phone',$4,$5,$6,'valid','active',$7,$7)
+        on conflict do nothing returning id`,
+      [
+        candidate,
+        contactId,
+        Buffer.from(ciphertext),
+        Buffer.from(lookupHash),
+        displayRedacted,
+        now,
+      ],
+    );
+    if (inserted.rowCount === 1) {
+      identityId = candidate;
+      identityAdded = true;
+    } else {
+      const [existing] = await executeTenantRead(
+        session,
+        `select id from contact_identities where organization_id=$1 and contact_id=$2
+           and identity_type='phone' and channel_connection_id is null and lookup_hash=$3
+           and status='active'`,
+        [contactId, Buffer.from(lookupHash)],
+      );
+      const existingId: unknown = existing?.["id"];
+      if (!isSchemaValue(ResourceIdSchema, existingId)) throw new RepositoryDataIntegrityError();
+      identityId = existingId;
+    }
+  }
+  const messageId = issueIdentifier<MessageId>(MessageIdSchema, identifiers, now);
+  const event = {
+    channel: "widget" as const,
+    channel_connection_id: channelConnectionId,
+    event_id: `widget-phone-choice:${messageId}`,
+    kind: "text" as const,
+    occurred_at: null,
+    received_at: occurredAt,
+  };
+  const sequence = await reserveMessageSequence(session, conversationId);
+  // Record the submitted action as evidence without routing it through AI.
+  await persistMessage(
+    session,
+    {
+      event,
+      message: {
+        ...choice.message,
+        localeHint: choice.consent.locale,
+        processingStatus: "suppressed",
+      },
+    },
+    contactId,
+    conversationId,
+    messageId,
+    sequence,
+  );
+  const contactVersion = await updateContactActivity(session, contactId, occurredAt);
+  if (identityAdded) {
+    await persistContactOutboxEvent(
+      session,
+      materializeContactEvent(
+        "contact.identity_added",
+        contactVersion,
+        { contact_identity_id: identityId, identity_type: "phone" },
+        contactId,
+        context,
+        session.organizationId,
+        issueIdentifier<EventId>(EventIdSchema, identifiers, now),
+      ),
+    );
+    await persistContactAudit(
+      session,
+      contactId,
+      "contact.identity_added",
+      "contact.identity.add",
+      context,
+      identifiers,
+      now,
+    );
+  }
+  await persistConsent(
+    session,
+    { event, consentEvidence: choice.consent, organizationId: session.organizationId },
+    contactId,
+    identityId,
+    conversationId,
+    messageId,
+    contactVersion,
     context,
     identifiers,
     now,

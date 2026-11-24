@@ -8,12 +8,13 @@ on:
         required: true
         type: string
       image_scope:
-        description: Build every runtime image or only the S22 migrator
+        description: Build every runtime image, only the API, or only the S22 migrator
         required: true
         default: all
         type: choice
         options:
           - all
+          - api
           - migrator
 
 permissions:
@@ -98,7 +99,7 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build and push API
-        if: inputs.image_scope == 'all'
+        if: inputs.image_scope == 'all' || inputs.image_scope == 'api'
         id: api
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -146,6 +147,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=staging-worker
 
       - name: Build and push migrator
+        if: inputs.image_scope == 'all' || inputs.image_scope == 'migrator'
         id: migrator
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -239,6 +241,38 @@ jobs:
             echo
             echo "Commit: \`$REQUESTED_SHA\`"
             echo "- Migrator: \`$MIGRATOR_REF\`"
+            echo "- Architecture: \`linux/amd64\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record immutable API image manifest
+        if: inputs.image_scope == 'api'
+        env:
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$API_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          API_REF="me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent/api@$API_DIGEST"
+          docker pull --platform=linux/amd64 "$API_REF" > /dev/null
+          [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$API_REF")" == "linux/amd64" ]]
+
+          {
+            echo "build_run_id=$GITHUB_RUN_ID"
+            echo "source_commit=$REQUESTED_SHA"
+            echo "artifact_registry=me-central1-docker.pkg.dev/$PROJECT_ID/lead-agent"
+            echo "architecture=linux/amd64"
+            echo "image_scope=api"
+            echo "api_digest=$API_DIGEST"
+            echo "api_reference=$API_REF"
+          } | tee s22-image-manifest.txt
+
+          {
+            echo "## S22 immutable API image manifest"
+            echo
+            echo "Commit: \`$REQUESTED_SHA\`"
+            echo "- API: \`$API_REF\`"
             echo "- Architecture: \`linux/amd64\`"
           } >> "$GITHUB_STEP_SUMMARY"
 

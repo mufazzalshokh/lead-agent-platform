@@ -2,6 +2,13 @@
 
 Status: owner-approved implementation freeze; cloud execution evidence pending.
 
+Current checkpoint (1 November 2026): use the
+[S22 completion checklist](s22-completion-checklist.md) and its dated receipts
+for closed/open gates. The default-off API connection-fault prerequisite is
+deployed; live recovery, delivery, restore, capacity and remaining product proof
+are not thereby accepted. This freeze retains the approved architecture/targets;
+older pending wording is not a new instruction to repeat accepted work.
+
 S22 uses one isolated, billing-enabled Google Cloud staging project in
 `me-central1` (Doha). This is a staging decision only. S23 must revisit the final
 production placement using Uzbekistan latency, legal/data-transfer requirements,
@@ -11,7 +18,9 @@ customer requirements, availability design, provider residency, and measured cos
 
 ```text
 public HTTPS
-  -> Cloud Run Web service (scale 0..2)
+  -> Cloud Run Web service (scale 0..2; authoritative staging origin)
+       /staff and normal routes -> Web application
+       /v1/* and /v2/* -> fixed-upstream server gateway -> Cloud Run API
   -> Cloud Run API service (scale 0..3, webhooks + Widget + staff API)
 
 Cloud Run API/worker/migrator
@@ -33,6 +42,17 @@ temporarily use `db-custom-1-3840`, then return to the stopped shared-core profi
 Staging deliberately does not imitate production HA; shared-core is explicitly a
 test/development profile and provides no Cloud SQL SLA.
 
+The existing Web `run.app` origin is the owner-approved S22 application gateway.
+The narrowly scoped Web handler proxies only `/v1/*` and `/v2/*` to the separately
+deployed API service. It preserves raw webhook request bytes, methods, queries,
+statuses, redirects and security cookies; rejects oversized or timed-out requests;
+strips hop-by-hop and client-supplied forwarding headers; and obtains its sole API
+upstream from trusted server configuration. Staff cookies remain host-only,
+`Secure`, and `SameSite=Lax`; the API remains authoritative for authentication,
+CSRF, Fetch Metadata, tenant authorization, webhook verification, validation and
+rate limits. S22 adds no external load balancer, custom domain or cross-site
+credentialed-CORS exception. Production topology remains an S23 decision.
+
 ## Trust and secrets
 
 GitHub Actions authenticates through OIDC and a repository/ref/environment-restricted
@@ -45,6 +65,14 @@ The provider-neutral `CredentialSecretStore` is implemented by Google Secret Man
 One pre-provisioned secret is a narrow versioned credential namespace: API and worker
 may add/read/destroy versions, and PostgreSQL stores only an opaque version reference.
 References outside that exact secret fail closed.
+
+The credential namespace uses the canonical numeric project resource name derived
+from Terraform's authenticated project metadata. API and worker receive the same
+exact `projects/<project-number>/secrets/<secret-id>` namespace, matching Secret
+Manager's returned version names. The adapter supports canonical project-number
+names without treating arbitrary project IDs/numbers as interchangeable; foreign
+project/secret references remain denied. This is resource-name normalization, not
+credential rotation or a tenant-binding change.
 
 ## Release and rollback
 
@@ -106,8 +134,10 @@ billing guarantees; logging, requests, backup growth, and egress remain usage-de
 ## Explicit non-goals and pending evidence
 
 S22 adds no Kubernetes, Redis, Kafka, vector database, microservice split, production
-billing, external calendar, or migration after `0029`. Initial `run.app` origins are
-acceptable and must remain distinct for Web/Widget versus API. Real Auth0, Telegram
-Business, Instagram Professional, Gemini, end-to-end journey, TTFR, restore, failure,
-and capacity results cannot be claimed until the approved cloud resources and synthetic
+billing or external calendar. Migration `0031` adds only narrowly scoped Widget
+route-management functions so the runtime keeps no direct `inbound_routes` access. Initial `run.app` origins are
+acceptable; the Web origin is the canonical browser/provider-facing staging origin
+while Web and API remain separate Cloud Run services. Real Auth0, Telegram Business,
+Instagram Professional, Gemini, end-to-end journey, TTFR, restore, failure, and
+capacity results cannot be claimed until the approved cloud resources and synthetic
 accounts exist and the runbooks are executed.

@@ -18,6 +18,7 @@ export * from "./telegram.js";
 export * from "./thread-automation-controls.js";
 export * from "./instagram.js";
 export * from "./widget.js";
+export * from "./widget-management.js";
 export * from "./analytics.js";
 export {
   InvalidRepositoryMutationPlanError,

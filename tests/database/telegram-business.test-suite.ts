@@ -312,11 +312,19 @@ export const registerTelegramBusinessPersistenceTests = (options: Options): void
       authorization: await authorization(),
       displayName: "Business DM",
     });
+    await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+      nextStep: "open_bot",
+      status: "connection_pending",
+    });
     await useCases.processUpdate({
       kind: "onboarding_start",
       nonce: NONCE,
       ownerUserId: "456",
       updateId: "1",
+    });
+    await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+      nextStep: "connect_business",
+      status: "connection_pending",
     });
     await useCases.processUpdate({
       kind: "business_connection",
@@ -326,6 +334,10 @@ export const registerTelegramBusinessPersistenceTests = (options: Options): void
       isEnabled: true,
       establishedAt: NOW.toISOString(),
       updateId: "2",
+    });
+    await expect(useCases.getStatus({ authorization: await authorization() })).resolves.toEqual({
+      nextStep: null,
+      status: "connected",
     });
     const activeChannel = (
       await pool.query<{ id: string }>(

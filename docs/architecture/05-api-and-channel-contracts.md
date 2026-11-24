@@ -234,6 +234,12 @@ active Membership and rotates the session token; invitation acceptance receives
 the opaque token in a non-logged request body after OIDC authentication. Auth0
 logout alone never substitutes for local revocation.
 
+An invalid, expired, or replayed browser callback clears all local authentication
+cookies and redirects to a finite same-origin staff recovery state. The recovery
+screen requires an explicit fresh sign-in and never revives prior browser state;
+identity, Membership, MFA, and tenant authorization are re-established through
+the normal flow. Tenant API requests still use the canonical problem responses.
+
 S6 reuses the canonical problem vocabulary: missing authentication maps to
 `authentication_required`; malformed, expired, revoked, mismatched, or replayed
 authentication/invitation proof maps to `token_invalid`; a valid principal that
@@ -325,15 +331,16 @@ Service/Location lifecycle command.
 | `GET /conversations/{id}/messages` | `conversations.read` | Cursor list with redacted/authorized message representations. |
 | `GET /conversations/{id}/ai-runs` | `conversations.read` | Redacted run/action-evaluation/source/policy summaries; no raw prompts, hidden reasoning, secrets, or unrestricted provider bodies. |
 | `GET /ai-runs/{id}` | `conversations.read` | Tenant/location-authorized diagnostic representation with model/profile/schema/prompt versions, usage, outcome and safe failure codes. |
-| `POST /conversations/{id}/messages` | `conversations.manage` | Staff reply; requires `Idempotency-Key`; persists message + outbox atomically. |
+| `POST /conversations/{id}/messages` | `conversations.manage` | Staff reply `{ text }`, at most 1,000 UTF-8 bytes. Requires `If-Match`, `Idempotency-Key`, and the current assignee of the active staff-owned handoff. Returns `202` with the updated work item after atomic message, state, audit and outbox persistence. |
 | `POST /conversations/{id}/resolve` | `conversations.manage` | `If-Match`, `Idempotency-Key`; state machine validates. |
 | `POST /conversations/{id}/reopen` | `conversations.manage` | `If-Match`, `Idempotency-Key`; policy-controlled. |
 | `GET /appointment-requests` | `appointments.read` | Cursor list; status/location/date filters. |
 | `GET /appointment-requests/{id}` | `appointments.read` | Includes transition history visible to staff. |
 | `POST /appointment-requests/{id}/accept` | `appointments.manage` | Staff supplies proposed appointment instant/location/optional staff note; `If-Match` and `Idempotency-Key`. Commits `staff_accepted` plus a prepare-confirmation outbox event and returns `202` with that durable state. |
 | `POST /appointment-requests/{id}/reject` | `appointments.manage` | Reason code plus optional customer-safe message; `If-Match` and idempotency. |
-| `POST /appointment-requests/{id}/cancel` | `appointments.manage` | Policy-authorized cancellation; idempotent command. |
-| `POST /appointment-requests/{id}/attest-customer-confirmation` | `appointments.manage` | For an offline/unreachable customer only: requires MFA step-up within 15 minutes, an `attestation_method` of `phone` or `in_person`, actual confirmation time, `If-Match`, idempotency, and an audit event with source `staff_attested_external`. |
+| `POST /appointment-requests/{id}/cancel` | `appointments.manage` | Versioned and idempotent staff cancellation with `{ reason_code }`. Requires `If-Match` and `Idempotency-Key`. A request still in `requested` requires `customer_withdrew`. Offered and confirmed appointments may be cancelled with an explicit reason. Returns `200` with the updated work item. |
+| `GET /appointment-requests/{id}/confirmation` | `appointments.read` | Returns the appointment version, any currently eligible offline Widget offer with its version and deadline, and any recorded offline attestation for staff history. |
+| `POST /appointment-requests/{id}/attest-customer-confirmation` | `appointments.manage` | For a previously bound Widget customer without a live session. Requires fresh MFA within 15 minutes, `If-Match`, `Idempotency-Key`, current `offer_version`, `attestation_method` (`phone` or `in_person`), UTC `customer_acted_at`, and `explicit_confirmation: true`. Returns `200` and records the member and source `staff_attested_external`. |
 | `GET /appointment-requests/{id}/attendance` | `appointments.read` | Current attendance fact plus immutable correction history. |
 | `POST /appointment-requests/{id}/attendance` | `attendance.manage` | Record an initial `attended`, `did_not_attend`, or `unknown` fact for a confirmed request after its offered start; `If-Match`, idempotency, actor/source/audit required. |
 | `POST /appointment-requests/{id}/attendance/{attendance_id}/correct` | `attendance.manage` | Append a superseding attendance fact and reason; never overwrite history; `If-Match` current fact and idempotency required. |
@@ -341,7 +348,7 @@ Service/Location lifecycle command.
 | `POST /appointment-requests/{id}/revenue-attributions` | `revenue_attribution.manage` | Add a staff-manual `charge` or `adjustment` for a confirmed request using positive integer minor units, ISO currency, category, recognized time, actor/source/audit; idempotency required. |
 | `POST /appointment-requests/{id}/revenue-attributions/{attribution_id}/reverse` | `revenue_attribution.manage` | Append one same-currency reversal linked to an unreversed attribution; reason and idempotency required; original row remains immutable. |
 | `GET /handoffs` | `handoffs.read` | Cursor list; state/assignee filters. |
-| `POST /handoffs/{id}/assign` | `handoffs.manage` | Assignee membership is checked in this organization; `If-Match` and idempotency are required. Reassignment is a versioned `assigned -> assigned` transition whose history records old and new assignees while its event carries the new assignee only. |
+| `POST /handoffs/{id}/assign` | `handoffs.manage` | Accepts `{ assignee_membership_id, conversation_version }` with `If-Match` and `Idempotency-Key`. The active assignee must be authorized for the handoff and its conversation in this organization. Returns the updated work item. Reassignment is a versioned `assigned -> assigned` transition whose history records old and new assignees while its event carries the new assignee only. |
 | `POST /handoffs/{id}/start` | `handoffs.manage` | Transition to `in_progress`. |
 | `POST /handoffs/{id}/resolve` | `handoffs.manage` | Resolution code plus explicit conversation disposition `resume_ai\|resolve_conversation\|successor_handoff`; versioned/idempotent. |
 | `POST /handoffs/{id}/cancel` | `handoffs.manage` | Authorized actor, reason, explicit conversation disposition, `If-Match`, and idempotency; terminal transition only when policy permits. |
@@ -595,6 +602,7 @@ tenant budget.
 | `GET /conversations/{id}` | conversation-bound token | Returns only the lead-visible state. Cross-conversation IDs return `404`. |
 | `GET /conversations/{id}/messages` | conversation-bound token | Cursor/`after` retrieval; only customer-visible messages. |
 | `POST /conversations/{id}/messages` | conversation-bound token | Text only in V1; idempotency required. Returns `202` when orchestration is queued. |
+| `POST /conversations/{id}/phone-choice` | conversation-bound token | Optional booking follow-up choice after the disclosed notice. Accepts `{ decision, locale, notice_version }` and requires `phone` for `granted`. Declining omits the number. Requires `Idempotency-Key` and returns `204` after recording the choice. |
 | `POST /appointment-requests/{id}/confirm` | conversation-bound token + one-time confirmation grant | Deterministically confirms only from `awaiting_customer_confirmation` when expected aggregate version and current `offer_version` both match and explicit `now` is in the grant's half-open validity interval; idempotent. |
 | `POST /appointment-requests/{id}/decline` | same | Deterministically cancels/declines according to policy; idempotent. |
 | `POST /handoffs` | conversation-bound token | Explicit human request; idempotent and safe if one active handoff already exists. |

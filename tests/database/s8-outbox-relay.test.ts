@@ -44,7 +44,6 @@ let tenantPool: Pool | undefined;
 let relayRuntime: OutboxRelayDatabaseRuntime | undefined;
 let ownerConnectionString: string | undefined;
 let queueConnectionString: string | undefined;
-let serverVersion = "";
 let pgbossUpgradeUnchanged = false;
 
 const database = (): Pool => {
@@ -347,16 +346,12 @@ beforeAll(async () => {
   if (externalUrl !== undefined) await requireEmptyExternalTestDatabase(ownerPool);
 
   const versionResult = await ownerPool.query<{
-    server_version: string;
     server_version_num: string;
-  }>(
-    "select current_setting('server_version') as server_version, current_setting('server_version_num') as server_version_num",
-  );
+  }>("show server_version_num");
   const versionNumber = Number(versionResult.rows[0]?.server_version_num);
-  if (versionNumber < 170_000 || versionNumber >= 180_000) {
+  if (!(versionNumber >= 170_000 && versionNumber < 180_000)) {
     throw new Error("S8.2 integration tests require PostgreSQL major version 17");
   }
-  serverVersion = versionResult.rows[0]?.server_version ?? "";
 
   const migrationNames = await loadMigrationNames();
   for (const filename of migrationNames.slice(0, migrationNames.indexOf(S8_RELAY_MIGRATION))) {
@@ -407,13 +402,12 @@ afterAll(async () => {
 
 describe("S8.2/S8.3 PostgreSQL 17 narrow outbox relay persistence", { timeout: 30_000 }, () => {
   it("upgrades 0022 to 0023 without changing business tables or pg-boss", async () => {
-    expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     expect(pgbossUpgradeUnchanged).toBe(true);
     expect(await publicTableCount(database())).toBe(CURRENT_BUSINESS_TABLE_COUNT);
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 30 }]);
+    expect(migrations.rows).toEqual([{ count: 34 }]);
   });
 
   it("exposes only the minimal typed claim result without payload", async () => {

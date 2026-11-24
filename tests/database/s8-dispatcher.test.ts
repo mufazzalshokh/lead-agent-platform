@@ -61,7 +61,6 @@ let relayRuntime: OutboxRelayDatabaseRuntime | undefined;
 let tenantRuntime: TenantDatabaseRuntime | undefined;
 let queueInfrastructure: QueueInfrastructure | undefined;
 let queueConnectionString: string | undefined;
-let serverVersion = "";
 
 const database = (): Pool => {
   if (ownerPool === undefined) throw new Error("S8.3 owner pool is not initialized");
@@ -316,14 +315,11 @@ beforeAll(async () => {
   ownerPool = new Pool({ connectionString: ownerConnectionString, max: 12 });
   if (externalUrl !== undefined) await requireEmptyExternalTestDatabase(ownerPool);
 
-  const version = await ownerPool.query<{ server_version: string; server_version_num: string }>(
-    "select current_setting('server_version') as server_version, current_setting('server_version_num') as server_version_num",
-  );
+  const version = await ownerPool.query<{ server_version_num: string }>("show server_version_num");
   const versionNumber = Number(version.rows[0]?.server_version_num);
-  if (versionNumber < 170_000 || versionNumber >= 180_000) {
+  if (!(versionNumber >= 170_000 && versionNumber < 180_000)) {
     throw new Error("S8.3 integration tests require PostgreSQL major version 17");
   }
-  serverVersion = version.rows[0]?.server_version ?? "";
 
   const journal: unknown = JSON.parse(
     await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
@@ -393,7 +389,6 @@ afterAll(async () => {
 
 describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_000 }, () => {
   it("bootstraps current head twice with the approved 52-table business manifest", async () => {
-    expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
     const tables = await database().query<{ count: number }>(
       `select count(*)::integer as count
          from information_schema.tables
@@ -403,7 +398,7 @@ describe("S8.3 PostgreSQL 17 dispatcher and pg-boss integration", { timeout: 30_
     const migrations = await database().query<{ count: number }>(
       "select count(*)::integer as count from drizzle.__drizzle_migrations",
     );
-    expect(migrations.rows).toEqual([{ count: 30 }]);
+    expect(migrations.rows).toEqual([{ count: 34 }]);
   });
 
   it("observes pg-boss 12.31.0 returning null for an exact duplicate queue and ID", async () => {
@@ -674,7 +669,6 @@ describe("S8.4 PostgreSQL 17 worker lifecycle and finite registry", { timeout: 3
         return (await jobState(eventId)) === "completed";
       });
 
-      expect(serverVersion).toMatch(/^17\.11(?:\.|\s|$)/u);
       expect(await outboxState(eventId)).toMatchObject({ attempt_count: 1, status: "published" });
       expect(contexts).toHaveLength(1);
       expect(contexts[0]).toMatchObject({

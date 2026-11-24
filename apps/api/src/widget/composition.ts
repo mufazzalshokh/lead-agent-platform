@@ -1,4 +1,4 @@
-import { createWidgetUseCases } from "@lead-agent/application";
+import { createWidgetManagementUseCases, createWidgetUseCases } from "@lead-agent/application";
 import type {
   CustomerDataProtectionConfig,
   WidgetEmbedConfig,
@@ -6,18 +6,31 @@ import type {
 } from "@lead-agent/config";
 import {
   createWidgetPersistenceStore,
+  createWidgetRecoveryStore,
+  createWidgetManagementStore,
   type InboundRouteDatabaseRuntime,
   type TenantDatabaseRuntime,
 } from "@lead-agent/database";
 import {
   createCustomerDataProtection,
   createWidgetExchangeGrantService,
+  createWidgetRecoveryGrantService,
   createWidgetRateLimiter,
   createWidgetTokenService,
 } from "@lead-agent/security";
 import type { OperationalMetrics } from "@lead-agent/observability";
 
 import type { WidgetDependencies } from "./plugin.js";
+import type { StaffWidgetManagementDependencies } from "./management-plugin.js";
+
+export const createStaffWidgetManagementDependencies = (
+  tenantRuntime: TenantDatabaseRuntime,
+): StaffWidgetManagementDependencies =>
+  Object.freeze({
+    useCases: createWidgetManagementUseCases({
+      store: createWidgetManagementStore(tenantRuntime),
+    }),
+  });
 
 export const createWidgetDependencies = (
   tenantRuntime: TenantDatabaseRuntime,
@@ -38,6 +51,10 @@ export const createWidgetDependencies = (
         publicApiOrigin: widgetEmbedConfig.publicApiOrigin,
       },
       persistence: createWidgetPersistenceStore(tenantRuntime),
+      recovery: {
+        grants: createWidgetRecoveryGrantService(widgetEmbedConfig),
+        store: createWidgetRecoveryStore(tenantRuntime),
+      },
       rateLimiter: createWidgetRateLimiter(),
       routeResolver: ingressRuntime,
       ...(metrics === undefined

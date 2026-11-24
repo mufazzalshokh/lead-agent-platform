@@ -89,6 +89,8 @@ export const createInstagramOutboundHandler =
     if (token === null) return permanent();
     // Recheck the trusted channel and credential after secret I/O, immediately before sending.
     const current = await dependencies.store.load(organizationId, messageId);
+    if (current !== null && "kind" in current && current.kind === "withdrawn_confirmation_prompt")
+      return;
     if (
       current === null ||
       "kind" in current ||

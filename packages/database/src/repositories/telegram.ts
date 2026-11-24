@@ -8,6 +8,7 @@ import {
   type OrganizationId,
 } from "@lead-agent/contracts";
 import type {
+  TelegramManagementStatus,
   TelegramConnectionAuthority,
   TelegramPersistenceStore,
 } from "@lead-agent/application";
@@ -21,6 +22,10 @@ import type { QueryResultRow } from "pg";
 
 import type { TenantDatabaseRuntime, TenantDbSession } from "../runtime/tenant.js";
 import { executeTenantQuery } from "../runtime/tenant.js";
+import {
+  WITHDRAWN_CONFIRMATION_PROMPT_SQL,
+  type WithdrawnConfirmationPrompt,
+} from "./customer-replies.js";
 
 const HASH_BYTES = 32;
 const CONFIGURATION_SCHEMA_VERSION = 1;
@@ -160,6 +165,44 @@ const selectConnection = async (
   return result.rows[0] ?? null;
 };
 
+const managementStatus = (rows: readonly ConnectionRow[], now: Date): TelegramManagementStatus => {
+  const parsed = rows.map((row) => ({
+    configuration: parseConfiguration(row.configuration_jsonb),
+    row,
+  }));
+  if (
+    parsed.some(
+      ({ configuration: value, row }) =>
+        row.status === "active" && value?.phase === "active" && value.is_enabled && value.can_reply,
+    )
+  ) {
+    return Object.freeze({ nextStep: null, status: "connected" });
+  }
+  if (
+    parsed.some(
+      ({ configuration: value, row }) =>
+        row.status === "pending" && value?.phase === "awaiting_connection",
+    )
+  ) {
+    return Object.freeze({ nextStep: "connect_business", status: "connection_pending" });
+  }
+  if (
+    parsed.some(
+      ({ configuration: value, row }) =>
+        row.status === "pending" &&
+        value?.phase === "awaiting_owner" &&
+        value.onboarding_expires_at !== null &&
+        Date.parse(value.onboarding_expires_at) > now.getTime(),
+    )
+  ) {
+    return Object.freeze({ nextStep: "open_bot", status: "connection_pending" });
+  }
+  return Object.freeze({
+    nextStep: null,
+    status: rows.length === 0 ? "not_connected" : "needs_attention",
+  });
+};
+
 const rotateRoute = async (
   session: TenantDbSession,
   channelConnectionId: ChannelConnectionId,
@@ -224,6 +267,20 @@ export const createTelegramPersistenceStore = (
           input.actor,
         );
         return Object.freeze({ channelConnectionId });
+      }),
+    loadManagementStatus: async (organizationId, now) =>
+      await runtime.withTenantTransaction(organizationId, async (session) => {
+        const result = await executeTenantQuery<ConnectionRow>(
+          session,
+          (trustedOrganizationId) => ({
+            text: `select cc.status, cc.provider_account_id_hash, cc.configuration_jsonb
+                   from channel_connections cc
+                  where cc.organization_id = $1 and cc.channel_type = 'telegram'
+                  order by cc.updated_at desc, cc.id desc`,
+            values: [trustedOrganizationId],
+          }),
+        );
+        return managementStatus(result.rows, now);
       }),
     bindOwner: async (input) =>
       await runtime.withTenantTransaction(input.context.organizationId, async (session) => {
@@ -425,7 +482,9 @@ export type TelegramOutboundPersistenceStore = Readonly<{
   load(
     organizationId: OrganizationId,
     messageId: MessageId,
-  ): Promise<TelegramOutboundRecord | Readonly<{ kind: "not_telegram" }> | null>;
+  ): Promise<
+    TelegramOutboundRecord | Readonly<{ kind: "not_telegram" }> | WithdrawnConfirmationPrompt | null
+  >;
   markFailed(organizationId: OrganizationId, messageId: MessageId): Promise<boolean>;
   markSent(
     organizationId: OrganizationId,
@@ -446,17 +505,19 @@ type OutboundRow = QueryResultRow & {
   last_inbound_at: Date | null;
   message_id: string;
   recipient_ciphertext: Buffer | null;
+  withdrawn_confirmation_prompt: boolean;
 };
 
 const loadOutboundInSession = async (
   session: TenantDbSession,
   messageId: MessageId,
-): Promise<TelegramOutboundRecord | Readonly<{ kind: "not_telegram" }> | null> => {
+): ReturnType<TelegramOutboundPersistenceStore["load"]> => {
   const result = await executeTenantQuery<OutboundRow>(session, (organizationId) => ({
     text: `select m.id::text as message_id, m.channel_connection_id::text,
                   m.content_type, m.body_ciphertext, m.delivery_status,
                   cc.channel_type, cc.status as channel_status, c.external_thread_hash,
                   cc.configuration_jsonb, ci.value_ciphertext as recipient_ciphertext,
+                  ${WITHDRAWN_CONFIRMATION_PROMPT_SQL} as withdrawn_confirmation_prompt,
                   (select max(mi.external_sent_at) from messages mi
                     where mi.organization_id = $1 and mi.conversation_id = m.conversation_id
                       and mi.direction = 'inbound') as last_inbound_at
@@ -479,6 +540,8 @@ const loadOutboundInSession = async (
   const row = result.rows[0];
   if (row !== undefined && row.channel_type !== "telegram")
     return Object.freeze({ kind: "not_telegram" });
+  if (row?.delivery_status === "queued" && row.withdrawn_confirmation_prompt === true)
+    return Object.freeze({ kind: "withdrawn_confirmation_prompt" });
   const config = parseConfiguration(row?.configuration_jsonb);
   if (
     row === undefined ||

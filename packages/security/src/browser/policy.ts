@@ -5,7 +5,7 @@ import { BrowserCsrfInvalidError, BrowserOriginNotAllowedError } from "./errors.
 
 export const BROWSER_AUTH_POLICY = Object.freeze({
   invitationProofLifetimeMilliseconds: 10 * 60 * 1_000,
-  loginTransactionLifetimeMilliseconds: 10 * 60 * 1_000,
+  loginTransactionLifetimeMilliseconds: 30 * 60 * 1_000,
   normalLoginMaximumAgeSeconds: 12 * 60 * 60,
   stepUpMaximumAgeSeconds: 15 * 60,
 });

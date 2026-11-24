@@ -193,6 +193,87 @@ describe("S12 deterministic orchestration", () => {
     expect(await orchestrator.run(AI_REFERENCE)).toMatchObject({ reason: "timeout" });
     expect(decide).toHaveBeenCalledTimes(1);
   });
+  it("cannot miss cancellation during synchronous provider startup", async () => {
+    const test = setup([]);
+    const controller = new AbortController();
+    const decide = vi.fn((): Promise<AIProviderResult> => {
+      controller.abort();
+      return new Promise(() => {});
+    });
+    const orchestrator = createAIOrchestrator({
+      provider: { decide },
+      store: { load: test.load, reserve: test.reserve, finish: test.finish },
+      timeoutMs: 1000,
+    });
+    const result = await Promise.race([
+      orchestrator.run(AI_REFERENCE, controller.signal),
+      new Promise<"MISSED_ABORT">((resolve) => setTimeout(() => resolve("MISSED_ABORT"), 50)),
+    ]);
+    expect(result).not.toBe("MISSED_ABORT");
+    expect(result).toMatchObject({ kind: "fallback_required", reason: "timeout" });
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(test.finish).toHaveBeenCalledTimes(1);
+    expect(test.finish.mock.calls[0]?.[0]).toMatchObject({
+      dispatchAuthorized: true,
+      allowRepair: false,
+      provider: { kind: "timeout", model: null, usage: { input: null, output: null } },
+    });
+  });
+  it.each(["completed", "throws"] as const)(
+    "cleans up the deadline listener when provider startup %s",
+    async (behavior) => {
+      const test = setup([]);
+      let removedCalls = 0;
+      const decide: AIProvider["decide"] = (input) => {
+        const originalRemove = input.signal.removeEventListener.bind(input.signal);
+        vi.spyOn(input.signal, "removeEventListener").mockImplementation((...args) => {
+          removedCalls++;
+          originalRemove(...args);
+        });
+        if (behavior === "throws") throw new Error("sensitive-test-error");
+        return Promise.resolve({ ...AI_METADATA, kind: "completed", value: validDecision() });
+      };
+      const outcome = await createAIOrchestrator({
+        provider: { decide },
+        store: { load: test.load, reserve: test.reserve, finish: test.finish },
+        timeoutMs: 1000,
+      }).run(AI_REFERENCE);
+      expect(outcome.kind).toBe(behavior === "completed" ? "decision" : "fallback_required");
+      expect(removedCalls).toBe(1);
+      expect(JSON.stringify(outcome)).not.toContain("sensitive-test-error");
+    },
+  );
+  it("a late completion after cancellation cannot finalize twice or replace unknown usage", async () => {
+    const test = setup([]);
+    const controller = new AbortController();
+    let complete: ((result: AIProviderResult) => void) | undefined;
+    const decide = vi.fn(
+      (): Promise<AIProviderResult> =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const result = createAIOrchestrator({
+      provider: { decide },
+      store: { load: test.load, reserve: test.reserve, finish: test.finish },
+      timeoutMs: 1000,
+      telemetry: { record: test.record },
+    }).run(AI_REFERENCE, controller.signal);
+    await vi.waitFor(() => expect(decide).toHaveBeenCalledOnce());
+    controller.abort();
+    expect(await result).toMatchObject({ reason: "timeout" });
+    complete?.({ ...AI_METADATA, kind: "completed", value: validDecision() });
+    await Promise.resolve();
+    expect(test.finish).toHaveBeenCalledOnce();
+    expect(test.record).toHaveBeenCalledOnce();
+    expect(test.finish.mock.calls[0]?.[0].provider?.usage).toEqual({
+      input: null,
+      output: null,
+      total: null,
+      cachedInput: null,
+      reasoning: null,
+    });
+  });
   it("uses the same total deadline across repair", async () => {
     const test = setup([
       { ...AI_METADATA, kind: "invalid_output", outputHash: new Uint8Array(32).fill(5) },

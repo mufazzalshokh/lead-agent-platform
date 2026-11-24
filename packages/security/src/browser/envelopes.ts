@@ -2,10 +2,12 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 import {
   OrganizationIdSchema,
+  StaffSignupInputSchema,
   UserIdSchema,
   UuidV7Schema,
   isSchemaValue,
   type OrganizationId,
+  type StaffSignupInput,
   type UserId,
 } from "@lead-agent/contracts";
 
@@ -22,7 +24,7 @@ const OPAQUE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/u;
 const OPAQUE_SECRET_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const AUTHENTICATION_LEVEL_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u;
 
-export type BrowserAuthTransactionPurpose = "invitation" | "login" | "step_up";
+export type BrowserAuthTransactionPurpose = "invitation" | "login" | "signup" | "step_up";
 
 export type BrowserAuthTransaction = Readonly<{
   codeVerifier: string;
@@ -36,6 +38,7 @@ export type BrowserAuthTransaction = Readonly<{
   nonce: string;
   purpose: BrowserAuthTransactionPurpose;
   returnPath: string;
+  signup?: StaffSignupInput;
   state: string;
 }>;
 
@@ -116,13 +119,19 @@ const encodeTransaction = (value: BrowserAuthTransaction): JsonRecord => ({
   nonce: value.nonce,
   purpose: value.purpose,
   returnPath: value.returnPath,
+  ...(value.signup === undefined ? {} : { signup: value.signup }),
   state: value.state,
 });
 
 const decodeTransaction = (value: unknown, now: Date): BrowserAuthTransaction => {
   if (!isRecord(value)) throw new BrowserAuthenticationTokenInvalidError();
   const purpose = value["purpose"];
-  if (purpose !== "login" && purpose !== "step_up" && purpose !== "invitation") {
+  if (
+    purpose !== "login" &&
+    purpose !== "step_up" &&
+    purpose !== "invitation" &&
+    purpose !== "signup"
+  ) {
     throw new BrowserAuthenticationTokenInvalidError();
   }
   const issuedAt = requireDate(value["issuedAt"]);
@@ -146,6 +155,7 @@ const decodeTransaction = (value: unknown, now: Date): BrowserAuthTransaction =>
   const expectedSessionId = value["expectedSessionId"];
   const invitationTokenHash = value["invitationTokenHash"];
   const invitationOrganizationId = value["invitationOrganizationId"];
+  const signup = value["signup"];
   const validStepUp =
     purpose === "step_up" &&
     isSchemaValue(UserIdSchema, expectedUserId) &&
@@ -156,12 +166,15 @@ const decodeTransaction = (value: unknown, now: Date): BrowserAuthTransaction =>
     isSchemaValue(OrganizationIdSchema, invitationOrganizationId) &&
     typeof invitationTokenHash === "string" &&
     OPAQUE_SECRET_PATTERN.test(invitationTokenHash);
+  const validSignup = purpose === "signup" && isSchemaValue(StaffSignupInputSchema, signup);
   if (
     (purpose === "step_up" && !validStepUp) ||
     (purpose !== "step_up" && (expectedUserId !== undefined || expectedSessionId !== undefined)) ||
     (purpose === "invitation" && !validInvitation) ||
     (purpose !== "invitation" &&
-      (invitationTokenHash !== undefined || invitationOrganizationId !== undefined))
+      (invitationTokenHash !== undefined || invitationOrganizationId !== undefined)) ||
+    (purpose !== "signup" && signup !== undefined) ||
+    (purpose === "signup" && !validSignup)
   ) {
     throw new BrowserAuthenticationTokenInvalidError();
   }
@@ -189,6 +202,9 @@ const decodeTransaction = (value: unknown, now: Date): BrowserAuthTransaction =>
   }
   if (validInvitation) {
     return Object.freeze({ ...base, invitationOrganizationId, invitationTokenHash });
+  }
+  if (validSignup) {
+    return Object.freeze({ ...base, signup: Object.freeze(signup) });
   }
   return Object.freeze(base);
 };

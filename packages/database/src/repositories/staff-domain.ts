@@ -1,34 +1,57 @@
-import { StaffOperationError, type StaffPreparedOperation } from "@lead-agent/application";
+import {
+  CUSTOMER_CONFIRMATION_PROFILE,
+  StaffOperationError,
+  confirmationText,
+  type StaffPreparedOperation,
+} from "@lead-agent/application";
 import {
   ActorRefSchema,
   DomainEventSchema,
-  IanaTimeZoneSchema,
   RequestIdSchema,
   CorrelationIdSchema,
+  STAFF_APPOINTMENT_WITHDRAWAL_REASON,
   isSchemaValue,
   type ActorRef,
+  type MembershipId,
   type ResourceId,
   type StaffWorkItem,
 } from "@lead-agent/contracts";
 import {
   staffAcceptAppointmentRequest,
   rejectAppointmentRequest,
+  cancelAppointmentRequest,
+  confirmAppointmentRequest,
+  validateAppointmentOfferVersion,
   validateAppointmentRequestReasonCode,
   validateHandoffQueueKey,
   validateHandoffResolutionCode,
   validateConversationResolutionCode,
   takeHandoffStaffOwnershipWorkflow,
+  reassignHandoff,
+  startHandoff,
   terminateHandoffAndResumeAiWorkflow,
   terminateHandoffAndResolveConversationWorkflow,
-  type AppointmentRequest,
+  queueStaffResponse,
   type Conversation,
   type Handoff,
 } from "@lead-agent/domain";
+import { hasPermission, isMembershipRole, type CustomerDataProtection } from "@lead-agent/security";
 import type { TenantDbSession } from "../runtime/tenant.js";
 import { createAppointmentRepository } from "./appointments.js";
+import {
+  loadAppointmentForDecision,
+  localSlotText,
+  readExactAppointmentPreferences,
+} from "./appointment-domain.js";
 import { createConversationRepository } from "./conversations.js";
+import {
+  boundConfirmationChannel,
+  isOfflineWidgetCustomer,
+  persistConfirmationDecision,
+} from "./customer-confirmation.js";
 import { createHandoffNotificationRepository } from "./handoffs.js";
 import { persistDomainMutationPlan } from "./mutations.js";
+import { insertQueuedCustomerMessage, queueCustomerReply } from "./customer-replies.js";
 import type {
   CoreDomainEventDraft,
   CoreTransitionPersistence,
@@ -41,9 +64,12 @@ import {
   mapAppointmentRequestId,
   mapConversationId,
   mapHandoffId,
+  mapMessageId,
   mapResourceId,
+  mapSafeBigInt,
   RepositoryDataIntegrityError,
   executeTenantRead,
+  executeTenantWrite,
 } from "./shared.js";
 import { getStaffWork } from "./staff-work.js";
 
@@ -59,20 +85,6 @@ const nonempty = <T>(values: readonly T[]): NonEmptyReadonlyArray<T> => {
   const [first, ...rest] = values;
   if (first === undefined) throw new RepositoryDataIntegrityError();
   return [first, ...rest];
-};
-export const localSlotText = (instant: string, zone: string): string => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: zone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(instant));
-  const part = (name: string) => parts.find((value) => value.type === name)?.value;
-  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}:${part("second")}`;
 };
 const envelope = (
   input: StaffPreparedOperation,
@@ -127,73 +139,36 @@ const audit = (
     expected_version: input.expectedVersion,
   },
 });
-/** S17 may decide only a requested appointment. It cannot prepare or confirm it. */
 export const persistStaffAppointmentDecision = async (
   session: TenantDbSession,
   input: StaffPreparedOperation,
   nextId: () => string,
+  protection: CustomerDataProtection,
 ): Promise<void> => {
-  const repo = createAppointmentRepository(session),
-    row = await repo.getAppointmentRequest(mapAppointmentRequestId(input.id));
-  if (row.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
-  if (row.status !== "requested") throw new StaffOperationError("business_rule_failed");
-  // Keep the prerequisite state stable until the appointment CAS commits.
+  const repo = createAppointmentRepository(session);
+  const initial = await repo.getAppointmentRequest(mapAppointmentRequestId(input.id));
+  if (initial.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
+  const cancelling = input.operation.action === "cancel";
+  if (!cancelling && initial.status !== "requested")
+    throw new StaffOperationError("business_rule_failed");
+  // Confirmation takes the conversation lock before touching the appointment.
   await executeTenantRead(
     session,
-    `select id from conversations where organization_id=$1 and id=$2 for share`,
-    [row.conversationId],
+    `select id from conversations where organization_id=$1 and id=$2 for ${cancelling ? "update" : "share"}`,
+    [initial.conversationId],
   );
+  const row = cancelling ? await repo.getAppointmentRequest(initial.appointmentRequestId) : initial;
+  if (row.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
+  if (row.status === "cancelled" || row.status === "rejected" || row.status === "expired")
+    throw new StaffOperationError("business_rule_failed");
   const conversation = await createConversationRepository(session).getConversation(
     row.conversationId,
   );
-  if (conversation.status === "closed" || conversation.status === "resolved")
+  if (!cancelling && (conversation.status === "closed" || conversation.status === "resolved"))
     throw new StaffOperationError("business_rule_failed");
-  const stored = await repo.listPreferences(row.appointmentRequestId, { limit: 20 });
-  if (stored.next !== null) throw new StaffOperationError("business_rule_failed");
-  const preferences = stored.items.map((pref) => {
-    if (
-      pref.precision !== "exact" ||
-      pref.startAt === null ||
-      pref.endAt === null ||
-      pref.localStart === null ||
-      pref.localEnd === null ||
-      !isSchemaValue(IanaTimeZoneSchema, pref.timeZone)
-    )
-      throw new StaffOperationError("business_rule_failed");
-    return {
-      ...pref,
-      precision: "exact" as const,
-      startAt: pref.startAt,
-      endAt: pref.endAt,
-      localStart: pref.localStart,
-      localEnd: pref.localEnd,
-      timeZone: pref.timeZone,
-    };
-  });
-  const request: AppointmentRequest = {
-    appointmentRequestId: row.appointmentRequestId,
-    organizationId: session.organizationId,
-    leadId: row.leadId,
-    contactId: row.contactId,
-    conversationId: row.conversationId,
-    sourceMessageId: row.sourceMessageId,
-    serviceId: row.serviceId,
-    serviceVersionId: row.serviceVersionId,
-    locationId: row.locationId,
-    locationVersionId: row.locationVersionId,
-    businessPolicyId: row.businessPolicyId,
-    preferences,
-    status: "requested",
-    version: mapAggregateVersion(row.version),
-    createdAt: row.createdAt,
-    staffDecision: null,
-    offer: null,
-    confirmationOffer: null,
-    confirmationEvidence: null,
-    confirmedAt: null,
-    cancellation: null,
-    expiration: null,
-  };
+  const preferences = await readExactAppointmentPreferences(session, row.appointmentRequestId);
+  if (preferences === null) throw new StaffOperationError("business_rule_failed");
+  const request = await loadAppointmentForDecision(session, row, preferences);
   const context = {
       actor: staffActor(input),
       organizationId: session.organizationId,
@@ -229,9 +204,22 @@ export const persistStaffAppointmentDecision = async (
     const reason = validateAppointmentRequestReasonCode(input.operation.input.reason_code);
     if (!reason.ok) throw new StaffOperationError("validation_failed");
     result = rejectAppointmentRequest(request, { ...context, staff, reasonCode: reason.value });
+  } else if (input.operation.action === "cancel") {
+    const reason = validateAppointmentRequestReasonCode(input.operation.input.reason_code);
+    if (!reason.ok) throw new StaffOperationError("validation_failed");
+    if (row.status === "requested" && reason.value !== STAFF_APPOINTMENT_WITHDRAWAL_REASON)
+      throw new StaffOperationError("business_rule_failed");
+    result = cancelAppointmentRequest(request, {
+      ...context,
+      initiator: { kind: "staff", staff },
+      reasonCode: reason.value,
+    });
   } else throw new StaffOperationError("validation_failed");
   if (!result.ok) throw new StaffOperationError("business_rule_failed");
   const value = result.value;
+  const events = nonempty(
+    value.events.map((draft) => envelope(input, draft, "appointment_request", input.id, nextId)),
+  );
   await persistDomainMutationPlan(session, {
     aggregates: [
       {
@@ -239,6 +227,11 @@ export const persistStaffAppointmentDecision = async (
         mode: "update",
         expectedVersion: context.expectedVersion,
         nextAggregate: value.nextAggregate,
+        ...(cancelling && row.status !== "confirmed"
+          ? {
+              storage: { confirmationTokenHash: null, confirmationTokenConsumedAt: null },
+            }
+          : {}),
       },
     ],
     transitions: nonempty(
@@ -249,9 +242,7 @@ export const persistStaffAppointmentDecision = async (
         correlationId: mapCorrelationId(input.correlationId),
       })),
     ),
-    events: nonempty(
-      value.events.map((draft) => envelope(input, draft, "appointment_request", input.id, nextId)),
-    ),
+    events,
     audits: [
       audit(
         input,
@@ -260,21 +251,182 @@ export const persistStaffAppointmentDecision = async (
       ),
     ],
   });
+  const now = new Date(input.occurredAt);
+  if (
+    cancelling &&
+    request.offer !== null &&
+    (await boundConfirmationChannel(session, conversation, now)) !== null
+  ) {
+    const kind = row.status === "confirmed" ? "cancelled_by_staff" : "offer_withdrawn";
+    await queueCustomerReply(
+      session,
+      {
+        conversationId: conversation.conversationId,
+        channelConnectionId: conversation.channelConnectionId,
+        conversationVersion: conversation.version,
+        locale: conversation.preferredLocale,
+        text: confirmationText(kind, conversation.preferredLocale, request.offer.localStart),
+        replyToMessageId: null,
+        aiRunId: null,
+        correlationId: mapCorrelationId(input.correlationId),
+        causationId: events[0].envelope.event_id,
+        requestId: input.requestId,
+        manifest: {
+          sources: [],
+          confirmation_profile: CUSTOMER_CONFIRMATION_PROFILE,
+          confirmation_kind: kind,
+          confirmation_request_id: request.appointmentRequestId,
+          confirmation_offer_version: request.offer.offerVersion,
+        },
+        updatePreferredLocale: false,
+      },
+      protection,
+      nextId,
+      now,
+    );
+  }
 };
+
+export const persistStaffCustomerAttestation = async (
+  session: TenantDbSession,
+  input: StaffPreparedOperation,
+  nextId: () => string,
+): Promise<void> => {
+  if (input.operation.action !== "attest-customer-confirmation")
+    throw new StaffOperationError("validation_failed");
+  const repo = createAppointmentRepository(session);
+  const initial = await repo.getAppointmentRequest(mapAppointmentRequestId(input.id));
+  await executeTenantRead(
+    session,
+    `select id from conversations where organization_id=$1 and id=$2 for update`,
+    [initial.conversationId],
+  );
+  await executeTenantRead(
+    session,
+    `select id from appointment_requests where organization_id=$1 and id=$2 for update`,
+    [initial.appointmentRequestId],
+  );
+  const row = await repo.getAppointmentRequest(initial.appointmentRequestId);
+  const body = input.operation.input;
+  if (row.version !== input.expectedVersion || row.offerVersion !== body.offer_version)
+    throw new StaffOperationError("version_conflict");
+  const now = new Date(input.occurredAt);
+  const conversation = await createConversationRepository(session).getConversation(
+    row.conversationId,
+  );
+  if (
+    row.status !== "awaiting_customer_confirmation" ||
+    row.contactId !== conversation.contactId ||
+    row.leadId !== conversation.leadId ||
+    !(await isOfflineWidgetCustomer(session, row.conversationId, now))
+  )
+    throw new StaffOperationError("business_rule_failed");
+  const preferences = await readExactAppointmentPreferences(session, row.appointmentRequestId);
+  if (preferences === null) throw new StaffOperationError("business_rule_failed");
+  const request = await loadAppointmentForDecision(session, row, preferences);
+  const offerVersion = validateAppointmentOfferVersion(row.offerVersion);
+  const reason = validateAppointmentRequestReasonCode("customer_confirmed_offline");
+  if (!offerVersion.ok || !reason.ok) throw new RepositoryDataIntegrityError();
+  const organizationId = session.organizationId;
+  const actor = staffActor(input);
+  const result = confirmAppointmentRequest(request, {
+    actor,
+    organizationId,
+    expectedVersion: request.version,
+    now: input.occurredAt,
+    evidence: {
+      appointmentRequest: { organizationId, appointmentRequestId: request.appointmentRequestId },
+      contact: { organizationId, contactId: request.contactId },
+      evidence: { organizationId, evidenceId: mapResourceId(nextId()) },
+      source: "staff_attested_external",
+      offerVersion: offerVersion.value,
+      customerAct: "explicit_confirmation",
+      customerActedAt: body.customer_acted_at,
+      attestationMethod: body.attestation_method,
+      attestationReasonCode: reason.value,
+      protectedEvidence: null,
+      staff: { organizationId, membershipId: input.authorization.membershipId },
+    },
+  });
+  if (!result.ok) throw new StaffOperationError("business_rule_failed");
+  await persistConfirmationDecision(session, request, result, {
+    actor,
+    correlation: mapCorrelationId(input.correlationId),
+    causation: null,
+    now,
+    nextId,
+    staffRequestId: input.requestId,
+  });
+};
+const requireHandoffAssignee = async (
+  session: TenantDbSession,
+  handoff: Handoff,
+  id: MembershipId,
+): Promise<void> => {
+  const [member] = await executeTenantRead(
+    session,
+    `select role,location_scope from memberships where organization_id=$1 and id=$2 and status='active' for share`,
+    [id],
+  );
+  const role: unknown = member?.["role"];
+  if (
+    !isMembershipRole(role) ||
+    !hasPermission(role, "handoffs.manage") ||
+    !hasPermission(role, "conversations.manage")
+  )
+    throw new StaffOperationError("permission_denied");
+  const scope: unknown = member?.["location_scope"];
+  if (scope === "all") return;
+  if (scope !== "restricted" || handoff.locationId === null)
+    throw new StaffOperationError("permission_denied");
+  // The member needs access to the handoff and the conversation it owns.
+  const allowed = await executeTenantRead(
+    session,
+    `select l.id from leads l
+      join membership_location_scopes h on h.organization_id=l.organization_id
+        and h.membership_id=$2 and h.location_id=$3
+      join membership_location_scopes c on c.organization_id=l.organization_id
+        and c.membership_id=$2 and c.location_id=l.location_id
+      where l.organization_id=$1 and l.id=$4`,
+    [id, handoff.locationId, handoff.leadId],
+  );
+  if (allowed.length !== 1) throw new StaffOperationError("permission_denied");
+};
+
 export const persistStaffHandoff = async (
   session: TenantDbSession,
   input: StaffPreparedOperation,
   nextId: () => string,
 ): Promise<void> => {
-  const row = await createHandoffNotificationRepository(session).getHandoff(mapHandoffId(input.id));
+  const operation = input.operation;
+  if (
+    operation.action !== "claim" &&
+    operation.action !== "assign" &&
+    operation.action !== "resolve"
+  )
+    throw new StaffOperationError("validation_failed");
+  const id = mapHandoffId(input.id);
+  // Match the reply lock order. For handoff-only transitions, the Conversation
+  // version must stay current even though no Conversation event is written.
+  if (operation.action !== "resolve")
+    await executeTenantRead(
+      session,
+      `select id from handoffs where organization_id=$1 and id=$2 for update`,
+      [id],
+    );
+  const row = await createHandoffNotificationRepository(session).getHandoff(id);
+  if (operation.action !== "resolve")
+    await executeTenantRead(
+      session,
+      `select id from conversations where organization_id=$1 and id=$2 for update`,
+      [row.conversationId],
+    );
   const conversationRow = await createConversationRepository(session).getConversation(
     row.conversationId,
   );
-  if (input.operation.action !== "claim" && input.operation.action !== "resolve")
-    throw new StaffOperationError("validation_failed");
   if (
     row.version !== input.expectedVersion ||
-    conversationRow.version !== input.operation.input.conversation_version
+    conversationRow.version !== operation.input.conversation_version
   )
     throw new StaffOperationError("version_conflict");
   const queue = validateHandoffQueueKey(row.queueKey);
@@ -314,34 +466,57 @@ export const persistStaffHandoff = async (
   };
   const conversationContext = {
       ...context,
-      expectedVersion: mapAggregateVersion(input.operation.input.conversation_version),
+      expectedVersion: mapAggregateVersion(operation.input.conversation_version),
     },
     handoffContext = { ...context, expectedVersion: mapAggregateVersion(input.expectedVersion) };
+  const assignee = {
+    organizationId: session.organizationId,
+    membershipId:
+      operation.action === "assign"
+        ? operation.input.assignee_membership_id
+        : input.authorization.membershipId,
+  };
+  if (operation.action === "assign") {
+    if (handoff.status !== "requested" && handoff.status !== "assigned")
+      throw new StaffOperationError("business_rule_failed");
+    await requireHandoffAssignee(session, handoff, assignee.membershipId);
+  }
   let result;
-  if (input.operation.action === "claim")
+  if (operation.action !== "resolve" && handoff.status === "assigned") {
+    if (conversation.automationMode !== "staff")
+      throw new StaffOperationError("business_rule_failed");
+    const transition =
+      operation.action === "assign"
+        ? reassignHandoff(handoff, { ...handoffContext, assignee })
+        : startHandoff(handoff, { ...handoffContext, starter: assignee });
+    if (!transition.ok) throw new StaffOperationError("business_rule_failed");
+    result = {
+      ok: true as const,
+      value: {
+        handoff: transition.value.nextAggregate,
+        conversation,
+        events: transition.value.events,
+        transitionRecords: transition.value.transitionRecords,
+      },
+    };
+  } else if (operation.action !== "resolve") {
     result = takeHandoffStaffOwnershipWorkflow(handoff, conversation, {
       conversation: conversationContext,
       handoff: {
-        action: "claim_and_start",
-        command: {
-          ...handoffContext,
-          assignee: {
-            organizationId: session.organizationId,
-            membershipId: input.authorization.membershipId,
-          },
-        },
+        action: operation.action === "assign" ? "assign" : "claim_and_start",
+        command: { ...handoffContext, assignee },
       },
     });
-  else {
-    const code = validateHandoffResolutionCode(input.operation.input.resolution_code),
-      convCode = validateConversationResolutionCode(input.operation.input.resolution_code);
+  } else {
+    const code = validateHandoffResolutionCode(operation.input.resolution_code),
+      convCode = validateConversationResolutionCode(operation.input.resolution_code);
     if (!code.ok || !convCode.ok) throw new StaffOperationError("validation_failed");
     const terminal = {
       action: "resolved" as const,
       command: { ...handoffContext, resolutionCode: code.value },
     };
     result =
-      input.operation.input.disposition === "resume_ai"
+      operation.input.disposition === "resume_ai"
         ? terminateHandoffAndResumeAiWorkflow(handoff, conversation, {
             disposition: "resume_ai",
             conversation: conversationContext,
@@ -356,13 +531,14 @@ export const persistStaffHandoff = async (
   }
   if (!result.ok) throw new StaffOperationError("business_rule_failed");
   const value = result.value;
+  const conversationChanged = value.conversation.version !== conversation.version;
   const transitions: CoreTransitionPersistence[] = value.transitionRecords.map((record) =>
     "handoffId" in record
       ? {
           transitionType: "handoff",
           record,
           conversationDisposition:
-            input.operation.action === "resolve" ? input.operation.input.disposition : null,
+            operation.action === "resolve" ? operation.input.disposition : null,
           transitionId: mapResourceId(nextId()),
           correlationId: mapCorrelationId(input.correlationId),
         }
@@ -376,12 +552,16 @@ export const persistStaffHandoff = async (
         expectedVersion: handoffContext.expectedVersion,
         nextAggregate: value.handoff,
       },
-      {
-        aggregateType: "conversation",
-        mode: "update",
-        expectedVersion: conversationContext.expectedVersion,
-        nextAggregate: value.conversation,
-      },
+      ...(conversationChanged
+        ? [
+            {
+              aggregateType: "conversation" as const,
+              mode: "update" as const,
+              expectedVersion: conversationContext.expectedVersion,
+              nextAggregate: value.conversation,
+            },
+          ]
+        : []),
     ],
     transitions: nonempty(transitions),
     events: nonempty(
@@ -397,12 +577,116 @@ export const persistStaffHandoff = async (
     ),
     audits: [
       audit(input, { targetType: "handoff", targetId: handoff.handoffId }, nextId),
-      audit(
-        input,
-        { targetType: "conversation", targetId: mapConversationId(conversationRow.conversationId) },
-        nextId,
-      ),
+      ...(conversationChanged
+        ? [
+            audit(
+              input,
+              {
+                targetType: "conversation",
+                targetId: mapConversationId(conversationRow.conversationId),
+              },
+              nextId,
+            ),
+          ]
+        : []),
     ],
+  });
+};
+export const persistStaffReply = async (
+  session: TenantDbSession,
+  input: StaffPreparedOperation,
+  protection: CustomerDataProtection,
+  nextId: () => string,
+): Promise<void> => {
+  if (input.operation.action !== "reply") throw new StaffOperationError("validation_failed");
+  const row = await createConversationRepository(session).getConversation(
+    mapConversationId(input.id),
+  );
+  if (row.version !== input.expectedVersion) throw new StaffOperationError("version_conflict");
+  if (row.activeHandoffId === null) throw new StaffOperationError("business_rule_failed");
+  // Handoff workflows lock the handoff before the conversation. Hold ownership stable through commit.
+  const ownership = await executeTenantRead<{ status: unknown }>(
+    session,
+    `select status from handoffs where organization_id=$1 and id=$2 and conversation_id=$3
+      and assigned_membership_id=$4 and status in ('assigned','in_progress') for share`,
+    [row.activeHandoffId, row.conversationId, input.authorization.membershipId],
+  );
+  const handoffStatus = ownership[0]?.["status"];
+  if (handoffStatus !== "assigned" && handoffStatus !== "in_progress")
+    throw new StaffOperationError("business_rule_failed");
+  await getStaffWork(session, input.authorization, "handoff", mapResourceId(row.activeHandoffId));
+  const channels = await executeTenantRead(
+    session,
+    `select id from channel_connections where organization_id=$1 and id=$2 and status='active'
+      and channel_type in ('widget','telegram','instagram')`,
+    [row.channelConnectionId],
+  );
+  if (channels.length !== 1) throw new StaffOperationError("business_rule_failed");
+  const expectedVersion = mapAggregateVersion(row.version);
+  const messageId = mapMessageId(nextId());
+  const result = queueStaffResponse(
+    {
+      ...row,
+      organizationId: session.organizationId,
+      version: expectedVersion,
+      activeHandoff: {
+        handoffId: row.activeHandoffId,
+        organizationId: session.organizationId,
+        status: handoffStatus,
+      },
+    },
+    {
+      actor: staffActor(input),
+      organizationId: session.organizationId,
+      expectedVersion,
+      occurredAt: input.occurredAt,
+      message: { messageId, organizationId: session.organizationId },
+    },
+  );
+  if (!result.ok) throw new StaffOperationError("business_rule_failed");
+  // Reserve the message sequence under the same CAS without advancing the domain version twice.
+  const sequence = await executeTenantWrite<{ sequence_no: unknown }>(
+    session,
+    `update conversations set next_sequence_no=next_sequence_no+1
+      where organization_id=$1 and id=$2 and version=$3 returning next_sequence_no-1 as sequence_no`,
+    [row.conversationId, expectedVersion],
+  );
+  if (sequence.rowCount !== 1) throw new StaffOperationError("version_conflict");
+  await insertQueuedCustomerMessage(
+    session,
+    {
+      messageId,
+      sequence: mapSafeBigInt(sequence.rows[0]?.["sequence_no"]),
+      conversationId: row.conversationId,
+      channelConnectionId: row.channelConnectionId,
+      text: input.operation.input.text,
+      locale: row.preferredLocale,
+      senderMembershipId: input.authorization.membershipId,
+      replyToMessageId: null,
+      aiRunId: null,
+      manifest: null,
+    },
+    protection,
+    new Date(input.occurredAt),
+  );
+  await persistDomainMutationPlan(session, {
+    aggregates: [
+      {
+        aggregateType: "conversation",
+        mode: "update",
+        expectedVersion,
+        nextAggregate: result.value.nextAggregate,
+      },
+    ],
+    transitions: nonempty(
+      result.value.transitionRecords.map((record) => ({ transitionType: "conversation", record })),
+    ),
+    events: nonempty(
+      result.value.events.map((draft) =>
+        envelope(input, draft, "conversation", row.conversationId, nextId),
+      ),
+    ),
+    audits: [audit(input, { targetType: "conversation", targetId: row.conversationId }, nextId)],
   });
 };
 export const requireStaffTarget = (

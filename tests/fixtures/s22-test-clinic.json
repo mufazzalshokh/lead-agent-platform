@@ -1,0 +1,131 @@
+{
+  "fixture_id": "s22-test-clinic.v1",
+  "synthetic": true,
+  "organization_id": "01a0ee39-91a9-7293-82c0-5b7046c10115",
+  "label": "S22 Test Clinic",
+  "supported_languages": ["uz", "ru", "en"],
+  "location_create": { "code": "s22-test-clinic" },
+  "location_publish": {
+    "name_i18n": {
+      "uz": "S22 Test Clinic — faqat sintetik sinov",
+      "ru": "S22 Test Clinic — только синтетический тест",
+      "en": "S22 Test Clinic — synthetic test only"
+    },
+    "address_i18n": {
+      "uz": "Faqat staging sinovi. Haqiqiy klinika yoki manzil emas.",
+      "ru": "Только staging-тест. Не настоящая клиника или адрес.",
+      "en": "Staging test only. Not a real clinic or address."
+    },
+    "public_contact": {},
+    "time_zone": "Asia/Tashkent",
+    "business_hours": {
+      "intervals": [
+        {
+          "day_of_week": 1,
+          "sequence_no": 1,
+          "opens_at_local": "09:00:00",
+          "closes_at_local": "18:00:00"
+        },
+        {
+          "day_of_week": 2,
+          "sequence_no": 1,
+          "opens_at_local": "09:00:00",
+          "closes_at_local": "18:00:00"
+        },
+        {
+          "day_of_week": 3,
+          "sequence_no": 1,
+          "opens_at_local": "09:00:00",
+          "closes_at_local": "18:00:00"
+        },
+        {
+          "day_of_week": 4,
+          "sequence_no": 1,
+          "opens_at_local": "09:00:00",
+          "closes_at_local": "18:00:00"
+        },
+        {
+          "day_of_week": 5,
+          "sequence_no": 1,
+          "opens_at_local": "09:00:00",
+          "closes_at_local": "18:00:00"
+        },
+        {
+          "day_of_week": 6,
+          "sequence_no": 1,
+          "opens_at_local": "09:00:00",
+          "closes_at_local": "18:00:00"
+        }
+      ]
+    }
+  },
+  "service_create": { "code": "s22-test-consultation" },
+  "service_publish": {
+    "name_i18n": {
+      "uz": "S22 sinov konsultatsiyasi",
+      "ru": "S22 тестовая консультация",
+      "en": "S22 Test Consultation"
+    },
+    "description_i18n": {
+      "uz": "Faqat sintetik staging konsultatsiyasi. Haqiqiy tibbiy xizmat emas.",
+      "ru": "Только синтетическая staging-консультация. Не настоящая медицинская услуга.",
+      "en": "Synthetic staging consultation only. Not a real medical service."
+    },
+    "disclaimer_i18n": {
+      "uz": "Faqat sinov. So‘rovni xodim ko‘rib chiqadi. Ish vaqti bo‘sh qabul vaqti borligini anglatmaydi.",
+      "ru": "Только тест. Заявку проверяет сотрудник. Часы работы не означают наличие свободного времени для записи.",
+      "en": "Test only. Staff review each request. Opening hours do not guarantee appointment availability."
+    },
+    "duration_guidance_minutes": 30
+  },
+  "price_draft": {
+    "display_text_i18n": {
+      "uz": "S22 sinov konsultatsiyasi: 100 000 so‘m. Faqat sintetik sinov narxi.",
+      "ru": "S22 тестовая консультация: 100 000 сум. Только синтетическая тестовая цена.",
+      "en": "S22 Test Consultation: UZS 100,000. Synthetic test price only."
+    },
+    "location_id": null,
+    "pricing": { "price_type": "fixed", "amount": { "amount_minor": 10000000, "currency": "UZS" } }
+  },
+  "qualification_draft_if_none_published": {
+    "policy_key": "s22-test-qualification-v1",
+    "policy_type": "qualification",
+    "schema_version": 1,
+    "rules": {
+      "disqualification_reasons": [
+        "service_not_offered",
+        "location_not_served",
+        "not_interested",
+        "outside_business_scope",
+        "spam_or_abuse"
+      ],
+      "require_budget": false,
+      "require_contactability": true,
+      "require_medical_eligibility": false,
+      "require_positive_next_step_intent": true,
+      "require_preferred_time": false,
+      "require_service_interest": true,
+      "require_supported_service_location": true
+    }
+  },
+  "faq_draft": {
+    "faq_key": "s22-test-booking-review",
+    "service_id": null,
+    "location_id": null,
+    "question_i18n": {
+      "uz": "S22 sinov konsultatsiyasiga yozilish qanday tasdiqlanadi va ish vaqti qanday?",
+      "ru": "Как подтверждается запись на S22 тестовую консультацию и каковы часы работы?",
+      "en": "How is an S22 Test Consultation booking confirmed, and what are the opening hours?"
+    },
+    "answer_i18n": {
+      "uz": "Faqat sintetik sinov. Dushanba–shanba 09:00–18:00, Asia/Tashkent; yakshanba yopiq. Ish vaqti bo‘sh qabul vaqti borligini anglatmaydi. Avval xodim so‘rovni ko‘rib chiqadi. Xodim qabul qilganidan keyin mijoz alohida tasdiqlashi kerak; shundan keyingina yozilish tasdiqlangan bo‘ladi.",
+      "ru": "Только синтетический тест. Понедельник–суббота 09:00–18:00, Asia/Tashkent; в воскресенье закрыто. Часы работы не гарантируют свободное время для записи. Сначала сотрудник проверяет заявку. После принятия сотрудником клиент должен отдельно подтвердить запись; только тогда запись подтверждена.",
+      "en": "Synthetic test only. Monday–Saturday 09:00–18:00, Asia/Tashkent; closed Sunday. Opening hours do not guarantee appointment availability. Staff review the request first. After staff acceptance, the customer must explicitly confirm; only then is the booking confirmed."
+    }
+  },
+  "bind_before_submission": {
+    "price_draft.location_id": "published fixture location ID",
+    "faq_draft.location_id": "published fixture location ID",
+    "faq_draft.service_id": "published fixture service ID"
+  }
+}

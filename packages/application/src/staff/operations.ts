@@ -5,8 +5,14 @@ import {
   StaffWorkParamsSchema,
   StaffAcceptAppointmentInputSchema,
   StaffRejectAppointmentInputSchema,
+  StaffCancelAppointmentInputSchema,
+  StaffAttestCustomerConfirmationInputSchema,
+  StaffAppointmentConfirmationSchema,
   StaffClaimHandoffInputSchema,
+  StaffAssignHandoffInputSchema,
   StaffResolveHandoffInputSchema,
+  StaffReplyInputSchema,
+  STAFF_REPLY_MAX_BYTES,
   StaffAcknowledgeInputSchema,
   StaffAttendanceInputSchema,
   StaffRevenueInputSchema,
@@ -21,8 +27,13 @@ import {
   type StaffOutcome,
   type StaffAcceptAppointmentInput,
   type StaffRejectAppointmentInput,
+  type StaffCancelAppointmentInput,
+  type StaffAttestCustomerConfirmationInput,
+  type StaffAppointmentConfirmation,
   type StaffClaimHandoffInput,
+  type StaffAssignHandoffInput,
   type StaffResolveHandoffInput,
+  type StaffReplyInput,
   type StaffAttendanceInput,
   type StaffRevenueInput,
   type ResourceId,
@@ -33,6 +44,7 @@ import {
   createSecurityIdentifierFactory,
   hasPermission,
   isAuthorizationContext,
+  hasFreshAuthorizationMfa,
   type AuthorizationContext,
   type TenantPermission,
 } from "@lead-agent/security";
@@ -44,13 +56,21 @@ export type StaffWorkKind = StaffWorkItem["kind"];
 export type StaffOperation =
   | Readonly<{ action: "accept"; input: StaffAcceptAppointmentInput }>
   | Readonly<{ action: "reject"; input: StaffRejectAppointmentInput }>
+  | Readonly<{ action: "cancel"; input: StaffCancelAppointmentInput }>
+  | Readonly<{
+      action: "attest-customer-confirmation";
+      input: StaffAttestCustomerConfirmationInput;
+    }>
   | Readonly<{ action: "claim"; input: StaffClaimHandoffInput }>
+  | Readonly<{ action: "assign"; input: StaffAssignHandoffInput }>
   | Readonly<{ action: "resolve"; input: StaffResolveHandoffInput }>
+  | Readonly<{ action: "reply"; input: StaffReplyInput }>
   | Readonly<{ action: "acknowledge"; input: Readonly<object> }>
   | Readonly<{ action: "attendance"; input: StaffAttendanceInput }>
   | Readonly<{ action: "revenue"; input: StaffRevenueInput }>;
 export type StaffOperationCode =
   | "permission_denied"
+  | "step_up_required"
   | "resource_not_found"
   | "validation_failed"
   | "version_conflict"
@@ -87,6 +107,11 @@ export interface StaffOperationsStore {
   get(
     input: Readonly<{ authorization: AuthorizationContext; kind: StaffWorkKind; id: ResourceId }>,
   ): Promise<StaffWorkItem>;
+  confirmation(
+    authorization: AuthorizationContext,
+    id: ResourceId,
+    now: Date,
+  ): Promise<StaffAppointmentConfirmation>;
   outcomes(
     input: Readonly<{
       authorization: AuthorizationContext;
@@ -113,6 +138,10 @@ export interface StaffOperations {
     kind: StaffWorkKind,
     id: ResourceId,
   ) => Promise<StaffWorkItem>;
+  readonly confirmation: (
+    authorization: AuthorizationContext,
+    id: ResourceId,
+  ) => Promise<StaffAppointmentConfirmation>;
   readonly outcomes: (
     authorization: AuthorizationContext,
     id: ResourceId,
@@ -138,16 +167,60 @@ export const staffReadPermission = (kind: StaffWorkKind): TenantPermission =>
       : kind === "notification"
         ? "notifications.read"
         : "conversations.read";
+const mutationPolicy = {
+  accept: {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffAcceptAppointmentInputSchema,
+  },
+  reject: {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffRejectAppointmentInputSchema,
+  },
+  cancel: {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffCancelAppointmentInputSchema,
+  },
+  "attest-customer-confirmation": {
+    kind: "appointment_request",
+    permission: "appointments.manage",
+    schema: StaffAttestCustomerConfirmationInputSchema,
+  },
+  claim: { kind: "handoff", permission: "handoffs.manage", schema: StaffClaimHandoffInputSchema },
+  assign: { kind: "handoff", permission: "handoffs.manage", schema: StaffAssignHandoffInputSchema },
+  resolve: {
+    kind: "handoff",
+    permission: "handoffs.manage",
+    schema: StaffResolveHandoffInputSchema,
+  },
+  reply: {
+    kind: "conversation",
+    permission: "conversations.manage",
+    schema: StaffReplyInputSchema,
+  },
+  acknowledge: {
+    kind: "notification",
+    permission: "notifications.read",
+    schema: StaffAcknowledgeInputSchema,
+  },
+  attendance: {
+    kind: "appointment_request",
+    permission: "attendance.manage",
+    schema: StaffAttendanceInputSchema,
+  },
+  revenue: {
+    kind: "appointment_request",
+    permission: "revenue_attribution.manage",
+    schema: StaffRevenueInputSchema,
+  },
+} as const satisfies Record<
+  StaffOperation["action"],
+  { kind: StaffWorkKind; permission: TenantPermission; schema: object }
+>;
 export const staffMutationPermission = (operation: StaffOperation): TenantPermission =>
-  operation.action === "claim" || operation.action === "resolve"
-    ? "handoffs.manage"
-    : operation.action === "acknowledge"
-      ? "notifications.read"
-      : operation.action === "attendance"
-        ? "attendance.manage"
-        : operation.action === "revenue"
-          ? "revenue_attribution.manage"
-          : "appointments.manage";
+  mutationPolicy[operation.action].permission;
 const requireAuthorization = (
   authorization: AuthorizationContext,
   permission: TenantPermission,
@@ -160,15 +233,6 @@ const timestamp = (value: Date): UtcTimestamp => {
   const text = value.toISOString();
   if (!isSchemaValue(UtcTimestampSchema, text)) throw new TypeError("Invalid staff timestamp");
   return text;
-};
-const schemas = {
-  accept: StaffAcceptAppointmentInputSchema,
-  reject: StaffRejectAppointmentInputSchema,
-  claim: StaffClaimHandoffInputSchema,
-  resolve: StaffResolveHandoffInputSchema,
-  acknowledge: StaffAcknowledgeInputSchema,
-  attendance: StaffAttendanceInputSchema,
-  revenue: StaffRevenueInputSchema,
 };
 export const createStaffOperations = (
   store: StaffOperationsStore,
@@ -241,6 +305,14 @@ export const createStaffOperations = (
         throw new StaffOperationError("validation_failed");
       return store.get({ authorization, kind, id });
     },
+    confirmation: async (authorization: AuthorizationContext, id: ResourceId) => {
+      requireAuthorization(authorization, "appointments.read");
+      if (!isSchemaValue(ResourceIdSchema, id)) throw new StaffOperationError("validation_failed");
+      const value = await store.confirmation(authorization, id, clock());
+      if (!isSchemaValue(StaffAppointmentConfirmationSchema, value))
+        throw new TypeError("Invalid appointment confirmation projection");
+      return value;
+    },
     outcomes: async (
       authorization: AuthorizationContext,
       id: ResourceId,
@@ -274,22 +346,24 @@ export const createStaffOperations = (
       correlationId: string,
     ) => {
       requireAuthorization(authorization, staffMutationPermission(operation));
-      const expectedKind =
-        operation.action === "claim" || operation.action === "resolve"
-          ? "handoff"
-          : operation.action === "acknowledge"
-            ? "notification"
-            : "appointment_request";
+      const policy = mutationPolicy[operation.action];
       if (
-        kind !== expectedKind ||
+        kind !== policy.kind ||
         !isSchemaValue(ResourceIdSchema, id) ||
         !isSchemaValue(ResourceVersionSchema, expectedVersion) ||
         !isSchemaValue(ConfigurationIdempotencyKeySchema, key) ||
-        !isSchemaValue(schemas[operation.action], operation.input)
+        !isSchemaValue(policy.schema, operation.input) ||
+        (operation.action === "reply" &&
+          new TextEncoder().encode(operation.input.text).byteLength > STAFF_REPLY_MAX_BYTES)
       )
         throw new StaffOperationError("validation_failed");
       const now = clock(),
         occurredAt = now.toISOString();
+      if (
+        operation.action === "attest-customer-confirmation" &&
+        !hasFreshAuthorizationMfa(authorization, now)
+      )
+        throw new StaffOperationError("step_up_required");
       if (!isSchemaValue(UtcTimestampSchema, occurredAt))
         throw new TypeError("Invalid staff operation clock");
       const scope = `s17:${kind}:${id}:${operation.action}`;

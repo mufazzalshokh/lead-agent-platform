@@ -38,3 +38,19 @@ jobs:
 
       - name: Verify Stage 1 baseline
         run: pnpm ci:verify
+
+      - name: Set up Terraform for offline configuration tests
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.14.7
+          terraform_wrapper: false
+
+      - name: Verify offline connection-fault Terraform wiring
+        env:
+          TF_IN_AUTOMATION: true
+          TF_INPUT: false
+        run: |
+          terraform -chdir=infra/deploy/gcp/staging init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=infra/deploy/gcp/staging fmt -check -recursive
+          terraform -chdir=infra/deploy/gcp/staging validate
+          node .github/scripts/s22-connection-fault-terraform-check.mjs

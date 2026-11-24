@@ -1,8 +1,9 @@
 import type { AgentDecisionV1, AgentFactualClaim, Locale } from "@lead-agent/contracts";
 import { createAIOrchestrator } from "./orchestrate.js";
 import { aiFallback, evaluateAIDecision } from "./policy.js";
-import { groundingLocale, groundingNeed, groundingPreflight } from "./grounding-query.js";
+import { groundingLocale, groundingNeeds, groundingPreflight } from "./grounding-query.js";
 import type { AIContextSnapshot, AIFallbackReason, AIOutcome } from "./ports.js";
+import { initialGroundingGreeting, renderGroundedFacts } from "./grounded-wording.js";
 
 export const GROUNDED_ANSWER_PROMPT_VERSION = "s14-grounded-answers.v1";
 export type GroundedAnswerResult =
@@ -47,24 +48,28 @@ export const evaluateGroundedDecision = (
   const policy = evaluateAIDecision(decision, snapshot.policy);
   if (policy.kind !== "decision" || policy.disposition !== "candidate") return policy;
   const locale = groundingLocale(snapshot.message, snapshot.locale),
-    need = groundingNeed(snapshot.message);
+    needs = groundingNeeds(snapshot.message);
   if (decision.language !== locale) return aiFallback("grounding_insufficient");
   const facts = snapshot.policy.facts.filter(
-    (entry) => entry.grounding?.locale === locale && entry.grounding.need === need,
+    (entry) => entry.grounding?.locale === locale && needs.includes(entry.grounding.need),
   );
   if (
     facts.length === 0 ||
+    needs.some((need) => !facts.some((entry) => entry.grounding?.need === need)) ||
     facts.some((entry, index) =>
       facts.some(
         (other, otherIndex) =>
           index !== otherIndex &&
+          entry.grounding?.need === other.grounding?.need &&
           entry.grounding?.subject === other.grounding?.subject &&
           entry.text !== other.text,
       ),
     )
   )
     return aiFallback("grounding_insufficient");
-  const text = facts.map((entry) => entry.text).join("\n");
+  const text = [initialGroundingGreeting(snapshot, locale), renderGroundedFacts(facts, locale)]
+    .filter(Boolean)
+    .join(" ");
   if (
     text.length === 0 ||
     new TextEncoder().encode(text).length > 1_000 ||

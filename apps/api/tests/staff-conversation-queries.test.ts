@@ -194,7 +194,7 @@ type Controls = {
   sessionValid: boolean;
 };
 
-const createFixture = (withOperations = false) => {
+const createFixture = (withOperations = false, authenticationTime = NOW) => {
   const controls: Controls = { calls: [], role: "staff", sessionValid: true };
   const record = <Value>(operation: string, authorization: unknown, value: Value) => {
     controls.calls.push({ authorization, operation });
@@ -216,7 +216,7 @@ const createFixture = (withOperations = false) => {
   };
   const web = createStaffWebAuthConfig({
     browserEnvelopeKey: Buffer.alloc(32, 41).toString("base64url"),
-    callbackUri: "https://api.example.test/v1/staff/auth/callback",
+    callbackUri: "https://staff.example.test/v1/staff/auth/callback",
     clientId: "staff-client",
     clientSecret: "synthetic-test-value",
     environment: "production",
@@ -231,7 +231,7 @@ const createFixture = (withOperations = false) => {
   const session: AuthenticatedApplicationSession = {
     absoluteExpiresAt: new Date("2026-09-16T08:00:00.000Z"),
     authenticationLevel: "mfa",
-    authenticationTime: NOW,
+    authenticationTime,
     createdAt: NOW,
     idleExpiresAt: new Date("2026-09-15T09:00:00.000Z"),
     lastSeenAt: NOW,
@@ -290,6 +290,12 @@ const createFixture = (withOperations = false) => {
       return Promise.resolve({ items: [staffWorkFixture], next: null });
     },
     get: () => Promise.resolve(staffWorkFixture),
+    confirmation: () =>
+      Promise.resolve({
+        appointment_version: staffWorkFixture.version,
+        offline_offer: null,
+        attestation: null,
+      }),
     outcomes: () => Promise.resolve({ items: [], next: null }),
     mutate: (input) => {
       controls.calls.push({
@@ -299,8 +305,8 @@ const createFixture = (withOperations = false) => {
       return Promise.resolve({
         resource: {
           ...staffWorkFixture,
-          status: "staff_accepted",
-          appointment_status: "staff_accepted",
+          status: input.operation.action === "cancel" ? "cancelled" : "staff_accepted",
+          appointment_status: input.operation.action === "cancel" ? "cancelled" : "staff_accepted",
           version: 2,
         },
         outcome_id: null,
@@ -350,6 +356,123 @@ const createFixture = (withOperations = false) => {
 };
 
 describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () => {
+  it("requires fresh MFA and explicit evidence on the offline confirmation route", async () => {
+    const f = createFixture(true, new Date(NOW.getTime() - 15 * 60_000));
+    try {
+      const url = `/v1/staff/appointment-requests/${staffWorkFixture.id}/attest-customer-confirmation`;
+      const headers = {
+        ...f.headers(),
+        origin: STAFF_ORIGIN,
+        "x-csrf-token": f.csrf,
+        "idempotency-key": "s18-offline-attestation",
+        "if-match": `"${staffWorkFixture.id}:${staffWorkFixture.version}"`,
+      };
+      const payload = {
+        offer_version: 1,
+        attestation_method: "phone",
+        customer_acted_at: NOW.toISOString(),
+        explicit_confirmation: true,
+      };
+      const invalid = await f.api.inject({
+        method: "POST",
+        url,
+        headers,
+        payload: { ...payload, explicit_confirmation: false },
+      });
+      expect(invalid.statusCode).toBe(400);
+      const stale = await f.api.inject({ method: "POST", url, headers, payload });
+      expect(stale.statusCode).toBe(403);
+      expect(stale.json()).toMatchObject({
+        code: "permission_denied",
+        type: "https://lead-agent.invalid/problems/step_up_required",
+      });
+      expect(f.controls.calls).toHaveLength(0);
+    } finally {
+      await f.api.close();
+    }
+  });
+  it("validates a versioned handoff assignment before dispatching it", async () => {
+    const f = createFixture(true);
+    try {
+      const url = `/v1/staff/handoffs/${staffWorkFixture.id}/assign`;
+      const headers = {
+        ...f.headers(),
+        origin: STAFF_ORIGIN,
+        "x-csrf-token": f.csrf,
+        "idempotency-key": "s17-handoff-assignment",
+        "if-match": `"${staffWorkFixture.id}:${staffWorkFixture.version}"`,
+      };
+      const payload = { conversation_version: 2, assignee_membership_id: staffWorkFixture.id };
+      const denied = await f.api.inject({
+        method: "POST",
+        url,
+        headers: { ...headers, "x-csrf-token": "wrong" },
+        payload,
+      });
+      expect(denied.statusCode).toBe(403);
+      const invalid = await f.api.inject({
+        method: "POST",
+        url,
+        headers,
+        payload: { ...payload, assignee_membership_id: "unknown" },
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(f.controls.calls).toHaveLength(0);
+      const assigned = await f.api.inject({ method: "POST", url, headers, payload });
+      expect(assigned.statusCode).toBe(200);
+      expect(f.controls.calls).toHaveLength(1);
+      expect(f.controls.calls[0]?.operation).toBe("assign");
+    } finally {
+      await f.api.close();
+    }
+  });
+  it("queues a staff reply only through the authenticated versioned mutation boundary", async () => {
+    const f = createFixture(true);
+    const url = `/v1/staff/conversations/${staffWorkFixture.id}/messages`;
+    const headers = {
+      ...f.headers(),
+      origin: STAFF_ORIGIN,
+      "x-csrf-token": f.csrf,
+      "idempotency-key": "staff-reply-fixture",
+      "if-match": `"${staffWorkFixture.id}:1"`,
+    };
+    const text = "Thanks, we can help.";
+    try {
+      expect(
+        (
+          await f.api.inject({
+            method: "POST",
+            url,
+            headers: { ...headers, "x-csrf-token": "wrong" },
+            payload: { text },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (await f.api.inject({ method: "POST", url, headers, payload: { text: "Я".repeat(501) } }))
+          .statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await f.api.inject({
+            method: "POST",
+            url,
+            headers,
+            payload: { text, organization_id: OTHER_ORGANIZATION_ID },
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(f.controls.calls).toHaveLength(0);
+      const response = await f.api.inject({ method: "POST", url, headers, payload: { text } });
+      expect(response.statusCode).toBe(202);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.body).not.toContain(text);
+      expect(f.controls.calls).toHaveLength(1);
+      expect(f.controls.calls[0]?.operation).toBe("reply");
+    } finally {
+      await f.api.close();
+    }
+  });
   it("lists only through authenticated membership and a bounded explicit response", async () => {
     const f = createFixture(true);
     try {
@@ -433,6 +556,42 @@ describe("S17 private API session/origin/CSRF boundary", { timeout: 30000 }, () 
         /awaiting_customer_confirmation|"confirmed"|confirmation_sent/u,
       );
       expect(f.controls.calls[0]?.operation).toBe("accept");
+    } finally {
+      await f.api.close();
+    }
+  });
+  it("accepts a versioned staff cancellation with a bounded reason and rejects a bad CSRF token", async () => {
+    const f = createFixture(true);
+    try {
+      const url = `/v1/staff/appointment-requests/${staffWorkFixture.id}/cancel`;
+      const headers = {
+        ...f.headers(),
+        origin: STAFF_ORIGIN,
+        "x-csrf-token": f.csrf,
+        "idempotency-key": "staff-cancel",
+        "if-match": `"${staffWorkFixture.id}:1"`,
+      };
+      const payload = { reason_code: "clinic_cancelled" };
+      expect(
+        (
+          await f.api.inject({
+            method: "POST",
+            url,
+            headers: { ...headers, "x-csrf-token": "wrong" },
+            payload,
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect((await f.api.inject({ method: "POST", url, headers, payload: {} })).statusCode).toBe(
+        400,
+      );
+      expect(f.controls.calls).toHaveLength(0);
+      const response = await f.api.inject({ method: "POST", url, headers, payload });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        data: { resource: { appointment_status: "cancelled" } },
+      });
+      expect(f.controls.calls[0]?.operation).toBe("cancel");
     } finally {
       await f.api.close();
     }
