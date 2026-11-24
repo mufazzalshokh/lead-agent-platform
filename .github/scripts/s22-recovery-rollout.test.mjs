@@ -121,6 +121,15 @@ test("validates pinned Cloud Run task status and emits only the approved databas
   assert.equal(receipt.applied_migration_count, 34);
   assert.equal(receipt.first_owner_signup_boundary, "PASS");
   assert.doesNotMatch(JSON.stringify(receipt), /sensitive data|DATABASE_URL/u);
+  const omittedRetryLimit = structuredClone(fixture);
+  delete omittedRetryLimit.template.maxRetries;
+  assert.equal(databaseValidatorReceipt(omittedRetryLimit, expected).retry_limit_reported, false);
+  assert.throws(
+    () => databaseValidatorReceipt({ ...omittedRetryLimit, retriedCount: 1 }, expected),
+    {
+      message: /^S22V095/u,
+    },
+  );
 
   for (const [patch, code] of [
     [{ name: fixture.name.replace("123456", "111111") }, /^S22V091/u],
@@ -155,6 +164,9 @@ test("validates pinned Cloud Run task status and emits only the approved databas
   )[0];
   assert.match(step, /run\.googleapis\.com\/v2\/projects/u);
   assert.doesNotMatch(step, /gcloud logging|executions logs/u);
+  assert.ok(
+    step.indexOf('EXECUTION_ID="$S22_MIGRATOR_EXECUTION_ID"') < step.indexOf("jobs execute"),
+  );
   assert.ok(
     workflow.indexOf("Reverify the installed migrator") <
       workflow.indexOf("Execute one-shot migrator"),

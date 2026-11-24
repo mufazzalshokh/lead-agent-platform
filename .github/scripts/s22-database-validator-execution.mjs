@@ -45,16 +45,18 @@ export function databaseValidatorReceipt(execution, expected) {
   );
   const template = execution.template;
   const container = template?.containers?.[0];
-  requireMatch(
-    execution.taskCount === 1 &&
-      template?.maxRetries === 0 &&
-      template?.serviceAccount === `${job}@${project}.iam.gserviceaccount.com` &&
-      template?.containers?.length === 1 &&
-      container?.image === image &&
-      JSON.stringify(container.command) === '["node"]' &&
-      JSON.stringify(container.args) === JSON.stringify(args),
-    "S22V092_VALIDATOR_EXECUTION_TEMPLATE",
-  );
+  const templateChecks = {
+    TASK_COUNT: execution.taskCount === 1,
+    RETRY_LIMIT: template?.maxRetries === undefined || template.maxRetries === 0,
+    SERVICE_ACCOUNT: template?.serviceAccount === `${job}@${project}.iam.gserviceaccount.com`,
+    CONTAINER_COUNT: template?.containers?.length === 1,
+    IMAGE: container?.image === image,
+    COMMAND: JSON.stringify(container?.command) === '["node"]',
+    ARGUMENTS: JSON.stringify(container?.args) === JSON.stringify(args),
+  };
+  for (const [field, matches] of Object.entries(templateChecks)) {
+    requireMatch(matches, `S22V092_VALIDATOR_${field}`);
+  }
   const env = new Map();
   for (const entry of container.env ?? []) {
     requireMatch(!env.has(entry.name), "S22V093_VALIDATOR_ENVIRONMENT");
@@ -93,6 +95,7 @@ export function databaseValidatorReceipt(execution, expected) {
     operation: "staging_database_validation",
     evidence_source: "cloud_run_execution_status",
     execution_id: executionId,
+    retry_limit_reported: template.maxRetries !== undefined,
     image,
     image_source: source,
     validator_sha256: validatorSha,

@@ -487,6 +487,7 @@ jobs:
             [[ "$S22_MIGRATOR_GIT_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
             [[ "$TF_VAR_migrator_image" =~ ^me-central1-docker\.pkg\.dev/lead-agent-stg-739284/lead-agent/migrator@sha256:[0-9a-f]{64}$ ]]
             [[ -z "$TF_VAR_runtime_migration_head" || ( "$TF_VAR_migration_head" == "0033_first_owner_signup" && "$TF_VAR_runtime_migration_head" == "0032_s22_widget_recovery" ) ]]
+            [[ -z "$S22_MIGRATOR_EXECUTION_ID" || "$S22_MIGRATOR_EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
           fi
           if [[ "$PHASE" == "owner-workspace-bootstrap" ]]; then
             [[ "$ACTION" == "apply" ]]
@@ -5657,6 +5658,24 @@ jobs:
             export S22_VALIDATOR_SCHEMA_HEAD="$TF_VAR_runtime_migration_head"
           fi
           export S22_VALIDATOR_IMAGE_SOURCE="${S22_MIGRATOR_GIT_COMMIT_SHA:-$TF_VAR_git_commit_sha}"
+          read_execution() {
+            curl --fail --silent --show-error --max-time 10 \
+              --header "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/me-central1/jobs/lead-agent-staging-migrator/executions/$EXECUTION_ID" \
+              > "$EXECUTION_JSON"
+          }
+          write_receipt() {
+            node .github/scripts/s22-database-validator-execution.mjs \
+              --receipt "$EXECUTION_JSON" "$EXECUTION_ID" "$PROJECT_NUMBER" "$VALIDATOR" | tee "$EVIDENCE"
+          }
+          if [[ "$S22_PHASE" == "migration-validate" && -n "$S22_MIGRATOR_EXECUTION_ID" ]]; then
+            EXECUTION_ID="$S22_MIGRATOR_EXECUTION_ID"
+            [[ "$EXECUTION_ID" =~ ^lead-agent-staging-migrator-[a-z0-9]+$ ]]
+            ACCESS_TOKEN="$(gcloud auth print-access-token)"
+            read_execution
+            write_receipt
+            exit 0
+          fi
           VALIDATOR_GZIP_B64="$(gzip -n -c "$VALIDATOR" | base64 -w0)"
           [[ "${#VALIDATOR_GZIP_B64}" -lt 32000 ]]
           if ! EXECUTION_ID="$(gcloud run jobs execute lead-agent-staging-migrator \
@@ -5675,13 +5694,9 @@ jobs:
           ACCESS_TOKEN="$(gcloud auth print-access-token)"
           DEADLINE=$((SECONDS + 300))
           while (( SECONDS < DEADLINE )); do
-            curl --fail --silent --show-error --max-time 10 \
-              --header "Authorization: Bearer $ACCESS_TOKEN" \
-              "https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/me-central1/jobs/lead-agent-staging-migrator/executions/$EXECUTION_ID" \
-              > "$EXECUTION_JSON"
+            read_execution
             if jq -e '.completionTime != null or any(.conditions[]?; .type == "Completed" and .state == "CONDITION_FAILED")' "$EXECUTION_JSON" > /dev/null; then
-              node .github/scripts/s22-database-validator-execution.mjs \
-                --receipt "$EXECUTION_JSON" "$EXECUTION_ID" "$PROJECT_NUMBER" "$VALIDATOR" | tee "$EVIDENCE"
+              write_receipt
               exit 0
             fi
             sleep 5

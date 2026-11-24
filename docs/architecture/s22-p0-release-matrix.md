@@ -47,6 +47,8 @@ database connections. Supply the installed image digest and source commit with
 Receipts bind Cloud Run's successful single-task execution
 to the image digest, source commit, schema target, and exact validator script.
 Cloud Logging and IAM changes are unnecessary for this verification.
+Use `migrator_execution_id` with `migration-validate` to recheck an existing
+execution when its receipt needs recovery.
 Use the same candidate images for the subsequent `full` plan. Its migrator
 must be a no-op and the plan must preserve the AI journey mode and capacity.
 The application apply requires its own owner-approved saved plan. Verify Auth0
