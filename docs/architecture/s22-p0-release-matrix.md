@@ -37,6 +37,10 @@ The upgrade `runtime-preflight` inventories enabled channel credential versions
 by ID, creation time, and state. Existing connections can keep their credentials.
 Prove a fresh clinic's isolation in its own workspace. Version metadata alone
 does not establish which connection uses a credential or whether it can be retired.
+The initial `0033` image failed the rollback probe. An isolated PostgreSQL 17
+replay reproduced `42501` on the function-level custom tenant setting under
+the staging role flags. The pending migration now restores the caller's setting
+inside the function body. Package a new image before running `0033` on staging.
 Apply the reviewed binary only after owner approval, then obtain separate
 approval for a single `migration-resume` execution. Retain the successful
 validator receipt for 34 applied migrations and `first_owner_signup_boundary`.

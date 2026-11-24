@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import type { IdentityDatabaseRuntimeConfig } from "../../packages/config/src/index.js";
 import {
   CorrelationIdSchema,
@@ -7,6 +10,7 @@ import {
 import {
   IdentityResolutionRoleError,
   createIdentityDatabaseRuntime,
+  migrationsFolder,
   type IdentityDatabaseRuntime,
 } from "../../packages/database/src/index.js";
 import {
@@ -107,6 +111,65 @@ export const registerIdentityResolutionTests = (harness: IdentityResolutionHarne
       throw new TypeError("Invalid registration audit fixture");
     }
     const audit = { correlationId, requestId };
+
+    it("can create the signup function as a restricted PostgreSQL migration role", async () => {
+      const sql = await readFile(join(migrationsFolder, "0033_first_owner_signup.sql"), "utf8");
+      const ddl = sql
+        .split("--> statement-breakpoint")
+        .find((statement) => /^\s*CREATE FUNCTION app\.register_first_owner\(/u.test(statement));
+      if (ddl === undefined) throw new Error("First-owner function DDL is missing");
+      const client = await harness.privilegedPool().connect();
+      try {
+        await client.query("begin");
+        await client.query(
+          "create role s22_signup_ddl_test nologin createrole nosuperuser nobypassrls",
+        );
+        await client.query("grant create, usage on schema app to s22_signup_ddl_test");
+        await client.query(
+          "drop function app.register_first_owner(varchar,varchar,varchar,varchar,varchar,uuid,uuid,uuid,uuid,uuid,varchar,uuid)",
+        );
+        await client.query("set local role s22_signup_ddl_test");
+        await expect(client.query(ddl)).resolves.toMatchObject({ command: "CREATE" });
+      } finally {
+        await client.query("rollback");
+        client.release();
+      }
+    });
+
+    it("restores the caller's tenant scope after creating and resolving a workspace", async () => {
+      const pool = harness.privilegedPool();
+      const identity = await validatedIdentity("auth0|scoped-signup-owner");
+      const callerOrganization = "0193f1a8-7f65-7c28-a434-a10796c46250";
+      const workspace = "0193f1a8-7f65-7c28-a434-a10796c46251";
+      const register = `select app.register_first_owner($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) as workspace`;
+      await withRole(pool, AUTH_ROLE, async (client) => {
+        await client.query("begin");
+        await client.query("select set_config('app.organization_id', $1, true)", [
+          callerOrganization,
+        ]);
+        for (const requestedWorkspace of [workspace, null]) {
+          const result = await client.query(register, [
+            identity.issuer,
+            identity.subject,
+            details.display_name,
+            details.default_locale,
+            details.default_time_zone,
+            requestedWorkspace,
+            "0193f1a8-7f65-7c28-a434-a10796c46252",
+            "0193f1a8-7f65-7c28-a434-a10796c46253",
+            "0193f1a8-7f65-7c28-a434-a10796c46254",
+            "0193f1a8-7f65-7c28-a434-a10796c46255",
+            requestId,
+            correlationId,
+          ]);
+          expect(result.rows).toEqual([{ workspace }]);
+          const context = await client.query(
+            "select current_setting('app.organization_id') as scope",
+          );
+          expect(context.rows).toEqual([{ scope: callerOrganization }]);
+        }
+      });
+    });
 
     it("serializes concurrent signup, returns the same owner workspace and isolates a second clinic", async () => {
       const pool = harness.privilegedPool();

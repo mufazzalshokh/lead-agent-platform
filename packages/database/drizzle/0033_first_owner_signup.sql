@@ -73,11 +73,13 @@ RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog
-SET app.organization_id = ''
 AS $function$
 DECLARE
 	v_identity record;
 	v_workspace_id uuid;
+	v_owner_active boolean;
+	-- Keep the custom tenant setting out of function DDL for restricted migrators.
+	v_caller_organization_id text := pg_catalog.current_setting('app.organization_id', true);
 BEGIN
 	-- Share the identity lock with invitation acceptance so either flow can safely win.
 	IF p_workspace_id IS NOT NULL THEN
@@ -101,16 +103,15 @@ BEGIN
 			RETURN NULL;
 		END IF;
 		PERFORM pg_catalog.set_config('app.organization_id', v_workspace_id::text, true);
-		IF EXISTS (
+		SELECT EXISTS (
 			SELECT 1 FROM public.organizations AS organization
 			JOIN public.memberships AS membership ON membership.organization_id = organization.id
 			WHERE organization.id = v_workspace_id AND organization.status = 'active'
 				AND membership.user_id = v_identity.user_id AND membership.status = 'active'
 				AND membership.role = 'owner'
-		) THEN
-			RETURN v_workspace_id;
-		END IF;
-		RETURN NULL;
+		) INTO v_owner_active;
+		PERFORM pg_catalog.set_config('app.organization_id', COALESCE(v_caller_organization_id, ''), true);
+		RETURN CASE WHEN v_owner_active THEN v_workspace_id ELSE NULL END;
 	END IF;
 	-- Ordinary sign-in only resolves a workspace created by this flow.
 	IF p_workspace_id IS NULL THEN
@@ -135,6 +136,7 @@ BEGIN
 		VALUES (p_audit_id, p_workspace_id, 'organization.created', 'member', p_user_id,
 			p_membership_id, 'organization', p_workspace_id, 'organization.created', 'succeeded',
 			p_request_id, p_request_id, p_correlation_id, pg_catalog.now());
+	PERFORM pg_catalog.set_config('app.organization_id', COALESCE(v_caller_organization_id, ''), true);
 	RETURN p_workspace_id;
 END
 $function$;
